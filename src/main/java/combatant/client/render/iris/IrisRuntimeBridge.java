@@ -148,6 +148,20 @@ enum IrisRuntimeBridge {
         }
     }
 
+    static boolean preparePlayerRig(combatant.client.features.playermodel.PlayerModels.Ready asset) {
+        return combatant.client.render.iris.geometry.IrisPlayerRigGpu.preflight(asset);
+    }
+
+    static void drawPlayerRigs(
+            java.util.List<combatant.client.features.playermodel.PlayerModelGpuRenderer.IrisDraw> draws,
+            boolean translucent) {
+        combatant.client.render.iris.geometry.IrisPlayerRigGpu.render(draws, translucent);
+    }
+
+    static void invalidatePlayerRigs() {
+        combatant.client.render.iris.geometry.IrisPlayerRigGpu.invalidate();
+    }
+
     static void renderImportedGeometryPrimary() {
         IrisImportedGeometryRenderer.renderPrimary();
     }
@@ -158,6 +172,7 @@ enum IrisRuntimeBridge {
 
     static void releaseImportedGeometryBackend(combatant.client.render.engine.rhi.CombatantRhi rhi) {
         IrisImportedGeometryRenderer.releaseBackend(rhi);
+        combatant.client.render.iris.geometry.IrisPlayerRigGpu.releaseBackend(rhi);
     }
 
     static void invalidateImportedGeometryResidency() {

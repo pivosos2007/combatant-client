@@ -8,8 +8,7 @@
 package combatant.client.util.schematic;
 
 import net.fabricmc.loader.api.FabricLoader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import combatant.client.util.logging.DebugLog;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,13 +25,12 @@ import java.util.concurrent.Executors;
 import java.util.stream.Stream;
 
 /**
- * The {@code schematics/} folder in the game directory. Scanning and parsing run on one daemon worker so a
+ * The selected library, defaulting to {@code schematics/} in the game directory. Scanning and parsing run on one daemon worker so a
  * 50 MB schematic never stalls the render thread; headers are cached by path and modification time.
  */
 public final class SchematicLibrary {
 
     public static final SchematicLibrary INSTANCE = new SchematicLibrary();
-    private static final Logger LOGGER = LoggerFactory.getLogger("Combatant/Schematic");
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "Combatant-Schematic");
@@ -46,17 +44,64 @@ public final class SchematicLibrary {
     private volatile int scanGeneration;
     private CompletableFuture<Void> pendingScan;
 
+    private static final class Storage {
+        private static final SchematicStorage INSTANCE = new SchematicStorage(FabricLoader.getInstance().getGameDir());
+    }
+
     private SchematicLibrary() {
     }
 
     public Path directory() {
-        Path dir = FabricLoader.getInstance().getGameDir().resolve("schematics");
         try {
-            Files.createDirectories(dir);
+            return Storage.INSTANCE.configuredDirectory();
         } catch (IOException e) {
-            LOGGER.warn("Cannot create {}", dir, e);
+            throw new java.io.UncheckedIOException(e);
         }
-        return dir;
+    }
+
+    private Path readableDirectory() {
+        try {
+            return Storage.INSTANCE.directory();
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    public CompletableFuture<Void> changeDirectory(Path directory) {
+        return updateDirectory(() -> Storage.INSTANCE.select(directory));
+    }
+
+    public CompletableFuture<Void> restoreDefaultDirectory() {
+        return updateDirectory(() -> Storage.INSTANCE.restoreDefault());
+    }
+
+    private CompletableFuture<Void> updateDirectory(IoOperation operation) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                operation.run();
+                headerCache.clear();
+                headers = List.of();
+                scan();
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        }, worker);
+    }
+
+    public CompletableFuture<Path> importFile(Path source) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Path imported = Storage.INSTANCE.importFile(source, path -> SchematicFormats.read(path));
+                scan();
+                return imported;
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        }, worker);
+    }
+
+    @FunctionalInterface private interface IoOperation {
+        void run() throws IOException;
     }
 
     public List<SchematicHeader> headers() {
@@ -77,7 +122,12 @@ public final class SchematicLibrary {
         scanning = true;
         pendingScan = CompletableFuture.runAsync(this::scan, worker).whenComplete((ignored, error) -> {
             scanning = false;
-            if (error != null) LOGGER.warn("Schematic scan failed", error);
+            if (error != null) {
+                headerCache.clear();
+                headers = List.of();
+                scanGeneration++;
+                DebugLog.error("Schematic scan failed", error);
+            }
         });
         return pendingScan;
     }
@@ -95,9 +145,18 @@ public final class SchematicLibrary {
 
     /** Finds a file by name with or without the extension; falls back to a prefix match. */
     public Path resolve(String name) {
+        try {
+            return resolveReadable(name);
+        } catch (java.io.UncheckedIOException e) {
+            DebugLog.error("Cannot resolve schematic in the selected library", e);
+            return null;
+        }
+    }
+
+    private Path resolveReadable(String name) {
         if (name == null || name.isBlank()) return null;
         String wanted = name.trim();
-        Path dir = directory();
+        Path dir = readableDirectory();
         String lower = wanted.toLowerCase(Locale.ROOT);
         for (String extension : SchematicFormats.EXTENSIONS) {
             if (lower.endsWith(extension)) {
@@ -125,13 +184,18 @@ public final class SchematicLibrary {
     }
 
     public List<String> fileNames() {
-        List<String> names = new ArrayList<>();
-        for (Path path : listFiles(directory())) names.add(SchematicFormats.baseName(path));
-        return names;
+        try {
+            List<String> names = new ArrayList<>();
+            for (Path path : listFiles(readableDirectory())) names.add(SchematicFormats.baseName(path));
+            return names;
+        } catch (java.io.UncheckedIOException e) {
+            DebugLog.error("Cannot list schematic names in the selected library", e);
+            return List.of();
+        }
     }
 
     private void scan() {
-        Path dir = directory();
+        Path dir = readableDirectory();
         List<Path> files = listFiles(dir);
         List<SchematicHeader> next = new ArrayList<>(files.size());
         for (Path path : files) {
@@ -170,7 +234,7 @@ public final class SchematicLibrary {
                     .sorted()
                     .toList();
         } catch (IOException e) {
-            return List.of();
+            throw new java.io.UncheckedIOException("Cannot scan schematic directory: " + dir, e);
         }
     }
 

@@ -821,7 +821,12 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     protected final FunctionBindSetting action(String name, String defaultKey, BindMode mode) {
-        FunctionBindSetting setting = new FunctionBindSetting(name, defaultKey, mode);
+        return action(name, new KeyBindValue(name, defaultKey), mode);
+    }
+
+    /** Reuses an existing config key while letting FunctionBindSetting own registration. */
+    protected final FunctionBindSetting action(String name, KeyBindValue key, BindMode mode) {
+        FunctionBindSetting setting = new FunctionBindSetting(name, key, mode);
         actions.put(name, setting);
         settings.add(setting);
         return setting;

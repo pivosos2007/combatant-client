@@ -25,24 +25,42 @@ public final class UiHitTester {
     }
 
     public UiHitResult hitTest(UiNode root, float x, float y) {
-        UiNode hit = hitNode(root, x, y);
+        UiNode hit = hitNode(root, x, y, false);
         if (hit == null) return UiHitResult.MISS;
         UiBounds bounds = hit.bounds();
         return new UiHitResult(hit, x - bounds.x(), y - bounds.y());
     }
 
-    private UiNode hitNode(UiNode node, float x, float y) {
-        if (node == null || !node.state().visible() || node.state().disabled()) return null;
+    /**
+     * Visual hit-testing used only for cursor feedback. A disabled control remains a
+     * pointer target for NOT_ALLOWED, but is never returned by hitTest() and cannot
+     * receive an action, hover animation or focus. The same z-order is respected.
+     */
+    public UiHitResult cursorHitTest(UiNode root, float x, float y) {
+        UiNode hit = hitNode(root, x, y, true);
+        if (hit == null) return UiHitResult.MISS;
+        UiBounds bounds = hit.bounds();
+        return new UiHitResult(hit, x - bounds.x(), y - bounds.y());
+    }
+
+    private UiNode hitNode(UiNode node, float x, float y, boolean includeDisabled) {
+        if (node == null || !node.state().visible()) return null;
         UiBounds bounds = node.bounds();
         if (!contains(bounds, x, y)) return null;
-
+        // A disabled parent disables its entire subtree. Its full control bounds,
+        // including the label, are the cursor target. No child can be activated.
+        if (node.state().disabled()) {
+            return includeDisabled && !"none".equalsIgnoreCase(node.props().string("pointerEvents", "auto"))
+                    && containsVisualShape(node, bounds, x, y) ? node : null;
+        }
         List<UiNode> children = node.children();
         for (int i = children.size() - 1; i >= 0; i--) {
-            UiNode childHit = hitNode(children.get(i), x, y);
+            UiNode childHit = hitNode(children.get(i), x, y, includeDisabled);
             if (childHit != null) return childHit;
         }
         if (!containsVisualShape(node, bounds, x, y)) return null;
-        if (!node.props().bool("interactive", true) || "none".equalsIgnoreCase(node.props().string("pointerEvents", "auto"))) return null;
+        if (!node.props().bool("interactive", true)
+                || "none".equalsIgnoreCase(node.props().string("pointerEvents", "auto"))) return null;
         return node;
     }
 

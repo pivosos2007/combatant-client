@@ -62,13 +62,22 @@ public final class VisualPreviewItemRenderer {
         TrackingItemStackRenderState state = resolve(mc, stack);
         if (state == null || state.isEmpty()) return;
 
+        renderScene(context, state.usesBlockLight(), 2.25f,
+                (pose, storage) -> state.submit(pose, storage, FULL_BRIGHT, OverlayTexture.NO_OVERLAY, 0));
+    }
+
+    public static void renderScene(VisualPreviewSceneContext context, boolean blockLight, float size,
+                                   java.util.function.BiConsumer<PoseStack, SubmitNodeStorage> subject) {
+        Minecraft mc = context.minecraft();
+        if (mc == null || mc.gameRenderer == null || mc.level == null) return;
+        ensureRenderer(mc);
         PreviewRenderState previous = PreviewRenderState.capture();
         try (VisualPreviewRuntime.Scope ignored = VisualPreviewRuntime.enterSubjectRender()) {
-            enterPreviewState(mc, state);
+            enterPreviewState(mc, blockLight);
 
             SubmitNodeStorage storage = new SubmitNodeStorage();
-            PoseStack pose = createSubjectPose(mc, context);
-            state.submit(pose, storage, FULL_BRIGHT, OverlayTexture.NO_OVERLAY, 0);
+            PoseStack pose = createSubjectPose(mc, context, size);
+            subject.accept(pose, storage);
             combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
                     "combatant:visual-preview-item", dispatcher, storage,
                     mc.gameRenderer.mainRenderTarget().getColorTextureView(),
@@ -106,7 +115,7 @@ public final class VisualPreviewItemRenderer {
                 && Objects.equals(left.getComponents(), right.getComponents());
     }
 
-    private static PoseStack createSubjectPose(Minecraft mc, VisualPreviewSceneContext context) {
+    private static PoseStack createSubjectPose(Minecraft mc, VisualPreviewSceneContext context, float size) {
         float framebufferW = Math.max(1.0f, mc.getWindow().getWidth());
         float framebufferH = Math.max(1.0f, mc.getWindow().getHeight());
         float aspect = framebufferW / framebufferH;
@@ -133,12 +142,12 @@ public final class VisualPreviewItemRenderer {
         pose.rotateDegrees(Axis.YP, -context.screen().cameraYaw());
         pose.rotateDegrees(Axis.XP, context.screen().pitch());
         pose.rotateDegrees(Axis.YP, context.screen().yaw());
-        float modelScale = 2.25f * context.screen().zoom();
+        float modelScale = size * context.screen().zoom();
         pose.scale(modelScale, modelScale, modelScale);
         return pose;
     }
 
-    private static void enterPreviewState(Minecraft mc, TrackingItemStackRenderState state) {
+    private static void enterPreviewState(Minecraft mc, boolean blockLight) {
         RenderState.rendering3D = true;
         RenderSystem.getDevice().createCommandEncoder()
                 .clearDepthTexture(mc.gameRenderer.mainRenderTarget().getDepthTexture(), 0.0D);
@@ -158,7 +167,7 @@ public final class VisualPreviewItemRenderer {
             if (fog != null) RenderSystem.setShaderFog(fog.getBuffer(FogRenderer.FogMode.NONE));
         }
         mc.gameRenderer.lighting().setupFor(
-                state.usesBlockLight() ? Lighting.Entry.ITEMS_3D : Lighting.Entry.ITEMS_FLAT
+                blockLight ? Lighting.Entry.ITEMS_3D : Lighting.Entry.ITEMS_FLAT
         );
     }
 

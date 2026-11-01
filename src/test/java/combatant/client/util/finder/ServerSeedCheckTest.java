@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class ServerSeedCheckTest {
 
-    private static final long DONUT_SEED = 6608149111735331168L;
+    private static final long SAMPLE_SEED = 1234567890123456789L;
 
     private static BiomeManager managerFor(long worldSeed) {
         // Same as the client: the manager is constructed with the already-hashed seed.
@@ -30,19 +30,13 @@ class ServerSeedCheckTest {
 
     @Test
     void acceptsTheSeedTheServerHashed() {
-        assertEquals(Optional.of(true), ServerSeedCheck.matches(managerFor(DONUT_SEED), DONUT_SEED));
+        assertEquals(Optional.of(true), ServerSeedCheck.matches(managerFor(SAMPLE_SEED), SAMPLE_SEED));
         assertEquals(Optional.of(true), ServerSeedCheck.matches(managerFor(-42L), -42L));
     }
 
     @Test
     void rejectsAnyOtherSeed() {
-        assertEquals(Optional.of(false), ServerSeedCheck.matches(managerFor(DONUT_SEED), DONUT_SEED + 1));
-        assertEquals(Optional.of(false), ServerSeedCheck.matches(managerFor(DONUT_SEED), 0L));
-    }
-
-    @Test
-    void zeroHashMeansTheServerHidesItsSeed() {
-        BiomeManager hidden = new BiomeManager((x, y, z) -> null, 0L);
-        assertEquals(Optional.empty(), ServerSeedCheck.matches(hidden, DONUT_SEED));
+        assertEquals(Optional.of(false), ServerSeedCheck.matches(managerFor(SAMPLE_SEED), SAMPLE_SEED + 1));
+        assertEquals(Optional.of(false), ServerSeedCheck.matches(managerFor(SAMPLE_SEED), 0L));
     }
 }

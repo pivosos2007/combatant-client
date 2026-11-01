@@ -328,7 +328,8 @@ public final class UiPassCompiler {
             }
             if (!(entry instanceof DrawBatch batch)) return false;
             if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS) return false;
-            if (batch.type.usesPreparedGlass() || batch.type.requiresMaterialScene()) return false;
+            if (batch.type.usesPreparedGlass() || batch.type.requiresMaterialScene()
+                    || batch.type == UiBatchType.CLIMATE_PRIMITIVE) return false;
         }
         return true;
     }
@@ -349,7 +350,8 @@ public final class UiPassCompiler {
             }
             if (entry instanceof DrawBatch batch) {
                 if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS
-                        || batch.type.usesPreparedGlass() || batch.type.requiresMaterialScene()) {
+                        || batch.type.usesPreparedGlass() || batch.type.requiresMaterialScene()
+                        || batch.type == UiBatchType.CLIMATE_PRIMITIVE) {
                     return false;
                 }
                 hasDraws = true;
@@ -527,6 +529,7 @@ public final class UiPassCompiler {
         boolean items = false;
         boolean blur = false;
         boolean preparedGlass = false;
+        boolean climateRefraction = false;
         boolean unknown = false;
         for (Object entry : batcher.order) {
             if (entry instanceof ItemBatch) {
@@ -536,6 +539,7 @@ public final class UiPassCompiler {
             } else if (entry instanceof DrawBatch batch) {
                 blur |= batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS;
                 preparedGlass |= batch.type.usesPreparedGlass();
+                climateRefraction |= batch.type == UiBatchType.CLIMATE_PRIMITIVE;
             } else {
                 unknown = true;
             }
@@ -545,6 +549,7 @@ public final class UiPassCompiler {
         appendReason(reason, items ? "mixed_items" : null);
         appendReason(reason, blur ? "blur_capture" : null);
         appendReason(reason, preparedGlass ? "prepared_glass" : null);
+        appendReason(reason, climateRefraction ? "climate_refraction_capture" : null);
         appendReason(reason, unknown ? "unknown_entry" : null);
         return reason.isEmpty() ? "unsupported_order" : reason.toString();
     }

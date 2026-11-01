@@ -42,8 +42,10 @@ public final class UiInputDispatcher {
 
     /** Programmatic focus for popup dismissal and keyboard-driven controls. */
     public void focus(UiNode node) {
+        if (node != null && node.state().disabled()) node = null;
         focusManager.focus(node);
         state.setFocusedNode(node);
+        if (node != null) node.state().setFocusVisible(true);
     }
 
     /** Maps render-space pointer coordinates back into the retained tree's logical units. */
@@ -64,11 +66,16 @@ public final class UiInputDispatcher {
     }
 
     private UiHitResult updateHoverLogical(UiNode root, float x, float y) {
+        if (state.focusedNode() != null && state.focusedNode().state().disabled()) focus(null);
         updateScrollbarDrag(x, y);
         updateScrollbarHover(root, x, y);
 
         long start = System.nanoTime();
-        UiHitResult hit = hitTester.hitTest(root, x, y);
+        UiHitResult cursorHit = hitTester.cursorHitTest(root, x, y);
+        boolean overDisabled = cursorHit.node() != null && cursorHit.node().state().disabled();
+        // Do not hover/focus the underlying scroll container when the actual
+        // topmost surface is a disabled control.
+        UiHitResult hit = overDisabled ? UiHitResult.MISS : hitTester.hitTest(root, x, y);
         if (counters != null) {
             counters.setHitTestNanos(System.nanoTime() - start);
         }
@@ -77,8 +84,13 @@ public final class UiInputDispatcher {
             state.setHoveredNode(hit.node());
             if (hit.node() != null) hit.node().state().setHovered(true);
         }
-        if (hit.node() != null) {
-            cursorManager.apply(hit.node().style().cursor());
+        // Cursor hit-testing includes disabled nodes without granting them click,
+        // focus or hovered-state behavior. This also prevents an underlying
+        // interactive container from supplying its HAND cursor on a disabled row.
+        if (overDisabled) {
+            cursorManager.apply("not-allowed");
+        } else if (cursorHit.node() != null) {
+            cursorManager.apply(cursorHit.node().style().cursor());
         }
         return hit;
     }
@@ -105,6 +117,15 @@ public final class UiInputDispatcher {
         }
 
         UiHitResult hit = updateHoverLogical(root, logicalEvent.x(), logicalEvent.y());
+        // Disabled controls consume the pointer without forwarding it to a
+        // clickable ancestor or an element beneath them.
+        UiHitResult cursorHit = hitTester.cursorHitTest(root, logicalEvent.x(), logicalEvent.y());
+        if (cursorHit.node() != null && cursorHit.node().state().disabled()) {
+            UiNode previous = state.pressedNode();
+            if (previous != null) previous.state().setActive(false);
+            state.setPressedNode(null);
+            return true;
+        }
         state.setPressedNode(hit.node());
         if (hit.node() != null) {
             hit.node().state().setActive(true);
@@ -115,6 +136,8 @@ public final class UiInputDispatcher {
                         logicalEvent.y() - hit.node().bounds().y(), System.nanoTime());
             }
             focus(hit.node());
+            // Pointer focus must not present the keyboard-only Spectrum focus ring.
+            hit.node().state().setFocusVisible(false);
         }
         return hit.hit();
     }
@@ -131,6 +154,13 @@ public final class UiInputDispatcher {
         }
 
         UiHitResult hit = updateHoverLogical(root, logicalEvent.x(), logicalEvent.y());
+        UiHitResult cursorHit = hitTester.cursorHitTest(root, logicalEvent.x(), logicalEvent.y());
+        if (cursorHit.node() != null && cursorHit.node().state().disabled()) {
+            UiNode previous = state.pressedNode();
+            if (previous != null) previous.state().setActive(false);
+            state.setPressedNode(null);
+            return true;
+        }
         UiNode pressed = state.pressedNode();
         if (pressed != null) {
             pressed.state().setActive(false);
@@ -156,7 +186,11 @@ public final class UiInputDispatcher {
         float x = logicalX(event.x());
         float y = logicalY(event.y());
         UiHitResult hit = updateHoverLogical(root, x, y);
-        UiNode node = hit.node();
+        UiHitResult cursorHit = hitTester.cursorHitTest(root, x, y);
+        // Disabled children are passive for clicks, not for their parent's
+        // scrolling. Keep wheel scrolling functional when hovering them.
+        UiNode node = cursorHit.node() != null && cursorHit.node().state().disabled()
+                ? cursorHit.node() : hit.node();
         while (node != null && node.type() != UiNodeType.SCROLL) node = node.parent();
         if (node == null) return false;
 

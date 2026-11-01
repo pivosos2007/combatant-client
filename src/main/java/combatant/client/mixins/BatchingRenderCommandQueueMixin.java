@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import combatant.client.render.ViewObstructionFadeContext;
+import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
 import combatant.client.render.engine.msaa.MsaaWorldTarget;
 
 import java.util.Arrays;
@@ -34,7 +35,8 @@ public abstract class BatchingRenderCommandQueueMixin {
 
     @Unique
     private static boolean combatant$shouldApplyViewObstructionFade() {
-        return ViewObstructionFadeContext.isActive() && ViewObstructionFadeContext.alpha() < 0.99f;
+        return !SeeInvisiblesVisualDepth.isCapturing()
+                && ViewObstructionFadeContext.isActive() && ViewObstructionFadeContext.alpha() < 0.99f;
     }
 
     @Unique

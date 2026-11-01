@@ -37,7 +37,7 @@ public enum VisualPreviewRenderer {
         float width = Math.max(1.0f, HudScale.virtualWidth(mc.getWindow().getWidth(), mc.getWindow().getHeight()));
         float height = Math.max(1.0f, HudScale.virtualHeight(mc.getWindow().getWidth(), mc.getWindow().getHeight()));
         float settingsReserve = screen.settingsVisible() ? Math.min(430.0f, width * 0.38f) : 20.0f;
-        float subjectX = 24.0f;
+        float subjectX = 24.0f + screen.provider().leftPanelWidth(width);
         float subjectY = 42.0f;
         float subjectW = Math.max(1.0f, width - subjectX - settingsReserve);
         float subjectH = Math.max(1.0f, height - subjectY - 42.0f);
@@ -105,6 +105,8 @@ public enum VisualPreviewRenderer {
     }
 
     private static void renderHints(VisualPreviewSceneContext scene) {
+        float hintX = scene.screen().provider().leftPanelWidth(scene.width()) > 0 ? scene.subjectX() : 0;
+        float hintW = hintX > 0 ? scene.subjectWidth() : scene.width();
         String settings = scene.screen().settingsVisible()
                 ? hint("settings.hide", "Alt+S - hide settings")
                 : hint("settings.show", "Alt+S - show settings");
@@ -113,7 +115,7 @@ public enum VisualPreviewRenderer {
         VisualPreviewInteractionProfile profile = scene.screen().provider().interactionProfile();
         if (scene.screen().provider().controlMode() == VisualPreviewControlMode.HAND_VIEW) {
             ClickGuiHintOverlay.renderBottomLeft(
-                    0.0f, 0.0f, scene.width(), scene.height(), 2.0f, 1.0f,
+                    hintX, 0.0f, hintW, scene.height(), 2.0f, 1.0f,
                     hint("hand.orbit", "LMB/RMB - orbit camera"),
                     hint("hand.rotate_subject", "MMB - rotate subject"),
                     hint("hand.distance", "Wheel - camera distance"),
@@ -123,14 +125,14 @@ public enum VisualPreviewRenderer {
             );
         } else if (profile.equals(VisualPreviewInteractionProfile.FIXED)) {
             ClickGuiHintOverlay.renderBottomLeft(
-                    0.0f, 0.0f, scene.width(), scene.height(), 2.0f, 1.0f,
+                    hintX, 0.0f, hintW, scene.height(), 2.0f, 1.0f,
                     hint("fixed", "Fixed camera for ViewModel positioning"),
                     settings,
                     back
             );
         } else if (profile.cameraMode() == VisualPreviewCameraMode.FREE_FLY) {
             ClickGuiHintOverlay.renderBottomLeft(
-                    0.0f, 0.0f, scene.width(), scene.height(), 2.0f, 1.0f,
+                    hintX, 0.0f, hintW, scene.height(), 2.0f, 1.0f,
                     hint("free_look", "LMB/RMB - look around"),
                     hint("free_fly", "WASD/Space/Shift - fly"),
                     hint("free_speed", "Wheel - flight speed"),
@@ -140,7 +142,7 @@ public enum VisualPreviewRenderer {
             );
         } else if (profile.middleSubjectDrag()) {
             ClickGuiHintOverlay.renderBottomLeft(
-                    0.0f, 0.0f, scene.width(), scene.height(), 2.0f, 1.0f,
+                    hintX, 0.0f, hintW, scene.height(), 2.0f, 1.0f,
                     hint("object.orbit", "LMB/RMB - orbit camera"),
                     hint("object.rotate_middle", "MMB - rotate subject"),
                     hint("object.distance", "Wheel - camera distance"),
@@ -150,7 +152,7 @@ public enum VisualPreviewRenderer {
             );
         } else {
             ClickGuiHintOverlay.renderBottomLeft(
-                    0.0f, 0.0f, scene.width(), scene.height(), 2.0f, 1.0f,
+                    hintX, 0.0f, hintW, scene.height(), 2.0f, 1.0f,
                     hint("object.rotate", "LMB - rotate subject"),
                     hint("object.zoom", "Wheel - zoom subject"),
                     reset,

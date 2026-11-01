@@ -49,6 +49,7 @@ import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.accessors.LevelRendererAccessor;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.depth.EntityDepthLayer;
+import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.iris.IrisRuntime;
@@ -172,6 +173,7 @@ public abstract class LevelRendererMixin {
     private void combatant$snapshotEntityStates(LevelRenderState state,
                                                 SubmitNodeCollector collector,
                                                 boolean special, CallbackInfo ci) {
+        SeeInvisiblesVisualDepth.snapshot(state.entityRenderStates);
         if (ModuleManager.needsEntityOnlyDepth()) {
             EntityDepthLayer.snapshotEntities(state.entityRenderStates);
         } else {

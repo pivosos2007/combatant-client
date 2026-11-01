@@ -41,7 +41,7 @@ public abstract class ChunkFinderModule<R extends ChunkMarkers.Hit> extends Shad
                 // A plate at one height is easy to miss from above or below; a beam is visible anywhere.
                 boolCommon("beams", CommonSettingSchemas.FINDER_BEAMS, false),
                 boolCommon("chat_alerts", CommonSettingSchemas.FINDER_CHAT_ALERTS, true),
-                boolCommon("sound_alerts", CommonSettingSchemas.FINDER_SOUND_ALERTS, true),
+                boolCommon("sound_alerts", CommonSettingSchemas.FINDER_SOUND_ALERTS, false),
                 color("fill_color", defaultFillHex),
                 color("line_color", defaultLineHex));
         this.markers = new ChunkMarkers<>(settings, this::getDisplayName, this::analysisSignature,

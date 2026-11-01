@@ -57,7 +57,7 @@ public final class ChunkFinder extends ShaderBoxModule {
     // A plate at one height is easy to miss from above or below; a beam is visible anywhere.
     private final BooleanValue beams = boolCommon("beams", CommonSettingSchemas.FINDER_BEAMS, false);
     private final BooleanValue chatAlerts = boolCommon("chat_alerts", CommonSettingSchemas.FINDER_CHAT_ALERTS, true);
-    private final BooleanValue soundAlerts = boolCommon("sound_alerts", CommonSettingSchemas.FINDER_SOUND_ALERTS, true);
+    private final BooleanValue soundAlerts = boolCommon("sound_alerts", CommonSettingSchemas.FINDER_SOUND_ALERTS, false);
 
     // ---- sus ------------------------------------------------------------------------------------------------
 

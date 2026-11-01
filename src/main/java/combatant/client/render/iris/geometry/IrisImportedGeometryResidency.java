@@ -6,10 +6,10 @@
 package combatant.client.render.iris.geometry;
 
 import com.mojang.renderpearl.api.pipeline.IndexType;
-import combatant.client.render.engine.asset.gltf.GltfRuntimeAsset;
-import combatant.client.render.engine.asset.gltf.GltfAssetRepository;
-import combatant.client.render.engine.asset.gltf.geometry.GltfCompiledPrimitive;
-import combatant.client.render.engine.asset.gltf.model.GltfMesh;
+import combatant.client.render.engine.asset.model.ModelRuntimeAsset;
+import combatant.client.render.engine.asset.model.ImportedModelRepository;
+import combatant.client.render.engine.asset.model.geometry.ModelCompiledPrimitive;
+import combatant.client.render.engine.asset.model.data.ModelMesh;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.upload.PersistentGpuMesh;
@@ -23,7 +23,7 @@ import java.util.List;
 
 /** Backend-scoped persistent Iris copies of immutable imported mesh/material resources. */
 public final class IrisImportedGeometryResidency implements AutoCloseable {
-    private static final IdentityHashMap<GltfRuntimeAsset, IrisImportedGeometryResidency> CACHE = new IdentityHashMap<>();
+    private static final IdentityHashMap<ModelRuntimeAsset, IrisImportedGeometryResidency> CACHE = new IdentityHashMap<>();
     private static CombatantRhi owner;
     private static long sourceEpoch = Long.MIN_VALUE;
 
@@ -35,8 +35,8 @@ public final class IrisImportedGeometryResidency implements AutoCloseable {
         this.materials = List.copyOf(materials);
     }
 
-    static synchronized IrisImportedGeometryResidency acquire(CombatantRhi rhi, GltfRuntimeAsset asset) {
-        long currentEpoch = GltfAssetRepository.global().epoch();
+    static synchronized IrisImportedGeometryResidency acquire(CombatantRhi rhi, ModelRuntimeAsset asset) {
+        long currentEpoch = ImportedModelRepository.global().epoch();
         if (asset.sourceEpoch() > 0L && asset.sourceEpoch() != currentEpoch) {
             throw new IllegalStateException("Stale imported asset cannot acquire Iris residency after reload: "
                     + asset.asset().id());
@@ -61,19 +61,19 @@ public final class IrisImportedGeometryResidency implements AutoCloseable {
 
     public static synchronized void invalidateImportedIrisResidency() {
         retireCached();
-        sourceEpoch = GltfAssetRepository.global().epoch();
+        sourceEpoch = ImportedModelRepository.global().epoch();
     }
 
     Primitive primitive(int meshIndex, int primitiveIndex) { return meshes.get(meshIndex).get(primitiveIndex); }
     IrisCanonicalMaterialAtlas material(int materialIndex) { return materials.get(materialIndex); }
 
-    private static IrisImportedGeometryResidency upload(CombatantRhi rhi, GltfRuntimeAsset asset) {
+    private static IrisImportedGeometryResidency upload(CombatantRhi rhi, ModelRuntimeAsset asset) {
         ArrayList<List<Primitive>> meshes = new ArrayList<>();
         ArrayList<Primitive> primitiveRollback = new ArrayList<>();
         ArrayList<IrisCanonicalMaterialAtlas> materials = new ArrayList<>();
         try {
             for (int meshIndex = 0; meshIndex < asset.asset().meshes().size(); meshIndex++) {
-                GltfMesh mesh = asset.asset().meshes().get(meshIndex);
+                ModelMesh mesh = asset.asset().meshes().get(meshIndex);
                 ArrayList<Primitive> primitives = new ArrayList<>();
                 for (int primitiveIndex = 0; primitiveIndex < mesh.primitives().size(); primitiveIndex++) {
                     Primitive primitive = uploadPrimitive(rhi,
@@ -96,7 +96,7 @@ public final class IrisImportedGeometryResidency implements AutoCloseable {
         }
     }
 
-    private static Primitive uploadPrimitive(CombatantRhi rhi, String label, GltfCompiledPrimitive primitive) {
+    private static Primitive uploadPrimitive(CombatantRhi rhi, String label, ModelCompiledPrimitive primitive) {
         int stride = IrisVertexFormats.ENTITY.getVertexSize();
         ByteBuffer vertices = ByteBuffer.allocateDirect(Math.multiplyExact(primitive.vertexCount(), stride))
                 .order(ByteOrder.nativeOrder());

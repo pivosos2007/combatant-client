@@ -10,6 +10,7 @@ import combatant.client.config.values.BindMode;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.KeyBindValue;
+import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.RotationUpdateEvent;
@@ -17,8 +18,6 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.input.CombatantInput;
-import combatant.client.input.InputScope;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -59,7 +58,7 @@ public final class AutoHitCrystal extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    private final KeyBindValue activationKey = bind("autoHitCrystalKey", "activation_key", "NONE", BindMode.HOLD);
+    private final FunctionBindSetting activationKey = action("activation_key", new KeyBindValue("autoHitCrystalKey", "NONE"), BindMode.HOLD);
     private final EnumValue<Mode> mode = enumSetting("autoHitCrystalMode", "mode", Mode.SINGLE, Mode.values());
     private final NumberValue<Integer> obsidianDelay = num("autoHitCrystalObsidianDelay", "obsidian_delay", 0, 0, 10);
     private final NumberValue<Integer> placeDelay = num("autoHitCrystalPlaceDelay", "place_delay", 0, 0, 10);
@@ -67,7 +66,6 @@ public final class AutoHitCrystal extends Module {
     private final BooleanValue switchBack = bool("autoHitCrystalSwitchBack", "switch_back", true);
 
     private State state = State.IDLE;
-    private String boundCombo = "NONE";
     private boolean keyWasHeld;
     private BlockPos base;
     private int waitTicks;
@@ -76,7 +74,6 @@ public final class AutoHitCrystal extends Module {
 
     @Override
     public void onEnable() {
-        ensureBind();
         keyWasHeld = keyHeld();
         reset();
     }
@@ -84,13 +81,6 @@ public final class AutoHitCrystal extends Module {
     @Override
     public void onDisable() {
         reset();
-        CombatantInput.bindings().unbind(bindingName());
-        boundCombo = "NONE";
-    }
-
-    @Override
-    public void onTick() {
-        if (isEnabled()) ensureBind();
     }
 
     @EventHandler
@@ -319,21 +309,8 @@ public final class AutoHitCrystal extends Module {
         originalSlot = -1;
     }
 
-    private String bindingName() {
-        return name() + ":" + activationKey.getName();
-    }
-
-    private void ensureBind() {
-        String combo = activationKey.get();
-        if (combo == null) combo = "NONE";
-        if (combo.equalsIgnoreCase(boundCombo)) return;
-        CombatantInput.bindings().unbind(bindingName());
-        if (!activationKey.isNone()) CombatantInput.bindings().bind(bindingName(), combo);
-        boundCombo = combo;
-    }
-
     private boolean keyHeld() {
-        return !activationKey.isNone() && CombatantInput.bindings().isHeld(bindingName(), InputScope.GAME);
+        return !"NONE".equalsIgnoreCase(activationKey.get()) && isActionHeld("activation_key");
     }
 
     private enum State {

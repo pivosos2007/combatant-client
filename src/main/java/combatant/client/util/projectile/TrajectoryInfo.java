@@ -71,6 +71,10 @@ public record TrajectoryInfo(
         return new TrajectoryInfo(value, hitboxRadius, initialVelocity, drag, dragInWater, roll, copiesPlayerVelocity);
     }
 
+    public TrajectoryInfo withHitboxRadius(double value) {
+        return new TrajectoryInfo(gravity, value, initialVelocity, drag, dragInWater, roll, copiesPlayerVelocity);
+    }
+
     public TrajectoryInfo withInitialVelocity(double value) {
         return new TrajectoryInfo(gravity, hitboxRadius, value, drag, dragInWater, roll, copiesPlayerVelocity);
     }

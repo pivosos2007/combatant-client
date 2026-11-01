@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.combat;
 
+import combatant.client.util.target.hud.TargetHudStatus;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.common.impl.TargetFilters;
@@ -299,7 +301,7 @@ public class AutoAnchor extends Module {
     public void onDisable() {
         resetState();
         RotationManager.INSTANCE.clear(this);
-        TargetManager.setAutoAnchorTarget(null);
+        TargetManager.clear(this);
     }
 
     @Override
@@ -324,12 +326,12 @@ public class AutoAnchor extends Module {
 
         if (mc.player == null || mc.level == null || mc.gameMode == null) {
             clearCombatState();
-            TargetManager.setAutoAnchorTarget(null);
+            TargetManager.clear(this);
             return;
         }
 
         target = findCombatTarget();
-        TargetManager.setAutoAnchorTarget(target);
+        TargetManager.publish(this, target, TargetManager.Source.MODULE, 750);
         updateCandidates();
 
         if (timing.get() == Timing.NORMAL) {
@@ -959,6 +961,7 @@ public class AutoAnchor extends Module {
         renderPositions.entrySet().removeIf(entry -> now - entry.getValue() > lifetime);
     }
 
+    @TargetHudStatus
     public String getTargetHudStatus(LivingEntity hudTarget) {
         if (!isEnabled() || hudTarget == null || target == null || hudTarget != target) return null;
         if (mc.player == null || mc.level == null) return "Idle";

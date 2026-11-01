@@ -42,6 +42,7 @@ public final class UiReactiveVisual {
             case "hover", "hovered" -> source.state().hovered() ? 1.0f : 0.0f;
             case "press", "pressed" -> source.state().active() ? 1.0f : 0.0f;
             case "focus", "focused" -> source.state().focused() ? 1.0f : 0.0f;
+            case "focusVisible", "focus-visible" -> source.state().focusVisible() ? 1.0f : 0.0f;
             default -> stateValue(props.get("stateValues"), name);
         };
 

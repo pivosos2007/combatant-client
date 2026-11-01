@@ -1,21 +1,195 @@
 /*
- * This file is part of the Combatant Client distribution.
- * Copyright (c) 2026 pivosos2007.
+ * The Drive Home - window-rain optical layer, (c) Martijn Steinrucken
+ * (BigWings / The Art of Code), 2017, CC BY-NC-SA 3.0 Unported.
+ * Provided by the user for integration into Combatant Client.
+ * Original project: https://www.shadertoy.com/ ("The Drive Home")
+ * Making of: https://www.youtube.com/watch?v=eKtsY7hYTPg
+ * Original N31 hash credits Dave Hoskins.
  *
- * Licensed under the GNU General Public License v3.0.
- *
- * Camera-local wet-surface model, independently implemented for Combatant.
- * Design references (conceptual, no third-party shader code copied):
- * - frmlinn/raindrops-v2 (MIT): static attachment, moving water and refraction.
- * - jeantimex/raindrop (Heartfelt-derived, CC BY-NC-SA; NO CODE COPIED):
- *   separate adhered beads, intermittent runners and fading wet tracks.
- *
- * No simulation texture or per-surface SSBO. The persistent lattice seeds stay
- * fixed; all lifetime, travel and drying envelopes are continuous at wrap.
+ * The full GetDrops optical model, its three-scale composition, animated
+ * wobble/slide, trailing microdrops and fine ripple are used here. The
+ * unrelated procedural city, lights, camera ray and song are not HUD assets.
+ * Integration: physical framebuffer UVs, prepared glass blur, one-shot
+ * submerged-water GPU history. This work must retain the upstream credit.
  */
+#ifdef COMBATANT_CLIMATE_FIELD
+uniform sampler2D u_ClimateField;
 
+// Original BigWings droplet shaping functions (namespaced for UI shader use).
+float climateDriveSawTooth(float t) {
+    return cos(t + cos(t)) + sin(2.0 * t) * 0.2 + sin(4.0 * t) * 0.02;
+}
+float climateDriveDeltaSawTooth(float t) {
+    return 0.4 * cos(2.0 * t) + 0.08 * cos(4.0 * t)
+         - (1.0 - sin(t)) * sin(t + cos(t));
+}
+vec3 climateDriveN31(float p) {
+    vec3 p3 = fract(vec3(p) * vec3(0.1031, 0.11369, 0.13787));
+    p3 += dot(p3, p3.yzx + 19.19);
+    return fract(vec3((p3.x + p3.y) * p3.z,
+                      (p3.x + p3.z) * p3.y,
+                      (p3.y + p3.z) * p3.x));
+}
+
+// Direct adaptation of The Drive Home's GetDrops(): all of its displacement
+// and trailing bead construction remains intact. An independent trail output
+// is needed only for the UI glass treatment, not for constructing the shape.
+vec2 climateDriveGetDrops(vec2 uv, float seed, float t, out float trail) {
+    uv.y += t * 0.05;
+    uv *= vec2(10.0, 2.5) * 2.0;
+    vec2 id = floor(uv);
+    vec3 n = climateDriveN31(id.x + (id.y + seed) * 546.3524);
+    vec2 bd = fract(uv);
+    bd -= 0.5;
+    bd.y *= 4.0;
+    bd.x += (n.x - 0.5) * 0.6;
+    t += n.z * 6.28;
+    float slide = climateDriveSawTooth(t);
+    float ts = 1.5;
+    vec2 trailPos = vec2(bd.x * ts,
+                         (fract(bd.y * ts * 2.0 - t * 2.0) - 0.5) * 0.5);
+    bd.y += slide * 2.0;
+    float dropShape = bd.x * bd.x;
+    dropShape *= climateDriveDeltaSawTooth(t);
+    bd.y += dropShape;
+    float d = length(bd);
+    float trailMask = smoothstep(-0.2, 0.2, bd.y);
+    trailMask *= bd.y;
+    float td = length(trailPos * max(0.5, trailMask));
+    // The reference uses reversed smoothstep edges; the equivalent forms
+    // below avoid undefined GLSL behaviour across GL/Vulkan drivers.
+    float mainDrop = 1.0 - smoothstep(0.1, 0.2, d);
+    float dropTrail = 1.0 - smoothstep(0.02, 0.1, td);
+    dropTrail *= trailMask;
+    // A thin, tapering wet wake stays BEHIND the sliding head. It refracts
+    // the backdrop through its lateral slope instead of painting a flat line.
+    // The local bead's X position is static; only its Y moves downwards.
+    float wakeY = smoothstep(0.10, 0.42, bd.y)
+                * (1.0 - smoothstep(1.35, 2.10, bd.y));
+    float wakeWidth = mix(0.075, 0.030, clamp((bd.y - 0.1) / 1.9, 0.0, 1.0));
+    float side = bd.x / max(wakeWidth, 0.001);
+    float wakeCore = (1.0 - smoothstep(0.25, 1.25, abs(side))) * wakeY;
+    vec2 wakeRefraction = vec2(-side * wakeCore * 0.13,
+                                wakeCore * 0.025);
+    trail = clamp(max(dropTrail, wakeCore * 0.8), 0.0, 1.0);
+    return mix(bd * mainDrop, trailPos, dropTrail) + wakeRefraction;
+}
+
+// CameraSetup()'s entire original raindrop offset stack, without the camera.
+// It modifies *only the blurred backdrop sample coordinates*. In particular,
+// none of the old circular SDF/reflective "bubble" rendering is retained.
+vec2 climateDriveRain(vec2 uv, float t, out float wetTrail) {
+    // CameraSetup's rotating and horizontally panning lens was meant for
+    // a driving camera, not stationary HUD glass. It carried every droplet
+    // sideways as a group. Keep fixed screen-space X, animate vertical fall.
+    vec2 dropUv = uv;
+
+    // Preserve the same droplet language from the reference, but use more
+    // independently shifted layers so the UI does not receive only a few
+    // clustered heads in one region of a large panel.
+    float t0, t1, t2, t3, t4;
+    vec2 offs = climateDriveGetDrops(dropUv, 1.0, t, t0);
+    offs += climateDriveGetDrops(dropUv * 1.35 + vec2(0.37, -0.19), 10.0, t, t1);
+    offs += climateDriveGetDrops(dropUv * 1.95 + vec2(-0.41, 0.28), 25.0, t, t2);
+    offs += climateDriveGetDrops(dropUv * 2.85 + vec2(0.23, 0.46), 7.0, t, t3) * 0.85;
+    offs += climateDriveGetDrops(dropUv * 3.65 + vec2(-0.18, -0.33), 15.0, t, t4) * 0.55;
+
+    float ripple = sin(t + uv.y * 3.1415 * 30.0 + uv.x * 124.0) * 0.5 + 0.5;
+    ripple *= 0.005;
+    offs += vec2(0.0, ripple);
+    wetTrail = clamp(max(max(max(t0, t1 * 0.82), max(t2 * 0.68, t3 * 0.52)), t4 * 0.36), 0.0, 1.0);
+    return offs * 0.82;
+}
+
+// The *separate* GPU field contains only water deposited at the moment the
+// player exits a liquid. It never runs the reference's endlessly repeating
+// rainfall emitter. Field.rg = adhered/moving volume, b = actual wet trail.
+float climateExitHeight(vec3 water) {
+    water = clamp(water, vec3(0.0), vec3(3.0));
+    return 1.0 - exp(-water.r * 0.90 - water.g * 1.25 - water.b * 0.13);
+}
+
+// Small HUD panels occupy a tiny fraction of the screen-wide rain pattern.
+// Add finer independent reference droplets for those surfaces, while leaving
+// the existing large-panel optical composition unchanged.
+float climateHudDetailFactor(vec2 sizePx) {
+    float areaSpan = sqrt(max(sizePx.x * sizePx.y, 1.0));
+    return 1.0 - smoothstep(95.0, 245.0, areaSpan);
+}
+
+// Signed optical response follows the actual refraction normal, not an
+// independently drawn circular outline. It remains legible on flat HUD fills
+// where sampling nearby pixels cannot provide noticeable contrast on its own.
+float climateDirectionalRelief(vec2 displacement, float factor) {
+    float slope = length(displacement);
+    float edge = smoothstep(0.018, 0.135, slope);
+    vec2 direction = displacement / max(slope, 0.0001);
+    float facing = dot(direction, normalize(vec2(-0.47, -0.88)));
+    return edge * (max(facing, 0.0) * mix(0.032, 0.115, factor)
+                 - max(-facing, 0.0) * mix(0.018, 0.067, factor));
+}
+
+float combatantClimateDroplets(vec2 pixel, vec2 surfaceSizePx,
+                               float rain, float waterExit,
+                               float seconds, out vec2 lensNormal,
+                               out float trail, out float shine) {
+    vec2 screen = max(uScreen.xy, vec2(1.0));
+    vec2 uv = vec2(pixel.x - screen.x * 0.5,
+                   screen.y * 0.5 - pixel.y) / screen.y;
+
+    // The Drive Home is the complete visual replacement for precipitation.
+    // The reference's clock is slowed uniformly; all its layers share time.
+    float rainWeight = smoothstep(0.02, 0.30, clamp(rain, 0.0, 1.0));
+    vec2 rainOffset = vec2(0.0);
+    float rainTrail = 0.0;
+    if (rainWeight > 0.00001) {
+        float clock = seconds * 0.36;
+        rainOffset = climateDriveRain(uv, clock, rainTrail);
+        float compact = climateHudDetailFactor(surfaceSizePx);
+        if (compact > 0.001) {
+            // The two extra fine-scale passes retain the reference's droplet
+            // shape, slip and microtrails. Global UVs avoid repeating the same
+            // small pattern across separate HUD elements.
+            float fineTrail0, fineTrail1;
+            vec2 fine0 = climateDriveGetDrops(uv * 4.9 + vec2(0.27, -0.31),
+                                              37.0, clock, fineTrail0);
+            vec2 fine1 = climateDriveGetDrops(uv * 7.1 + vec2(-0.43, 0.17),
+                                              69.0, clock, fineTrail1);
+            rainOffset += compact * (fine0 * 0.68 + fine1 * 0.48);
+            rainTrail = max(rainTrail, compact * max(fineTrail0 * 0.70,
+                                                     fineTrail1 * 0.48));
+        }
+        rainOffset *= rainWeight;
+        rainTrail *= rainWeight;
+    }
+
+    // Existing post-emergence water has spatial/temporal memory. Normal is
+    // reconstructed from the combined adhered + running water + thin trail.
+    vec2 fieldUv = clamp(vec2(pixel.x / screen.x, 1.0 - pixel.y / screen.y),
+                         vec2(0.001), vec2(0.999));
+    vec2 texel = 1.0 / vec2(textureSize(u_ClimateField, 0));
+    vec3 layers = texture(u_ClimateField, fieldUv).rgb;
+    float h = climateExitHeight(layers);
+    float hx0 = climateExitHeight(texture(u_ClimateField, fieldUv - vec2(texel.x, 0)).rgb);
+    float hx1 = climateExitHeight(texture(u_ClimateField, fieldUv + vec2(texel.x, 0)).rgb);
+    float hy0 = climateExitHeight(texture(u_ClimateField, fieldUv - vec2(0, texel.y)).rgb);
+    float hy1 = climateExitHeight(texture(u_ClimateField, fieldUv + vec2(0, texel.y)).rgb);
+    vec2 leftoverOffset = vec2(hx0 - hx1, hy1 - hy0);
+
+    // No Fresnel ring, bulged sphere highlight or dark contact outline.
+    // Droplet refraction is the one authored by Steinrucken; emerging water
+    // adds only gentle geometric displacement and a persistent narrow wake.
+    lensNormal = clamp(rainOffset * 1.55 + leftoverOffset * 0.42,
+                       vec2(-0.62), vec2(0.62));
+    trail = clamp(max(rainTrail * 1.08, layers.b * 0.58), 0.0, 1.0);
+    shine = clamp(rainTrail * rainWeight * 0.012
+                  + length(leftoverOffset) * h * 0.018, 0.0, 0.04);
+    return clamp(max(length(rainOffset) * 1.8, h), 0.0, 1.0);
+}
+#endif
+
+// Frost is an independent climate mode, not part of the rain reference.
 vec2 combatantClimateHash(vec2 p, float seed) {
-    // Stateless PCG-style integer mix: no transcendental sin() per cell.
     uvec2 q = uvec2(ivec2(floor(p)));
     uint h = (q.x * 1664525u + q.y * 1013904223u) ^ floatBitsToUint(seed);
     h ^= h >> 16u;
@@ -27,128 +201,4 @@ vec2 combatantClimateHash(vec2 p, float seed) {
     k *= 2246822519u;
     k ^= k >> 13u;
     return vec2(float(h & 0x00ffffffu), float(k & 0x00ffffffu)) / 16777216.0;
-}
-
-// Scaled for GUI pixels. A bounded sphere-cap derivative changes the scene
-// sampling direction inside a bead instead of painting an opaque white circle.
-// All returned channels are PRE-multiplied by temporal presence, not by rain;
-// the caller applies the shared smoothed wetness envelope only once.
-float combatantClimateDroplets(vec2 pixel, float seconds, float amount,
-                               float cellPx, float velocity, float seed,
-                               out vec2 lensNormal, out float trail, out float shine) {
-    lensNormal = vec2(0.0);
-    trail = 0.0;
-    shine = 0.0;
-    if (amount <= 0.002) return 0.0;
-
-    float waterLevel = clamp(amount, 0.0, 1.0);
-    float coverage = 0.0;
-    vec2 initial = pixel;
-    // Aged adhered beads, spatially fixed until their fade-out completes.
-    // Separate cell spacing from bead radii to avoid a continuous water sheet.
-    float beadCell = max(cellPx * 0.56, 12.0);
-    vec2 beadTile = floor(pixel / beadCell);
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-            vec2 id = beadTile + vec2(float(x), float(y));
-            vec2 h = combatantClimateHash(id, seed + 4.13);
-            vec2 h2 = combatantClimateHash(id + 19.61, seed + 8.29);
-            // Hard ceiling of ~35% occupied cells even in thunderstorms.
-            // A smooth occupancy ramp means changing weather cannot pop seeds.
-            float density = mix(0.15, 0.32, sqrt(waterLevel));
-            float presence = 1.0 - smoothstep(density - 0.10, density + 0.12, h.x);
-            if (presence <= 0.001) continue;
-
-            // One deterministic life per bead. Its center DOES NOT move,
-            // so no discontinuous reset appears when the clock wraps.
-            float period = mix(13.0, 23.0, h2.x);
-            float age = fract(seconds / period + h2.y);
-            float alive = smoothstep(0.015, 0.19, age)
-                        * (1.0 - smoothstep(0.76, 0.985, age));
-            float opacity = presence * alive;
-            if (opacity <= 0.001) continue;
-
-            vec2 center = (id + vec2(0.19) + h2 * 0.62) * beadCell;
-            vec2 displacement = initial - center;
-            float radius = beadCell * mix(0.165, 0.405, h.y * h.y);
-            vec2 shape = displacement / vec2(radius, radius * mix(0.98, 1.29, h2.x));
-            // Asymmetric lower bulge: adhered drops are not identical disks.
-            shape.x += 0.075 * shape.y * shape.y * (h.x - 0.5);
-            float dist = length(shape);
-            float aa = max(0.55 / max(radius, 1.0), 0.045);
-            float body = 1.0 - smoothstep(0.83 - aa, 1.04 + aa, dist);
-            float crest = smoothstep(0.35, 0.72, dist)
-                        * (1.0 - smoothstep(0.93, 1.08 + aa, dist));
-            float bead = body * opacity;
-            coverage = max(coverage, bead);
-
-            float slope = crest * opacity;
-            // Gradient of the lens, not a uniformly white contour.
-            lensNormal += shape * slope * vec2(0.84, 0.66);
-            // Asymmetric specular is a small glint, not an all-round ring.
-            float specularSide = smoothstep(-0.2, 0.78, -shape.x * 0.69 - shape.y * 0.72);
-            shine = max(shine, crest * specularSide * opacity * 0.62);
-        }
-    }
-
-    // Sparse runners: independent, slower release followed by a brief slide.
-    // Most beads never move in a given cycle; the runner count is limited.
-    float runCell = max(cellPx * 1.22, 28.0);
-    vec2 runTile = floor(pixel / runCell);
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-            vec2 id = runTile + vec2(float(x), float(y));
-            vec2 h = combatantClimateHash(id, seed + 15.07);
-            vec2 h2 = combatantClimateHash(id + 31.97, seed + 25.13);
-            // Rare streams, never a curtain of falling vertical lines.
-            float density = mix(0.085, 0.22, sqrt(waterLevel));
-            float presence = 1.0 - smoothstep(density - 0.04, density + 0.085, h.x);
-            if (presence <= 0.001) continue;
-
-            // Distinct periods and offsets remove synchronized cell motion.
-            float period = runCell / max(velocity * mix(0.67, 1.27, h.y), 2.0) * 2.6;
-            float phase = fract(seconds / period + h2.x);
-            // Motion sticks first, then descends; the head fades before reset.
-            float release = smoothstep(0.25, 0.91, phase);
-            float travel = 0.08 * phase + 0.92 * release;
-            float alive = smoothstep(0.055, 0.21, phase)
-                        * (1.0 - smoothstep(0.82, 0.975, phase));
-            float opacity = presence * alive;
-            if (opacity <= 0.001) continue;
-
-            float sway = sin(phase * 6.28318 + h2.y * 6.28318) * runCell * 0.028;
-            vec2 origin = (id + vec2(0.13 + 0.74 * h2.y, 0.07)) * runCell;
-            vec2 center = origin + vec2(sway, runCell * travel * 1.26);
-            vec2 delta = initial - center;
-            float radius = runCell * mix(0.080, 0.170, h.y);
-            vec2 pos = delta / vec2(radius, radius * mix(1.32, 1.97, release));
-            float dist = length(pos);
-            float aa = max(0.55 / max(radius, 1.0), 0.04);
-            float body = (1.0 - smoothstep(0.84 - aa, 1.04 + aa, dist)) * opacity;
-            coverage = max(coverage, body);
-            float crest = smoothstep(0.34, 0.78, dist)
-                        * (1.0 - smoothstep(0.93, 1.10 + aa, dist));
-            lensNormal += pos * crest * opacity * vec2(0.75, 0.85);
-            shine = max(shine, crest * opacity * 0.65
-                              * smoothstep(-0.1, 0.85, -pos.x - pos.y));
-
-            // Only a released drop forms a tapering trail BEHIND its head.
-            float distanceAbove = max(-delta.y, 0.0);
-            float lengthPx = max(1.0, runCell * release * 1.20);
-            float meander = sin((center.y - distanceAbove) * 0.043 + h2.y * 6.28318)
-                           * radius * 0.20;
-            float streakWidth = mix(radius * 0.46, radius * 0.20,
-                                   smoothstep(0.0, lengthPx, distanceAbove));
-            float stripe = 1.0 - smoothstep(streakWidth * 0.45,
-                                    streakWidth * 1.40 + 0.7,
-                                    abs(delta.x + meander));
-            float tailMask = stripe * (1.0 - smoothstep(0.63, 1.00,
-                                                  distanceAbove / lengthPx))
-                          * step(delta.y, 0.0) * opacity * release;
-            // A shallow damp track is not an opaque bright cylinder.
-            trail = max(trail, tailMask * 0.72);
-            lensNormal.x += sign(delta.x + meander + 0.0001) * tailMask * 0.18;
-        }
-    }
-    return clamp(coverage, 0.0, 1.0);
 }

@@ -30,10 +30,13 @@ public final class HudClimateSurface {
     public record Sample(float rain, float snow, float waterExit, float frost, float humidity,
                          float condensation, float heat) {
         public static final Sample DRY = new Sample(0f, 0f, 0f, 0f, 0f, 0f, 0f);
-        public boolean active() { return rain + snow + waterExit + frost + condensation + heat > 0.012f; }
+        public boolean active() {
+            return rain + snow + waterExit + frost + condensation + heat > 0.012f
+                    || HudClimateSurface.residualWaterActive();
+        }
     }
 
-    private static final UiGlassVisual CLIMATE_VISUAL = UiGlassVisual.shader("ui_glass_climate.frag", 11.0f);
+    private static final UiGlassVisual CLIMATE_VISUAL = UiGlassVisual.shader("ui_glass_climate.frag", 16.0f);
     private static final ThreadLocal<Boolean> ENABLED = ThreadLocal.withInitial(() -> true);
     private static final ThreadLocal<Integer> HUD_SCOPES = ThreadLocal.withInitial(() -> 0);
     private static ClientLevel previousLevel;
@@ -41,6 +44,12 @@ public final class HudClimateSurface {
     private static boolean previousInWater;
     private static float rain, snow, water, waterReservoir, frost, humidity, condensation, heat;
     private static float surfaceTemperature;
+    // Keep submitting the optical layer while previously deposited rain drains.
+    // This is a rendering lifetime, not another water-simulation timer.
+    private static long wetUntilMillis;
+    // Changes ONLY on an actual submerged -> air transition. Not a wetness level.
+    private static int waterExitSequence;
+    private static long waterExitAtMillis;
     private static Sample last = Sample.DRY;
 
     private HudClimateSurface() { }
@@ -64,20 +73,29 @@ public final class HudClimateSurface {
         if (!CombatantBuild.isDevelopmentBuild()) return Sample.DRY;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.level == null || mc.player == null) {
+            if (previousLevel != null)
+                combatant.client.render.engine.renderer.ui.UiClimateField.invalidate();
             previousLevel = null;
             previousMillis = -1L;
             previousInWater = false;
             rain = snow = water = waterReservoir = frost = humidity = condensation = heat = 0f;
             surfaceTemperature = 0f;
+            wetUntilMillis = 0L;
+            waterExitSequence = 0;
+            waterExitAtMillis = 0L;
             return last = Sample.DRY;
         }
         ClientLevel level = mc.level;
         long now = Util.getMillis();
         if (previousLevel != level) {
+            combatant.client.render.engine.renderer.ui.UiClimateField.invalidate();
             previousLevel = level;
             previousMillis = now;
             previousInWater = mc.player.isInWater() || mc.player.isUnderWater();
             rain = snow = water = waterReservoir = frost = humidity = condensation = heat = 0f;
+            wetUntilMillis = 0L;
+            waterExitSequence = 0;
+            waterExitAtMillis = 0L;
             BlockPos initialPos = BlockPos.containing(mc.player.getEyePosition());
             surfaceTemperature = BiomeClimateSampler.sampleAt(level, initialPos.getX(),
                     initialPos.getY(), initialPos.getZ()).effectiveTemperature();
@@ -91,7 +109,11 @@ public final class HudClimateSurface {
         // weather boolean: standing under a roof must stop NEW rain deposition.
         BlockPos pos = BlockPos.containing(mc.player.getEyePosition());
         boolean submerged = mc.player.isInWater() || mc.player.isUnderWater();
-        if (previousInWater && !submerged) waterReservoir = 1.0f;
+        if (previousInWater && !submerged) {
+            waterReservoir = 1.0f;
+            ++waterExitSequence;
+            waterExitAtMillis = now;
+        }
         previousInWater = submerged;
 
         // Level.getRainLevel and isRainingAt include the active WorldTweaks
@@ -116,6 +138,7 @@ public final class HudClimateSurface {
         snow = smooth(snow, snowExposed ? levelRain : 0f, dt, snowExposed ? 3.5f : 7f);
         water = smooth(water, waterReservoir, dt, waterReservoir > water ? 0.65f : 4.0f);
         waterReservoir = smooth(waterReservoir, 0f, dt, 4.7f);
+        if (Math.max(rain, water) > 0.07f) wetUntilMillis = now + 65_000L;
         frost = smooth(frost, targetFrost, dt, targetFrost > frost ? 13f : 8f);
         humidity = smooth(humidity, targetHumidity, dt, 3f);
         // A slowly responding glass surface can stay cooler than suddenly
@@ -131,6 +154,19 @@ public final class HudClimateSurface {
         return last = new Sample(rain, snow, water, frost, humidity, condensation, heat);
     }
 
+    /** Edge-triggered water emergence sequence for one-shot GPU deposition. */
+    public static int waterExitSequence() {
+        sample();
+        return waterExitSequence;
+    }
+
+    /** Timestamp of the latest water-exit edge. It must not be replayed when a
+     * previously hidden UI is opened long after leaving the water. */
+    public static long waterExitAtMillis() {
+        sample();
+        return waterExitAtMillis;
+    }
+
     /** Climate for an ordinary physical surface, not a glass-only effect. */
     public static boolean materialHudScopeActive() {
         return CombatantBuild.isDevelopmentBuild() && HUD_SCOPES.get() > 0 && ENABLED.get();
@@ -141,7 +177,8 @@ public final class HudClimateSurface {
             return combatant.client.render.engine.renderer.ui.draw.UiMaterialClimateSpec.DRY;
         Sample s = sample();
         return new combatant.client.render.engine.renderer.ui.draw.UiMaterialClimateSpec(
-                s.rain(), s.waterExit(), s.frost(), s.snow(), s.condensation());
+                s.rain(), s.waterExit(), s.frost(), s.snow(), s.condensation(),
+                residualWaterActive());
     }
 
     /** Optional climate coat for opaque, matte, cellular and metallic HUD materials. */
@@ -167,6 +204,10 @@ public final class HudClimateSurface {
         if (!s.active()) return UiGlassVisual.DEFAULT;
         return CLIMATE_VISUAL.withVector(0, s.rain(), s.waterExit(), s.frost(), s.snow())
                 .withVector(1, s.humidity(), s.condensation(), s.heat(), 0.0f);
+    }
+
+    private static boolean residualWaterActive() {
+        return wetUntilMillis > 0L && Util.getMillis() < wetUntilMillis;
     }
 
     private static float smooth(float current, float target, float dt, float tau) {

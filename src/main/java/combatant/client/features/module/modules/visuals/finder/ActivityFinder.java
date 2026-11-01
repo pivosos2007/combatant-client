@@ -67,7 +67,7 @@ public final class ActivityFinder extends Module {
     private final NumberValue<Integer> alertCooldownSeconds = numCommon("alert_cooldown", CommonSettingSchemas.FINDER_ALERT_COOLDOWN, 60, 0, 600);
     private final BooleanValue tracers = boolCommon("tracers", CommonSettingSchemas.FINDER_TRACERS, true);
     private final BooleanValue chatAlerts = boolCommon("chat_alerts", CommonSettingSchemas.FINDER_CHAT_ALERTS, true);
-    private final BooleanValue soundAlerts = boolCommon("sound_alerts", CommonSettingSchemas.FINDER_SOUND_ALERTS, true);
+    private final BooleanValue soundAlerts = boolCommon("sound_alerts", CommonSettingSchemas.FINDER_SOUND_ALERTS, false);
     private final RGBAColorValue fillColor = color("fill_color", "#40FFDC00");
     private final RGBAColorValue lineColor = color("line_color", "#FFFFDC00");
 

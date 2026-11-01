@@ -497,7 +497,7 @@ public class Predictions extends Module {
 
     @Override
     public void onDisable() {
-        TargetManager.setPredictionTarget(null);
+        TargetManager.clear(this);
         resetAimSmoothing();
     }
 
@@ -508,7 +508,7 @@ public class Predictions extends Module {
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
         if (!isEnabled() || mc.level == null) {
-            TargetManager.setPredictionTarget(null);
+            TargetManager.clear(this);
             resetAimSmoothing();
             return;
         }
@@ -1352,16 +1352,16 @@ public class Predictions extends Module {
 
     private void updatePredictionTarget(AimPrediction pred) {
         if (!targetHudOnAimValue.get()) {
-            TargetManager.setPredictionTarget(null);
+            TargetManager.clear(this);
             return;
         }
 
         if (pred != null && pred.entity() instanceof LivingEntity living && living.isAlive() && !living.isRemoved()) {
-            TargetManager.setPredictionTarget(living);
+            TargetManager.publish(this, living, TargetManager.Source.PREDICTION, 250);
             return;
         }
 
-        TargetManager.setPredictionTarget(null);
+        TargetManager.clear(this);
     }
 
     private String formatTime(double seconds) {

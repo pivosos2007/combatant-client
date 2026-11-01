@@ -153,6 +153,7 @@ public final class VisualPreviewScreen extends Screen {
         mouseX = vx;
         mouseY = vy;
         float scale = sceneUiScale();
+        if (provider.mousePressed(vx, vy, click.button())) return true;
         if (settingsVisible && settingsPanel.isActive()
                 && settingsPanel.mouseClicked(vx, vy, click.button(), scale)) return true;
 
@@ -178,6 +179,7 @@ public final class VisualPreviewScreen extends Screen {
         float vy = toVirtualY(click.y());
         mouseX = vx;
         mouseY = vy;
+        provider.mouseReleased(vx, vy, click.button());
         if (click.button() == dragButton) {
             dragging = false;
             dragButton = -1;
@@ -192,6 +194,7 @@ public final class VisualPreviewScreen extends Screen {
         float vy = toVirtualY(mouseY);
         this.mouseX = vx;
         this.mouseY = vy;
+        if (provider.mouseScrolled(vx, vy, verticalAmount)) return true;
         if (settingsVisible && settingsPanel.isActive()
                 && settingsPanel.mouseScrolled(vx, vy, verticalAmount)) return true;
         switch (provider.interactionProfile().wheelMode()) {
@@ -249,6 +252,7 @@ public final class VisualPreviewScreen extends Screen {
     public void onClose() {
         if (closing) return;
         closing = true;
+        provider.close();
         combatant.client.input.minecraft.CombatantTextInputBridge.blur(textInputTarget);
         dragging = false;
         dragButton = -1;
@@ -319,11 +323,11 @@ public final class VisualPreviewScreen extends Screen {
         return cameraZ;
     }
 
-    float mouseXVirtual() {
+    public float mouseXVirtual() {
         return mouseX;
     }
 
-    float mouseYVirtual() {
+    public float mouseYVirtual() {
         return mouseY;
     }
 
@@ -345,7 +349,8 @@ public final class VisualPreviewScreen extends Screen {
         float width = virtualWidth();
         float height = virtualHeight();
         float rightReserve = provider.settings().isEmpty() || !settingsVisible ? 24.0f : 420.0f;
-        return x >= 24.0f && x <= width - rightReserve && y >= 48.0f && y <= height - 48.0f;
+        return x >= 24.0f + provider.leftPanelWidth(width) && x <= width - rightReserve
+                && y >= 48.0f && y <= height - 48.0f;
     }
 
     void updateFrameState() {

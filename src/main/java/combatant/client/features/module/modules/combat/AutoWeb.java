@@ -28,7 +28,6 @@ import combatant.client.automation.placement.PlacementSlot;
 import combatant.client.util.block.placer.BlockPlacer;
 import combatant.client.util.target.TargetingUtil;
 import combatant.client.util.target.TargetManager;
-import combatant.client.util.target.CombatTargetProvider;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -44,7 +43,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
-@CombatTargetProvider(value = "autoweb", priority = 15)
 @ModuleInfo(
         id = "autoweb",
         displayName = "AutoWeb",
@@ -190,7 +188,8 @@ public final class AutoWeb extends Module {
                 state = State.PLACING;
             }
         }
-        TargetManager.publish(this, target, state.name().toLowerCase(java.util.Locale.ROOT),
+        TargetManager.publish(this, target, TargetManager.Source.MODULE, 150,
+                state.name().toLowerCase(java.util.Locale.ROOT),
                 state == State.PLACING, currentTargets.size());
     }
 

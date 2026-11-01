@@ -8,7 +8,13 @@ package combatant.client.render.engine.renderer.ui.draw;
 
 /** Immutable, per-surface weather response: no world access during GPU submission. */
 public record UiMaterialClimateSpec(float rain, float waterExit, float frost,
-                                    float snow, float condensation) {
+                                    float snow, float condensation, boolean residualWater) {
+    /** Compatibility for callers that have no deposited-water state. */
+    public UiMaterialClimateSpec(float rain, float waterExit, float frost,
+                                 float snow, float condensation) {
+        this(rain, waterExit, frost, snow, condensation, false);
+    }
+
     public static final UiMaterialClimateSpec DRY = new UiMaterialClimateSpec(0, 0, 0, 0, 0);
 
     public UiMaterialClimateSpec {
@@ -20,7 +26,7 @@ public record UiMaterialClimateSpec(float rain, float waterExit, float frost,
     }
 
     public boolean active() {
-        return rain + waterExit + frost + snow + condensation > 0.015f;
+        return residualWater || rain + waterExit + frost + snow + condensation > 0.015f;
     }
 
     private static float bounded(float v) {

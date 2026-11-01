@@ -32,6 +32,7 @@ public final class MainSettingsRegistry {
         register(new SecuritySettingsContributor());
         register(new InventorySettingsContributor());
         register(new RuntimeSettingsContributor());
+        register(new SeedCrackerSettingsContributor());
     }
 
     public static MainSettingsRegistry get() {

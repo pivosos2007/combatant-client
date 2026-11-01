@@ -39,6 +39,8 @@ import combatant.client.util.finder.FinderRender;
 import combatant.client.util.finder.LoadedChunkScanner;
 import combatant.client.util.finder.OreSimulation;
 import combatant.client.util.finder.ServerSeedCheck;
+import combatant.client.compat.seedcracker.SeedCrackerRuntime;
+import combatant.client.compat.seedcracker.SeedSnapshots;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.ArrayList;
@@ -70,11 +72,6 @@ import java.util.concurrent.CompletableFuture;
         description = "module.netheritefinder.description")
 public final class NetheriteFinder extends Module {
 
-    // DonutSMP's world seed, the reason this module exists; any other server needs its own.
-    private static final String DONUT_SMP_SEED = "6608149111735331168";
-    // Nether seeds DonutSMP players have recovered (the server has used more than one). Tried after the configured
-    // seed; the server's seed hash and the quartz check pick the live one.
-    private static final long[] DONUT_SMP_NETHER_SEEDS = {6608149111735331168L, -2803778941596086821L};
     private static final int MAX_BOXES = 2048;
     // Seed check: samples are predicted air-exposed quartz/gold blocks, which no anti-xray hides.
     private static final int QUARTZ_MIN_SAMPLES = 40;
@@ -176,7 +173,7 @@ public final class NetheriteFinder extends Module {
     // Registry building is slow and the result never changes within a game session.
     private static volatile CompletableFuture<OreSimulation> simulation;
 
-    private final StringValue seed = text("seed", DONUT_SMP_SEED);
+    private final StringValue seed = text("seed", "");
     private final NumberValue<Integer> rangeChunks = num("range", 6, 1, 12);
     private final BooleanValue showUnverified = bool("show_unverified", false);
     private final RGBAColorValue fillColor = color("fill_color", "#50BF40BF");
@@ -199,6 +196,14 @@ public final class NetheriteFinder extends Module {
     private int debrisOffset;
     private ClientLevel calibratedLevel;
     private String scannedSeed = "";
+
+    /** Manually entered seed always wins; the saved snapshot is selected per server/worldgen. */
+    private String effectiveSeed() {
+        String manual = seed.get();
+        if (manual != null && !manual.isBlank()) return manual;
+        var recovered = SeedSnapshots.forNativeOreSimulation();
+        return recovered.isPresent() ? Long.toString(recovered.getAsLong()) : "";
+    }
 
     @Override
     public void onEnable() {
@@ -260,12 +265,13 @@ public final class NetheriteFinder extends Module {
 
         // Evaluated apart from the seed test, which would otherwise skip noting the level.
         boolean levelChanged = scannerLevelChanged();
-        if (!seed.get().equals(scannedSeed) || levelChanged) {
-            scannedSeed = seed.get();
+        if (!effectiveSeed().equals(scannedSeed) || levelChanged) {
+            scannedSeed = effectiveSeed();
             resetCalibration();
             pickCandidates();
             scanner.rescanAll();
         }
+        if (candidates.isEmpty()) return; // An unset seed is not a valid candidate (especially not seed 0).
         scanner.tick(mc);
         updateVerdict();
     }
@@ -276,32 +282,22 @@ public final class NetheriteFinder extends Module {
         return true;
     }
 
-    /**
-     * Seeds to test in this level: the configured one, then the known DonutSMP nether seeds. The seed hash the server
-     * sends narrows them to the one it uses; a hash that matches none is reported, and the seeds are still tested on
-     * the terrain in case the hash is fake.
-     */
+    /** Use manually selected seed or a locally saved full world seed, never a structure-seed candidate. */
     private void pickCandidates() {
-        List<Long> seeds = new ArrayList<>();
-        seeds.add(parseSeed(scannedSeed));
-        for (long known : DONUT_SMP_NETHER_SEEDS) {
-            if (!seeds.contains(known)) seeds.add(known);
+        if (scannedSeed == null || scannedSeed.isBlank()) {
+            serverHash = "hidden";
+            SeedCrackerRuntime.propose("NetheriteFinder");
+            return;
         }
-        List<Long> confirmed = new ArrayList<>();
-        for (long candidate : seeds) {
-            if (ServerSeedCheck.matches(mc.level, candidate).orElse(false)) confirmed.add(candidate);
-        }
+        long candidate = parseSeed(scannedSeed);
+        serverConfirmed = ServerSeedCheck.matches(mc.level, candidate).orElse(false);
         OptionalLong hashed = ServerSeedCheck.hashedSeed(mc.level);
         serverHash = hashed.isPresent() ? Long.toHexString(hashed.getAsLong()) : "hidden";
-        // A hash that matches none is not reported yet: servers may send a fake one (DonutSMP's nether fits a seed
-        // its hash rejects), so the terrain check decides and its result quotes the hash.
-        if (!confirmed.isEmpty()) {
-            seeds = confirmed;
-            serverConfirmed = true;
+        if (serverConfirmed) {
             report(Notifier.Type.INFO, "seed confirmed by server",
-                    "the server confirms seed " + confirmed.getFirst() + ", checking its ore generation.");
+                    "the server confirms seed " + candidate + ", checking its ore generation.");
         }
-        for (long candidate : seeds) candidates.add(new Candidate(candidate));
+        candidates.add(new Candidate(candidate));
     }
 
     /** HUD toasts cut long text, so the toast stays short and the client-side chat gets the whole message. */

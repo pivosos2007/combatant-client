@@ -21,6 +21,7 @@ import combatant.client.render.engine.core.RenderFrameContext;
 import combatant.client.render.engine.core.policy.DepthProvider;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.depth.EntityDepthLayer;
+import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
 import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
@@ -199,11 +200,20 @@ public final class WorldPassCompiler {
             depth = EntityDepthLayer.depthView();
             stats.depthPrePassBinding();
         } else if (policy == DepthPolicy.PRE_TRANSLUCENT) {
-            depth = PreTranslucentDepth.getDepthViewFor(colorView);
+            // A PRE_DEPTH effect must ignore translucent terrain (notably water),
+            // but must still respect the translucent SeeInvisibles player in front.
+            // This auxiliary target is based on the opaque snapshot, NOT main depth.
+            depth = SeeInvisiblesVisualDepth.preDepthViewFor(colorView);
+            if (depth == null) depth = PreTranslucentDepth.getDepthViewFor(colorView);
             stats.depthPrePassBinding();
         } else {
-            DepthProvider provider = ctx != null ? ctx.depthProvider() : null;
-            depth = provider != null ? provider.depthAttachment() : null;
+            // SeeInvisibles remains normally alpha-blended in the scene. Late 3D visuals
+            // depth-test against a separate scene+player silhouette, not an altered scene depth.
+            depth = SeeInvisiblesVisualDepth.depthViewFor(colorView);
+            if (depth == null) {
+                DepthProvider provider = ctx != null ? ctx.depthProvider() : null;
+                depth = provider != null ? provider.depthAttachment() : null;
+            }
             stats.depthMainBinding();
         }
 

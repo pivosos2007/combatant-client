@@ -66,7 +66,7 @@ final class CombatantAddonContextImpl implements CombatantAddonContext {
 
     @Override
     public Path addonConfigDir() {
-        return configDir().resolve("combatant").resolve("addons").resolve(addonId());
+        return combatant.client.config.ConfigPaths.root().resolve("addons").resolve(addonId());
     }
 
     @Override

@@ -23,6 +23,7 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.rhi.FullscreenDrawCommand;
 import combatant.client.render.engine.rhi.resource.TransientTargetDescriptor;
 import combatant.client.render.engine.uniform.impl.JumpShockwaveUniforms;
+import combatant.client.mixininterface.IMsaaTexture;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
@@ -115,11 +116,19 @@ public final class WorldJumpShockwaves implements PostProcessPass {
         if (requests.isEmpty()) return false;
 
         GpuTextureView depth = execution.context().preTranslucentDepth();
-        boolean depthUsable = depth != null
-                && depth.getWidth(0) == execution.context().width()
-                && depth.getHeight(0) == execution.context().height();
+        boolean depthUsable = depthSampleable(depth, execution.context().width(), execution.context().height());
+        // Pre-translucent capture may be absent for a frame/backend. Use
+        // the graph's scene-depth snapshot instead of silently rendering
+        // depth-tested waves through walls as if depth testing were disabled.
+        if (!depthUsable) {
+            depth = execution.context().mainDepth();
+            depthUsable = depthSampleable(depth, execution.context().width(), execution.context().height());
+        }
 
-        List<Request> valid = new ArrayList<>(requests);
+        List<Request> valid = new ArrayList<>(requests.size());
+        for (Request request : requests) {
+            if (!request.depthTest() || depthUsable) valid.add(request);
+        }
         if (valid.isEmpty()) return false;
 
         Matrix4f view = new Matrix4f().rotation(new Quaternionf(RenderState.cameraRotation).conjugate());
@@ -201,6 +210,12 @@ public final class WorldJumpShockwaves implements PostProcessPass {
     private synchronized void clearPending() {
         pending.clear();
         pendingFrameId = Long.MIN_VALUE;
+    }
+
+    private static boolean depthSampleable(GpuTextureView depth, int width, int height) {
+        return depth != null && depth.getWidth(0) == width && depth.getHeight(0) == height
+                && !(depth.texture() instanceof IMsaaTexture msaa
+                    && msaa.combatant$isMsaa() && msaa.combatant$getSamples() > 1);
     }
 
     private static long currentFrameId() {

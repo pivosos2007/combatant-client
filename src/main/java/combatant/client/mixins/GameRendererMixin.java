@@ -65,7 +65,7 @@ import combatant.client.features.module.modules.visuals.*;
 import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.render.engine.RenderState;
-import combatant.client.render.engine.asset.gltf.render.ImportedAssetCompatibilityRenderer;
+import combatant.client.render.engine.asset.model.render.ImportedAssetCompatibilityRenderer;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.temporal.TemporalJitterSequence;
@@ -88,6 +88,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.UiBlurResources;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
 import combatant.client.render.iris.IrisCombatantFrameHooks;
 import combatant.client.render.iris.IrisFinalizedSceneRenderer;
 import combatant.client.render.iris.IrisCompatibilityGuards;
@@ -463,6 +464,8 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                         ? minecraft.gameRenderer.mainRenderTarget()
                         : null;
                 ImportedAssetCompatibilityRenderer.renderWorldEntities(worldTarget);
+                combatant.client.features.playermodel.PlayerModelGpuRenderer.render(worldTarget);
+                SeeInvisiblesVisualDepth.begin(worldTarget);
 
                 combatant$renderer.begin();
                 combatant$depthRenderer.begin();
@@ -545,6 +548,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     combatant$depthRenderer.render(combatant$matrices);
                 }
             }
+            SeeInvisiblesVisualDepth.end();
             combatant$matrices.popPose();
             mv.popMatrix();
             RenderState.rendering3D = false;
@@ -555,6 +559,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     @Inject(method = "renderLevel", at = @At("HEAD"))
     private void combatant$beginWorldMsaa(CallbackInfo ci) {
         PreTranslucentDepth.reset();
+        SeeInvisiblesVisualDepth.reset();
         CombatantWorldMatrices.reset();
         if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) return;
         if (IrisRuntime.isModLoaded()) {
@@ -741,7 +746,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
         try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("3d:world_engine_target");
              TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:world_engine_target")) {
             int samples = MainConfig.get().getMsaa3dSamples();
-            if (ModuleManager.needsEntityOnlyDepth()) {
+            if (ModuleManager.needsEntityOnlyDepth() || combatant.client.render.engine.depth.SeeInvisiblesVisualDepth.needsSingleSampleTarget()) {
                 samples = 1;
             }
             MsaaWorldTarget.begin(minecraft, samples, false, true);

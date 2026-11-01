@@ -37,7 +37,6 @@ import combatant.client.util.schematic.StateAdjustments;
 import combatant.client.util.schematic.StateComparison;
 import combatant.client.util.schematic.walk.WalkTerrain;
 import combatant.client.util.screen.ClientScreen;
-import combatant.client.util.server.DonutSmp;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -116,10 +115,10 @@ public final class SchematicBuilder extends Module {
     private static final int ADJUST_CLICK_DELAY = 2;
     private static final int ADJUST_SLACK_CLICKS = 4;
     private static final int ATTENTION_PRUNE_INTERVAL = 20;
-    private static final double DONUT_RANGE = 4.0;
-    private static final int DONUT_MIN_DELAY = 3;
-    private static final int DONUT_MAX_JITTER = 2;
-    private static final float DONUT_MAX_ROTATION_SPEED = 45.0f;
+    private static final double CAUTIOUS_RANGE = 4.0;
+    private static final int CAUTIOUS_MIN_DELAY = 3;
+    private static final int CAUTIOUS_MAX_JITTER = 2;
+    private static final float CAUTIOUS_MAX_ROTATION_SPEED = 45.0f;
 
     public enum ApproximateMode {
         PLACE,
@@ -174,7 +173,7 @@ public final class SchematicBuilder extends Module {
             () -> autoWalk.get() && (autoJumpPillar.get() || scaffold.get()));
     private final BooleanValue removeHelpers = visibleWhen(bool("remove_helpers", true),
             () -> autoWalk.get() && (autoJumpPillar.get() || scaffold.get()));
-    private final BooleanValue donutSmpSafe = bool("donutsmp_safe", true);
+    private final BooleanValue cautiousMode = bool("cautious_mode", false);
 
     private final Minecraft mc = Minecraft.getInstance();
     private final SchematicState state = SchematicState.INSTANCE;
@@ -320,28 +319,28 @@ public final class SchematicBuilder extends Module {
                 safety.forcedBand(), mover);
     }
 
-    private boolean donutRules() {
-        return donutSmpSafe.get() && DonutSmp.isConnected();
+    private boolean cautiousPacing() {
+        return cautiousMode.get();
     }
 
     private double effectiveRange() {
         double value = range.get();
-        return donutRules() ? Math.min(value, DONUT_RANGE) : value;
+        return cautiousPacing() ? Math.min(value, CAUTIOUS_RANGE) : value;
     }
 
     private int nextDelay() {
         int value = delay.get();
-        if (!donutRules()) return value;
+        if (!cautiousPacing()) return value;
         // A fixed cadence is the easiest pattern to spot; jitter keeps it at roughly a human pace.
-        return Math.max(value, DONUT_MIN_DELAY) + ThreadLocalRandom.current().nextInt(DONUT_MAX_JITTER + 1);
+        return Math.max(value, CAUTIOUS_MIN_DELAY) + ThreadLocalRandom.current().nextInt(CAUTIOUS_MAX_JITTER + 1);
     }
 
     private int effectiveBlocksPerTick() {
-        return donutRules() ? 1 : blocksPerTick.get();
+        return cautiousPacing() ? 1 : blocksPerTick.get();
     }
 
     private boolean effectiveRotate() {
-        return rotate.get() || donutRules();
+        return rotate.get() || cautiousPacing();
     }
 
     @Override
@@ -585,9 +584,9 @@ public final class SchematicBuilder extends Module {
     private void requestRotation(Rotation rotation) {
         float min = rotationSpeedMin.get();
         float max = Math.max(min, rotationSpeedMax.get());
-        if (donutRules()) {
-            min = Math.min(min, DONUT_MAX_ROTATION_SPEED);
-            max = Math.min(max, DONUT_MAX_ROTATION_SPEED);
+        if (cautiousPacing()) {
+            min = Math.min(min, CAUTIOUS_MAX_ROTATION_SPEED);
+            max = Math.min(max, CAUTIOUS_MAX_ROTATION_SPEED);
         }
         effectiveSpeedMin.set(min);
         effectiveSpeedMax.set(max);
@@ -1483,7 +1482,7 @@ public final class SchematicBuilder extends Module {
             if (stack.isEmpty() || !needed.contains(stack.getItem())) continue;
             if (!hasRoomFor(player.getInventory(), stack)) break;
             mc.gameMode.handleContainerInput(menu.containerId, i, 0, ContainerInput.QUICK_MOVE, player);
-            containerClickCooldown = ContainerPacing.spacing(delay.get(), donutRules());
+            containerClickCooldown = ContainerPacing.spacing(delay.get(), cautiousPacing());
             return;
         }
         chestIndex.recordOpenContainer(mc.level, player, restockChest);
@@ -1529,7 +1528,7 @@ public final class SchematicBuilder extends Module {
     /** Container click cadence: the first click waits out the open, later clicks keep the configured delay. */
     static final class ContainerPacing {
         static final int OPEN_WAIT_TICKS = 2;
-        static final int DONUT_MIN_SPACING = 2;
+        static final int CAUTIOUS_MIN_SPACING = 2;
 
         private ContainerPacing() {
         }
@@ -1539,8 +1538,8 @@ public final class SchematicBuilder extends Module {
             return openTicks > OPEN_WAIT_TICKS && cooldown <= 0;
         }
 
-        static int spacing(int delay, boolean donutRules) {
-            return donutRules ? Math.max(DONUT_MIN_SPACING, delay) : Math.max(1, delay);
+        static int spacing(int delay, boolean cautiousPacing) {
+            return cautiousPacing ? Math.max(CAUTIOUS_MIN_SPACING, delay) : Math.max(1, delay);
         }
     }
 

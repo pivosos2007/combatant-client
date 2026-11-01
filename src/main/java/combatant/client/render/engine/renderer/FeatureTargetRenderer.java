@@ -22,6 +22,30 @@ public final class FeatureTargetRenderer {
 
     public enum Selection { ALL, OUTLINE, DEPTH }
 
+    /** Draw one prepared player silhouette against both scene depth policies.
+     * Preparing once avoids double-consuming the submit storage or extracting animations again.
+     */
+    public static void renderDepthPair(String mainLabel, String preLabel,
+                                       FeatureRenderDispatcher dispatcher, SubmitNodeStorage storage,
+                                       GpuTextureView mainColor, GpuTextureView mainDepth,
+                                       GpuTextureView preColor, GpuTextureView preDepth) {
+        try (FeatureRenderDispatcher.PreparedFrame prepared = dispatcher.prepareFrame(storage)) {
+            renderPreparedDepth(mainLabel, prepared, mainColor, mainDepth);
+            renderPreparedDepth(preLabel, prepared, preColor, preDepth);
+        }
+    }
+
+    private static void renderPreparedDepth(String label, FeatureRenderDispatcher.PreparedFrame prepared,
+                                            GpuTextureView color, GpuTextureView depth) {
+        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                () -> label, color, Optional.empty(), depth, OptionalDouble.empty())) {
+            RenderSystem.bindDefaultUniforms(pass);
+            prepared.executeSolid(pass);
+            prepared.executeTranslucent(pass);
+            prepared.executeTranslucentAfterTerrain(pass);
+        }
+    }
+
     public static boolean render(String label, FeatureRenderDispatcher dispatcher, SubmitNodeStorage storage,
                               GpuTextureView color, @Nullable GpuTextureView depth, Selection selection) {
         if (color == null) throw new IllegalArgumentException("Color attachment required: " + label);

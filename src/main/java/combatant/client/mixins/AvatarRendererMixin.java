@@ -11,6 +11,9 @@ import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.ViewModel;
 import combatant.client.features.playeranimator.PlayerAnimator;
 import combatant.client.features.playeranimator.PlayerRigRenderState;
+import combatant.client.features.playermodel.PlayerModelRenderState;
+import combatant.client.features.playermodel.PlayerModels;
+import combatant.client.features.module.modules.visuals.PlayerModel;
 import combatant.client.render.helpers.TickDelta;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.entity.player.AvatarRenderer;
@@ -38,7 +41,12 @@ public abstract class AvatarRendererMixin {
             return;
         }
         ViewModel viewModel = Modules.get(ViewModel.class);
-        if (viewModel == null || !viewModel.isPlayerRigActive()) {
+        PlayerModelRenderState replacementState = (PlayerModelRenderState) state;
+        replacementState.combatant$setReplacement(null);
+        PlayerModel replacement = Modules.get(PlayerModel.class);
+        PlayerModels.Ready asset = PlayerModels.applies(player) ? PlayerModels.prepare(replacement) : null;
+        boolean viewRig = viewModel != null && viewModel.isPlayerRigActive();
+        if (!viewRig && asset == null) {
             rigState.combatant$setPlayerRig(null);
             return;
         }
@@ -47,8 +55,17 @@ public abstract class AvatarRendererMixin {
                 state,
                 tickProgress,
                 TickDelta.frameDeltaSeconds(),
-                viewModel.playerRigStyle(),
-                viewModel.playerRigStrength()
+                viewRig ? viewModel.playerRigStyle() : "Hybrid",
+                viewRig ? viewModel.playerRigStrength() : 1f
         ));
+        if (asset != null) {
+            try {
+                replacementState.combatant$setReplacement(PlayerModels.snapshot(
+                        asset, rigState.combatant$getPlayerRig(), replacement));
+            } catch (IllegalArgumentException failure) {
+                PlayerModels.reportFailure(failure);
+                if (!viewRig) rigState.combatant$setPlayerRig(null);
+            }
+        }
     }
 }

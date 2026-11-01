@@ -8,8 +8,8 @@ package combatant.client.render.engine.uniform.impl;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.buffers.Std140Builder;
 import com.mojang.blaze3d.buffers.Std140SizeCalculator;
-import combatant.client.render.engine.asset.gltf.material.GltfMaterialBinding;
-import combatant.client.render.engine.asset.gltf.model.GltfTextureInfo;
+import combatant.client.render.engine.asset.model.material.ModelMaterialBinding;
+import combatant.client.render.engine.asset.model.data.ModelTextureInfo;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
 
@@ -35,7 +35,7 @@ public final class AssetCompatibilityMaterialUniforms {
 
     private AssetCompatibilityMaterialUniforms() {}
 
-    public static GpuBufferSlice write(GltfMaterialBinding material) {
+    public static GpuBufferSlice write(ModelMaterialBinding material) {
         if (material == null) throw new IllegalArgumentException("material");
         float[] base = material.baseColorFactor();
         float[] emissive = material.emissiveFactor();
@@ -75,11 +75,11 @@ public final class AssetCompatibilityMaterialUniforms {
                 UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, data);
     }
 
-    private static int presence(GltfTextureInfo info, int bit) {
+    private static int presence(ModelTextureInfo info, int bit) {
         return info != null && info.present() ? bit : 0;
     }
 
-    private static int uv1(GltfTextureInfo info, int bit) {
+    private static int uv1(ModelTextureInfo info, int bit) {
         return info != null && info.present() && info.texCoord() == 1 ? bit : 0;
     }
 
@@ -87,11 +87,11 @@ public final class AssetCompatibilityMaterialUniforms {
                         float[] emissiveNormal,
                         float[] surfaceAlpha,
                         float[] flags,
-                        GltfTextureInfo baseColorTexture,
-                        GltfTextureInfo metallicRoughnessTexture,
-                        GltfTextureInfo normalTexture,
-                        GltfTextureInfo occlusionTexture,
-                        GltfTextureInfo emissiveTexture) implements CombatantUniformAllocator.UniformWriter {
+                        ModelTextureInfo baseColorTexture,
+                        ModelTextureInfo metallicRoughnessTexture,
+                        ModelTextureInfo normalTexture,
+                        ModelTextureInfo occlusionTexture,
+                        ModelTextureInfo emissiveTexture) implements CombatantUniformAllocator.UniformWriter {
         @Override
         public void write(java.nio.ByteBuffer buffer) {
             Std140Builder out = Std140Builder.intoBuffer(buffer);
@@ -112,8 +112,8 @@ public final class AssetCompatibilityMaterialUniforms {
             putTransformY(out, emissiveTexture);
         }
 
-        private static void putTransformX(Std140Builder out, GltfTextureInfo info) {
-            GltfTextureInfo resolved = info == null ? GltfTextureInfo.absent() : info;
+        private static void putTransformX(Std140Builder out, ModelTextureInfo info) {
+            ModelTextureInfo resolved = info == null ? ModelTextureInfo.absent() : info;
             float cosine = (float) Math.cos(resolved.rotation());
             float sine = (float) Math.sin(resolved.rotation());
             out.putFloat(cosine * resolved.scaleU())
@@ -122,8 +122,8 @@ public final class AssetCompatibilityMaterialUniforms {
                     .putFloat(0.0f);
         }
 
-        private static void putTransformY(Std140Builder out, GltfTextureInfo info) {
-            GltfTextureInfo resolved = info == null ? GltfTextureInfo.absent() : info;
+        private static void putTransformY(Std140Builder out, ModelTextureInfo info) {
+            ModelTextureInfo resolved = info == null ? ModelTextureInfo.absent() : info;
             float cosine = (float) Math.cos(resolved.rotation());
             float sine = (float) Math.sin(resolved.rotation());
             out.putFloat(sine * resolved.scaleU())

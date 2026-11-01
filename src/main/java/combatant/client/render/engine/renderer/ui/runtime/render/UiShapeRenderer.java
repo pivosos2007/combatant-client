@@ -264,7 +264,11 @@ public final class UiShapeRenderer {
             float motion = UiReactiveVisual.signal(node, props.string("strokeWidthMorphSignal", "selected"));
             strokeWidth += (target - strokeWidth) * motion;
         }
-        double x = bounds.x();
+        // Retained selection-driven translation for controls such as a Switch thumb.
+        // Applied in logical units after projection; no per-component Java geometry patches.
+        double translateX = context.renderLength(props.number("translateXTo", 0.0f))
+                * UiReactiveVisual.signal(node, props.string("translateXSignal", "selected"));
+        double x = bounds.x() + translateX;
         double y = bounds.y();
         double w = Math.max(0.0, context.renderLength(props.number("renderWidth", primitiveLogicalBounds.width())));
         double h = Math.max(0.0, context.renderLength(props.number("renderHeight", primitiveLogicalBounds.height())));

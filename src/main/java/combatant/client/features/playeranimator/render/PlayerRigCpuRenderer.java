@@ -93,6 +93,116 @@ public final class PlayerRigCpuRenderer {
         synchronized (ARMOR_MESHES) { ARMOR_MESHES.clear(); }
     }
 
+    /** Scratch per deferred submission, shared between solid and outline passes. */
+    public static final class ReplacementSkinCache {
+        private final java.util.IdentityHashMap<RigMeshPart, float[]> vertices = new java.util.IdentityHashMap<>();
+        private Matrix4fc[] skinMatrices;
+
+        private float[] vertices(RigMeshPart part, PlayerRigInstance rig, RigDeformState deform) {
+            if (skinMatrices == null) {
+                // Snapshots are immutable after submission. Resolve the rig once, rather than
+                // repeating the dirty-flag check for every influence of every vertex.
+                rig.solve();
+                skinMatrices = new Matrix4fc[rig.pose().boneCount()];
+                for (int bone = 0; bone < skinMatrices.length; bone++) {
+                    skinMatrices[bone] = rig.rig().skinMatrixRef(bone);
+                }
+            }
+            return vertices.computeIfAbsent(part, key -> {
+                // Six floats per distinct source vertex. Skinning is independent of the
+                // consumer's light, tint and pose transform, which can vary between passes.
+                float[] out = new float[Math.multiplyExact(key.vertexCount(), 6)];
+                SkinScratch scratch = new SkinScratch();
+                for (int i = 0; i < key.vertexCount(); i++) {
+                    RigVertex vertex = key.vertex(i);
+                    if (vertex.deformId() < 0) {
+                        // Imported replacement meshes contain normalized static normals and
+                        // no per-vertex procedural deformation channel.
+                        scratch.localPosition.set(vertex.x(), vertex.y(), vertex.z());
+                        scratch.localNormal.set(vertex.normalX(), vertex.normalY(), vertex.normalZ());
+                    } else {
+                        deform(vertex, deform, scratch);
+                    }
+                    skinReplacement(vertex, skinMatrices, scratch);
+                    int base = i * 6;
+                    out[base] = scratch.position.x;
+                    out[base + 1] = scratch.position.y;
+                    out[base + 2] = scratch.position.z;
+                    out[base + 3] = scratch.normal.x;
+                    out[base + 4] = scratch.normal.y;
+                    out[base + 5] = scratch.normal.z;
+                }
+                return out;
+            });
+        }
+    }
+
+    public static void submitReplacement(OrderedSubmitNodeCollector collector, RigMeshData mesh,
+                                         PlayerRigInstance rig, PoseStack matrices, RenderType renderType,
+                                         int light, int overlay, int tint, int outlineColor,
+                                         Object resourceOwner, ReplacementSkinCache skinCache,
+                                         Predicate<String> visiblePart) {
+        int effectiveTint = ViewObstructionFadeContext.applyToArgb(tint, MsaaWorldTarget.isActive());
+        // Retain resource ownership throughout the deferred collector lifetime.
+        Predicate<String> residentParts = name -> {
+            java.lang.ref.Reference.reachabilityFence(resourceOwner);
+            return visiblePart.test(name);
+        };
+        if (renderType.isOutline()) {
+            submitCached(collector, mesh, rig, matrices, renderType, 15728880,
+                    OverlayTexture.NO_OVERLAY, outlineColor != 0 ? outlineColor : tint,
+                    residentParts, skinCache);
+            return;
+        }
+        submitCached(collector, mesh, rig, matrices, renderType, light, overlay,
+                effectiveTint, residentParts, skinCache);
+        if (outlineColor != 0) renderType.outline().ifPresent(outline ->
+                submitCached(collector, mesh, rig, matrices, outline, 15728880,
+                        OverlayTexture.NO_OVERLAY, outlineColor, residentParts, skinCache));
+    }
+
+    private static void submitCached(OrderedSubmitNodeCollector collector, RigMeshData mesh,
+                                     PlayerRigInstance rig, PoseStack matrices, RenderType type,
+                                     int light, int overlay, int tint,
+                                     Predicate<String> parts, ReplacementSkinCache skinCache) {
+        collector.submitCustomGeometry(matrices, type,
+                (pose, consumer) -> renderCached(mesh, rig, pose, consumer, light, overlay,
+                        tint, parts, type.primitiveTopology(), skinCache));
+    }
+
+    private static void renderCached(RigMeshData mesh, PlayerRigInstance rig, PoseStack.Pose pose,
+                                     VertexConsumer consumer, int light, int overlay, int tint,
+                                     Predicate<String> visiblePart, PrimitiveTopology topology,
+                                     ReplacementSkinCache cache) {
+        if (topology != PrimitiveTopology.QUADS && topology != PrimitiveTopology.TRIANGLES)
+            throw new IllegalStateException("Unsupported replacement topology: " + topology);
+        RigDeformState deform = rig.rig().deform();
+        // Two tightly grouped geometry submissions, no matrix skinning in the triangle loop.
+        // Preserve original triangle winding / per-vertex attributes / outline tint.
+        Vector3f position = new Vector3f();
+        Vector3f normal = new Vector3f();
+        for (RigMeshPart part : mesh.parts()) {
+            if (!visiblePart.test(part.name())) continue;
+            float[] skinned = cache.vertices(part, rig, deform);
+            for (int i = 0; i < part.indexCount(); i += 3) {
+                for (int corner = 0; corner < (topology == PrimitiveTopology.QUADS ? 4 : 3); corner++) {
+                    int offset = Math.min(corner, 2);
+                    int index = part.index(i + offset);
+                    RigVertex vertex = part.vertex(index);
+                    int base = index * 6;
+                    position.set(skinned[base], skinned[base + 1], skinned[base + 2]);
+                    normal.set(skinned[base + 3], skinned[base + 4], skinned[base + 5]);
+                    consumer.addVertex(pose, position);
+                    consumer.setColor(ARGB.multiply(tint, vertex.colorArgb()));
+                    consumer.setUv(vertex.u(), vertex.v());
+                    consumer.setOverlay(overlay);
+                    consumer.setLight(light);
+                    consumer.setNormal(pose, normal);
+                }
+            }
+        }
+    }
+
     private static void submit(OrderedSubmitNodeCollector collector, RigMeshData mesh, PlayerRigInstance rig,
                                PoseStack matrices, RenderType renderType, int light, int overlay, int tint,
                                UvMapping sprite, Predicate<String> visiblePart) {
@@ -177,6 +287,28 @@ public final class PlayerRigCpuRenderer {
         applySkin(rig, vertex.bone3(), vertex.weight3(), out.localPosition, out.localNormal, out);
         if (out.normal.lengthSquared() > 1.0e-8f) out.normal.normalize();
         else out.normal.set(out.localNormal);
+    }
+
+    private static void skinReplacement(RigVertex vertex, Matrix4fc[] matrices, SkinScratch out) {
+        out.position.zero();
+        out.normal.zero();
+        applyReplacementSkin(matrices, vertex.bone0(), vertex.weight0(), out);
+        applyReplacementSkin(matrices, vertex.bone1(), vertex.weight1(), out);
+        applyReplacementSkin(matrices, vertex.bone2(), vertex.weight2(), out);
+        applyReplacementSkin(matrices, vertex.bone3(), vertex.weight3(), out);
+        if (out.normal.lengthSquared() > 1.0e-8f) out.normal.normalize();
+        else out.normal.set(out.localNormal);
+    }
+
+    private static void applyReplacementSkin(Matrix4fc[] matrices, int bone, float weight,
+                                             SkinScratch out) {
+        if (bone < 0 || weight <= 0f) return;
+        if (bone >= matrices.length) throw new IllegalArgumentException("Invalid replacement bone: " + bone);
+        Matrix4fc matrix = matrices[bone];
+        matrix.transformPosition(out.localPosition, out.transformedPosition);
+        matrix.transformDirection(out.localNormal, out.transformedNormal);
+        out.position.fma(weight, out.transformedPosition);
+        out.normal.fma(weight, out.transformedNormal);
     }
 
     private static void applySkin(PlayerRigInstance rig, int bone, float weight,

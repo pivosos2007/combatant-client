@@ -7,10 +7,10 @@ package combatant.client.render.iris.geometry;
 
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import combatant.client.render.engine.asset.gltf.material.GltfMaterialBinding;
-import combatant.client.render.engine.asset.gltf.model.AlphaMode;
-import combatant.client.render.engine.asset.gltf.runtime.GltfPrimitivePlacement;
-import combatant.client.render.engine.asset.gltf.runtime.GltfSceneInstanceAsset;
+import combatant.client.render.engine.asset.model.material.ModelMaterialBinding;
+import combatant.client.render.engine.asset.model.data.AlphaMode;
+import combatant.client.render.engine.asset.model.runtime.ModelPrimitivePlacement;
+import combatant.client.render.engine.asset.model.runtime.ModelSceneInstanceAsset;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
@@ -174,7 +174,7 @@ public final class IrisImportedGeometryRenderer {
 
         ArrayList<VisibleInstance> visible = new ArrayList<>();
         CombatantRenderSystem.sceneInstances().visitVisible(view, visibility, (instance, state) -> {
-            if (instance.asset() instanceof GltfSceneInstanceAsset source) {
+            if (instance.asset() instanceof ModelSceneInstanceAsset source) {
                 visible.add(new VisibleInstance(instance, source, distanceSquared(instance, view.cameraPosition())));
             }
             return true;
@@ -255,7 +255,7 @@ public final class IrisImportedGeometryRenderer {
 
     private static void submitInstance(ArrayList<RhiDrawCommand> commands,
                                        SceneAssetInstance<?> instance,
-                                       GltfSceneInstanceAsset source,
+                                       ModelSceneInstanceAsset source,
                                        Vec3 camera,
                                        com.mojang.renderpearl.api.textures.GpuTextureView color,
                                        com.mojang.renderpearl.api.textures.GpuTextureView depth,
@@ -274,11 +274,11 @@ public final class IrisImportedGeometryRenderer {
         Matrix4f cameraRelative = new Matrix4f().translation(
                 (float) -camera.x, (float) -camera.y, (float) -camera.z)
                 .mul(instance.currentWorldTransform());
-        for (GltfPrimitivePlacement placement : source.layout().primitives()) {
+        for (ModelPrimitivePlacement placement : source.layout().primitives()) {
             IrisImportedGeometryResidency.Primitive primitive =
                     residency.primitive(placement.meshIndex(), placement.primitiveIndex());
             if (primitive.skinned()) continue;
-            GltfMaterialBinding material = source.asset().material(primitive.material());
+            ModelMaterialBinding material = source.asset().material(primitive.material());
             if (route == Route.GBUFFER && material.alphaMode() == AlphaMode.BLEND) continue;
             if (route == Route.TRANSLUCENT && material.alphaMode() != AlphaMode.BLEND) continue;
 
@@ -414,6 +414,6 @@ public final class IrisImportedGeometryRenderer {
     private record DrawBatch(ArrayList<RhiDrawCommand> commands, ImportedLighting lighting) {}
 
     private record VisibleInstance(SceneAssetInstance<?> instance,
-                                   GltfSceneInstanceAsset source,
+                                   ModelSceneInstanceAsset source,
                                    double distanceSquared) {}
 }

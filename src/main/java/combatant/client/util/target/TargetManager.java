@@ -1,34 +1,56 @@
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
- *
  * Licensed under the GNU General Public License v3.0.
  */
-
 package combatant.client.util.target;
 
+import combatant.client.events.Events;
+import combatant.client.events.impl.EventTargetChanged;
+import combatant.client.features.module.Module;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
-import combatant.client.events.Events;
-import combatant.client.events.impl.EventTargetChanged;
 
-import java.util.EnumMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import combatant.client.features.module.Module;
+import java.util.Iterator;
 
-
+/**
+ * Shared target view backed by independent, dynamically published target providers.
+ *
+ * A provider is identified by its owner object and an optional channel name. No
+ * combat module is registered or referenced in the manager itself. Publication
+ * priorities are chosen by the provider; a smaller priority does not prevent
+ * the provider from keeping its own target and never overrides other owners.
+ *
+ * All methods are to be called on the Minecraft client thread. Snapshots are
+ * short-lived leases, preventing disabled or crashed providers from pinning a
+ * target indefinitely. The explicitly forced target is the only non-expiring lease.
+ */
 public enum TargetManager {
     ;
 
-    private static final long DEFAULT_ATTACK_HOLD_MS = 700L;
-    private static final EnumMap<Source, TargetState> STATES = new EnumMap<>(Source.class);
-    private static final Map<String, ModuleSnapshot> MODULE_STATES = new LinkedHashMap<>();
+    private static final String MAIN = "main";
+    private static final long PROVIDER_LEASE_MS = 600L;
+    private static final long ATTACK_HOLD_MS = 700L;
+    private static final int ATTACK_PRIORITY = 300;
+    private static final int CROSSHAIR_PRIORITY = 100;
+    private static final int FORCE_PRIORITY = 1000;
+    private static final Object ATTACK_OWNER = new Object();
+    private static final Object CROSSHAIR_OWNER = new Object();
+    private static final Object FORCE_OWNER = new Object();
+
+    private static final IdentityHashMap<Object, Map<String, TargetState>> PROVIDERS = new IdentityHashMap<>();
     private static LivingEntity current;
     private static Source currentSource;
+    private static Object currentOwner;
+    private static String currentChannel;
+
+    /** Meaning of the target, not a list of modules which may publish one. */
+    public enum Source { FORCE, MODULE, PREDICTION, ATTACK, CROSSHAIR }
 
     public static void tick() {
         Minecraft mc = Minecraft.getInstance();
@@ -36,229 +58,190 @@ public enum TargetManager {
             clearAll();
             return;
         }
-
         updateCrosshair(mc);
         purgeInvalids();
         refreshCurrent();
     }
 
-    public static LivingEntity getTarget() {
-        return current;
-    }
+    public static LivingEntity getTarget() { return current; }
 
     public static LivingEntity getTarget(boolean includeCrosshair) {
-        if (includeCrosshair) {
-            return current;
-        }
-        TargetSelection selection = selectCurrent(false);
-        return selection.entity();
+        return includeCrosshair ? current : selectCurrent(false).entity();
     }
 
-    public static Source getTargetSource() {
-        return currentSource;
+    public static Source getTargetSource() { return currentSource; }
+
+    /** Manual attack history is independent of the currently highest-priority module. */
+    public static LivingEntity getRecentAttackTarget() {
+        TargetState attack = state(ATTACK_OWNER, MAIN);
+        return isActive(ATTACK_OWNER, attack, System.currentTimeMillis()) ? attack.entity() : null;
     }
 
     public static void onAttack(Entity target) {
         if (target instanceof LivingEntity living && TargetingUtil.isValidCombatTarget(living)) {
-            push(Source.ATTACK, living, DEFAULT_ATTACK_HOLD_MS);
+            put(ATTACK_OWNER, MAIN, living, Source.ATTACK, ATTACK_PRIORITY,
+                    ATTACK_HOLD_MS, "attack", true, 0);
+            refreshCurrent();
         }
     }
 
     public static void setForcedTarget(LivingEntity target) {
         if (target == null) {
-            clear(Source.FORCE);
-            refreshCurrent();
-            return;
-        }
-        push(Source.FORCE, target, 0L);
-        refreshCurrent();
-    }
-
-    public static void setModuleTarget(LivingEntity target) {
-        if (target == null) {
-            clear(Source.MODULE);
-            refreshCurrent();
-            return;
-        }
-        push(Source.MODULE, target, 0L);
-        refreshCurrent();
-    }
-
-    public static void setAutoCrystalTarget(LivingEntity target) {
-        if (target == null) {
-            clear(Source.AUTO_CRYSTAL);
-            refreshCurrent();
-            return;
-        }
-        push(Source.AUTO_CRYSTAL, target, 0L);
-        refreshCurrent();
-    }
-
-    public static void setAutoAnchorTarget(LivingEntity target) {
-        if (target == null) {
-            clear(Source.AUTO_ANCHOR);
-            refreshCurrent();
-            return;
-        }
-        push(Source.AUTO_ANCHOR, target, 0L);
-        refreshCurrent();
-    }
-
-    public static void setAutoBedTarget(LivingEntity target) {
-        if (target == null) {
-            clear(Source.AUTO_BED);
-            refreshCurrent();
-            return;
-        }
-        push(Source.AUTO_BED, target, 0L);
-        refreshCurrent();
-    }
-
-    public static void setPredictionTarget(LivingEntity target) {
-        if (target == null) {
-            clear(Source.PREDICTION);
-            refreshCurrent();
-            return;
-        }
-        push(Source.PREDICTION, target, 0L);
-        refreshCurrent();
-    }
-
-    public static void setElytraTarget(LivingEntity target) {
-        if (target == null) {
-            clear(Source.ELYTRA);
-            refreshCurrent();
-            return;
-        }
-        push(Source.ELYTRA, target, 0L);
-        refreshCurrent();
-    }
-
-    public static void publish(Module module, LivingEntity target, String phase, boolean actionable, int planned) {
-        if (module == null) return;
-        CombatTargetProvider descriptor = module.getClass().getAnnotation(CombatTargetProvider.class);
-        if (descriptor == null) return;
-        String id = descriptor.value();
-        if (!module.isEnabled() || target == null || !TargetingUtil.isValidCombatTarget(target)) {
-            MODULE_STATES.remove(id);
+            clear(FORCE_OWNER);
         } else {
-            MODULE_STATES.put(id, new ModuleSnapshot(id, target, phase == null ? "idle" : phase,
-                    actionable, Math.max(0, planned), descriptor.priority(), System.currentTimeMillis()));
+            put(FORCE_OWNER, MAIN, target, Source.FORCE, FORCE_PRIORITY,
+                    0L, "forced", true, 0);
+            refreshCurrent();
         }
+    }
+
+    /** Publishes or clears the default channel for any owner. */
+    public static void publish(Object owner, LivingEntity target, Source source, int priority) {
+        publish(owner, MAIN, target, source, priority, "active", true, 0);
+    }
+
+    /** Additional channels allow one owner to publish both active and predicted targets. */
+    public static void publish(Object owner, String channel, LivingEntity target, Source source, int priority) {
+        publish(owner, channel, target, source, priority, "active", true, 0);
+    }
+
+    /** Optional status metadata is reported in moduleSnapshots; it does not affect arbitration. */
+    public static void publish(Object owner, LivingEntity target, Source source, int priority,
+                               String phase, boolean actionable, int planned) {
+        publish(owner, MAIN, target, source, priority, phase, actionable, planned);
+    }
+
+    public static void publish(Object owner, String channel, LivingEntity target, Source source, int priority,
+                               String phase, boolean actionable, int planned) {
+        if (owner == null || source == null || channel == null || channel.isBlank()) return;
+        if (target == null || !TargetingUtil.isValidCombatTarget(target)
+                || owner instanceof Module module && !module.isEnabled()) {
+            clear(owner, channel);
+            return;
+        }
+        put(owner, channel, target, source, priority, PROVIDER_LEASE_MS,
+                phase == null ? "active" : phase, actionable, Math.max(0, planned));
         refreshCurrent();
     }
 
-    public static void clear(Module module) {
-        if (module == null) return;
-        CombatTargetProvider descriptor = module.getClass().getAnnotation(CombatTargetProvider.class);
-        if (descriptor != null && MODULE_STATES.remove(descriptor.value()) != null) refreshCurrent();
+    public static void clear(Object owner) {
+        if (owner != null && PROVIDERS.remove(owner) != null) refreshCurrent();
     }
 
+    public static void clear(Object owner, String channel) {
+        if (owner == null || channel == null) return;
+        Map<String, TargetState> states = PROVIDERS.get(owner);
+        if (states == null || states.remove(channel) == null) return;
+        if (states.isEmpty()) PROVIDERS.remove(owner);
+        refreshCurrent();
+    }
+
+    /** Diagnostics, not a secondary arbitration path. All providers use the same map. */
     public static Map<String, ModuleSnapshot> moduleSnapshots() {
-        return Map.copyOf(MODULE_STATES);
+        Map<String, ModuleSnapshot> out = new LinkedHashMap<>();
+        long now = System.currentTimeMillis();
+        for (var entry : PROVIDERS.entrySet()) {
+            if (!(entry.getKey() instanceof Module module)) continue;
+            for (var channel : entry.getValue().entrySet()) {
+                TargetState s = channel.getValue();
+                if (!isActive(module, s, now)) continue;
+                String id = module.name() + (channel.getKey().equals(MAIN) ? "" : "/" + channel.getKey());
+                out.put(id, new ModuleSnapshot(id, s.entity(), s.phase(), s.actionable(),
+                        s.planned(), s.priority(), s.updatedAtMs()));
+            }
+        }
+        return Map.copyOf(out);
     }
 
     public record ModuleSnapshot(String id, LivingEntity target, String phase,
-                                 boolean actionable, int planned, int priority, long updatedAtMs) {}
-
-    public static void clear(Source source) {
-        if (source == null) return;
-        STATES.remove(source);
-    }
+                                 boolean actionable, int planned, int priority, long updatedAtMs) { }
 
     public static void clearAll() {
-        STATES.clear();
-        MODULE_STATES.clear();
-        if (current != null) {
-            LivingEntity prev = current;
-            Source prevSource = currentSource;
-            current = null;
-            currentSource = null;
-            Events.BUS.post(new EventTargetChanged(prev, prevSource, null, null));
-        } else {
-            current = null;
-            currentSource = null;
-        }
+        PROVIDERS.clear();
+        setCurrent(TargetSelection.EMPTY);
     }
 
-    private static void push(Source source, LivingEntity target, long holdMs) {
-        if (source == null || target == null) return;
-        STATES.put(source, new TargetState(target, System.currentTimeMillis(), holdMs));
+    private static void put(Object owner, String channel, LivingEntity target, Source source,
+                            int priority, long leaseMs, String phase, boolean actionable, int planned) {
+        PROVIDERS.computeIfAbsent(owner, unused -> new LinkedHashMap<>())
+                .put(channel, new TargetState(target, source, priority, System.currentTimeMillis(),
+                        leaseMs, phase, actionable, planned));
+    }
+
+    private static TargetState state(Object owner, String channel) {
+        Map<String, TargetState> states = PROVIDERS.get(owner);
+        return states == null ? null : states.get(channel);
     }
 
     private static void updateCrosshair(Minecraft mc) {
-        HitResult hr = mc.hitResult;
-        if (hr instanceof EntityHitResult ehr
-                && ehr.getEntity() instanceof LivingEntity living
+        if (mc.hitResult instanceof EntityHitResult hit
+                && hit.getEntity() instanceof LivingEntity living
                 && TargetingUtil.isValidCombatTarget(living)) {
-            push(Source.CROSSHAIR, living, 0L);
+            put(CROSSHAIR_OWNER, MAIN, living, Source.CROSSHAIR, CROSSHAIR_PRIORITY,
+                    PROVIDER_LEASE_MS, "crosshair", false, 0);
         } else {
-            clear(Source.CROSSHAIR);
+            PROVIDERS.remove(CROSSHAIR_OWNER);
         }
+    }
+
+    private static boolean isActive(Object owner, TargetState state, long now) {
+        if (state == null || !TargetingUtil.isValidCombatTarget(state.entity())) return false;
+        if (owner instanceof Module module && !module.isEnabled()) return false;
+        return state.leaseMs() == 0L || now - state.updatedAtMs() <= state.leaseMs();
     }
 
     private static void purgeInvalids() {
         long now = System.currentTimeMillis();
-        MODULE_STATES.values().removeIf(snapshot ->
-                !TargetingUtil.isValidCombatTarget(snapshot.target())
-                        || now - snapshot.updatedAtMs() > 350L);
-        STATES.entrySet().removeIf(entry -> {
-            TargetState state = entry.getValue();
-            if (state == null || state.entity == null) return true;
-            if (!TargetingUtil.isValidCombatTarget(state.entity)) return true;
-            if (state.holdMs <= 0L) return false;
-            return (now - state.lastSeenMs) > state.holdMs;
-        });
+        Iterator<Map.Entry<Object, Map<String, TargetState>>> iter = PROVIDERS.entrySet().iterator();
+        while (iter.hasNext()) {
+            var entry = iter.next();
+            entry.getValue().values().removeIf(state -> !isActive(entry.getKey(), state, now));
+            if (entry.getValue().isEmpty()) iter.remove();
+        }
     }
 
     private static void refreshCurrent() {
-        LivingEntity prev = current;
-        Source prevSource = currentSource;
+        setCurrent(selectCurrent(true));
+    }
 
-        TargetSelection next = selectCurrent(true);
-        LivingEntity nextEntity = next.entity();
-        Source nextSource = next.source();
-
-        if (prev != nextEntity || prevSource != nextSource) {
-            current = nextEntity;
-            currentSource = nextSource;
-            Events.BUS.post(new EventTargetChanged(prev, prevSource, nextEntity, nextSource));
+    private static void setCurrent(TargetSelection next) {
+        LivingEntity previous = current;
+        Source previousSource = currentSource;
+        current = next.entity();
+        currentSource = next.source();
+        currentOwner = next.owner();
+        currentChannel = next.channel();
+        if (previous != current || previousSource != currentSource) {
+            Events.BUS.post(new EventTargetChanged(previous, previousSource, current, currentSource));
         }
     }
 
     private static TargetSelection selectCurrent(boolean includeCrosshair) {
-        for (Source source : new Source[]{Source.FORCE, Source.ELYTRA, Source.AUTO_CRYSTAL, Source.AUTO_ANCHOR, Source.AUTO_BED, Source.MODULE, Source.PREDICTION, Source.ATTACK, Source.CROSSHAIR}) {
-            if (!includeCrosshair && source == Source.CROSSHAIR) continue;
-            TargetState state = STATES.get(source);
-            if (state != null && TargetingUtil.isValidCombatTarget(state.entity)) {
-                return new TargetSelection(state.entity, source);
+        TargetSelection best = TargetSelection.EMPTY;
+        int bestPriority = Integer.MIN_VALUE;
+        long now = System.currentTimeMillis();
+        for (var entry : PROVIDERS.entrySet()) {
+            Object owner = entry.getKey();
+            for (var channel : entry.getValue().entrySet()) {
+                TargetState state = channel.getValue();
+                if (state.source() == Source.CROSSHAIR && !includeCrosshair) continue;
+                if (!isActive(owner, state, now)) continue;
+                // Retain the current owner at equal priority to avoid flickering between
+                // providers that publish at different points during the same client tick.
+                if (state.priority() < bestPriority) continue;
+                if (state.priority() == bestPriority
+                        && !(owner == currentOwner && channel.getKey().equals(currentChannel))) continue;
+                bestPriority = state.priority();
+                best = new TargetSelection(state.entity(), state.source(), owner, channel.getKey());
             }
         }
-        ModuleSnapshot module = MODULE_STATES.values().stream()
-                .filter(snapshot -> TargetingUtil.isValidCombatTarget(snapshot.target()))
-                .max(java.util.Comparator.comparingInt(ModuleSnapshot::priority))
-                .orElse(null);
-        if (module != null) return new TargetSelection(module.target(), Source.MODULE_STATE);
-        return TargetSelection.EMPTY;
+        return best;
     }
 
-    public enum Source {
-        FORCE,
-        ELYTRA,
-        AUTO_CRYSTAL,
-        AUTO_ANCHOR,
-        AUTO_BED,
-        MODULE,
-        PREDICTION,
-        ATTACK,
-        CROSSHAIR,
-        MODULE_STATE
-    }
+    private record TargetState(LivingEntity entity, Source source, int priority, long updatedAtMs,
+                               long leaseMs, String phase, boolean actionable, int planned) { }
 
-    private record TargetState(LivingEntity entity, long lastSeenMs, long holdMs) {
-    }
-
-    private record TargetSelection(LivingEntity entity, Source source) {
-        private static final TargetSelection EMPTY = new TargetSelection(null, null);
+    private record TargetSelection(LivingEntity entity, Source source, Object owner, String channel) {
+        private static final TargetSelection EMPTY = new TargetSelection(null, null, null, null);
     }
 }

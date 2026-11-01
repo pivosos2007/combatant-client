@@ -35,9 +35,17 @@ void main() {
     float x = v_UV.x * 2.0 - 1.0;
     // A rounded, refracting leading bead with a short exposure-integrated taper.
     float bead = (1.0 - smoothstep(0.06, 0.40, abs(y - 0.80)));
-    float radius = mix(0.20, 0.93, bead);
+    // At a wide FOV the physical radius is subpixel. Preserve the visible
+    // line's pixel coverage rather than drawing a much larger refractive bead.
+    float thin = 1.0 - smoothstep(0.75, 1.65, v_Optics.y);
+    float radius = mix(0.20, 0.93, bead) + thin * (1.0 - bead) * 0.40;
     float horizontal = abs(x) / max(radius, 0.025);
-    float core = 1.0 - smoothstep(0.72, 1.06, horizontal);
+    float radiusPx = v_Optics.y * radius;
+    float distancePx = abs(x) * v_Optics.y;
+    // Roughly one pixel of analytic filtering, even for a 0.5px radius.
+    float featherPx = mix(max(0.14, radiusPx * 0.18), 0.46, thin);
+    float core = 1.0 - smoothstep(max(0.0, radiusPx - featherPx),
+                                   radiusPx + featherPx, distancePx);
     float vertical = smoothstep(0.0, 0.08, y) * (1.0 - smoothstep(0.93, 1.0, y));
     float coverage = core * vertical;
     if (coverage < 0.01) discard;
@@ -78,9 +86,20 @@ void main() {
     float transmission = 0.73 + 0.12 * head - 0.17 * asymmetricShade;
     float reflectance = (0.16 + 0.23 * head + 0.29 * rim)
                       * ambient * (0.72 + u_Camera.y * 0.10);
-    vec3 result = optical * transmission + vec3(0.73, 0.83, 0.94) * reflectance;
-    float alpha = v_Fade * coverage * (0.55 + 0.23 * head + 0.12 * rim);
-    // Distant streaks are subpixel-thin; do not suppress their remaining contrast.
-    if (lod > 1.5) alpha *= 0.65;
+    // Compensate for the missing refractive contrast of physically subpixel
+    // distant drops. Fade this extra scattering away naturally on zoom / near
+    // beads, so the visible rain doesn't become bright, thick white stripes.
+    float projectedThin = 1.0 - smoothstep(0.25, 1.15, v_Optics.x);
+    float microScatter = projectedThin * (0.10 + 0.055 * head + 0.035 * rim)
+                       * (0.78 + 0.22 * ambient);
+    // Water reads as a brighter glint over dark terrain and a darker streak
+    // against a bright sky. Keep that contrast for distant pixel-scale rain.
+    float contrastPolarity = 1.0 - 2.0 * smoothstep(0.44, 0.78, sceneLuma);
+    float microContrast = projectedThin * (0.095 + 0.020 * head) * contrastPolarity;
+    vec3 result = optical * transmission
+                + vec3(0.73, 0.83, 0.94) * (reflectance + microScatter + microContrast);
+    float alpha = v_Fade * coverage * (0.60 + 0.22 * head + 0.12 * rim)
+                * mix(1.0, 1.08, projectedThin);
+    if (lod > 1.5) alpha *= 0.85;
     fragColor = vec4(result, clamp(alpha, 0.0, 0.91));
 }

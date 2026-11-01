@@ -400,9 +400,10 @@ public final class CachedUiScriptRuntime {
                                            BoundsPatchFactory boundsPatchFactory) {
         if (boundsPatchFactory == null) return;
         Map<String, UiBounds> patches = boundsPatchFactory.create();
+        if (patches == null || patches.isEmpty()) return;
         FRAME_STATS.boundsPatchPasses++;
         try (RenderCostProfiler.Scope ignored = RenderCostProfiler.uiRuntime("patchBounds:" + runtimeLabel(handle, key))) {
-            FRAME_STATS.boundsPatches += state.runtime.patchBoundsByKey(patches != null ? patches : Map.of());
+            FRAME_STATS.boundsPatches += state.runtime.patchBoundsByKey(patches);
         }
     }
 

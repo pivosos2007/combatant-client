@@ -31,8 +31,13 @@ public final class UiActionRegistry {
     }
 
     public boolean dispatch(String rawRef, UiActionContext baseContext) {
+        if (rawRef == null || rawRef.isBlank()) return false;
         UiActionRef ref = UiActionRef.parse(rawRef);
-        UiAction action = actions.get(ref.key());
+        // Direct registered actions (e.g. lab:nav:buttons) must be resolved as
+        // exact IDs. Parameterized actions use namespace.name:argument as a
+        // separate path. Previously all colon-separated dev actions were lost.
+        UiAction action = actions.get(rawRef);
+        if (action == null) action = actions.get(ref.key());
         if (action == null) return false;
         UiActionContext context = new UiActionContext(
                 baseContext != null ? baseContext.node() : null,

@@ -29,7 +29,7 @@ public final class UiCursorManager {
             case "nwse-resize" -> SystemCursor.CursorType.RESIZE_NWSE;
             case "nesw-resize" -> SystemCursor.CursorType.RESIZE_NESW;
             case "all-scroll", "resize-all" -> SystemCursor.CursorType.RESIZE_ALL;
-            case "not-allowed", "disabled" -> SystemCursor.CursorType.NOT_ALLOWED;
+            case "not-allowed", "not_allowed", "unsupported", "disabled" -> SystemCursor.CursorType.NOT_ALLOWED;
             default -> SystemCursor.CursorType.DEFAULT;
         };
     }

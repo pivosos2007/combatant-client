@@ -36,7 +36,18 @@ public interface ProjectileTarget {
                             .pos();
                 }
 
-                return entity.position().add(entity.getDeltaMovement().scale(ticks));
+                // Non-player client entities often interpolate from network
+                // position updates while their deltaMovement remains zero.
+                // Estimate horizontal/vertical travel from the observed last
+                // tick when it is a better motion signal, but never treat a
+                // large teleport as sustained movement for 40 flight ticks.
+                Vec3 reported = entity.getDeltaMovement();
+                Vec3 observed = entity.position().subtract(entity.xo, entity.yo, entity.zo);
+                Vec3 velocity = observed.lengthSqr() > 1.0e-4
+                        && observed.lengthSqr() < 2.25
+                        && reported.lengthSqr() < observed.lengthSqr() * 0.25
+                        ? observed : reported;
+                return entity.position().add(velocity.scale(ticks));
             }
 
             @Override

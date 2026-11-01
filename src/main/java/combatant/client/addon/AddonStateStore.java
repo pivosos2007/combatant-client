@@ -10,7 +10,7 @@ package combatant.client.addon;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import combatant.client.config.ConfigSerializer;
-import net.fabricmc.loader.api.FabricLoader;
+import combatant.client.config.ConfigPaths;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -42,8 +42,7 @@ final class AddonStateStore {
     }
 
     private static Path stateFile() {
-        return FabricLoader.getInstance().getConfigDir()
-                .resolve("combatant")
+        return ConfigPaths.root()
                 .resolve("addons.json");
     }
 

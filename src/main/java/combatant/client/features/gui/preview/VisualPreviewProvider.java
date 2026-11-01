@@ -39,4 +39,10 @@ public interface VisualPreviewProvider {
 
     default void renderOverlay(VisualPreviewSceneContext context, Renderer2D renderer) {
     }
+
+    default float leftPanelWidth(float viewportWidth) { return 0f; }
+    default boolean mousePressed(float x, float y, int button) { return false; }
+    default void mouseReleased(float x, float y, int button) {}
+    default boolean mouseScrolled(float x, float y, double amount) { return false; }
+    default void close() {}
 }

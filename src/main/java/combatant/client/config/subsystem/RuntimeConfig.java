@@ -24,7 +24,6 @@ public final class RuntimeConfig extends SubsystemConfig {
     );
     private final BooleanValue forcePvp = bool("forcePvp", false);
     private final BooleanValue disableNarrator = bool("disableNarrator", true);
-    private final BooleanValue nativeGuardWindowsX8664 = bool("combatant.nativeguard.windows-x86_64", false);
 
     private RuntimeConfig() {
         loadConfig();
@@ -56,30 +55,12 @@ public final class RuntimeConfig extends SubsystemConfig {
         return disableNarrator.get();
     }
 
-    public boolean isNativeGuardEnabled(String platformId) {
-        if (platformId == null) return false;
-        return switch (platformId) {
-            case "windows-x86_64" -> nativeGuardWindowsX8664.get();
-            default -> false;
-        };
-    }
-
-    public boolean isNativeGuardWindowsX8664Enabled() {
-        return nativeGuardWindowsX8664.get();
-    }
-
-    public void setNativeGuardWindowsX8664Enabled(boolean enabled) {
-        nativeGuardWindowsX8664.set(enabled);
-        saveConfig();
-    }
-
     @Override
     public List<SettingDef> getSettingDefs() {
         return settings(
                 SettingDef.mode(debug),
                 SettingDef.bool(forcePvp),
-                SettingDef.bool(disableNarrator),
-                SettingDef.bool("nativeGuardWindowsX8664", nativeGuardWindowsX8664)
+                SettingDef.bool(disableNarrator)
         );
     }
 

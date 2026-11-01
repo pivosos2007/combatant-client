@@ -13,7 +13,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 
-/** Resource-pack resolver for glTF/GLB/OBJ roots and namespace-local external payloads. */
+/** @deprecated Use MinecraftModelResolver for all supported formats. */
+@Deprecated
 public final class MinecraftGltfResolver implements GltfResolver {
     private final ResourceManager resources;
 

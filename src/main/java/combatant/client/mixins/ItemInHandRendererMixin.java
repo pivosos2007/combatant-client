@@ -218,6 +218,15 @@ public abstract class ItemInHandRendererMixin {
         );
     }
 
+    @Inject(method = "renderPlayerHand", at = @At("HEAD"), cancellable = true)
+    private void combatant$selectedFirstPersonModelHand(PoseStack matrices, SubmitNodeCollector queue,
+                                                        int light, HumanoidArm arm,
+                                                        PlayerRenderState state, CallbackInfo ci) {
+        if (combatant.client.features.playermodel.PlayerModels.submitFirstPersonHand(matrices, queue, light, arm)) {
+            ci.cancel();
+        }
+    }
+
     @Inject(method = "renderPlayerArm", at = @At("HEAD"))
     private void combatant$applyHmiHandRelative(
             PoseStack matrices,

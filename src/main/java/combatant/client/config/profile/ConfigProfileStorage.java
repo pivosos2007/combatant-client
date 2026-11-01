@@ -22,7 +22,6 @@ import java.util.Locale;
 
 public final class ConfigProfileStorage {
     public static final String EXTENSION = ".cbcfg";
-    private static final Path ROOT = ConfigPaths.profilesRoot();
 
     private final ConfigProfileBinaryCodec codec = new ConfigProfileBinaryCodec();
 
@@ -44,11 +43,11 @@ public final class ConfigProfileStorage {
     }
 
     public Path root() {
-        return ROOT;
+        return ConfigPaths.profilesRoot();
     }
 
     public Path directory(ConfigProfileType type) {
-        return ROOT.resolve(type.folderName());
+        return root().resolve(type.folderName());
     }
 
     public List<ConfigProfileMeta> list(ConfigProfileType type) {
@@ -170,14 +169,14 @@ public final class ConfigProfileStorage {
     }
 
     private void normalizeLooseProfiles() {
-        if (!Files.isDirectory(ROOT)) return;
+        if (!Files.isDirectory(root())) return;
         List<Path> candidates = new ArrayList<>();
-        try (var stream = Files.walk(ROOT)) {
+        try (var stream = Files.walk(root())) {
             stream.filter(Files::isRegularFile)
                     .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(EXTENSION))
                     .forEach(candidates::add);
         } catch (IOException e) {
-            DebugLog.error("Failed to scan loose config profiles %s", e, ROOT.toAbsolutePath());
+            DebugLog.error("Failed to scan loose config profiles %s", e, root().toAbsolutePath());
             return;
         }
 

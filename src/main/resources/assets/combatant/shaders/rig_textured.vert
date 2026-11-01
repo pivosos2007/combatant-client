@@ -93,15 +93,45 @@ bool sampleRibbonFrame(int id,
     center = mix(u_RibbonPosition[base + local0].xyz,
                  u_RibbonPosition[base + local1].xyz,
                  blend);
-    frameNormal = normalize(mix(u_RibbonNormal[base + local0].xyz,
-                                u_RibbonNormal[base + local1].xyz,
-                                blend));
-    frameBinormal = mix(u_RibbonBinormal[base + local0].xyz,
-                        u_RibbonBinormal[base + local1].xyz,
-                        blend);
-    frameBinormal -= frameNormal * dot(frameNormal, frameBinormal);
-    float binormalLength2 = dot(frameBinormal, frameBinormal);
-    if (binormalLength2 <= 1.0e-10) return false;
+
+    vec3 normal0 = u_RibbonNormal[base + local0].xyz;
+    vec3 normal1 = u_RibbonNormal[base + local1].xyz;
+    vec3 binormal0 = u_RibbonBinormal[base + local0].xyz;
+    vec3 binormal1 = u_RibbonBinormal[base + local1].xyz;
+    vec3 blendedNormal = mix(normal0, normal1, blend);
+    vec3 blendedBinormal = mix(binormal0, binormal1, blend);
+
+    // A nearly stationary trail can reverse its tangent between consecutive samples. Parallel
+    // transport then flips one or both frame axes. Interpolating opposite axes yields a zero
+    // vector: normalizing it makes NaNs, while returning false here leaves the trail's zero-valued
+    // bind-space vertex at the world origin (an enormous triangle across the screen).
+    // For such a reversal, use the closer *complete* frame, never a half-collapsed frame.
+    bool reversedFrame = dot(normal0, normal1) < -0.95
+                      || dot(binormal0, binormal1) < -0.95;
+    float normalLength2 = dot(blendedNormal, blendedNormal);
+    float binormalLength2 = dot(blendedBinormal, blendedBinormal);
+    if (reversedFrame || !(normalLength2 > 1.0e-8) || !(binormalLength2 > 1.0e-8)) {
+        blendedNormal = blend < 0.5 ? normal0 : normal1;
+        blendedBinormal = blend < 0.5 ? binormal0 : binormal1;
+    }
+
+    // Interpolation can also make the axes nearly parallel without either being near zero.
+    // Re-orthogonalize, and fall back to the nearest frame if the cross-section collapses.
+    normalLength2 = dot(blendedNormal, blendedNormal);
+    if (!(normalLength2 > 1.0e-8)) return false;
+    frameNormal = blendedNormal * inversesqrt(normalLength2);
+    frameBinormal = blendedBinormal - frameNormal * dot(frameNormal, blendedBinormal);
+    binormalLength2 = dot(frameBinormal, frameBinormal);
+    if (!(binormalLength2 > 1.0e-8)) {
+        frameNormal = blend < 0.5 ? normal0 : normal1;
+        frameBinormal = blend < 0.5 ? binormal0 : binormal1;
+        normalLength2 = dot(frameNormal, frameNormal);
+        if (!(normalLength2 > 1.0e-8)) return false;
+        frameNormal *= inversesqrt(normalLength2);
+        frameBinormal -= frameNormal * dot(frameNormal, frameBinormal);
+        binormalLength2 = dot(frameBinormal, frameBinormal);
+        if (!(binormalLength2 > 1.0e-8)) return false;
+    }
     frameBinormal *= inversesqrt(binormalLength2);
 
     float handedness = meta.z < 0.0 ? -1.0 : 1.0;
@@ -173,6 +203,20 @@ void applyLocalDeform(inout vec3 position, inout vec3 normal) {
     // bend, while twist still composes around the sampled ribbon tangent.
     if ((vertexFlags & RIG_DEFORM_RIBBON) != 0u) {
         if (applyRibbonDeform(id, runtimeFlags, u, position, normal)) return;
+
+        // A failed ribbon frame must not leave the bind-space position at (0,0,0): adjacent
+        // successful vertices would then form a triangle reaching all the way to world origin.
+        // Keep the failed cross-section on its (finite, CPU-validated) centerline instead.
+        int sampleCount = clamp(int(floor(u_RibbonMeta[id].x + 0.5)), 1, MAX_RIG_RIBBON_SAMPLES);
+        float scaled = u * float(sampleCount - 1);
+        int local0 = int(floor(scaled));
+        int local1 = min(local0 + 1, sampleCount - 1);
+        int base = id * MAX_RIG_RIBBON_SAMPLES;
+        position = mix(u_RibbonPosition[base + local0].xyz,
+                       u_RibbonPosition[base + local1].xyz,
+                       scaled - float(local0));
+        normal = vec3(0.0, 1.0, 0.0);
+        return;
     }
 
     uint flags = vertexFlags & runtimeFlags & (RIG_DEFORM_BEND | RIG_DEFORM_TWIST);

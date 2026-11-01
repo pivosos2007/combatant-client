@@ -10,14 +10,13 @@ package combatant.client.features.module.modules.visuals;
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.KeyBindValue;
+import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
-import combatant.client.input.CombatantInput;
-import combatant.client.input.InputScope;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -32,7 +31,7 @@ import net.minecraft.util.Mth;
         description = "module.freelook.description")
 public final class FreeLook extends Module {
     private final Minecraft mc = Minecraft.getInstance();
-    private final KeyBindValue freeLookKey = bind("freeLookKey", "free_look_key", "LEFT_ALT", BindMode.HOLD);
+    private final FunctionBindSetting freeLookKey = action("free_look_key", new KeyBindValue("freeLookKey", "LEFT_ALT"), BindMode.HOLD);
     private final NumberValue<Float> sensitivity = num("freeLookSensitivity", "sensitivity", 0.15f, 0.02f, 0.5f);
     private final EnumValue<Perspective> perspective =
             enumSetting("freeLookPerspective", "perspective", Perspective.BACK, Perspective.values());
@@ -41,28 +40,21 @@ public final class FreeLook extends Module {
     private float cameraYaw;
     private float cameraPitch;
     private boolean cameraActive;
-    private String lastKeyCombo = "NONE";
 
     @Override
     public void onEnable() {
         cameraActive = false;
         previousPerspective = null;
-        lastKeyCombo = "NONE";
-        ensureBind();
     }
 
     @Override
     public void onDisable() {
         deactivateCamera();
-        CombatantInput.bindings().unbind(bindingName());
-        lastKeyCombo = "NONE";
     }
 
     @Override
     public void onTick() {
         if (!isEnabled()) return;
-        ensureBind();
-
         refreshActivation();
     }
 
@@ -117,14 +109,13 @@ public final class FreeLook extends Module {
 
 
     private void refreshActivation() {
-        ensureBind();
         LocalPlayer player = mc.player;
         Freecam freecam = Modules.get(Freecam.class);
         boolean canUse = player != null
                 && mc.level != null
                 && (freecam == null || !freecam.isEnabled())
-                && !freeLookKey.isNone()
-                && CombatantInput.bindings().isHeld(bindingName(), InputScope.GAME);
+                && !"NONE".equalsIgnoreCase(freeLookKey.get())
+                && isActionHeld("free_look_key");
 
         if (canUse) {
             if (!cameraActive) activateCamera(player);
@@ -134,21 +125,6 @@ public final class FreeLook extends Module {
         } else if (cameraActive) {
             deactivateCamera();
         }
-    }
-
-    private String bindingName() {
-        return name() + ":" + freeLookKey.getName();
-    }
-
-    private void ensureBind() {
-        String combo = freeLookKey.get();
-        if (combo == null) combo = "NONE";
-        if (combo.equalsIgnoreCase(lastKeyCombo)) return;
-
-        String name = bindingName();
-        CombatantInput.bindings().unbind(name);
-        if (!freeLookKey.isNone()) CombatantInput.bindings().bind(name, combo);
-        lastKeyCombo = combo;
     }
 
     public enum Perspective {

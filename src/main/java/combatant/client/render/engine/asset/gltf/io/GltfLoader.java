@@ -12,7 +12,7 @@
 package combatant.client.render.engine.asset.gltf.io;
 
 import net.minecraft.resources.Identifier;
-import combatant.client.render.engine.asset.gltf.model.GltfAsset;
+import combatant.client.render.engine.asset.model.data.ModelAsset;
 import combatant.client.render.engine.asset.gltf.io.JgltfAssetLoader;
 
 import java.io.IOException;
@@ -22,11 +22,11 @@ public final class GltfLoader {
     private GltfLoader() {
     }
 
-    public static GltfAsset load(Identifier location, GltfResolver resolver) throws IOException {
+    public static ModelAsset load(Identifier location, GltfResolver resolver) throws IOException {
         return new JgltfAssetLoader().load(location, resolver::open);
     }
 
-    public static GltfAsset load(Identifier location, GltfResolver resolver,
+    public static ModelAsset load(Identifier location, GltfResolver resolver,
                                  long maxResourceBytes) throws IOException {
         return new JgltfAssetLoader(maxResourceBytes).load(location, resolver::open);
     }

@@ -12,7 +12,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -39,9 +38,6 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.features.relations.CategoryRules;
-import combatant.client.features.relations.CategoryType;
-import combatant.client.features.relations.EntityFilters;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
@@ -54,7 +50,9 @@ import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.raytrace.RotationRaytrace;
-import combatant.client.util.projectile.ProjectilePredictionUtil;
+import combatant.client.util.projectile.ProjectileAimSolver;
+import combatant.client.util.logging.DebugLog;
+import combatant.client.util.target.ScreenRingSelection;
 import combatant.client.util.target.TargetManager;
 import combatant.client.util.target.TargetingUtil;
 
@@ -126,8 +124,6 @@ public class AutoBow extends Module {
             );
     private final NumberValue<Double> hudRadius = num("autobowHudRadius", 64.0, 12.0, 240.0);
     private final NumberValue<Double> hudThickness = num("autobowHudThickness", 2.5, 1.0, 8.0);
-    private final NumberValue<Double> priorityDistanceLeeway =
-            num("autobowPriorityDistanceLeeway", 6.0, 0.0, 24.0);
     private final NumberValue<Float> aimThreshold = num("autobowAimThreshold", 1.5f, 0.25f, 6.0f);
     private final BooleanValue bowRapidFire = bool("autobowBowRapidFire", false);
     private final NumberValue<Integer> chargedTicks = num("autobowChargedTicks", 15, 3, 20);
@@ -157,6 +153,8 @@ public class AutoBow extends Module {
 
     @Override
     public void onEnable() {
+        DebugLog.info("[AutoBow] enabled, ringRadius={}px mode={} range={}",
+                hudRadius.get(), mode.get(), range.get());
         lastShotAtMs = 0L;
         lastSnapshot = Snapshot.hidden();
         forceReleaseUse = false;
@@ -170,6 +168,7 @@ public class AutoBow extends Module {
 
     @Override
     public void onDisable() {
+        DebugLog.info("[AutoBow] disabled");
         lastSnapshot = Snapshot.hidden();
         forceReleaseUse = false;
         forceHoldUse = false;
@@ -178,7 +177,7 @@ public class AutoBow extends Module {
         preferredTarget = null;
         pendingUse = null;
         releaseRotationIfRequested();
-        TargetManager.setModuleTarget(null);
+        TargetManager.clear(this);
     }
 
     @EventHandler(priority = 100)
@@ -204,10 +203,9 @@ public class AutoBow extends Module {
         if (!isEnabled()) return;
 
         Snapshot snapshot = getSnapshot(TickDelta.tickProgress(false));
-        boolean canRotate = canRotateForWeaponState(mc.player, snapshot.weapon());
         boolean inside = snapshot.insideRadius();
         forceHoldUse = shouldHoldUseForFullAuto(snapshot);
-        TargetManager.setModuleTarget(inside ? snapshot.target() : null);
+        TargetManager.publish(this, inside ? snapshot.target() : null, TargetManager.Source.MODULE, 500);
 
         if (mode.get() == AutomationMode.FULL_AUTO && inside) {
             tryAutoDraw(snapshot);
@@ -340,7 +338,7 @@ public class AutoBow extends Module {
         Snapshot snapshot = getSnapshot(TickDelta.tickProgress(false));
         boolean canRotate = canRotateForWeaponState(mc.player, snapshot.weapon());
         boolean inside = snapshot.insideRadius();
-        TargetManager.setModuleTarget(inside ? snapshot.target() : null);
+        TargetManager.publish(this, inside ? snapshot.target() : null, TargetManager.Source.MODULE, 500);
 
         if (!snapshot.shouldRotate() || !canRotate) {
             releaseRotationIfRequested();
@@ -378,6 +376,7 @@ public class AutoBow extends Module {
 
         ActiveWeapon weapon = findActiveWeapon(player);
         if (weapon == null) {
+            DebugLog.infoOnChange("autobow.context", "no-weapon", "[AutoBow] no supported weapon in hands");
             return Snapshot.hidden();
         }
 
@@ -387,60 +386,46 @@ public class AutoBow extends Module {
         float logicalHeight = HudScale.virtualHeight(fbw, fbh);
         float baseRadius = hudRadius.get().floatValue();
         TargetingUtil.TargetingSettings settings = buildTargetingSettings();
-        if (player.isUsingItem() && preferredTarget != null) {
-            Snapshot lockedSnapshot = evaluateTargetCandidate(
-                    player,
-                    weapon,
-                    preferredTarget,
-                    logicalWidth,
-                    logicalHeight,
-                    tickDelta,
-                    baseRadius + LOCK_RETAIN_MARGIN,
-                    false
-            );
-            if (lockedSnapshot != null) {
-                return lockedSnapshot;
-            }
-            preferredTarget = null;
-            return Snapshot.idle(weapon);
+        // The on-screen ring is the selection region, not just an ornamental HUD.
+        // Rank eligible targets by distance to the crosshair; the configured
+        // target priority breaks ties rather than replacing ring preference.
+        List<ScreenCandidate> eligible = new ArrayList<>();
+        List<LivingEntity> available = getPrioritizedCandidates(settings);
+        for (LivingEntity entity : available) {
+            Vec2 point = projectTargetToLogical(entity, logicalWidth, logicalHeight, tickDelta);
+            if (point == null || !ScreenRingSelection.contains(point.x, point.y,
+                    logicalWidth, logicalHeight, baseRadius)) continue;
+            double dx = point.x - logicalWidth * 0.5;
+            double dy = point.y - logicalHeight * 0.5;
+            eligible.add(new ScreenCandidate(entity, point, ScreenRingSelection.score(
+                    dx * dx + dy * dy, entity == preferredTarget ? LOCK_RETAIN_MARGIN : 0.0)));
         }
-
-        if (preferredTarget != null) {
-            Snapshot stickySnapshot = evaluateTargetCandidate(
-                    player,
-                    weapon,
-                    preferredTarget,
-                    logicalWidth,
-                    logicalHeight,
-                    tickDelta,
-                    baseRadius + LOCK_RETAIN_MARGIN,
-                    true
-            );
-            if (stickySnapshot != null) {
-                return stickySnapshot;
-            }
-            preferredTarget = null;
-        }
-
-        for (LivingEntity target : getPrioritizedCandidates(settings)) {
-            Snapshot candidate = evaluateTargetCandidate(
-                    player,
-                    weapon,
-                    target,
-                    logicalWidth,
-                    logicalHeight,
-                    tickDelta,
-                    baseRadius,
-                    true
-            );
+        eligible.sort(java.util.Comparator.comparingDouble(ScreenCandidate::score));
+        int trajectoriesRejected = 0;
+        for (ScreenCandidate inside : eligible) {
+            LivingEntity target = inside.target();
+            Snapshot candidate = evaluateTargetCandidate(player, weapon, target, inside.point());
             if (candidate == null) {
-                continue;
+                trajectoriesRejected++;
+            } else {
+                preferredTarget = candidate.target();
+                DebugLog.infoOnChange("autobow.target",
+                        target.getId() + ":" + candidate.state() + ":" + candidate.chargeReady()
+                                + ":" + candidate.aimReady(),
+                        "[AutoBow] lock target={} weapon={} circle={}px aim={} charge={} ready={} "
+                                + "size={}x{} shooterMotion={} targetMotion={}",
+                        target.getId(), weapon.type(), baseRadius, candidate.solution(),
+                        candidate.chargeReady(), candidate.aimReady(),
+                        target.getBbWidth(), target.getBbHeight(), player.getKnownMovement(),
+                        target.getDeltaMovement());
+                return candidate;
             }
-
-            preferredTarget = candidate.target();
-            return candidate;
         }
 
+        DebugLog.infoOnChange("autobow.target",
+                "none:" + available.size() + ":" + eligible.size() + ":" + trajectoriesRejected,
+                "[AutoBow] no target: eligible={} insideRing={} rejectedByVisibilityOrTrajectory={} radius={}px",
+                available.size(), eligible.size(), trajectoriesRejected, baseRadius);
         preferredTarget = null;
 
         if (mode.get() == AutomationMode.FULL_AUTO && player.isUsingItem()) {
@@ -451,56 +436,10 @@ public class AutoBow extends Module {
     }
 
     private List<LivingEntity> getPrioritizedCandidates(TargetingUtil.TargetingSettings settings) {
-        List<LivingEntity> sortedByPriority = TargetingUtil.findTargets(mc, settings);
-        if (sortedByPriority.isEmpty() || mc.player == null) {
-            return sortedByPriority;
-        }
-
-        TargetingUtil.TargetPriority selectedPriority = settings.priority();
-        if (selectedPriority == null || selectedPriority == TargetingUtil.TargetPriority.DISTANCE) {
-            return sortedByPriority;
-        }
-
-        TargetingUtil.TargetingSettings distanceSettings = new TargetingUtil.TargetingSettings(
-                settings.range(),
-                settings.fov(),
-                settings.playersOnly(),
-                settings.ignoreFriends(),
-                settings.ignoreStaff(),
-                settings.ignoreEnemies(),
-                settings.ignoreNaked(),
-                settings.ignoreEntities(),
-                settings.visibleOnly(),
-                TargetingUtil.TargetPriority.DISTANCE
-        );
-
-        List<LivingEntity> byDistance = TargetingUtil.findTargets(mc, distanceSettings);
-        if (byDistance.isEmpty()) {
-            return sortedByPriority;
-        }
-
-        LivingEntity distanceAnchor = byDistance.get(0);
-        if (!settings.playersOnly()) {
-            for (LivingEntity candidate : byDistance) {
-                if (candidate instanceof Player) {
-                    distanceAnchor = candidate;
-                    break;
-                }
-            }
-        }
-
-        double nearestDistance = Math.sqrt(TargetingUtil.distanceToEntityBoxSq(mc.player.getEyePosition(), distanceAnchor));
-        double maxAllowedDistance = nearestDistance + priorityDistanceLeeway.get();
-
-        List<LivingEntity> closePool = new ArrayList<>();
-        for (LivingEntity target : sortedByPriority) {
-            double distance = Math.sqrt(TargetingUtil.distanceToEntityBoxSq(mc.player.getEyePosition(), target));
-            if (distance <= maxAllowedDistance) {
-                closePool.add(target);
-            }
-        }
-
-        return closePool.isEmpty() ? sortedByPriority : closePool;
+        // TargetManager/TargetingUtil supplies eligible targets in priority order.
+        // Never pre-filter by proximity to an off-screen target: the ring is
+        // an independent screen-space selection constraint.
+        return TargetingUtil.findTargets(mc, settings);
     }
 
     private Snapshot refreshSnapshot(float tickDelta) {
@@ -529,64 +468,36 @@ public class AutoBow extends Module {
     private Snapshot evaluateTargetCandidate(LocalPlayer player,
                                              ActiveWeapon weapon,
                                              LivingEntity target,
-                                             float logicalWidth,
-                                             float logicalHeight,
-                                             float tickDelta,
-                                             float radius,
-                                             boolean requireReachableTrajectory) {
-        if (target == null || !target.isAlive() || target.isRemoved()) {
-            return null;
-        }
-
-        Vec2 point = projectTargetToLogical(target, logicalWidth, logicalHeight, tickDelta);
-        if (!isInsideCircle(point, logicalWidth, logicalHeight, radius)) {
-            return null;
-        }
+                                             Vec2 point) {
+        if (target == null || !target.isAlive() || target.isRemoved() || point == null) return null;
 
         boolean directlyVisible = hasDirectSightToTarget(player, target);
         if (toggles.get(TargetFilters.VISIBLE_ONLY) && !directlyVisible) {
+            DebugLog.infoOnChange("autobow.reject." + target.getId(), "not-visible",
+                    "[AutoBow] reject target={} reason=visible_only", target.getId());
             return null;
         }
 
-        Rotation solution = ProjectilePredictionUtil.calculateForItem(
-                player,
-                weapon.stack(),
-                target,
-                shouldUseFullPowerAim(weapon)
-        );
-        if (solution == null && directlyVisible
-                && TargetingUtil.distanceToEntityBoxSq(player.getEyePosition(), target)
-                <= CLOSE_DIRECT_AIM_RANGE * CLOSE_DIRECT_AIM_RANGE) {
-            var direct = RotationRaytrace.raytraceBox(
-                    player.getEyePosition(),
-                    target.getBoundingBox().inflate(TARGET_BOX_INFLATE),
-                    CLOSE_DIRECT_AIM_RANGE,
-                    0.0
-            );
-            solution = direct != null ? direct.rotation() : null;
-        }
-        if (solution == null) {
+        int plannedCharge = weapon.type() == WeaponType.BOW && bowRapidFire.get()
+                ? Math.min(20, Math.max(1, getBowChargeThreshold())) : 20;
+        ProjectileAimSolver.Solution computed = ProjectileAimSolver.forEntity(
+                player, weapon.stack(), target, shouldUseFullPowerAim(weapon), plannedCharge);
+        // Selection and shooting must use the same collision-checked result.
+        // Do not lock a mob behind walls or hold a bow against an impossible shot.
+        if (computed == null) {
+            DebugLog.infoOnChange("autobow.reject." + target.getId(), "no-ballistic-hit",
+                    "[AutoBow] reject target={} reason=no_verified_projectile_path visible={} distance={}",
+                    target.getId(), directlyVisible, Math.sqrt(target.distanceToSqr(player)));
             return null;
         }
-
-        Rotation normalized = solution.normalize();
-        boolean trajectoryReady = ProjectilePredictionUtil.getHypotheticalHit(
-                player,
-                weapon.stack(),
-                normalized,
-                living -> living == target,
-                shouldUseFullPowerAim(weapon)
-        ) == target;
-        if (requireReachableTrajectory && !trajectoryReady && !directlyVisible) {
-            return null;
-        }
-
+        Rotation normalized = computed.rotation().normalize();
+        boolean trajectoryReady = true;
         boolean chargeReady = isChargeReady(player, weapon);
-        boolean aimReady = RotationManager.INSTANCE.getServerRotation().approximatelyEquals(normalized, aimThreshold.get());
+        boolean aimReady = normalized != null && RotationManager.INSTANCE.getServerRotation().approximatelyEquals(normalized, aimThreshold.get());
         boolean shootReady = mode.get() == AutomationMode.FULL_AUTO
                 && chargeReady
                 && aimReady
-                && (trajectoryReady || directlyVisible)
+                && trajectoryReady
                 && canAutoShoot(player, weapon, target);
         HudState state;
         if (shootReady) {
@@ -717,7 +628,8 @@ public class AutoBow extends Module {
     }
 
     private int getBowChargeThreshold() {
-        return chargedTicks.get() + getChargedRandom();
+        // A negative random offset must not permit a nearly zero-power shot.
+        return Math.max(3, chargedTicks.get() + getChargedRandom());
     }
 
     private boolean isBowChargeReady(LocalPlayer player, ActiveWeapon weapon) {
@@ -829,47 +741,12 @@ public class AutoBow extends Module {
             return null;
         }
 
-        float x = (float) (screen.x / framebufferWidth * logicalWidth);
-        float y = (float) (screen.y / framebufferHeight * logicalHeight);
+        ViewportContext viewport = ViewportContext.current();
+        double sourceWidth = viewport == null ? framebufferWidth : viewport.width();
+        double sourceHeight = viewport == null ? framebufferHeight : viewport.height();
+        float x = (float) ScreenRingSelection.toLogical(screen.x, sourceWidth, logicalWidth);
+        float y = (float) ScreenRingSelection.toLogical(screen.y, sourceHeight, logicalHeight);
         return new Vec2(x, y);
-    }
-
-    private Vec2 projectRotationToLogical(LocalPlayer player, Rotation solution, float logicalWidth, float logicalHeight, float tickDelta) {
-        if (player == null || mc.gameRenderer == null) {
-            return null;
-        }
-        int framebufferWidth = mc.getWindow().getWidth();
-        int framebufferHeight = mc.getWindow().getHeight();
-        if (framebufferWidth <= 0 || framebufferHeight <= 0) {
-            return null;
-        }
-
-        Vec3 origin = mc.gameRenderer.mainCamera().position();
-        Vec3 probe = origin.add(solution.directionVector().normalize().scale(96.0));
-        Vec3 screen = ScreenProjection.worldToScreen(probe, tickDelta);
-        if (screen == null) {
-            return null;
-        }
-
-        float x = (float) (screen.x / framebufferWidth * logicalWidth);
-        float y = (float) (screen.y / framebufferHeight * logicalHeight);
-        return new Vec2(x, y);
-    }
-
-    private boolean isInsideCircle(Vec2 point, float logicalWidth, float logicalHeight) {
-        return isInsideCircle(point, logicalWidth, logicalHeight, hudRadius.get().floatValue());
-    }
-
-    private boolean isInsideCircle(Vec2 point, float logicalWidth, float logicalHeight, float radiusValue) {
-        if (point == null) {
-            return false;
-        }
-
-        float centerX = logicalWidth * 0.5f;
-        float centerY = logicalHeight * 0.5f;
-        float dx = point.x - centerX;
-        float dy = point.y - centerY;
-        return dx * dx + dy * dy <= radiusValue * radiusValue;
     }
 
     private void renderStateText(TextRenderer textRenderer, float centerX, float y, HudState state) {
@@ -1034,15 +911,8 @@ public class AutoBow extends Module {
             return false;
         }
 
-        LivingEntity hypotheticalHit = ProjectilePredictionUtil.getHypotheticalHit(
-                player,
-                weapon.stack(),
-                serverRotation,
-                this::matchesHypotheticalTarget
-        );
-        if (hypotheticalHit == null && !hasDirectSightToTarget(player, target)) {
-            return false;
-        }
+        if (!ProjectileAimSolver.hitsEntity(player, weapon.stack(), serverRotation, target,
+                shouldUseFullPowerAim(weapon))) return false;
 
         return weapon.type() != WeaponType.CROSSBOW || player.isUsingItem() || now - lastShotAtMs >= delayMs;
     }
@@ -1058,49 +928,6 @@ public class AutoBow extends Module {
                 range.get(),
                 0.0
         );
-    }
-
-    private boolean matchesHypotheticalTarget(LivingEntity living) {
-        if (living == null || mc.player == null || mc.level == null) {
-            return false;
-        }
-        if (!living.isAlive() || living.isRemoved()) {
-            return false;
-        }
-        if (toggles.get(TargetFilters.PLAYERS_ONLY) && !(living instanceof net.minecraft.world.entity.player.Player)) {
-            return false;
-        }
-        if (toggles.get(TargetFilters.VISIBLE_ONLY) && !mc.player.hasLineOfSight(living)) {
-            return false;
-        }
-        if (TargetingUtil.distanceToEntityBoxSq(mc.player.getEyePosition(), living) > range.get() * range.get()) {
-            return false;
-        }
-        if (toggles.get(TargetFilters.IGNORE_ENTITIES) && !(living instanceof net.minecraft.world.entity.player.Player)) {
-            var id = BuiltInRegistries.ENTITY_TYPE.getKey(living.getType());
-            if (id != null && EntityFilters.get().isIgnoredEntity(id.toString())) {
-                return false;
-            }
-        }
-
-        if (living instanceof net.minecraft.world.entity.player.Player player) {
-            CategoryType type = CategoryRules.determine(player.getGameProfile().name());
-            if (type == CategoryType.BEDWARS_SELF) {
-                return false;
-            }
-            if (toggles.get(TargetFilters.IGNORE_FRIENDS) && type == CategoryType.FRIEND) {
-                return false;
-            }
-            if (toggles.get(TargetFilters.IGNORE_STAFF) && type == CategoryType.STAFF) {
-                return false;
-            }
-            if (toggles.get(TargetFilters.IGNORE_ENEMIES) && (type == CategoryType.ENEMY || type == CategoryType.BEDWARS_ENEMY)) {
-                return false;
-            }
-            return !toggles.get(TargetFilters.IGNORE_NAKED) || !TargetingUtil.isNaked(player);
-        }
-
-        return true;
     }
 
     private enum WeaponType {
@@ -1146,6 +973,8 @@ public class AutoBow extends Module {
         CHARGE_CROSSBOW,
         FIRE_CROSSBOW
     }
+
+    private record ScreenCandidate(LivingEntity target, Vec2 point, double score) { }
 
     private record ActiveWeapon(InteractionHand hand, ItemStack stack, WeaponType type) {
     }

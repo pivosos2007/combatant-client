@@ -4878,7 +4878,8 @@ public final class Renderer2D {
                 || material.mode() == UiSurfaceMaterialSpec.Mode.ICE;
         boolean hasAtlas = physicalTexture && material.microtextureEnabled();
         boolean sceneLit = physicalTexture && material.lighting().enabled();
-        UiBatchType materialType = sceneLit
+        UiBatchType materialType = material.mode() == UiSurfaceMaterialSpec.Mode.CLIMATE_LAYER
+                ? UiBatchType.CLIMATE_PRIMITIVE : sceneLit
                 ? (hasAtlas ? UiBatchType.MATERIAL_SCENE_TEXTURED_PRIMITIVE : UiBatchType.MATERIAL_SCENE_PRIMITIVE)
                 : (hasAtlas ? UiBatchType.MATERIAL_TEXTURED_PRIMITIVE : UiBatchType.MATERIAL_PRIMITIVE);
         DrawBatch batch = UI_BATCHER.getOrCreateMaterial(materialType, material.mode(), material.lighting().source(), bounds);

@@ -65,6 +65,26 @@ public enum IrisRuntime {
         return MOD_LOADED ? INTEGRATION_EPOCH.epoch() : 0L;
     }
 
+    public static boolean preparePlayerRig(combatant.client.features.playermodel.PlayerModels.Ready asset) {
+        if (!MOD_LOADED || !isShaderpackRendererActive()) return false;
+        try { return IrisRuntimeBridge.preparePlayerRig(asset); }
+        catch (RuntimeException | LinkageError ignored) { return false; }
+    }
+
+    public static void drawPlayerRigs(
+            java.util.List<combatant.client.features.playermodel.PlayerModelGpuRenderer.IrisDraw> draws,
+            boolean translucent) {
+        if (!MOD_LOADED || !isShaderpackRendererActive()) return;
+        try { IrisRuntimeBridge.drawPlayerRigs(draws, translucent); }
+        catch (RuntimeException | LinkageError ignored) { }
+    }
+
+    public static void invalidatePlayerRigs() {
+        if (!MOD_LOADED) return;
+        try { IrisRuntimeBridge.invalidatePlayerRigs(); }
+        catch (RuntimeException | LinkageError ignored) { }
+    }
+
     public static boolean isShaderpackRendererActive() {
         IrisRuntimeSnapshot snapshot = snapshot();
         return snapshot.modLoaded() && snapshot.apiAvailable() && snapshot.shadersEnabled() && snapshot.shaderpackInUse();

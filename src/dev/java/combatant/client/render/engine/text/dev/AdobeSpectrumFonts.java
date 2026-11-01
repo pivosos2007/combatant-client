@@ -6,7 +6,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.util.resources.asset.FontAsset;
 import combatant.client.util.resources.asset.FontCatalog;
 
-@FontCatalog(namespace = "combatant", root = "font")
+@FontCatalog(namespace = "combatant", root = "assets/combatant/font")
 public enum AdobeSpectrumFonts {
     @FontAsset(value = "source_sans3_regular.ttf", family = "SourceSans3", type = FontInfo.Type.Regular, order = 302)
     SOURCE_SANS_3_REGULAR,

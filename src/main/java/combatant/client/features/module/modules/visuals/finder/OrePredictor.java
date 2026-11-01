@@ -34,6 +34,8 @@ import combatant.client.util.finder.FinderRender;
 import combatant.client.util.finder.LoadedChunkScanner;
 import combatant.client.util.finder.OreSimulation;
 import combatant.client.util.finder.ServerSeedCheck;
+import combatant.client.compat.seedcracker.SeedCrackerRuntime;
+import combatant.client.compat.seedcracker.SeedSnapshots;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.ArrayList;
@@ -118,6 +120,14 @@ public final class OrePredictor extends Module {
     private String seedCheckedValue = "";
     private boolean missingSeedWarned;
 
+    /** Manually entered seed always wins; the saved snapshot is selected per server/worldgen. */
+    private String effectiveSeed() {
+        String manual = seed.get();
+        if (manual != null && !manual.isBlank()) return manual;
+        var recovered = SeedSnapshots.forNativeOreSimulation();
+        return recovered.isPresent() ? Long.toString(recovered.getAsLong()) : "";
+    }
+
     @Override
     public void onEnable() {
         scanner.clear();
@@ -183,16 +193,16 @@ public final class OrePredictor extends Module {
         }
         if (!future.isDone()) return;
 
-        if (seed.get().isBlank()) {
+        if (effectiveSeed().isBlank()) {
             if (!missingSeedWarned) {
                 missingSeedWarned = true;
-                Notifier.warning("OrePredictor: set the world seed in the module settings");
+                SeedCrackerRuntime.propose("OrePredictor");
             }
             return;
         }
         checkSeedAgainstServer();
-        if (!seed.get().equals(scannedSeed)) {
-            scannedSeed = seed.get();
+        if (!effectiveSeed().equals(scannedSeed)) {
+            scannedSeed = effectiveSeed();
             scanner.rescanAll();
         }
         scanner.tick(mc);
@@ -207,7 +217,7 @@ public final class OrePredictor extends Module {
     // A wrong seed still draws plausible boxes, just in the wrong places, so say so once per
     // level and seed. A warning, not a stop: a server may send a fake seed hash.
     private void checkSeedAgainstServer() {
-        String current = seed.get();
+        String current = effectiveSeed();
         if (mc.level == seedCheckedLevel && current.equals(seedCheckedValue)) return;
         seedCheckedLevel = mc.level;
         seedCheckedValue = current;
@@ -216,8 +226,8 @@ public final class OrePredictor extends Module {
         if (match.get()) {
             Notifier.success("OrePredictor: seed matches this server");
         } else {
-            Notifier.warning("OrePredictor: seed does NOT match this server, predictions will be in the "
-                    + "wrong places. Set the server's real seed in the module settings.");
+            Notifier.warning("OrePredictor: seed differs from the advertised server hash (which may be spoofed). "
+                    + "Ore predictions are unverified and may be inaccurate.");
         }
     }
 

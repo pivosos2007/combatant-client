@@ -7,7 +7,9 @@
 
 package combatant.client.features.module.modules.player;
 
+import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
+import java.util.LinkedHashMap;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.CrosshairTargetUpdateEvent;
 import combatant.client.features.module.Module;
@@ -36,12 +38,18 @@ public final class NoEntityTrace extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
 
-    private final BooleanValue pickaxe = bool("noEntityTracePickaxe", "pickaxe", true);
-    private final BooleanValue axe = bool("noEntityTraceAxe", "axe", false);
-    private final BooleanValue shovel = bool("noEntityTraceShovel", "shovel", false);
-    private final BooleanValue hoe = bool("noEntityTraceHoe", "hoe", false);
-    private final BooleanValue blocks = bool("noEntityTraceBlocks", "blocks", true);
     private final BooleanValue always = bool("noEntityTraceAlways", "always", false);
+    private final BooleanMapValue itemTypes = group("noEntityTraceTypes", "item_types", defaultItemTypes());
+
+    private static LinkedHashMap<String, Boolean> defaultItemTypes() {
+        LinkedHashMap<String, Boolean> defaults = new LinkedHashMap<>();
+        defaults.put("pickaxe", true);
+        defaults.put("axe", false);
+        defaults.put("shovel", false);
+        defaults.put("hoe", false);
+        defaults.put("blocks", true);
+        return defaults;
+    }
 
     @EventHandler
     private void onCrosshairTarget(CrosshairTargetUpdateEvent event) {
@@ -59,10 +67,10 @@ public final class NoEntityTrace extends Module {
     private boolean appliesTo(ItemStack held) {
         if (always.get()) return true;
         if (held.isEmpty()) return false;
-        if (pickaxe.get() && held.is(ItemTags.PICKAXES)) return true;
-        if (axe.get() && held.is(ItemTags.AXES)) return true;
-        if (shovel.get() && held.is(ItemTags.SHOVELS)) return true;
-        if (hoe.get() && held.is(ItemTags.HOES)) return true;
-        return blocks.get() && held.getItem() instanceof BlockItem;
+        if (itemTypes.get("pickaxe") && held.is(ItemTags.PICKAXES)) return true;
+        if (itemTypes.get("axe") && held.is(ItemTags.AXES)) return true;
+        if (itemTypes.get("shovel") && held.is(ItemTags.SHOVELS)) return true;
+        if (itemTypes.get("hoe") && held.is(ItemTags.HOES)) return true;
+        return itemTypes.get("blocks") && held.getItem() instanceof BlockItem;
     }
 }

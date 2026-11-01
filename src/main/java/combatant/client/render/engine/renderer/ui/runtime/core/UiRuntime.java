@@ -255,8 +255,10 @@ public final class UiRuntime {
             validatePatchTarget(key, nodes, "bounds");
             if (nodes == null || nodes.isEmpty()) continue;
             for (UiNode node : nodes) {
-                node.setBounds(bounds);
-                patched++;
+                if (!bounds.equals(node.bounds())) {
+                    node.setBounds(bounds);
+                    patched++;
+                }
             }
         }
         return patched;
@@ -303,11 +305,22 @@ public final class UiRuntime {
      * Renders the current tree.
      */
     public void render(UiRenderContext context) {
+        render(context, null);
+    }
+
+    /**
+     * Invokes paint-only retained-node updates after the smooth-scroll layout,
+     * but before drawing. Callers that animate node bounds must use this phase:
+     * applying patches before render() lets the scroll tick erase them for one frame.
+     * This callback must not reconcile the tree or trigger another layout pass.
+     */
+    public void render(UiRenderContext context, Runnable afterScrollLayout) {
         long start = System.nanoTime();
         if (hasLayout && UiScrollRuntime.tick(root, System.nanoTime())) {
             layoutEngine.layout(root, lastLayoutTextRenderer, lastLayoutX, lastLayoutY, lastLayoutWidth, lastLayoutHeight);
         }
         inputDispatcher.setCoordinateTransform(context != null ? context.transform() : null);
+        if (afterScrollLayout != null) afterScrollLayout.run();
         renderer.render(root, context);
         diagnostics.counters().setRenderNanos(System.nanoTime() - start);
     }

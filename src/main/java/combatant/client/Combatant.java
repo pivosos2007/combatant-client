@@ -8,6 +8,7 @@
 package combatant.client;
 
 import combatant.client.features.map.heuristic.HeuristicRuntime;
+import combatant.client.compat.seedcracker.SeedCrackerRuntime;
 import combatant.client.events.UsedImplicitly;
 import combatant.client.compat.xaero.XaeroWaypointHudOverlay;
 import combatant.client.render.map.PlayerLocationHudOverlay;
@@ -21,7 +22,6 @@ import combatant.client.runtime.annotation.RuntimeAssertion;
 import combatant.client.runtime.annotation.RuntimeAssertionPhase;
 import combatant.client.runtime.annotation.RuntimeResume;
 import combatant.client.runtime.annotation.RuntimeSuspend;
-import combatant.client.runtime.nativeguard.NativeMemoryGuard;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
@@ -545,7 +545,7 @@ public class Combatant implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        NativeMemoryGuard.initialize();
+        combatant.client.config.ConfigPaths.root();
         combatant.client.runtime.stability.ModuleStabilityRun.register();
         CombatantRenderEngineBootstrap.init();
         PostProcessManager.register(new NetherPortalRiftPass());
@@ -568,8 +568,6 @@ public class Combatant implements ClientModInitializer {
             ClientRuntime.beginShutdown("client stopping");
             combatant.client.config.ConfigSerializer.flushPending();
             combatant.client.render.engine.renderer.ui.UiPbrTextureSets.close();
-            // Restore process-level security state before subsystem shutdown.
-            NativeMemoryGuard.shutdown();
             MediaSessionService.get().shutdown();
             JavetRuntimeBootstrap.shutdown();
             MapLocationRuntime.get().shutdown();
@@ -632,6 +630,8 @@ public class Combatant implements ClientModInitializer {
             }
         });
 
+        SeedCrackerRuntime.bootstrap();
+        ClientTickEvents.END_CLIENT_TICK.register(SeedCrackerRuntime::tick);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Keep startup/reload warmup moving even on title/menu screens where no player exists.
             RenderPrewarmManager.pumpDeferred();

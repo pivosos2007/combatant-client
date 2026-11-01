@@ -12,10 +12,10 @@ import com.mojang.renderpearl.api.textures.AddressMode;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTexture;
-import combatant.client.render.engine.asset.gltf.GltfRuntimeAsset;
-import combatant.client.render.engine.asset.gltf.material.GltfMaterialBinding;
-import combatant.client.render.engine.asset.gltf.model.GltfTexture;
-import combatant.client.render.engine.asset.gltf.model.GltfTextureInfo;
+import combatant.client.render.engine.asset.model.ModelRuntimeAsset;
+import combatant.client.render.engine.asset.model.material.ModelMaterialBinding;
+import combatant.client.render.engine.asset.model.data.ModelTexture;
+import combatant.client.render.engine.asset.model.data.ModelTextureInfo;
 import combatant.client.render.engine.rhi.CombatantRhi;
 
 import java.io.ByteArrayInputStream;
@@ -32,10 +32,10 @@ final class IrisCanonicalMaterialAtlasCompiler {
 
     private IrisCanonicalMaterialAtlasCompiler() {}
 
-    static IrisCanonicalMaterialAtlas upload(CombatantRhi rhi, GltfRuntimeAsset asset,
+    static IrisCanonicalMaterialAtlas upload(CombatantRhi rhi, ModelRuntimeAsset asset,
                                              int materialIndex, String label) {
         RenderSystem.assertOnRenderThread();
-        GltfMaterialBinding material = asset.material(materialIndex);
+        ModelMaterialBinding material = asset.material(materialIndex);
         Decoded[] maps = new Decoded[5];
         try {
             maps[0] = decode(asset, material.baseColorTexture(), 0xFFFFFFFF);
@@ -73,13 +73,13 @@ final class IrisCanonicalMaterialAtlasCompiler {
         }
     }
 
-    private static Decoded decode(GltfRuntimeAsset asset, GltfTextureInfo info, int fallback) {
+    private static Decoded decode(ModelRuntimeAsset asset, ModelTextureInfo info, int fallback) {
         if (info == null || !info.present()) {
             NativeImage image = new NativeImage(1, 1, false);
             image.setPixel(0, 0, fallback);
             return new Decoded(image, 10497, 10497);
         }
-        GltfTexture texture = asset.asset().textures().get(info.texture());
+        ModelTexture texture = asset.asset().textures().get(info.texture());
         try {
             return new Decoded(NativeImage.read(new ByteArrayInputStream(bytes(texture.encodedImage()))),
                     texture.wrapS(), texture.wrapT());
@@ -88,7 +88,7 @@ final class IrisCanonicalMaterialAtlasCompiler {
         }
     }
 
-    private static void writeMetadata(NativeImage atlas, GltfMaterialBinding material, Decoded[] maps) {
+    private static void writeMetadata(NativeImage atlas, ModelMaterialBinding material, Decoded[] maps) {
         int cursor = 0;
         putFloat(atlas, cursor++, 20260927.0f); // contract version marker
         for (float value : material.baseColorFactor()) putFloat(atlas, cursor++, value);
@@ -110,12 +110,12 @@ final class IrisCanonicalMaterialAtlasCompiler {
         putFloat(atlas, cursor++, material.alphaCutoff());
         putFloat(atlas, cursor++, material.unlit() ? 1.0f : 0.0f);
 
-        GltfTextureInfo[] infos = {
+        ModelTextureInfo[] infos = {
                 material.baseColorTexture(), material.normalTexture(), material.metallicRoughnessTexture(),
                 material.occlusionTexture(), material.emissiveTexture()
         };
-        for (GltfTextureInfo nullable : infos) {
-            GltfTextureInfo info = nullable == null ? GltfTextureInfo.absent() : nullable;
+        for (ModelTextureInfo nullable : infos) {
+            ModelTextureInfo info = nullable == null ? ModelTextureInfo.absent() : nullable;
             float cosine = (float) Math.cos(info.rotation());
             float sine = (float) Math.sin(info.rotation());
             putFloat(atlas, cursor++, cosine * info.scaleU());
@@ -126,7 +126,7 @@ final class IrisCanonicalMaterialAtlasCompiler {
             putFloat(atlas, cursor++, info.offsetV());
         }
         for (int i = 0; i < infos.length; i++) {
-            GltfTextureInfo info = infos[i] == null ? GltfTextureInfo.absent() : infos[i];
+            ModelTextureInfo info = infos[i] == null ? ModelTextureInfo.absent() : infos[i];
             putFloat(atlas, cursor++, info.texCoord());
             putFloat(atlas, cursor++, wrapCode(maps[i].wrapS));
             putFloat(atlas, cursor++, wrapCode(maps[i].wrapT));

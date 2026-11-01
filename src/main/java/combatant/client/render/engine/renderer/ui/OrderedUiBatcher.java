@@ -552,6 +552,9 @@ public final class OrderedUiBatcher {
             float screenH = mc.getWindow().getHeight();
             float uiScale = ViewportContext.getUiScale();
             if (uiScale <= 0.0f) uiScale = 1.0f;
+            // One compute update per Combatant frame, shared by all UI climate draws.
+            GpuTextureView climateFieldView = hasClimateBatches()
+                    ? UiClimateField.update(screenW, screenH) : null;
             com.mojang.renderpearl.api.buffers.GpuBufferSlice uiBatch = null;
             resetSharedBlur();
 
@@ -1011,6 +1014,9 @@ public final class OrderedUiBatcher {
                             glassBuilder.uniform(UiGlassFrameUniforms.BLOCK_NAME, frameData);
                             glassBuilder.uniform(UiGlassStackUniforms.BLOCK_NAME, stackData);
                             if (visualData != null) glassBuilder.uniform(UiGlassVisualUniforms.BLOCK_NAME, visualData);
+                            if (isClimateGlass(batch)) {
+                                glassBuilder.sampler("u_ClimateField", requireClimateField(climateFieldView), PostProcessManager.getSampler());
+                            }
                             glassBuilder.sampler("u_StackTexture",
                                     stackActive ? currentTargetView : sourceView,
                                     stackActive ? backdropSampler : sourceSampler);
@@ -1114,6 +1120,19 @@ public final class OrderedUiBatcher {
                     continue;
                 }
 
+                // Climate material overlays need the pixels ALREADY rendered under
+                // them. Capture at this painter-order boundary, never sample the
+                // currently bound main attachment while writing into it.
+                GpuTextureView climateBackdrop = null;
+                if (batch.type == UiBatchType.CLIMATE_PRIMITIVE) {
+                    flushPendingDraws(pendingDraws);
+                    climateBackdrop = UiBlurResources.captureCurrentTarget(mc, mainColorView, false);
+                    if (climateBackdrop == null || climateBackdrop == mainColorView) {
+                        throw new IllegalStateException("Climate refraction requires a current-target snapshot");
+                    }
+                    // Existing world/glass blur cache is still valid: this is
+                    // only a copy of the current UI destination.
+                }
                 UiPbrTextureSets.Binding materialMicro = batch.type.usesMaterialTexture()
                         ? UiPbrTextureSets.resolve(batch.materialMode) : null;
                 MeshRenderer builder = MeshRenderer.begin()
@@ -1128,9 +1147,15 @@ public final class OrderedUiBatcher {
                     }
                     builder.uniform("UIBatch", uiBatch);
                 }
-                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE || batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE) {
+                if (batch.type == UiBatchType.CLIMATE_PRIMITIVE
+                        || batch.type == UiBatchType.MATERIAL_PRIMITIVE
+                        || batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE) {
                     builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
                             UiGlassFrameUniforms.update(mc, screenW, screenH));
+                    if (batch.type == UiBatchType.CLIMATE_PRIMITIVE) {
+                        builder.sampler("u_ClimateField", requireClimateField(climateFieldView), PostProcessManager.getSampler());
+                        builder.sampler("u_ClimateBackdrop", climateBackdrop, PostProcessManager.getSampler());
+                    }
                     if (batch.type.usesMaterialTexture()) {
                         if (materialMicro != null)
                             materialMicro.bind(builder);
@@ -1160,6 +1185,9 @@ public final class OrderedUiBatcher {
                 builder.endTo(pendingDraws);
                 mirrorNewDraws(pendingDraws, mirrorStart,
                         batch.clipSnapshot.usesMsaaStencil() ? null : secondaryReplayView);
+                if (batch.type == UiBatchType.CLIMATE_PRIMITIVE) {
+                    flushPendingDraws(pendingDraws);
+                }
             }
 
             flushPendingDraws(pendingDraws);
@@ -1227,6 +1255,9 @@ public final class OrderedUiBatcher {
 
             float screenW = mc.getWindow().getWidth();
             float screenH = mc.getWindow().getHeight();
+            // One compute update per Combatant frame, shared by all UI climate draws.
+            GpuTextureView climateFieldView = hasClimateBatches()
+                    ? UiClimateField.update(screenW, screenH) : null;
             com.mojang.renderpearl.api.buffers.GpuBufferSlice uiBatch = null;
             int drawCalls = 0;
             int vertices = 0;
@@ -1264,7 +1295,7 @@ public final class OrderedUiBatcher {
 
                 DrawBatch batch = (DrawBatch) entry;
                 if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS
-                        || batch.type.usesPreparedGlass()) {
+                        || batch.type.usesPreparedGlass() || batch.type == UiBatchType.CLIMATE_PRIMITIVE) {
                     throw new IllegalStateException("Capture-dependent batch entered mixed item pass: " + batch.type);
                 }
                 if (batch.mesh.isBuilding()) batch.mesh.end();
@@ -1288,9 +1319,14 @@ public final class OrderedUiBatcher {
                     }
                     builder.uniform("UIBatch", uiBatch);
                 }
-                if (batch.type == UiBatchType.MATERIAL_PRIMITIVE || batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE) {
+                if (batch.type == UiBatchType.CLIMATE_PRIMITIVE
+                        || batch.type == UiBatchType.MATERIAL_PRIMITIVE
+                        || batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE) {
                     builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,
                             UiGlassFrameUniforms.update(mc, screenW, screenH));
+                    if (batch.type == UiBatchType.CLIMATE_PRIMITIVE) {
+                        builder.sampler("u_ClimateField", requireClimateField(climateFieldView), PostProcessManager.getSampler());
+                    }
                     if (batch.type.usesMaterialTexture()) {
                         if (materialMicro != null)
                             materialMicro.bind(builder);
@@ -1466,6 +1502,27 @@ public final class OrderedUiBatcher {
                     + " has no ANALYTIC_CLIP pipeline for clip snapshot " + batch.clipSnapshot.id());
         }
         return batch.type.pipelineFor(batch.clipSnapshot);
+    }
+
+    private boolean hasClimateBatches() {
+        for (Object entry : order) {
+            if (entry instanceof DrawBatch batch
+                    && (batch.type == UiBatchType.CLIMATE_PRIMITIVE || isClimateGlass(batch))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isClimateGlass(DrawBatch batch) {
+        return batch != null && batch.type == UiBatchType.LIQUID_GLASS
+                && batch.glassVisual != null && batch.glassVisual.shader() != null
+                && batch.glassVisual.shader().getPath().endsWith("ui_glass_climate.frag");
+    }
+
+    private static GpuTextureView requireClimateField(GpuTextureView view) {
+        if (view == null) throw new IllegalStateException("GPU climate field was not prepared");
+        return view;
     }
 
     private static boolean isGlassLens(DrawBatch batch) {

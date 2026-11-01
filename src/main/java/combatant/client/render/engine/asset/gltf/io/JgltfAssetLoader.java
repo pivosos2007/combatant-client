@@ -22,8 +22,9 @@ import de.javagl.jgltf.model.io.GltfAssetReader;
 import de.javagl.jgltf.model.io.GltfReferenceResolver;
 import de.javagl.jgltf.model.v2.MaterialModelV2;
 import net.minecraft.resources.Identifier;
-import combatant.client.render.engine.asset.gltf.animation.*;
-import combatant.client.render.engine.asset.gltf.model.*;
+import combatant.client.render.engine.asset.model.io.ModelResourcePaths;
+import combatant.client.render.engine.asset.model.animation.*;
+import combatant.client.render.engine.asset.model.data.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -34,7 +35,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
 
-/** Converts JglTF's mutable model into Combatant glTF's immutable runtime format. */
+/** Converts JglTF's mutable glTF document to the common imported-model representation. */
 public final class JgltfAssetLoader {
     public static final long DEFAULT_MAX_RESOURCE_BYTES = 256L * 1024L * 1024L;
     private static final int MAX_NODES = 100_000;
@@ -67,7 +68,7 @@ public final class JgltfAssetLoader {
         this.maxResourceBytes = maxResourceBytes;
     }
 
-    public GltfAsset load(Identifier id, GltfResourceResolver resolver) throws IOException {
+    public ModelAsset load(Identifier id, GltfResourceResolver resolver) throws IOException {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(resolver, "resolver");
         ReadBudget budget = new ReadBudget(maxResourceBytes);
@@ -107,7 +108,7 @@ public final class JgltfAssetLoader {
         }
     }
 
-    private GltfAsset convert(Identifier id, GltfModel source, int defaultScene,
+    private ModelAsset convert(Identifier id, GltfModel source, int defaultScene,
                               ObjectNode jsonRoot) throws GltfLoadException {
         List<NodeModel> sourceNodes = source.getNodeModels();
         List<MeshModel> sourceMeshes = source.getMeshModels();
@@ -144,29 +145,43 @@ public final class JgltfAssetLoader {
         IdentityHashMap<TextureModel, Integer> textureIds = index(sourceTextures);
         IdentityHashMap<MaterialModel, Integer> materialIds = index(source.getMaterialModels());
 
-        List<GltfTexture> textures = convertTextures(sourceTextures);
-        List<GltfMaterial> materials = convertMaterials(
+        List<ModelTexture> textures = convertTextures(sourceTextures);
+        List<ModelMaterial> materials = convertMaterials(
             source.getMaterialModels(),
             textureIds,
             jsonRoot.get("materials")
         );
         int defaultMaterial = materials.size();
-        materials.add(GltfMaterial.defaultMaterial());
-        List<GltfMesh> meshes = convertMeshes(sourceMeshes, materialIds, defaultMaterial);
-        List<GltfNode> nodes = convertNodes(sourceNodes, nodeIds, meshIds, skinIds);
-        List<GltfScene> scenes = convertScenes(source.getSceneModels(), nodeIds, nodes);
-        List<GltfSkin> skins = convertSkins(source.getSkinModels(), nodeIds);
+        materials.add(ModelMaterial.defaultMaterial());
+        List<ModelMesh> meshes = convertMeshes(sourceMeshes, materialIds, defaultMaterial);
+        List<ModelNode> nodes = convertNodes(sourceNodes, nodeIds, meshIds, skinIds);
+        List<ModelScene> scenes = convertScenes(source.getSceneModels(), nodeIds, nodes);
+        List<ModelSkin> skins = convertSkins(source.getSkinModels(), nodeIds);
         List<AnimationClip> animations = convertAnimations(sourceAnimations, nodeIds);
         if (!scenes.isEmpty() && (defaultScene < 0 || defaultScene >= scenes.size())) {
             throw new GltfLoadException(id, "Default scene index is out of range: " + defaultScene);
         }
-        return new GltfAsset(id, scenes, nodes, meshes, materials, textures, skins,
+        return new ModelAsset(id, scenes, nodes, meshes, materials, textures, skins,
             animations, used == null ? List.of() : used, required == null ? List.of() : required,
             scenes.isEmpty() ? 0 : defaultScene);
     }
 
-    private static List<GltfTexture> convertTextures(List<TextureModel> sources) {
-        List<GltfTexture> result = new ArrayList<>(sources.size());
+    /** glTF topology codes are a format-specific concern, never part of the shared model enum. */
+    private static PrimitiveMode primitiveMode(int code) {
+        return switch (code) {
+            case 0 -> PrimitiveMode.POINTS;
+            case 1 -> PrimitiveMode.LINES;
+            case 2 -> PrimitiveMode.LINE_LOOP;
+            case 3 -> PrimitiveMode.LINE_STRIP;
+            case 4 -> PrimitiveMode.TRIANGLES;
+            case 5 -> PrimitiveMode.TRIANGLE_STRIP;
+            case 6 -> PrimitiveMode.TRIANGLE_FAN;
+            default -> throw new IllegalArgumentException("Unsupported glTF primitive mode: " + code);
+        };
+    }
+
+    private static List<ModelTexture> convertTextures(List<TextureModel> sources) {
+        List<ModelTexture> result = new ArrayList<>(sources.size());
         for (int index = 0; index < sources.size(); index++) {
             TextureModel texture = sources.get(index);
             ImageModel image = texture.getImageModel();
@@ -175,30 +190,30 @@ public final class JgltfAssetLoader {
             }
             String mime = image.getMimeType();
             if (mime == null) mime = guessMime(image.getUri());
-            result.add(new GltfTexture(texture.getName(), mime, image.getImageData(),
+            result.add(new ModelTexture(texture.getName(), mime, image.getImageData(),
                 value(texture.getMagFilter(), 9729), value(texture.getMinFilter(), 9987),
                 value(texture.getWrapS(), 10497), value(texture.getWrapT(), 10497)));
         }
         return result;
     }
 
-    private static List<GltfMaterial> convertMaterials(
+    private static List<ModelMaterial> convertMaterials(
         List<MaterialModel> sources,
         IdentityHashMap<TextureModel, Integer> textureIds,
         JsonNode materialNodes
     ) {
-        List<GltfMaterial> result = new ArrayList<>(sources.size() + 1);
+        List<ModelMaterial> result = new ArrayList<>(sources.size() + 1);
         for (int materialIndex = 0; materialIndex < sources.size(); materialIndex++) {
             MaterialModel source = sources.get(materialIndex);
             if (source instanceof MaterialModelV2 material) {
-                combatant.client.render.engine.asset.gltf.model.AlphaMode alphaMode = material.getAlphaMode() == null
-                    ? combatant.client.render.engine.asset.gltf.model.AlphaMode.OPAQUE
-                    : combatant.client.render.engine.asset.gltf.model.AlphaMode.valueOf(material.getAlphaMode().name());
+                combatant.client.render.engine.asset.model.data.AlphaMode alphaMode = material.getAlphaMode() == null
+                    ? combatant.client.render.engine.asset.model.data.AlphaMode.OPAQUE
+                    : combatant.client.render.engine.asset.model.data.AlphaMode.valueOf(material.getAlphaMode().name());
                 JsonNode materialNode = arrayElement(materialNodes, materialIndex);
                 JsonNode pbrNode = child(materialNode, "pbrMetallicRoughness");
                 JsonNode extensions = child(materialNode, "extensions");
                 JsonNode emissiveStrengthNode = child(extensions, "KHR_materials_emissive_strength");
-                result.add(new GltfMaterial(
+                result.add(new ModelMaterial(
                     material.getName(),
                     material.getBaseColorFactor(),
                     textureInfo(
@@ -238,14 +253,14 @@ public final class JgltfAssetLoader {
                     child(extensions, "KHR_materials_unlit") != null
                 ));
             } else {
-                result.add(GltfMaterial.defaultMaterial());
+                result.add(ModelMaterial.defaultMaterial());
             }
         }
         return result;
     }
 
-    private static GltfTextureInfo textureInfo(JsonNode source, int texture, int texCoord) {
-        if (source == null) return new GltfTextureInfo(texture, texCoord);
+    private static ModelTextureInfo textureInfo(JsonNode source, int texture, int texCoord) {
+        if (source == null) return new ModelTextureInfo(texture, texCoord);
         int effectiveTexture = integer(source, "index", texture);
         int effectiveTexCoord = integer(source, "texCoord", texCoord);
         float offsetU = 0.0f;
@@ -264,7 +279,7 @@ public final class JgltfAssetLoader {
             rotation = number(transform, "rotation", 0.0f);
             effectiveTexCoord = integer(transform, "texCoord", effectiveTexCoord);
         }
-        return new GltfTextureInfo(
+        return new ModelTextureInfo(
             effectiveTexture,
             effectiveTexCoord,
             offsetU,
@@ -324,12 +339,12 @@ public final class JgltfAssetLoader {
         return result;
     }
 
-    private static List<GltfMesh> convertMeshes(List<MeshModel> sources,
+    private static List<ModelMesh> convertMeshes(List<MeshModel> sources,
                                                  IdentityHashMap<MaterialModel, Integer> materialIds,
                                                  int defaultMaterial) {
-        List<GltfMesh> result = new ArrayList<>(sources.size());
+        List<ModelMesh> result = new ArrayList<>(sources.size());
         for (MeshModel mesh : sources) {
-            List<GltfPrimitive> primitives = new ArrayList<>();
+            List<ModelPrimitive> primitives = new ArrayList<>();
             for (MeshPrimitiveModel primitive : mesh.getMeshPrimitiveModels()) {
                 Map<String, AccessorModel> attributes = primitive.getAttributes();
                 AccessorModel positions = attributes.get("POSITION");
@@ -353,25 +368,25 @@ public final class JgltfAssetLoader {
                 }
                 int material = primitive.getMaterialModel() == null ? defaultMaterial
                     : id(materialIds, primitive.getMaterialModel());
-                primitives.add(new GltfPrimitive(PrimitiveMode.fromGltfCode(primitive.getMode()), material,
+                primitives.add(new ModelPrimitive(primitiveMode(primitive.getMode()), material,
                     positions.getCount(), AccessorReader.floats(positions),
                     optionalFloats(attributes.get("NORMAL")), optionalFloats(attributes.get("TANGENT")),
                     optionalFloats(attributes.get("TEXCOORD_0")), optionalFloats(attributes.get("TEXCOORD_1")),
                     optionalFloats(attributes.get("COLOR_0")), optionalIntegers(attributes.get("JOINTS_0")),
                     optionalFloats(attributes.get("WEIGHTS_0")), optionalIntegers(primitive.getIndices()), targets));
             }
-            result.add(new GltfMesh(mesh.getName(), primitives, mesh.getWeights()));
+            result.add(new ModelMesh(mesh.getName(), primitives, mesh.getWeights()));
         }
         return result;
     }
 
-    private static List<GltfNode> convertNodes(List<NodeModel> sources,
+    private static List<ModelNode> convertNodes(List<NodeModel> sources,
                                                 IdentityHashMap<NodeModel, Integer> nodeIds,
                                                 IdentityHashMap<MeshModel, Integer> meshIds,
                                                 IdentityHashMap<SkinModel, Integer> skinIds) {
-        List<GltfNode> result = new ArrayList<>(sources.size());
+        List<ModelNode> result = new ArrayList<>(sources.size());
         for (NodeModel node : sources) {
-            result.add(new GltfNode(node.getName(), id(nodeIds, node.getParent()),
+            result.add(new ModelNode(node.getName(), id(nodeIds, node.getParent()),
                 ids(node.getChildren(), nodeIds), ids(node.getMeshModels(), meshIds),
                 id(skinIds, node.getSkinModel()), node.getMatrix(), node.getTranslation(),
                 node.getRotation(), node.getScale(), node.getWeights()));
@@ -379,38 +394,38 @@ public final class JgltfAssetLoader {
         return result;
     }
 
-    private static List<GltfScene> convertScenes(List<SceneModel> sources,
+    private static List<ModelScene> convertScenes(List<SceneModel> sources,
                                                   IdentityHashMap<NodeModel, Integer> nodeIds,
-                                                  List<GltfNode> nodes) {
+                                                  List<ModelNode> nodes) {
         if (sources.isEmpty() && !nodes.isEmpty()) {
             int count = 0;
-            for (GltfNode node : nodes) if (node.parent() < 0) count++;
+            for (ModelNode node : nodes) if (node.parent() < 0) count++;
             int[] roots = new int[count];
             int write = 0;
             for (int i = 0; i < nodes.size(); i++) if (nodes.get(i).parent() < 0) roots[write++] = i;
-            return List.of(new GltfScene("default", roots));
+            return List.of(new ModelScene("default", roots));
         }
-        List<GltfScene> result = new ArrayList<>(sources.size());
-        for (SceneModel scene : sources) result.add(new GltfScene(scene.getName(), ids(scene.getNodeModels(), nodeIds)));
+        List<ModelScene> result = new ArrayList<>(sources.size());
+        for (SceneModel scene : sources) result.add(new ModelScene(scene.getName(), ids(scene.getNodeModels(), nodeIds)));
         return result;
     }
 
-    private static List<GltfSkin> convertSkins(List<SkinModel> sources,
+    private static List<ModelSkin> convertSkins(List<SkinModel> sources,
                                                 IdentityHashMap<NodeModel, Integer> nodeIds) {
-        List<GltfSkin> result = new ArrayList<>(sources.size());
+        List<ModelSkin> result = new ArrayList<>(sources.size());
         for (SkinModel skin : sources) {
             requireOptionalElementType(skin.getInverseBindMatrices(), "inverse bind matrices", ElementType.MAT4);
             int[] joints = ids(skin.getJoints(), nodeIds);
-            if (joints.length > GltfSkin.MAX_JOINTS) {
+            if (joints.length > ModelSkin.MAX_JOINTS) {
                 throw new IllegalArgumentException("Skin has " + joints.length
-                    + " joints; Combatant importer accepts at most " + GltfSkin.MAX_JOINTS + " joints per skin");
+                    + " joints; Combatant importer accepts at most " + ModelSkin.MAX_JOINTS + " joints per skin");
             }
             float[] inverse = new float[joints.length * 16];
             for (int i = 0; i < joints.length; i++) {
                 float[] matrix = skin.getInverseBindMatrices() == null ? identity() : skin.getInverseBindMatrix(i, null);
                 System.arraycopy(matrix, 0, inverse, i * 16, 16);
             }
-            result.add(new GltfSkin(skin.getName(), id(nodeIds, skin.getSkeleton()), joints, inverse));
+            result.add(new ModelSkin(skin.getName(), id(nodeIds, skin.getSkeleton()), joints, inverse));
         }
         return result;
     }
@@ -778,33 +793,7 @@ public final class JgltfAssetLoader {
     }
 
     static Identifier resolveRelative(Identifier base, String rawUri) throws IOException {
-        if (rawUri == null || rawUri.isBlank()) throw new IOException("External resource URI is empty");
-        URI uri;
-        try { uri = URI.create(rawUri); } catch (IllegalArgumentException e) { throw new IOException("Invalid URI " + rawUri, e); }
-        if (uri.isAbsolute() || uri.getAuthority() != null || uri.getQuery() != null || uri.getFragment() != null) {
-            throw new IOException("External/network URI is forbidden: " + rawUri);
-        }
-        String uriPath = uri.getPath();
-        if (uriPath == null || uriPath.isBlank() || uriPath.startsWith("/")) {
-            throw new IOException("Only non-empty relative resource URIs are allowed: " + rawUri);
-        }
-        String path = uriPath.replace('\\', '/');
-        String parent = base.getPath().contains("/")
-            ? base.getPath().substring(0, base.getPath().lastIndexOf('/') + 1) : "";
-        Deque<String> parts = new ArrayDeque<>();
-        for (String part : (parent + path).split("/")) {
-            if (part.isEmpty() || part.equals(".")) continue;
-            if (part.equals("..")) {
-                if (parts.isEmpty()) throw new IOException("URI escapes namespace root: " + rawUri);
-                parts.removeLast();
-            } else parts.addLast(part);
-        }
-        if (parts.isEmpty()) throw new IOException("URI resolves to the namespace root: " + rawUri);
-        try {
-            return Identifier.fromNamespaceAndPath(base.getNamespace(), String.join("/", parts));
-        } catch (RuntimeException exception) {
-            throw new IOException("URI does not map to a valid Minecraft resource path: " + rawUri, exception);
-        }
+        return ModelResourcePaths.sibling(base, rawUri);
     }
 
     private static byte[] readAll(InputStream stream, ReadBudget budget, String label) throws IOException {

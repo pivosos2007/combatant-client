@@ -7,17 +7,34 @@
 
 package combatant.client.config;
 
+import net.fabricmc.loader.api.FabricLoader;
+
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Locale;
 
 public enum ConfigPaths {
     ;
 
-    // TODO: make the user config root configurable, including base directory and visible folder name.
-    // Keep config/combatant as the default for compatibility with existing installs.
+    // The root is fixed for this process; pending migrations run before any caller can cache a path.
+    private static final class Storage {
+        private static final ConfigurationRootManager MANAGER = open();
+
+        private static ConfigurationRootManager open() {
+            try {
+                // OS process teardown releases the locks after all concurrent writer shutdown hooks finish.
+                return ConfigurationRootManager.open(FabricLoader.getInstance().getGameDir());
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("Combatant configuration storage unavailable; recover the bootstrap metadata before restarting", e);
+            }
+        }
+    }
+
+    public static ConfigurationRootManager manager() {
+        return Storage.MANAGER;
+    }
+
     public static Path root() {
-        return Paths.get("config", legacyNamespaceName());
+        return manager().root();
     }
 
     public static Path profilesRoot() {

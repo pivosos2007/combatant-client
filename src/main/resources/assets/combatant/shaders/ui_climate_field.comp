@@ -1,0 +1,163 @@
+#version 430 core
+/*
+ * Combatant Client - persistent UI precipitation field.
+ * GPL-3.0. This field stores adhered water, flowing water, wetness and speed.
+ * Compute updates state once per frame, not per widget. No cyclic sprites.
+ */
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_Previous;
+layout(binding = 1, rgba16f) writeonly uniform image2D u_Next;
+layout(std430, binding = 2) readonly buffer ClimateFieldParameters {
+    vec4 u_Frame;   // physical framebuffer width/height, dt, history valid
+    vec4 u_Weather; // rain humidity, SINGLE exit pulse, monotonic time, event sequence
+};
+
+// RGBA: pinned volume, running volume, persistent wet film, downward speed.
+// Both volumes are amounts, not opacity. Mixing/confluence conserves volume;
+// only precipitation, evaporation, pinning and screen-edge runoff change it.
+float hash12(vec2 p) {
+    uvec2 n = floatBitsToUint(p);
+    uint h = n.x * 1664525u + n.y * 1013904223u + 0x9e3779b9u;
+    h ^= h >> 16u;
+    h *= 2246822519u;
+    h ^= h >> 13u;
+    return float(h & 0x00ffffffu) * (1.0 / 16777216.0);
+}
+
+vec4 state(ivec2 p, ivec2 size) {
+    if (u_Frame.w < 0.5 || any(lessThan(p, ivec2(0))) ||
+        any(greaterThanEqual(p, size))) return vec4(0.0);
+    return max(texelFetch(u_Previous, p, 0), vec4(0.0));
+}
+
+// Fixed spatial adhesion bias; it affects the *route*, never resets a drop.
+// Coherent variation is essential: independent random steering per texel
+// turns a moving drop into an expanding spray.
+float steer(ivec2 pixel, vec2 scale) {
+    vec2 p = vec2(pixel) * scale;
+    float bend = sin(p.x * 0.021 + p.y * 0.010 +
+                     sin(p.y * 0.025 + p.x * 0.009) * 0.75);
+    bend += 0.30 * sin(p.y * 0.052 - p.x * 0.028);
+    return clamp(bend * 0.53, -0.72, 0.72);
+}
+
+// Fractions of a cell's moving volume exported over one compute time step.
+// All three weights sum to 1, so adjacent streams combine without double
+// counting or disappearance. The step is CFL-limited to <= 0.92 cells/frame.
+vec3 flowWeights(ivec2 pixel, vec2 scale) {
+    float direction = steer(pixel, scale);
+    // Minimize sideways diffusion: the wake follows nearly vertical paths,
+    // with only a small fixed adhesion-driven drift.
+    float side = abs(direction) * 0.015;
+    return vec3(direction < 0.0 ? side : 0.0,
+                1.0 - side,
+                direction > 0.0 ? side : 0.0);
+}
+
+float exported(vec4 s, float dt, float pixelH) {
+    float mobility = smoothstep(0.015, 0.11, s.g);
+    float speed = clamp(s.a, 0.0, 17.0);
+    return s.g * min(speed * dt / max(pixelH, 1.0), 0.92) * mobility;
+}
+
+// Populate the GPU field only on the edge of leaving water. No epoch,
+// timer, or waterExit level can add new droplets after the initial event.
+// Once deposited, each texel evolves ONLY by advection/adhesion/evaporation.
+float exitDeposit(vec2 px, float sequence) {
+    // A single splash at water exit, without additional sources afterwards.
+    // Make it denser and more evenly spread than the previous very coarse grid.
+    vec2 cellSize = vec2(34.0, 40.0);
+    vec2 cell = floor(px / cellSize);
+    float present = hash12(cell * 0.89 + vec2(31.3, 18.8 + sequence));
+    if (present < 0.28) return 0.0;
+    float hx = hash12(cell + vec2(19.7, 43.1 + sequence * 0.57));
+    float hy = hash12(cell * 1.17 + vec2(87.1 + sequence, 12.1));
+    float hs = hash12(cell * 2.38 + vec2(5.3, sequence * 1.69));
+    vec2 center = (cell + vec2(0.10 + hx * 0.80, 0.10 + hy * 0.80)) * cellSize;
+    // Multi-texel footprint at the field's half-framebuffer resolution.
+    float radius = mix(3.0, 4.4, hs);
+    vec2 d = (px - center) / vec2(radius * mix(0.70, 1.00, hx),
+                                   radius * mix(1.18, 1.55, hy));
+    d.x += (hx - 0.5) * 0.34 * d.y * d.y;
+    float cap = pow(max(1.0 - dot(d, d), 0.0), 1.9);
+    return cap * mix(0.78, 1.65, hs);
+}
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent = imageSize(u_Next);
+    if (any(greaterThanEqual(p, extent))) return;
+
+    vec2 physicalPerTexel = u_Frame.xy / vec2(extent);
+    vec2 px = (vec2(p) + 0.5) * physicalPerTexel;
+    float dt = clamp(u_Frame.z, 0.0, 0.05);
+    float rain = clamp(u_Weather.x, 0.0, 1.0);
+    float exitPulse = clamp(u_Weather.y, 0.0, 1.0);
+    float supply = rain;
+
+    vec4 own = state(p, extent);
+    vec4 upLeft = state(p + ivec2(-1, 1), extent);
+    vec4 up = state(p + ivec2(0, 1), extent);
+    vec4 upRight = state(p + ivec2(1, 1), extent);
+
+    float fromLeft = exported(upLeft, dt, physicalPerTexel.y) *
+                     flowWeights(p + ivec2(-1, 1), physicalPerTexel).z;
+    float fromAbove = exported(up, dt, physicalPerTexel.y) *
+                      flowWeights(p + ivec2(0, 1), physicalPerTexel).y;
+    float fromRight = exported(upRight, dt, physicalPerTexel.y) *
+                      flowWeights(p + ivec2(1, 1), physicalPerTexel).x;
+    float inflow = fromLeft + fromAbove + fromRight;
+    float remainder = max(own.g - exported(own, dt, physicalPerTexel.y), 0.0);
+
+    // Impact grows pinned droplets first. There is no timer-based reset.
+    float pinned = own.r * exp(-dt * mix(0.16, 0.018, supply));
+    pinned += exitPulse * exitDeposit(px, u_Weather.w);
+
+    // Contact angle hysteresis: small droplets stick, large ones slide.
+    // A passing runnel captures an adhered bead and increases its own mass.
+    float adhesion = mix(0.32, 0.54,
+            hash12(floor(px / 9.0) * 0.73 + vec2(36.1, 18.2)));
+    float breakthrough = max(pinned - adhesion, 0.0);
+    float release = breakthrough * (1.0 - exp(-1.55 * dt));
+    // Once a bead breaks free, release its *whole* reservoir. Retaining the
+    // contact-angle threshold as a stationary core produced the old illusion
+    // of dots pinned forever with streaks underneath them.
+    float passing = smoothstep(0.045, 0.16, remainder + inflow + release * 1.6);
+    release += (pinned - release) * passing * (1.0 - exp(-2.8 * dt));
+    pinned = max(pinned - release, 0.0);
+
+    float mobile = remainder + inflow + release;
+    // Thin mobile films stick back to the surface instead of diffusing into
+    // infinite hairlines. This transfer preserves liquid volume.
+    float recapture = mobile * (1.0 - smoothstep(0.025, 0.13, mobile))
+                      * (1.0 - exp(-1.5 * dt));
+    mobile = max(mobile - recapture, 0.0);
+    pinned += recapture;
+    // Slow evaporation is an explicit loss, never a cyclic disappearance.
+    float evaporation = mix(0.16, 0.012, supply);
+    mobile *= exp(-dt * evaporation * 0.20);
+    pinned = min(pinned, 6.0);
+    mobile = min(mobile, 6.0);
+
+    // Downward momentum is transported with the incoming moving mass. New
+    // drops accelerate under gravity, encounter viscous/contact-line friction,
+    // and grow faster when they merge with upstream streams.
+    float transportedMomentum = own.a * remainder + upLeft.a * fromLeft +
+                                up.a * fromAbove + upRight.a * fromRight;
+    float speed = transportedMomentum / max(remainder + inflow, 0.00001);
+    speed = mix(speed, max(speed, 1.2), smoothstep(0.01, 0.12, release));
+    float driving = smoothstep(0.04, 0.35, mobile);
+    speed += dt * (34.0 * driving - 22.0 * (1.0 - driving));
+    speed *= exp(-dt * mix(5.0, 2.6, driving));
+    speed = clamp(speed, 0.0, 17.0);
+    speed *= smoothstep(0.012, 0.075, mobile);
+
+    // Wetness is a memory of the route traversed by the droplet's head.
+    // Only actual moving liquid paints a stream; a stationary bead does not.
+    float trail = own.b * exp(-dt * mix(0.10, 0.055, supply));
+    trail = max(trail, smoothstep(0.019, 0.20, mobile) * 0.98);
+    // A moving drop touching a rivulet is more likely to keep running.
+    speed = min(17.0, speed + 1.5 * trail * driving * dt);
+
+    imageStore(u_Next, p, vec4(pinned, mobile, trail, speed));
+}

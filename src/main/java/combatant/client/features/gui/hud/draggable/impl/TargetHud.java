@@ -35,13 +35,11 @@ import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudClimateSurface;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.theme.Themes;
-import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.combat.AutoAnchor;
-import combatant.client.features.module.modules.combat.AutoBed;
-import combatant.client.features.module.modules.combat.AutoCrystal;
+import combatant.client.util.target.hud.TargetHudStatusRegistry;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.math.HudScale;
@@ -50,6 +48,7 @@ import combatant.client.render.engine.profiler.RenderProfiler2D;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
+import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
 import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
 import combatant.client.render.engine.text.TextRenderer;
@@ -196,6 +195,8 @@ public final class TargetHud extends DraggableHudElement {
             new RGBColorValue("target_totem_pop_text_color", "RNB#FFFFFF");
     private final BooleanValue marquee =
             new BooleanValue("target_marquee", true);
+    private final BooleanValue statusMarquee =
+            new BooleanValue("target_status_marquee", true);
     private final BooleanValue playersOnly =
             new BooleanValue("target_players_only", false);
     private final BooleanValue crosshairTargets =
@@ -479,6 +480,7 @@ public final class TargetHud extends DraggableHudElement {
         defs.add(SettingDef.colorNoAlpha(totemPopTextColor)
                 .visibleWhen(totemPopCounter::get));
         defs.add(SettingDef.bool(marquee));
+        defs.add(SettingDef.bool(statusMarquee));
         defs.add(SettingDef.bool(playersOnly));
         defs.add(SettingDef.bool(crosshairTargets));
         defs.add(SettingDef.mode(effectsMode));
@@ -620,6 +622,16 @@ public final class TargetHud extends DraggableHudElement {
             if (glassEnabled) drawGlass(panelX, panelY, panelW, panelH, panelRadius, alphaFactor);
 
             drawBackground(renderer, panelX, panelY, panelW, panelH, panelRadius, alphaFactor, glassEnabled);
+            // Ice must retain its PBR glass shader. Refract the already
+            // composed ice surface with the same capture-aware climate layer.
+            if (glassEnabled && "Ice".equals(surfaceMaterial.get())
+                    && glassHitLevel <= 0.001f) {
+                HudClimateSurface.drawMaterialClimate(renderer,
+                        UiPrimitive.builder(panelX, panelY, panelW, panelH)
+                                .roundedCorners(panelRadius, panelRadius,
+                                        panelRadius, panelRadius).build(),
+                        alphaFactor * 0.85f);
+            }
             if (strokeEnabled.get()) {
                 HudRenderUtil.drawHudStroke(
                         renderer, panelX, panelY, panelW, panelH, panelRadius, 1.0f,
@@ -1087,17 +1099,31 @@ public final class TargetHud extends DraggableHudElement {
         }
 
         if (arcMode) {
-            metaRenderer.begin(DISTANCE_TEXT_SCALE * scaleFactor, false, false);
-            try {
-                metaRenderer.render(
-                        meta,
+            float metaScale = DISTANCE_TEXT_SCALE * scaleFactor;
+            float metaY = nameY + DISTANCE_Y_OFFSET * scaleFactor;
+            float rawStatusWidth = moduleStatus != null && statusMarquee.get()
+                    ? measureText(metaRenderer, moduleStatus, metaScale)
+                    : 0.0f;
+            if (moduleStatus != null && rawStatusWidth > maxNameWidth * 1.01f) {
+                drawScrollingText(
+                        metaRenderer,
+                        moduleStatus,
                         contentX,
-                        nameY + DISTANCE_Y_OFFSET * scaleFactor,
-                        new RenderColor(distanceColor),
-                        false
+                        metaY,
+                        rawStatusWidth,
+                        maxNameWidth,
+                        metaScale,
+                        scaleFactor,
+                        alphaFactor,
+                        distanceColor
                 );
-            } finally {
-                metaRenderer.end();
+            } else {
+                metaRenderer.begin(metaScale, false, false);
+                try {
+                    metaRenderer.render(meta, contentX, metaY, new RenderColor(distanceColor), false);
+                } finally {
+                    metaRenderer.end();
+                }
             }
 
             drawHealthArc(renderer, textRenderer, x, y, panelWidth, scaleFactor, alphaFactor, hpText, hpColor, now);
@@ -1190,35 +1216,7 @@ public final class TargetHud extends DraggableHudElement {
     }
 
     private String resolveModuleStatus(LivingEntity target) {
-        if (target == null) {
-            return null;
-        }
-
-        AutoCrystal autoCrystal = Modules.get(AutoCrystal.class);
-        if (autoCrystal != null) {
-            String status = autoCrystal.getTargetHudStatus(target);
-            if (status != null && !status.isBlank()) {
-                return status;
-            }
-        }
-
-        AutoAnchor autoAnchor = Modules.get(AutoAnchor.class);
-        if (autoAnchor != null) {
-            String status = autoAnchor.getTargetHudStatus(target);
-            if (status != null && !status.isBlank()) {
-                return status;
-            }
-        }
-
-        AutoBed autoBed = Modules.get(AutoBed.class);
-        if (autoBed != null) {
-            String status = autoBed.getTargetHudStatus(target);
-            if (status != null && !status.isBlank()) {
-                return status;
-            }
-        }
-
-        return null;
+        return TargetHudStatusRegistry.resolve(target);
     }
 
     private void drawScrollingText(TextRenderer renderer,
@@ -1562,6 +1560,12 @@ public final class TargetHud extends DraggableHudElement {
         }
     }
 
+    /** Preserve TargetHUD's impact chroma while sharing HUD weather optics. */
+    private static UiGlassVisual targetClimateVisual() {
+        UiGlassVisual climate = HudClimateSurface.glassVisual(true);
+        return climate.custom() ? climate.withVector(2, 1f, 0f, 0f, 0f) : UiGlassVisual.IMPACT;
+    }
+
     private void drawGlass(float x, float y, float width, float height, float radius, float alphaFactor) {
         float glassScale = PANEL_RADIUS <= 0.0f ? 1.0f : radius / PANEL_RADIUS;
         float hit = AnimationUtility.clamp01(glassHitLevel);
@@ -1574,11 +1578,14 @@ public final class TargetHud extends DraggableHudElement {
                         .withBevel(AnimationUtility.lerp(TARGET_GLASS.bevelWidth(), 0.29f, hit),
                                 AnimationUtility.lerp(TARGET_GLASS.bevelDepth(), 0.092f, hit))
                 : TARGET_GLASS;
+        // Keep ice PBR intact. Its weather is an ordered climate overlay
+        // over the composed glass (below); all other coats use climate glass
+        // with the original TargetHUD impact chroma preserved.
+        UiGlassVisual visual = "Ice".equals(surfaceMaterial.get()) && hit <= 0.001f
+                ? UiGlassVisual.ice(UiIceMaterialSpec.LIGHT) : targetClimateVisual();
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, glassScale, true,
                 alphaFactor, alphaFactor,
-                mainGlassFluid, optics, false, 0f, 0.65f,
-                "Ice".equals(surfaceMaterial.get()) && hit <= 0.001f
-                        ? UiGlassVisual.ice(UiIceMaterialSpec.LIGHT) : UiGlassVisual.IMPACT);
+                mainGlassFluid, optics, false, 0f, 0.65f, visual);
         if (isGradientPanelStyle()) {
             float strength = themeGradientStrength.get() / 100.0f;
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(
@@ -1611,7 +1618,7 @@ public final class TargetHud extends DraggableHudElement {
                 .withInteractionStrength(0f).withChromaticAberration(0.38f);
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, scaleFactor, true,
                 alphaFactor, alphaFactor,
-                null, chipOptics, true, 0f, 0f, UiGlassVisual.IMPACT);
+                null, chipOptics, true, 0f, 0f, targetClimateVisual());
     }
 
     private void drawItem(Renderer2D renderer,

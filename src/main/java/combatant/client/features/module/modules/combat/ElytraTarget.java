@@ -353,7 +353,7 @@ public final class ElytraTarget extends Module {
         LocalPlayer player = mc.player;
         if (isAttributeSwapElytraCycleActive()) {
             target = null;
-            TargetManager.setElytraTarget(null);
+            TargetManager.clear(this);
             clearPursuitState();
             clearAutoTakeoffState();
             queuedFireworkUse = false;
@@ -368,7 +368,7 @@ public final class ElytraTarget extends Module {
 
         target = validSelf && validTarget ? combatTarget : null;
         updateTargetFocus(target);
-        TargetManager.setElytraTarget(target);
+        TargetManager.publish(this, target, TargetManager.Source.MODULE, 900);
         // Evaluated this tick in onRotationUpdate (PRE), right before the rotation is consumed.
         boolean emergencyAvoidQueued = this.emergencyAvoidQueued;
 
@@ -553,7 +553,7 @@ public final class ElytraTarget extends Module {
     private void resetState() {
         ElytraRecastUtil.INSTANCE.reset(this);
         target = null;
-        TargetManager.setElytraTarget(null);
+        TargetManager.clear(this);
         preparingRotation = false;
         pendingRotation = null;
         lastDirection = null;
@@ -639,10 +639,7 @@ public final class ElytraTarget extends Module {
     }
 
     private LivingEntity resolveRecentAttackTarget() {
-        if (TargetManager.getTargetSource() != TargetManager.Source.ATTACK) {
-            return null;
-        }
-        return TargetManager.getTarget();
+        return TargetManager.getRecentAttackTarget();
     }
 
     private boolean isRecentAttackTarget(LivingEntity candidate) {

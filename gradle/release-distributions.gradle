@@ -307,10 +307,6 @@ def combatantShouldDropPlatformEntry = { String name, String target ->
         if (name.startsWith('mediaplayerinfo/natives/win/')) return true
     }
 
-    if (name.startsWith('combatant/nativeguard/')) {
-        String relative = name.substring('combatant/nativeguard/'.length())
-        if (!relative.startsWith(target + '/')) return true
-    }
     return false
 }
 

@@ -8,7 +8,6 @@
 #include <combatant:ui_aa.glsl>
 #include <combatant:ui_geometry.glsl>
 #include <combatant:ui_voronoi_structure.glsl>
-#include <combatant:ui_climate_droplets.glsl>
 
 
 layout(location = 1) in vec4 v_Local;
@@ -33,6 +32,15 @@ layout (std140) uniform UIBatch {
     vec4 uScreen;
     vec4 uLayer;
 };
+
+#include <combatant:ui_climate_droplets.glsl>
+
+#ifdef COMBATANT_CLIMATE_FIELD
+// Immutable snapshot of the actual UI target, taken after the underlying panel
+// was rendered. Unlike an unblurred world capture, this preserves any existing
+// panel blur, Liquid Glass, tint, PBR finish and lower UI layers.
+uniform sampler2D u_ClimateBackdrop;
+#endif
 
 // Pointer/time uniforms are independent from optional scene lighting.
 layout (std140) uniform UIGlassFrame {
@@ -140,43 +148,55 @@ void main() {
     float bevelWidth = mix(1.5, 6.5, bevelStrength);
     float edge = 1.0 - smoothstep(0.0, bevelWidth, max(-d, 0.0));
 
-    if (mode == 9) { // Opt-in environmental film for non-glass materials.
+    #ifdef COMBATANT_CLIMATE_FIELD
+    if (mode == 9) { // GPU-resident climate film shared with Liquid Glass.
         vec2 physical = local / max(logicalScale, vec2(1e-6));
-        vec2 rainNormal = vec2(0.0), waterNormal = vec2(0.0);
-        float rainTrail = 0.0, rainShine = 0.0;
-        float waterTrail = 0.0, waterShine = 0.0;
         float rain = clamp(v_Params5.z, 0.0, 1.0);
         float water = clamp(v_Params5.w, 0.0, 1.0);
         float frost = clamp(v_Params6.y, 0.0, 1.0);
         float snow = clamp(v_Params6.z, 0.0, 1.0);
         float condensation = clamp(v_Params6.w, 0.0, 1.0);
-        float dropA = 0.0, dropB = 0.0;
-        if (rain > 0.002) dropA = combatantClimateDroplets(physical, uGlassClock.x, rain,
-                25.0, 52.0, 7.31, rainNormal, rainTrail, rainShine);
-        if (water > 0.002) dropB = combatantClimateDroplets(physical, uGlassClock.x, water,
-                42.0, 26.0, 31.73, waterNormal, waterTrail, waterShine);
-        // Humidity is a thin low-contrast film, NOT thousands of extra beads.
+        vec2 waterNormal = vec2(0.0);
+        float trail = 0.0, shine = 0.0;
+        // Material and Liquid Glass must read the same physical screen-space
+        // water field; local coordinates duplicated rain between HUD widgets.
+        vec2 screenPx = (local + v_Rect.xy) / max(logicalScale, vec2(1e-6));
+        float body = combatantClimateDroplets(screenPx,
+                v_Rect.zw / max(logicalScale, vec2(1e-6)),
+                rain, water, uGlassClock.x, waterNormal, trail, shine);
+        // Climate overlays used to draw an opaque-looking wet tint with alpha
+        // instead of refracting their destination. That created the bubble
+        // silhouettes and erased the underlying material's optics.
+        // The backdrop is the exact ordered current-target snapshot, including
+        // any blur or lower Liquid Glass surfaces already composed there.
+        vec2 centerUv = clamp(vec2(screenPx.x / max(uScreen.x, 1.0),
+                1.0 - screenPx.y / max(uScreen.y, 1.0)), 0.001, 0.999);
+        vec2 opticalPx = clamp(waterNormal * 15.0, vec2(-13.0), vec2(13.0));
+        vec2 refractedUv = clamp(centerUv + opticalPx / max(uScreen.xy, vec2(1.0)),
+                0.001, 0.999);
+        float opticalCoverage = smoothstep(0.012, 0.14, length(waterNormal));
+        // The trail is water left on the surface, not a reflective white ring.
+        // It must not generate a uniform translucent patch over a flat material.
         float film = condensation * (0.55 + 0.45 * hash21(floor(physical / 24.0)));
-        float wetted = clamp(max(dropA, rainTrail * 0.70) * rain
-                           + max(dropB, waterTrail * 0.70) * water,
-                           0.0, 1.0);
-        float glint = clamp(rainShine * rain + waterShine * water, 0.0, 1.0);
-        float facet = 1.0 - smoothstep(0.0, mix(3.0, 20.0, frost),
-                                       max(-d, 0.0) / max(min(logicalScale.x, logicalScale.y), 1e-6));
-        float cold = (frost * facet + snow * 0.14) *
-                     (0.45 + 0.55 * hash21(floor(physical / 6.0)));
-        // Underlying material remains readable. Water bends its highlight;
-        // it is not an opaque white disk or an artificial flood fill.
-        vec3 wetTint = mix(vec3(0.055, 0.085, 0.115), vec3(0.76, 0.87, 0.96),
-                           clamp(glint * 1.2, 0.0, 1.0));
-        vec3 frostTint = vec3(0.72, 0.86, 0.98);
-        float outAlpha = clamp(wetted * (0.29 + glint * 0.24) +
-                               glint * 0.18 + film * 0.07 + cold * 0.37,
-                               0.0, 0.64);
-        color = mix(wetTint, frostTint, clamp(cold / max(wetted + cold, 1e-3), 0.0, 1.0));
-        fragColor = vec4(color, alpha * v_Color.a * outAlpha);
+        float frostEdge = frost * (1.0 - smoothstep(0.0, 9.0,
+                max(-d, 0.0) / max(min(logicalScale.x, logicalScale.y), 1e-6)));
+        float coldCover = clamp(frostEdge * 0.18 + snow * 0.08 + film * 0.015,
+                                0.0, 0.21);
+        vec3 refractedScene = texture(u_ClimateBackdrop, refractedUv).rgb;
+        float relief = climateDirectionalRelief(waterNormal,
+                climateHudDetailFactor(v_Rect.zw / max(logicalScale, vec2(1e-6))));
+        relief += trail * 0.016 * clamp(waterNormal.x * 5.0, -1.0, 1.0);
+        vec3 frostTint = mix(clamp(refractedScene + vec3(relief), 0.0, 1.0),
+                             vec3(0.76, 0.86, 0.96), coldCover);
+        // Translucent composition interpolates with the already-drawn base.
+        // The center of a drop can have zero slope; its material stays intact.
+        float refractionAlpha = opticalCoverage * 0.94;
+        float overlayAlpha = clamp(max(refractionAlpha, coldCover), 0.0, 0.96);
+        fragColor = vec4(clamp(frostTint, 0.0, 1.0),
+                         alpha * v_Color.a * overlayAlpha);
         return;
     }
+    #endif
 
     #ifdef COMBATANT_MATERIAL_MICROTEXTURE
     if (mode == 1 || mode == 2 || mode == 4 || mode == 5 || mode == 6) {

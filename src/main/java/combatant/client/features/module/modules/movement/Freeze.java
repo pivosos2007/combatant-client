@@ -9,13 +9,12 @@ package combatant.client.features.module.modules.movement;
 
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.KeyBindValue;
+import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
-import combatant.client.input.CombatantInput;
-import combatant.client.input.InputScope;
 
 /**
  * Freezes the local player in place and stops the position packets (AirStuck). With a hold key set it only freezes
@@ -29,9 +28,7 @@ import combatant.client.input.InputScope;
         description = "module.freeze.description")
 public final class Freeze extends Module {
 
-    private final KeyBindValue holdKey = bind("hold_key", "NONE", BindMode.HOLD);
-
-    private String boundCombo = "NONE";
+    private final FunctionBindSetting holdKey = action("hold_key", new KeyBindValue("hold_key", "NONE"), BindMode.HOLD);
 
     public Freeze() {
         setDefaultBind("COMMA");
@@ -45,41 +42,7 @@ public final class Freeze extends Module {
 
     private boolean frozenNow() {
         if (!isEnabled()) return false;
-        return holdKey.isNone() || isHoldKeyDown();
+        return "NONE".equalsIgnoreCase(holdKey.get()) || isActionHeld("hold_key");
     }
 
-    @Override
-    public void onEnable() {
-        ensureBind();
-    }
-
-    @Override
-    public void onDisable() {
-        CombatantInput.bindings().unbind(bindingName());
-        boundCombo = "NONE";
-    }
-
-    @Override
-    public void onTick() {
-        ensureBind();
-    }
-
-    private String bindingName() {
-        return name() + ":" + holdKey.getName();
-    }
-
-    private void ensureBind() {
-        String combo = holdKey.get();
-        if (combo == null) combo = "NONE";
-        if (combo.equalsIgnoreCase(boundCombo)) return;
-        CombatantInput.bindings().unbind(bindingName());
-        if (!holdKey.isNone()) {
-            CombatantInput.bindings().bind(bindingName(), combo);
-        }
-        boundCombo = combo;
-    }
-
-    private boolean isHoldKeyDown() {
-        return CombatantInput.bindings().isHeld(bindingName(), InputScope.GAME);
-    }
 }

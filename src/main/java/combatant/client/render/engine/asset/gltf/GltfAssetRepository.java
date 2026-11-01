@@ -5,79 +5,32 @@
  */
 package combatant.client.render.engine.asset.gltf;
 
-import combatant.client.render.engine.asset.gltf.io.MinecraftGltfResolver;
-import combatant.client.render.engine.asset.gltf.io.ModelImporters;
-import combatant.client.render.engine.asset.gltf.material.GltfMaterialBridge;
-import combatant.client.render.engine.asset.gltf.model.GltfAsset;
-import combatant.client.util.resources.ResourceAccess;
-import combatant.client.util.resources.asset.AssetLoad;
-import combatant.client.util.resources.asset.AssetLoadPhase;
+import combatant.client.render.engine.asset.model.ImportedModelRepository;
+import combatant.client.render.engine.asset.model.ModelRuntimeAsset;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
-
 import java.io.IOException;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Resource-pack scoped CPU asset cache. GPU handles intentionally do not live here: a resource
- * reload invalidates this repository, while GL/Vulkan residency is owned by the RHI lifecycle.
- */
+/** @deprecated Use ImportedModelRepository; this source-compatible adapter owns no cache. */
+@Deprecated
 public final class GltfAssetRepository {
     private static final GltfAssetRepository GLOBAL = new GltfAssetRepository();
+    private final ImportedModelRepository shared = ImportedModelRepository.global();
 
-    private final Map<Identifier, GltfRuntimeAsset> cache = new ConcurrentHashMap<>();
-    private final AtomicLong epoch = new AtomicLong(1L);
-
-    public static GltfAssetRepository global() {
-        return GLOBAL;
+    public GltfAssetRepository() {}
+    public static GltfAssetRepository global() { return GLOBAL; }
+    public ModelRuntimeAsset load(ResourceManager resources, Enum<?> asset) throws IOException {
+        return shared.load(resources, asset);
     }
-
-    public GltfRuntimeAsset load(ResourceManager resources, Enum<?> asset) throws IOException {
-        return load(resources, ResourceAccess.id(asset));
+    public ModelRuntimeAsset load(ResourceManager resources, Identifier id) throws IOException {
+        return shared.load(resources, id);
     }
-
-    public GltfRuntimeAsset load(ResourceManager resources, Identifier id) throws IOException {
-        Objects.requireNonNull(resources, "resources");
-        Objects.requireNonNull(id, "id");
-        long loadEpoch = epoch.get();
-        GltfRuntimeAsset cached = cache.get(id);
-        if (cached != null && (cached.sourceEpoch() == 0L || cached.sourceEpoch() == loadEpoch)) return cached;
-
-        GltfAsset imported = ModelImporters.load(id, new MinecraftGltfResolver(resources));
-        if (epoch.get() != loadEpoch) {
-            throw new IOException("Resource epoch changed while loading imported asset " + id);
-        }
-        GltfRuntimeAsset prepared = new GltfRuntimeAsset(imported, GltfMaterialBridge.build(imported), loadEpoch);
-        GltfRuntimeAsset raced = cache.putIfAbsent(id, prepared);
-        return raced == null ? prepared : raced;
-    }
-
-    public GltfRuntimeAsset cached(Identifier id) {
-        return id == null ? null : cache.get(id);
-    }
-
-    public boolean isCached(Identifier id) {
-        return id != null && cache.containsKey(id);
-    }
-
-    public int cachedCount() {
-        return cache.size();
-    }
-
-    public long epoch() {
-        return epoch.get();
-    }
-
-    public void invalidateAll() {
-        cache.clear();
-        epoch.incrementAndGet();
-    }
-
-    @AssetLoad(value = {AssetLoadPhase.INITIALIZE, AssetLoadPhase.RELOAD}, order = 50)
-    public static void invalidateResourcePackAssets() {
-        GLOBAL.invalidateAll();
-    }
+    public ModelRuntimeAsset cached(Identifier id) { return shared.cached(id); }
+    public boolean isCached(Identifier id) { return shared.isCached(id); }
+    public int cachedCount() { return shared.cachedCount(); }
+    public long epoch() { return shared.epoch(); }
+    public void invalidateAll() { shared.invalidateAll(); }
+    /** @deprecated Reload registration now lives in ImportedModelRepository. */
+    @Deprecated
+    public static void invalidateResourcePackAssets() { ImportedModelRepository.invalidateResourcePackAssets(); }
 }

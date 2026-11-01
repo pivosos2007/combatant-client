@@ -55,6 +55,7 @@ public abstract class IrisRenderingPipelineFinalizeMixin {
         // The first-person hand itself is suppressed in Iris and submitted only after finalization.
         IrisSceneDepth.capture(renderTargets);
         IrisRuntime.renderImportedGeometryPrimary();
+        combatant.client.features.playermodel.PlayerModelGpuRenderer.renderIris(false);
         IrisShaderpackMsaaIntegration.resolveDepth();
     }
 
@@ -74,6 +75,7 @@ public abstract class IrisRenderingPipelineFinalizeMixin {
         // per-sample depth/coverage and reintroduced stale scene data.
         IrisShaderpackMsaaIntegration.seedForward();
         IrisRuntime.renderImportedGeometryTranslucent();
+        combatant.client.features.playermodel.PlayerModelGpuRenderer.renderIris(true);
     }
 
     @Inject(method = "finalizeLevelRendering", at = @At("HEAD"), remap = false)

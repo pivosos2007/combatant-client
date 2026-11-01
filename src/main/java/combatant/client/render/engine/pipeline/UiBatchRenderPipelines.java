@@ -210,6 +210,36 @@ public final class UiBatchRenderPipelines {
             .build();
 
     @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_CLIMATE_BATCH = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_climate_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
+            .withFragmentShader(shader("ui_material_climate_batch.frag"))
+            .withSampler("u_ClimateField")
+            .withSampler("u_ClimateBackdrop")
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_MATERIAL_CLIMATE_BATCH_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_material_climate_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS10, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_material_primitive_textured_fast.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("ui_material_climate_batch.frag")))
+            .withSampler("u_ClimateField")
+            .withSampler("u_ClimateBackdrop")
+            .withContract(RenderPipelineContract.UI_WARPED)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
     public static final RenderPipeline UI_MATERIAL_TEXTURED_PRIMITIVE_BATCH = new ExtendedRenderPipelineBuilder(
             UI_BATCH_UNIFORMS, UI_GLASS_FRAME_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_material_textured_primitive_batch"))

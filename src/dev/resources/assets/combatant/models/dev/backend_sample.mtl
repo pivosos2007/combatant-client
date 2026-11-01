@@ -1,0 +1,7 @@
+# MTL acceptance fixture
+newmtl sample
+Kd 1.0 1.0 1.0
+Pr 0.9
+Pm 0.05
+d 1
+map_Kd backend_sample.png

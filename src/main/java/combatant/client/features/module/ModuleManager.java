@@ -118,6 +118,7 @@ public enum ModuleManager {
         cacheWorldPhase(module);
         rebuildSnapshots();
         Events.BUS.register(module);
+        combatant.client.util.target.hud.TargetHudStatusRegistry.register(module);
         ModuleListInfoResolver.prepare(module);
     }
 
@@ -733,6 +734,7 @@ public enum ModuleManager {
         combatant.client.features.gui.clickgui.settings.SettingErrorView.clearSession();
         int moduleCount = modules.size();
         Events.BUS.clear();
+        combatant.client.util.target.hud.TargetHudStatusRegistry.clear();
         modules.clear();
         byId.clear();
         byType.clear();

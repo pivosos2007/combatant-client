@@ -1,0 +1,18 @@
+package combatant.client.mixins.seedcracker;
+
+import combatant.client.config.subsystem.SeedCrackerConfig;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Pseudo;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+/** Suppresses ONLY the original commands; never modifies SeedCrackerX's search algorithms. */
+@Pseudo
+@Mixin(targets = "kaptainwutax.seedcrackerX.init.ClientCommands", remap = false)
+public abstract class SeedCrackerCommandsMixin {
+    @Inject(method = "registerCommands", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
+    private static void combatant$replaceCommands(CallbackInfo ci) {
+        if (SeedCrackerConfig.get().hideNativeCommands()) ci.cancel();
+    }
+}

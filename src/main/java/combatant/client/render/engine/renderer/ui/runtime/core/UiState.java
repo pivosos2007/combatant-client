@@ -47,6 +47,7 @@ public final class UiState {
     private boolean hovered;
     private boolean active;
     private boolean focused;
+    private boolean focusVisible;
     private boolean disabled;
     private boolean visible = true;
     private float scrollX;
@@ -77,6 +78,10 @@ public final class UiState {
     public boolean focused() {
         return focused;
     }
+
+    public boolean focusVisible() { return focused && focusVisible; }
+
+    public void setFocusVisible(boolean value) { focusVisible = value; }
 
     public boolean disabled() {
         return disabled;
@@ -135,6 +140,7 @@ public final class UiState {
 
     public void setFocused(boolean focused) {
         this.focused = focused;
+        if (!focused) focusVisible = false;
     }
 
     public void setDisabled(boolean disabled) {

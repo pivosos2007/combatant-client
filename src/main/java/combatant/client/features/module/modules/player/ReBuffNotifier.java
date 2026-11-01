@@ -45,7 +45,7 @@ public final class ReBuffNotifier extends Module {
     private final BooleanValue fireResistance = bool("rebuffFireResistance", "fire_resistance", true);
     private final NumberValue<Integer> thresholdSeconds = num("rebuffThreshold", "threshold", 10, 1, 120);
     private final BooleanValue notifyOnExpire = bool("rebuffNotifyOnExpire", "notify_on_expire", true);
-    private final BooleanValue sound = bool("rebuffSound", "sound", true);
+    private final BooleanValue sound = bool("rebuffSound", "sound", false);
 
     // Effects that were active last tick, to tell "expired" from "never had it".
     private final Set<Holder<MobEffect>> seen = new HashSet<>();

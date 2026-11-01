@@ -15,7 +15,20 @@ import combatant.client.features.playeranimator.PlayerRigInstance;
 import combatant.client.features.playeranimator.PlayerRigRenderState;
 
 @Mixin(LivingEntityRenderState.class)
-public abstract class LivingEntityRenderStateMixin implements ViewObstructionFadeState, PlayerRigRenderState {
+public abstract class LivingEntityRenderStateMixin implements ViewObstructionFadeState, PlayerRigRenderState,
+        combatant.client.features.playermodel.PlayerModelRenderState {
+    @Unique
+    private combatant.client.features.playermodel.PlayerModels.Snapshot combatant$replacement;
+
+    @Override
+    public combatant.client.features.playermodel.PlayerModels.Snapshot combatant$getReplacement() {
+        return combatant$replacement;
+    }
+
+    @Override
+    public void combatant$setReplacement(combatant.client.features.playermodel.PlayerModels.Snapshot replacement) {
+        combatant$replacement = replacement;
+    }
     @Unique
     private boolean combatant$viewObstructionFadeActive;
 

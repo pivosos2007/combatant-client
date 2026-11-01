@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Snapshots the vanilla {@link PlayerModel} part poses of every player the game submits for rendering, so visual
- * modules (Skeleton, PopChams) can draw from the exact animated pose without touching the renderer.
+ * modules (such as Skeleton) can draw from the exact animated pose without touching the renderer.
  *
  * <p>Capture is a no-op until a module {@link #retain()}s it. Each {@link Pose} stores per-part frames relative to the
  * entity origin in float precision plus the entity origin in doubles, so far-from-origin worlds stay accurate.</p>

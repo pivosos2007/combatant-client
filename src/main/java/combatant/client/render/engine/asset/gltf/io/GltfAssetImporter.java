@@ -12,9 +12,9 @@
 package combatant.client.render.engine.asset.gltf.io;
 
 import net.minecraft.resources.Identifier;
-import combatant.client.render.engine.asset.gltf.io.GltfResolver;
-import combatant.client.render.engine.asset.gltf.io.ModelImporter;
-import combatant.client.render.engine.asset.gltf.model.GltfAsset;
+import combatant.client.render.engine.asset.model.io.ModelResourceResolver;
+import combatant.client.render.engine.asset.model.io.ModelImporter;
+import combatant.client.render.engine.asset.model.data.ModelAsset;
 
 import java.io.IOException;
 import java.util.List;
@@ -26,7 +26,7 @@ public final class GltfAssetImporter implements ModelImporter {
     }
 
     @Override
-    public GltfAsset load(Identifier source, GltfResolver resolver) throws IOException {
+    public ModelAsset load(Identifier source, ModelResourceResolver resolver) throws IOException {
         return new JgltfAssetLoader().load(source, resolver::open);
     }
 }

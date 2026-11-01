@@ -67,7 +67,6 @@ import java.util.List;
 public class KillAura extends Module {
 
     private static final int MAX_CPS = 20;
-    private static final String IGNORE_BOTS = "ignore_bots";
     private final Minecraft mc = Minecraft.getInstance();
     private final NumberValue<Double> range =
             numCommon(
@@ -518,7 +517,6 @@ public class KillAura extends Module {
         defaults.put(TargetFilters.PLAYERS_ONLY, false);
         defaults.put(TargetFilters.IGNORE_FRIENDS, true);
         defaults.put(TargetFilters.IGNORE_STAFF, true);
-        defaults.put(IGNORE_BOTS, true);
         defaults.put(TargetFilters.IGNORE_ENEMIES, false);
         defaults.put(TargetFilters.IGNORE_NAKED, false);
         defaults.put(TargetFilters.IGNORE_ENTITIES, true);
@@ -541,8 +539,8 @@ public class KillAura extends Module {
     @Override
     public void onDisable() {
         currentTarget = null;
-        TargetManager.setPredictionTarget(null);
-        TargetManager.setModuleTarget(null);
+        TargetManager.clear(this, "prediction");
+        TargetManager.clear(this);
         AttributeSwap.clearAuraControlIfActive();
         clearRotationState(false);
         lastAttackExecutionAge = -1;
@@ -577,7 +575,7 @@ public class KillAura extends Module {
                         priority.get()
                 );
 
-                List<LivingEntity> targets = filterDynamicReachTargets(filterAntiBotTargets(TargetingUtil.findTargets(mc, settings)));
+                List<LivingEntity> targets = filterDynamicReachTargets(TargetingUtil.findTargets(mc, settings));
                 syncPredictionTarget(targets);
                 boolean currentTargetCandidate = isCurrentTargetCandidate(targets);
                 if (CombatRotationModeUtil.isNoRotations(attackMode)) {
@@ -735,13 +733,13 @@ public class KillAura extends Module {
                 priority.get()
         );
 
-        return filterAntiBotTargets(TargetingUtil.findTargets(mc, settings));
+        return TargetingUtil.findTargets(mc, settings);
     }
 
     private void clearTargetImmediate() {
         currentTarget = null;
-        TargetManager.setPredictionTarget(null);
-        TargetManager.setModuleTarget(null);
+        TargetManager.clear(this, "prediction");
+        TargetManager.clear(this);
         AttributeSwap.clearAuraControlIfActive();
         SprintController.INSTANCE.clearSprintBlock();
         clearRotationState(false);
@@ -750,8 +748,8 @@ public class KillAura extends Module {
 
     private void clearTargetRuntime() {
         currentTarget = null;
-        TargetManager.setPredictionTarget(null);
-        TargetManager.setModuleTarget(null);
+        TargetManager.clear(this, "prediction");
+        TargetManager.clear(this);
         AttributeSwap.handleAuraTarget(null, false);
         SprintController.INSTANCE.clearSprintBlock();
         lastAttackExecutionAge = -1;
@@ -778,21 +776,21 @@ public class KillAura extends Module {
             if (target != null) {
                 clearTargetRuntime();
             } else {
-                TargetManager.setModuleTarget(null);
+                TargetManager.clear(this);
             }
             return;
         }
 
-        TargetManager.setModuleTarget(target);
+        TargetManager.publish(this, target, TargetManager.Source.MODULE, 650);
     }
 
     private void syncPredictionTarget(List<LivingEntity> targets) {
         if (targets == null || targets.isEmpty()) {
-            TargetManager.setPredictionTarget(null);
+            TargetManager.clear(this, "prediction");
             return;
         }
 
-        TargetManager.setPredictionTarget(targets.getFirst());
+        TargetManager.publish(this, "prediction", targets.getFirst(), TargetManager.Source.PREDICTION, 350);
     }
 
     private List<LivingEntity> filterDynamicReachTargets(List<LivingEntity> targets) {
@@ -812,21 +810,6 @@ public class KillAura extends Module {
         return filtered;
     }
 
-    private List<LivingEntity> filterAntiBotTargets(List<LivingEntity> targets) {
-        if (!toggles.get(IGNORE_BOTS) || targets == null || targets.isEmpty()) {
-            return targets;
-        }
-
-        List<LivingEntity> filtered = new ArrayList<>(targets.size());
-        for (LivingEntity target : targets) {
-            if (target instanceof Player player && AntiBotTracker.INSTANCE.isBot(player)) {
-                continue;
-            }
-            filtered.add(target);
-        }
-        return filtered;
-    }
-
     private void clearRotationState(boolean smoothReturn) {
         RotationManager.INSTANCE.release(this, smoothReturn);
         pointTracker.reset();
@@ -838,8 +821,8 @@ public class KillAura extends Module {
 
     private void setActiveTarget(LivingEntity target) {
         currentTarget = target;
-        TargetManager.setPredictionTarget(null);
-        TargetManager.setModuleTarget(target);
+        TargetManager.clear(this, "prediction");
+        TargetManager.publish(this, target, TargetManager.Source.MODULE, 650);
         AttributeSwap.handleAuraTarget(target, breakShields.get());
     }
 

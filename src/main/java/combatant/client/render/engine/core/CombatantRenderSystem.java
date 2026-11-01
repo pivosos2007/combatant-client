@@ -40,8 +40,8 @@ import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
 import combatant.client.render.engine.scene.spatial.SceneSpatialRegistry;
 import combatant.client.render.engine.scene.instance.SceneInstanceRegistry;
 import combatant.client.render.engine.scene.instance.SceneInstanceStatsSnapshot;
-import combatant.client.render.engine.asset.gltf.gpu.GltfGpuResidencyManager;
-import combatant.client.render.engine.asset.gltf.gpu.GltfGpuResidencyStats;
+import combatant.client.render.engine.asset.model.gpu.ModelGpuResidencyManager;
+import combatant.client.render.engine.asset.model.gpu.ModelGpuResidencyStats;
 import combatant.client.render.engine.scene.spatial.SceneSpatialStatsSnapshot;
 import combatant.client.render.engine.scene.visibility.SceneViewContext;
 import combatant.client.render.engine.scene.visibility.SceneVisibilityService;
@@ -147,10 +147,12 @@ public enum CombatantRenderSystem {
         rhi = next;
         backendKind = desired;
         try {
+            combatant.client.render.engine.renderer.ui.UiClimateField.release();
             UiBlurResources.onBackendChanged();
             PostProcessManager.releaseBackendResources(previous);
-            GltfGpuResidencyManager.global().releaseBackend(previous);
+            ModelGpuResidencyManager.global().releaseBackend(previous);
             IrisRuntime.releaseImportedGeometryBackend(previous);
+            combatant.client.render.engine.rig.gpu.RigGpuMeshCache.global().releaseBackend(previous);
             previous.close();
         } catch (Throwable t) {
             DebugLog.warnOnChange(
@@ -478,8 +480,8 @@ public enum CombatantRenderSystem {
         return SCENE_INSTANCES.statsSnapshot();
     }
 
-    public static GltfGpuResidencyStats gltfGpuResidencyStatsSnapshot() {
-        return GltfGpuResidencyManager.global().statsSnapshot();
+    public static ModelGpuResidencyStats gltfGpuResidencyStatsSnapshot() {
+        return ModelGpuResidencyManager.global().statsSnapshot();
     }
 
     public static SceneVisibilityService sceneVisibility() {
@@ -514,10 +516,12 @@ public enum CombatantRenderSystem {
         if (!initialized) return;
         try {
             UiMsaaClipLayer.shutdown();
+            combatant.client.render.engine.renderer.ui.UiClimateField.release();
             UiBlurResources.onBackendChanged();
             PostProcessManager.releaseBackendResources(rhi);
-            GltfGpuResidencyManager.global().releaseBackend(rhi);
+            ModelGpuResidencyManager.global().releaseBackend(rhi);
             IrisRuntime.releaseImportedGeometryBackend(rhi);
+            combatant.client.render.engine.rig.gpu.RigGpuMeshCache.global().releaseBackend(rhi);
             UNIFORMS.close();
             rhi.close();
         } finally {

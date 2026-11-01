@@ -213,6 +213,23 @@ public final class UiNode {
         this.styleClass = spec.styleClass();
         this.events = spec.events();
         this.metadata = spec.metadata();
+        // Semantic disabled is owned by the component spec. Previously this
+        // value existed only in stateValues (for colors), while UiState.disabled
+        // was never synchronized. Disabled controls were therefore clickable
+        // and indistinguishable from enabled ones to the cursor hit tester.
+        boolean disabled = props.bool("disabled", false);
+        Object values = props.get("stateValues");
+        if (values instanceof Map<?, ?> states) {
+            Object value = states.get("disabled");
+            if (value instanceof Boolean b) disabled = b;
+            else if (value instanceof Number n) disabled = n.floatValue() != 0.0f;
+        }
+        state.setDisabled(disabled);
+        if (disabled) {
+            state.setHovered(false);
+            state.setActive(false);
+            state.setFocused(false);
+        }
     }
 
     /**

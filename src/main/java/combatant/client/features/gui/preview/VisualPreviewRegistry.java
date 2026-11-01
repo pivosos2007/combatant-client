@@ -24,6 +24,8 @@ public enum VisualPreviewRegistry {
             new ConcurrentHashMap<>();
 
     static {
+        registerModule("playermodel", module -> module instanceof combatant.client.features.module.modules.visuals.PlayerModel playerModel
+                ? new combatant.client.features.gui.preview.provider.PlayerModelVisualPreviewProvider(playerModel) : null);
         registerModule("chams", module -> module instanceof Chams
                 ? new HandVisualPreviewProvider(module)
                 : null);

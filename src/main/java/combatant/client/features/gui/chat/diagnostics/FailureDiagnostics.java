@@ -135,6 +135,7 @@ public final class FailureDiagnostics {
             subscription = null;
         }
         DiagnosticMessageActions.shutdown();
+        combatant.client.compat.seedcracker.SeedCrackerRuntime.shutdownActions();
         ChatMessageActions.shutdown();
     }
 }

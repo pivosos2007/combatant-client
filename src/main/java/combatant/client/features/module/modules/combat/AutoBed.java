@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.combat;
 
+import combatant.client.util.target.hud.TargetHudStatus;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.common.impl.TargetFilters;
@@ -321,7 +323,7 @@ public class AutoBed extends Module {
     public void onDisable() {
         resetState();
         RotationManager.INSTANCE.clear(this);
-        TargetManager.setAutoBedTarget(null);
+        TargetManager.clear(this);
     }
 
     @Override
@@ -343,21 +345,21 @@ public class AutoBed extends Module {
 
         if (mc.player == null || mc.level == null || mc.gameMode == null) {
             clearCombatState();
-            TargetManager.setAutoBedTarget(null);
+            TargetManager.clear(this);
             return;
         }
 
         if (!isExplosiveBedDimension(mc.level)) {
             disabledReason = "Wrong dimension";
             clearCombatState();
-            TargetManager.setAutoBedTarget(null);
+            TargetManager.clear(this);
             RotationManager.INSTANCE.clear(this);
             return;
         }
         disabledReason = null;
 
         target = findCombatTarget();
-        TargetManager.setAutoBedTarget(target);
+        TargetManager.publish(this, target, TargetManager.Source.MODULE, 700);
         updateCandidates();
 
         if (timing.get() == Timing.NORMAL) {
@@ -1013,6 +1015,7 @@ public class AutoBed extends Module {
         renderPositions.entrySet().removeIf(entry -> now - entry.getValue() > lifetime);
     }
 
+    @TargetHudStatus
     public String getTargetHudStatus(LivingEntity hudTarget) {
         if (!isEnabled()) return null;
         if (disabledReason != null) return disabledReason;

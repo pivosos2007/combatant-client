@@ -65,6 +65,9 @@ public final class UiGlassVisualPipelines {
                 .withBlend(BlendFunction.TRANSLUCENT)
                 .withCull(false);
         if (key.analyticClip()) builder.withUniform("UIClip", UniformType.UNIFORM_BUFFER);
+        if (key.shader().getPath().endsWith("ui_glass_climate.frag")) {
+            builder.withSampler("u_ClimateField");
+        }
         if (UiGlassVisual.usesIceTextures(key.shader())) {
             builder.withSampler("u_MaterialMicro").withSampler("u_MaterialColor");
         }

@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.combat;
 
+import combatant.client.util.target.hud.TargetHudStatus;
+
 import combatant.client.config.values.EnumValue;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.values.*;
@@ -415,7 +417,7 @@ public class AutoCrystal extends Module {
         resetVisualState();
         RotationManager.INSTANCE.clear(this);
         InventorySwap.INSTANCE.releaseHotbar(this);
-        TargetManager.setAutoCrystalTarget(null);
+        TargetManager.clear(this);
     }
 
     @Override
@@ -476,7 +478,7 @@ public class AutoCrystal extends Module {
         if (!isEnabled()) return;
         if (mc.player == null || mc.level == null || mc.gameMode == null) {
             clearPlacementState();
-            TargetManager.setAutoCrystalTarget(null);
+            TargetManager.clear(this);
             return;
         }
 
@@ -486,7 +488,7 @@ public class AutoCrystal extends Module {
         }
 
         target = findCombatTarget();
-        TargetManager.setAutoCrystalTarget(target);
+        TargetManager.publish(this, target, TargetManager.Source.MODULE, 800);
         updateBestPosition();
         updateBestCrystal();
         updateBestBasePosition();
@@ -1350,6 +1352,7 @@ public class AutoCrystal extends Module {
         return Math.max(0L, Math.max(0, basePlaceDelay.get()) - (System.currentTimeMillis() - lastBasePlaceMs));
     }
 
+    @TargetHudStatus
     public String getTargetHudStatus(LivingEntity hudTarget) {
         if (!isEnabled() || hudTarget == null) {
             return null;

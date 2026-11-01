@@ -51,6 +51,7 @@ import combatant.client.features.module.modules.visuals.NameTags;
 import combatant.client.features.module.modules.visuals.NoRender;
 import combatant.client.features.module.modules.visuals.SeeInvisibles;
 import combatant.client.render.ViewObstructionFadeContext;
+import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
 import combatant.client.render.ViewObstructionFadeState;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.util.aiming.RotationManager;
@@ -125,7 +126,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
         SeeInvisibles seeInvisibles = Modules.get(SeeInvisibles.class);
         boolean seeInvisibleActive = seeInvisibles != null && seeInvisibles.shouldRenderInvisiblePlayer(entity);
         float seeInvisibleAlpha = seeInvisibleActive ? seeInvisibles.getInvisiblePlayerAlpha01() : 1.0f;
-        boolean seeInvisibleFadeActive = seeInvisibleActive && seeInvisibleAlpha < 0.99f;
+        boolean seeInvisibleFadeActive = seeInvisibleActive && seeInvisibleAlpha < 1.0f;
         if (seeInvisibleActive) {
             state.isInvisibleToPlayer = false;
         }
@@ -161,6 +162,10 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             Operation<Void> original
     ) {
         PlayerPoseCapture.capture(model, modelState, matrices);
+        if (model instanceof PlayerModel && combatant.client.features.playermodel.PlayerModels.submit(
+                modelState, collector, matrices, renderType, light, overlay, tint, outlineColor)) {
+            return;
+        }
         if (model instanceof PlayerModel playerModel
                 && modelState instanceof AvatarRenderState avatarState
                 && avatarState instanceof PlayerRigRenderState rigState
@@ -172,6 +177,23 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
         }
         original.call(collector, model, modelState, matrices, renderType, light, overlay, tint,
                 sprite, outlineColor);
+    }
+
+    @WrapOperation(method = "submit", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/entity/layers/RenderLayer;submit(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/client/renderer/entity/state/EntityRenderState;FF)V"))
+    private void combatant$replacementLayers(net.minecraft.client.renderer.entity.layers.RenderLayer<?, ?> layer,
+            PoseStack matrices, SubmitNodeCollector collector, int light,
+            net.minecraft.client.renderer.entity.state.EntityRenderState state, float yaw, float pitch,
+            Operation<Void> original) {
+        if (combatant.client.features.playermodel.PlayerModels.active(state)
+                && (layer instanceof net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer<?, ?, ?>
+                || layer instanceof net.minecraft.client.renderer.entity.layers.CapeLayer
+                || layer instanceof net.minecraft.client.renderer.entity.layers.WingsLayer<?, ?>
+                || layer instanceof net.minecraft.client.renderer.entity.layers.CustomHeadLayer<?, ?>
+                || layer instanceof net.minecraft.client.renderer.entity.layers.Deadmau5EarsLayer
+                || layer instanceof net.minecraft.client.renderer.entity.layers.ArrowLayer
+                || layer instanceof net.minecraft.client.renderer.entity.layers.BeeStingerLayer)) return;
+        original.call(layer, matrices, collector, light, state, yaw, pitch);
     }
 
     @ModifyExpressionValue(
@@ -236,6 +258,19 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/entity/LivingEntityRenderer;getRenderType(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;ZZZ)Lnet/minecraft/client/renderer/rendertype/RenderType;")
     )
     private RenderType combatant$useTranslucentRenderTypeForViewFade(RenderType original, @Local(argsOnly = true) S state) {
+        if (SeeInvisiblesVisualDepth.isCapturing()) {
+            // This is an auxiliary silhouette, not the visible translucent pass.
+            // Cutout respects holes in the skin while writing ordinary reversed-Z depth.
+            return RenderTypes.entityCutout(getTextureLocation(state));
+        }
+        SeeInvisibles seeInvisibles = Modules.get(SeeInvisibles.class);
+        if (seeInvisibles != null && seeInvisibles.shouldRenderInvisiblePlayer(state.entityType, state.isInvisible)
+                && seeInvisibles.getInvisiblePlayerAlpha01() >= 1.0f
+                && (!(state instanceof ViewObstructionFadeState fade)
+                    || !fade.combatant$isViewObstructionFadeActive())) {
+            // At alpha=255 this is an opaque cutout player and must write regular scene depth.
+            return RenderTypes.entityCutout(getTextureLocation(state));
+        }
         if (original == null || original.hasBlending()) {
             return original;
         }
@@ -258,7 +293,6 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
         SeeInvisibles seeInvisibles = Modules.get(SeeInvisibles.class);
         if (seeInvisibles != null
                 && state instanceof ViewObstructionFadeState fadeState
-                && fadeState.combatant$isSeeInvisibleFadeActive()
                 && seeInvisibles.shouldRenderInvisiblePlayer(state.entityType, state.isInvisible)) {
             return seeInvisibles.getInvisiblePlayerTintArgb();
         }

@@ -70,7 +70,7 @@ public final class VisualRange extends Module {
     private final NumberValue<Double> preVisualLead = num("visualRangePreVisualLead", "pre_visual_lead", 32.0D, 0.0D, 256.0D);
     private final NumberValue<Double> minimumMapConfidence = num("visualRangeMinimumMapConfidence", "minimum_map_confidence", 0.35D, 0.0D, 1.0D);
     private final BooleanValue showCoords = bool("visualRangeShowCoords", "show_coords", true);
-    private final BooleanValue warningSound = bool("visualRangeWarningSound", "warning_sound", true);
+    private final BooleanValue warningSound = bool("visualRangeWarningSound", "warning_sound", false);
     private final NumberValue<Double> minimumDistance = num("visualRangeMinimumDistance", "minimum_distance", 0.0D, 0.0D, 256.0D);
     private final NumberValue<Integer> cooldownSeconds = num("visualRangeCooldownSeconds", "cooldown_seconds", 2, 0, 30);
 

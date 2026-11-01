@@ -14,6 +14,12 @@ plugins {
 repositories {
     mavenCentral()
     maven {
+        name = 'GeckoLib'
+        url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+        content { includeGroup('com.geckolib') }
+    }
+
+    maven {
         url = 'https://maven.fabricmc.net/'
     }
     exclusiveContent {
@@ -38,6 +44,12 @@ repositories {
     maven {
         // ViaBedrock snapshots (alt repo used by Via* stack)
         url = 'https://maven.lenni0451.net/snapshots'
+    }
+    maven {
+        // SeedCrackerX 2.16.2 (Minecraft 26.3), optional external Fabric mod.
+        name = 'CurseMaven'
+        url = 'https://cursemaven.com'
+        content { includeGroup 'curse.maven' }
     }
     maven {
         // JitPack (for com.github.* artifacts like CubeConverter)
@@ -119,6 +131,7 @@ configurations {
     bundledLibrary
     linuxBundledLibrary
     javetNativeBundle
+    geckoLibBundle
     mixinValidationProcessor
     modImplementation
     compileOnly.extendsFrom bundledLibrary, linuxBundledLibrary
@@ -191,6 +204,12 @@ dependencies {
         runtimeOnly "com.viaversion:viafabricplus:${project.viafabricplus_version}"
     }
 
+    // SeedCrackerX 2.16.2 / Minecraft 26.3; integration only, original mod is not bundled.
+    compileOnly("curse.maven:seedcracker-x-1717761:9009342") { transitive = false }
+    if (providers.gradleProperty("withSeedCrackerRuntime").map { it.toBoolean() }.orElse(false).get()) {
+        runtimeOnly("curse.maven:seedcracker-x-1717761:9009342") { transitive = false }
+    }
+
     // Entity Culling (optional): typed compile-time API for shader ESP visibility compat.
     compileOnly "maven.modrinth:entityculling:${project.entityculling_version}"
 
@@ -198,6 +217,11 @@ dependencies {
     // (compat.litematica.impl) that is only class-loaded when the mod is present. Compile-only, never bundled.
     compileOnly "maven.modrinth:litematica:${project.litematica_version}"
     compileOnly "maven.modrinth:malilib:${project.malilib_version}"
+
+    //GeckoLib mod module
+    def geckoLibModule = "com.geckolib:geckolib-fabric-${project.minecraft_version}:${project.geckolib_version}"
+    modImplementation geckoLibModule
+    geckoLibBundle(geckoLibModule) { transitive = false }
 
     bundledLibrary "de.marhali:json5-java:3.0.0"
 
@@ -225,7 +249,7 @@ dependencies {
     bundledLibrary "com.caoccao.javet:javet:${javetVersion}"
     testImplementation "com.caoccao.javet:javet:${javetVersion}"
 
-    // Javet in minimal V8 mode only: no Node runtime. The canonical remap jar
+    // Javet in minimal V8 mode only: no Node runtime. The canonical jar
     // stays universal; release slim artifacts retain only their target native.
     javetNativeBundle "com.caoccao.javet:javet-v8-windows-x86_64:${javetVersion}"
     javetNativeBundle "com.caoccao.javet:javet-v8-linux-x86_64:${javetVersion}"
@@ -238,6 +262,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    if (project.hasProperty('playerModelAddon')) {
+        systemProperty 'combatant.playerModelAssets', file(project.property('playerModelAddon')).absolutePath
+    }
 }
 
 def resolveUiContractSource = { roots, relativePath, fallbackPath ->
@@ -1111,7 +1138,8 @@ processResources {
                 "mod_license": combatantModLicense,
                 "version": project.version,
                 "minecraft_version": project.minecraft_version,
-                "loader_version": project.loader_version
+                "loader_version": project.loader_version,
+                "geckolib_version": project.geckolib_version
     }
 
     doLast {
@@ -1264,7 +1292,6 @@ java {
 tasks.matching { it.name == "sourcesJar" }.configureEach {
     dependsOn tasks.named("generateSvgMsdf")
     exclude("javet/natives/**")
-    exclude("combatant/nativeguard/**")
 }
 
 jar {
@@ -1274,6 +1301,11 @@ jar {
 
     from("LICENSE") {
         rename { "${it}_${project.archives_base_name}" }
+    }
+    // A complete nested Fabric mod (metadata, entrypoints, mixins, class tweaker), not shaded classes.
+    from({ configurations.geckoLibBundle.files }) {
+        into "META-INF/jars"
+        rename { "geckolib-bundled.jar" }
     }
     from("THIRD_PARTY_NOTICES.md")
     from("THIRD_PARTY_LICENSES/Noto-OFL-1.1.txt") {
@@ -1289,6 +1321,9 @@ jar {
         into "THIRD_PARTY_LICENSES"
     }
     from("THIRD_PARTY_LICENSES/JglTF-MIT.txt") {
+        into "THIRD_PARTY_LICENSES"
+    }
+    from("THIRD_PARTY_LICENSES/GeckoLib-MIT.txt") {
         into "THIRD_PARTY_LICENSES"
     }
     from("THIRD_PARTY_LICENSES/Jackson-Apache-2.0.txt") {
@@ -1311,6 +1346,75 @@ jar {
         dependsOn tasks.named("compileVulkanDebugJava"), tasks.named("processVulkanDebugResources")
         from(sourceSets.vulkanDebug.output)
     }
+}
+
+// A jar-in-jar library is only useful when Fabric can discover and load it.
+// Validate the actual unmapped Minecraft 26.3 distributable, not the compile/runtime classpaths.
+tasks.register("verifyBundledGeckoLib") {
+    group = "verification"
+    description = "Ensures GeckoLib is a complete nested Fabric mod in the distributable jar."
+    dependsOn tasks.named("jar")
+    inputs.file(tasks.named("jar").flatMap { it.archiveFile })
+    doLast {
+        def archive = tasks.named("jar").get().archiveFile.get().asFile
+        new java.util.zip.ZipFile(archive).withCloseable { rootJar ->
+            def fabricEntry = rootJar.getEntry("fabric.mod.json")
+            if (fabricEntry == null) {
+                throw new GradleException("Missing fabric.mod.json in jar: ${archive.name}")
+            }
+            def metadata = rootJar.getInputStream(fabricEntry).withCloseable { stream ->
+                new JsonSlurper().parse(stream)
+            }
+            if (!(metadata.depends instanceof Map) ||
+                    !metadata.depends.containsKey("geckolib")) {
+                throw new GradleException("Combatant must declare its bundled GeckoLib dependency")
+            }
+            def nestedPaths = (metadata.jars ?: []).collect { it.file?.toString() }.findAll { it }
+            boolean found = false
+            for (String path : nestedPaths) {
+                def nested = rootJar.getEntry(path)
+                if (nested == null) {
+                    throw new GradleException("Missing Fabric nested jar: ${path}")
+                }
+                rootJar.getInputStream(nested).withCloseable { stream ->
+                    new java.util.zip.ZipInputStream(stream).withCloseable { subJar ->
+                        java.util.zip.ZipEntry entry
+                        String modId = null
+                        boolean geometryPresent = false
+                        boolean mixinsPresent = false
+                        while ((entry = subJar.nextEntry) != null) {
+                            if (entry.name == "fabric.mod.json") {
+                                def nestedMetadata = new JsonSlurper().parseText(
+                                        new String(subJar.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8))
+                                modId = nestedMetadata.id?.toString()
+                            }
+                            if (entry.name == "com/geckolib/loading/definition/geometry/Geometry.class") {
+                                geometryPresent = true
+                            }
+                            if (entry.name == "geckolib.mixins.json") {
+                                mixinsPresent = true
+                            }
+                            subJar.closeEntry()
+                        }
+                        if (modId == "geckolib") {
+                            if (!geometryPresent || !mixinsPresent) {
+                                throw new GradleException("Embedded GeckoLib is incomplete: ${path}")
+                            }
+                            found = true
+                        }
+                    }
+                }
+            }
+            if (!found) {
+                throw new GradleException("GeckoLib was not bundled by Fabric Loom include into ${archive.name}")
+            }
+        }
+    }
+}
+
+tasks.named("assemble") {
+    // 26.3 sources and runtime use the same names. The final artifact is jar, not remapJar.
+    setDependsOn([tasks.named("jar"), tasks.named("verifyBundledGeckoLib")])
 }
 
 // Gradle cannot accept an arbitrary global `--dev` flag for the built-in `build` task

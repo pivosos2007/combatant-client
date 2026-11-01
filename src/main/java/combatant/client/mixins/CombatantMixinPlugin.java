@@ -101,6 +101,15 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
     private static final Set<String> OPTIONAL_XAERO_WORLDMAP_MIXINS = Set.of(
             "combatant.client.mixins.xaero.worldmap.WaypointRenderProviderMixin"
     );
+    private static final Set<String> OPTIONAL_SEEDCRACKER_MIXINS = Set.of(
+            "combatant.client.mixins.seedcracker.SeedCrackerCommandsMixin",
+            "combatant.client.mixins.seedcracker.SeedCrackerConfigSaveMixin",
+            "combatant.client.mixins.seedcracker.SeedCrackerFeedbackMixin",
+            "combatant.client.mixins.seedcracker.SeedCrackerLogMixin",
+            "combatant.client.mixins.seedcracker.SeedCrackerDatabaseMixin",
+            "combatant.client.mixins.seedcracker.SeedCrackerFinderQueueMixin",
+            "combatant.client.mixins.seedcracker.SeedCrackerHashGuardMixin"
+    );
     private static final Set<String> OPTIONAL_MORECULLING_MIXINS = Set.of(
             "combatant.client.mixins.moreculling.CullingUtilsMixin"
     );
@@ -137,6 +146,9 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
             return loader.isModLoaded("xaerolib")
                     || loader.isModLoaded("xaerominimap")
                     || loader.isModLoaded("xaeroworldmap");
+        }
+        if (OPTIONAL_SEEDCRACKER_MIXINS.contains(mixinClassName)) {
+            return FabricLoader.getInstance().isModLoaded("seedcrackerx");
         }
         if (OPTIONAL_MORECULLING_MIXINS.contains(mixinClassName)) {
             return FabricLoader.getInstance().isModLoaded("moreculling");

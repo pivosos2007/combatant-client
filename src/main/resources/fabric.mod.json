@@ -13,21 +13,30 @@
   "entrypoints": {
     "client": [
       "combatant.client.Combatant"
+    ],
+    "seedcrackerx": [
+      "combatant.client.compat.seedcracker.SeedCrackerEntrypoint"
     ]
   },
   "mixins": [
     "combatant.mixins.json"
   ],
+  "jars": [
+    {
+      "file": "META-INF/jars/geckolib-bundled.jar"
+    }
+  ],
   "depends": {
-    "sodium": ">=0.9.2 <0.10.0",
+    "sodium": "0.9.2+mc26.3",
     "fabricloader": ">=0.19.5",
-    "minecraft": "${minecraft_version}"
+    "minecraft": "${minecraft_version}",
+    "geckolib": ">=${geckolib_version}"
   },
   "suggests": {
     "iris": "1.11.7+mc26.3",
     "immediatelyfast": "*",
     "viafabricplus": "*",
-    "sodium-extra": "*",
-    "litematica": ">=0.29.1"
+    "seedcrackerx": ">=2.16.2",
+    "sodium-extra": "*"
   }
 }

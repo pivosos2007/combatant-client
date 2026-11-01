@@ -527,8 +527,14 @@ enum UnifiedSettingRenderer {
     }
 
     static float getHeight(SliderSetting<?> setting) {
-        if (modern()) return UnifiedSettingsSkin.modernMetric(32f, 33f);
+        if (modern()) return largeModelSlider(setting)
+                ? UnifiedSettingsSkin.modernMetric(56f, 56f)
+                : UnifiedSettingsSkin.modernMetric(32f, 33f);
         return m(58f, 24f);
+    }
+
+    private static boolean largeModelSlider(SliderSetting<?> setting) {
+        return setting.getParent() instanceof combatant.client.features.module.modules.visuals.PlayerModel;
     }
 
     private static <N extends Number> void renderModernSlider(SliderSetting<N> setting, float x, float y, float w, float mx, float my) {
@@ -537,7 +543,9 @@ enum UnifiedSettingRenderer {
         double min = setting.sliderMin();
         double max = setting.sliderMax();
         double val = value.get().doubleValue();
-        float rowH = UnifiedSettingsSkin.modernMetric(32f, 33f);
+        boolean large = largeModelSlider(setting);
+        float rowH = large ? UnifiedSettingsSkin.modernMetric(56f, 56f)
+                : UnifiedSettingsSkin.modernMetric(32f, 33f);
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
         float labelSize = UnifiedSettingsSkin.labelSize();
         float valueSize = UnifiedSettingsSkin.modernMetric(12f, 12f);
@@ -548,15 +556,17 @@ enum UnifiedSettingRenderer {
         float valueH = UnifiedSettingsSkin.modernMetric(18f, 18f);
         float valueX = x + w - valueW;
         float valueY = y - UnifiedSettingsSkin.modernMetric(1f, 1f);
-        float trackH = UnifiedSettingsSkin.sliderTrackHeight();
+        float trackH = large ? UnifiedSettingsSkin.modernMetric(5.5f, 5.5f)
+                : UnifiedSettingsSkin.sliderTrackHeight();
         // The knob is a real circle, so the authored track must stop one radius before each
         // horizontal edge.  This keeps the marker inside both the row reveal scissor and the
         // host viewport at min/max instead of relying on scissor bleed to hide bad geometry.
-        float knobRadius = UnifiedSettingsSkin.sliderThumbOuterRadius();
+        float knobRadius = large ? UnifiedSettingsSkin.modernMetric(7.5f, 7.5f)
+                : UnifiedSettingsSkin.sliderThumbOuterRadius();
         float trackInset = knobRadius + UnifiedSettingsSkin.modernMetric(1.0f, 1.0f);
         float trackX = x + trackInset;
         float trackW = Math.max(1f, w - trackInset * 2f);
-        float knobCenterY = y + rowH - knobRadius - UnifiedSettingsSkin.modernMetric(0.5f, 0.5f);
+        float knobCenterY = y + rowH - knobRadius - UnifiedSettingsSkin.modernMetric(large ? 5f : .5f, large ? 5f : .5f);
         float trackY = knobCenterY - trackH * 0.5f;
 
         ui.lastX = x; ui.lastY = y; ui.lastW = w;
@@ -635,6 +645,12 @@ enum UnifiedSettingRenderer {
         target = UnifiedSettingsSkin.clamp01(target);
         ui.anim = AnimationUtility.approach(ui.anim, target, dt, 16f);
         UnifiedSettingsSkin.drawModernTrack(trackX, trackY, trackW, trackH, ui.hoverAnim);
+        if (large) {
+            // The full-length track must remain visible on dark PlayerModel panels even when
+            // the value is zero; previously only the filled fraction was legible.
+            ClickGuiRenderer.drawRoundedRect(trackX, trackY, trackW, trackH, trackH * .5f,
+                    UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernTextSecondary(), 0.17f));
+        }
         float fillW = Math.max(0f, trackW * ui.anim);
         if (fillW > 0.1f) {
             UnifiedSettingsSkin.drawModernAccent(trackX, trackY, Math.max(trackH, fillW), trackH,

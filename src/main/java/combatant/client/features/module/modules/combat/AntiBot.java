@@ -26,7 +26,7 @@ import java.util.List;
 /**
  * Global switch for {@link AntiBotTracker}. The tracker always scores players in the
  * background; this module decides whether shared targeting treats high scorers as bots.
- * KillAura keeps its own per-module "ignore bots" toggle, which works with or without this.
+ * All target consumers use the same enabled/strict policy; no hidden per-module bot filter.
  */
 @ModuleInfo(
         id = "antibot",
