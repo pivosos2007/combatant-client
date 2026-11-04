@@ -17,17 +17,18 @@ layout(location = 0) out vec4 color;
 
 void main() {
     vec2 uv = v_TexCoord;
-    vec3 base = texture(u_Texture, uv).rgb;
+    vec4 sceneColor = texture(u_Texture, uv);
+    vec3 base = sceneColor.rgb;
     float radius = u_CenterRadius.w;
     if (radius <= 1.0e-4) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
 
     vec2 ndc = uv * 2.0 - 1.0;
     vec4 farWorld = u_InvViewProj * vec4(ndc, u_DepthTransform.z, 1.0);
     if (abs(farWorld.w) < 1.0e-6) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
     farWorld.xyz /= farWorld.w;
@@ -35,7 +36,7 @@ void main() {
 
     float alongRay = dot(rayDir, u_CenterRadius.xyz);
     if (alongRay <= 0.0) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
 
@@ -43,7 +44,7 @@ void main() {
     float perpendicular = sqrt(max(0.0, centerSq - alongRay * alongRay));
     float radialT = perpendicular / radius;
     if (radialT >= 1.02) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
 
@@ -52,7 +53,7 @@ void main() {
     if (hitDistance <= 0.0) hitDistance = alongRay;
     vec3 hit = rayDir * hitDistance;
     if (hit.y < u_CenterRadius.y) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
 
@@ -65,7 +66,7 @@ void main() {
                 sceneWorld.xyz /= sceneWorld.w;
                 float sceneDistance = length(sceneWorld.xyz);
                 if (hitDistance > sceneDistance + max(0.05, sceneDistance * 0.005)) {
-                    color = vec4(base, 1.0);
+                    color = vec4(base, sceneColor.a);
                     return;
                 }
             }
@@ -75,7 +76,7 @@ void main() {
     vec2 gradient = vec2(dFdx(perpendicular), dFdy(perpendicular));
     float gradientLength = length(gradient);
     if (gradientLength < 1.0e-6) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
     vec2 direction = gradient / gradientLength;
@@ -96,5 +97,5 @@ void main() {
         result *= 0.2;
     }
 
-    color = vec4(result, 1.0);
+    color = vec4(result, sceneColor.a);
 }

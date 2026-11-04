@@ -94,6 +94,13 @@ public final class CombatantGlBackend implements CombatantRhi {
     }
 
     private Matrix4f meshModelView(RhiDrawCommand command) {
+        // This mesh was submitted from LevelRenderer's opaque boundary, outside the
+        // usual WORLD rendering scope. The command carries its *complete* camera
+        // view * entity pose and must not inherit mutable global model-view state.
+        if (command != null && command.transform != null
+                && combatant.client.render.engine.pipeline.RigRenderPipelines.isPlayerGpuPipeline(command.pipeline)) {
+            return modelViewScratch.set(command.transform);
+        }
         if (RenderState.rendering3D) {
             return modelViewScratch.set(RenderSystem.getModelViewStack());
         }
@@ -348,8 +355,10 @@ public final class CombatantGlBackend implements CombatantRhi {
     }
 
     private BindingCounts bindDrawState(RenderPass pass, RhiDrawCommand command, boolean bindPipeline, PassBindingCache bindings) {
+        RenderPipelineSpec resolvedSpec = command.pipelineSpec != null
+                ? command.pipelineSpec : pipelines.require(command.pipeline);
         GpuBufferSlice meshData = null;
-        if (requiresMeshData(command.pipelineSpec)) {
+        if (requiresMeshData(resolvedSpec)) {
             MeshUniforms.update(
                     MeshRenderer.copyProjection(projectionScratch),
                     meshModelView(command),
@@ -359,7 +368,7 @@ public final class CombatantGlBackend implements CombatantRhi {
             meshData = MeshUniforms.get();
         }
         GpuBufferSlice uiBatch = null;
-        if (requiresUiBatch(command.pipelineSpec) && !command.hasUniform("UIBatch")) {
+        if (requiresUiBatch(resolvedSpec) && !command.hasUniform("UIBatch")) {
             ViewportContext viewport = ViewportContext.current();
             UIBatchUniforms.update(
                     viewport != null ? viewport.framebufferWidth() : command.colorAttachment.getWidth(0),
@@ -379,7 +388,7 @@ public final class CombatantGlBackend implements CombatantRhi {
                 ? RenderSystem.getDynamicUniforms().writeTransform(RenderSystem.getModelViewMatrixCopy())
                 : null;
 
-        if (command.pipelineSpec == null) pipelines.require(command.pipeline);
+        // Pipeline spec was resolved before uniform setup above.
         if (bindPipeline) {
             if (CombatantRenderPipelines.isRigPipeline(command.pipeline)) {
                 IrisRuntime.setNativePipeline(pass, command.pipeline);

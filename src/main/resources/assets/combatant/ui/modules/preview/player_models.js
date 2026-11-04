@@ -108,7 +108,8 @@ function entry(item,index,w,selected,p,step) {
   }
   contents.push(box(`${key}:art-background`,14,14,54,54,9,p.field,alpha(p.border,.75),.9));
   if(art)contents.push(ui.image({key:`${key}:art`,assetType:'texture',asset:art,
-    fit:'contain',interactive:false,style:ui.absolute(19,19,44,44,{overflow:'hidden',borderRadius:6})}));
+    filterMode:'linear',fit:'contain',interactive:false,
+    style:ui.absolute(19,19,44,44,{overflow:'hidden',borderRadius:6})}));
   else contents.push(icon(`${key}:placeholder`,'user',30,30,22,p.muted));
   const tx=82,checkSpace=selected?32:8;
   contents.push(

@@ -18,6 +18,19 @@ layout(location = 0) out vec4 color;
 
 layout(location = 2) in vec4 v_Color;
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+layout (std140) uniform UIBatch {
+    vec4 uScreen;
+    vec4 uLayer;
+};
+#include <combatant:ui_clip.glsl>
+#endif
+
 void main() {
     color = v_Color;
+#ifdef COMBATANT_ANALYTIC_CLIP
+    vec2 logicalScale = uScreen.zw / max(uScreen.xy, vec2(1.0));
+    color.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), logicalScale);
+    if (color.a <= 0.001) discard;
+#endif
 }

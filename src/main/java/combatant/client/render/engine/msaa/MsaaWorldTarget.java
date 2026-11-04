@@ -74,10 +74,16 @@ public enum MsaaWorldTarget {
             return;
         }
 
-        boolean reusableTarget = msaa != null
-                && allocationRequestSamples == sampleCount
-                && width == w
-                && height == h;
+        if (preserveMainColor) {
+            // The preceding world MSAA pass has already resolved into main.
+            // A framebuffer blit cannot seed N-sample color from 1-sample color
+            // (GL_INVALID_OPERATION; Vulkan has no reverse resolve either).
+            // Render this late overlay on main, preserving its color and depth.
+            state = "late-overlay-single-sample";
+            active = false;
+            return;
+        }
+
         ensureBuffer(w, h, sampleCount);
         if (msaa == null) {
             state = "alloc_failed";
@@ -90,29 +96,6 @@ public enum MsaaWorldTarget {
             state = "no_main";
             shutdown(mc);
             return;
-        }
-
-        if (preserveMainColor) {
-            if (!reusableTarget) {
-                state = "seed_unavailable";
-                active = false;
-                return;
-            }
-            boolean seeded = CombatantRenderSystem.rhi().msaa().resolve(main, msaa, true, false);
-            if (!seeded) {
-                lastResolveOk = false;
-                state = "seed_failed";
-                active = false;
-                DebugLog.warnOnChange(
-                        "msaa.world.seed_failed",
-                        sampleCount + "|" + w + "x" + h,
-                        "[MSAA] could not preserve post-processed main color for the late world pass; rendering that pass without MSAA. requested=%d size=%dx%d",
-                        sampleCount,
-                        w,
-                        h
-                );
-                return;
-            }
         }
 
         try {

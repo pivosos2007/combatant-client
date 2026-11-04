@@ -79,10 +79,13 @@ public class InventoryMove extends Module {
             visibleWhen(bool("cancel_server_close", true), () -> mode.get() == Mode.GRIM);
     private final BooleanValue textFieldDisablesMovement = bool("text_fields_disable", true);
     private final BooleanMapValue movementToggles = group("movement_toggles", defaultMovementToggles());
+    // A single, explicit policy replaces the old three independent ClickGUI screen toggles.
+    // false = movement blocked, including in Map and Schematics by default.
+    private final BooleanMapValue clickGuiSections = group("clickgui_sections", defaultClickGuiSections());
     private final SetValue allowedScreens =
-            textList("allowed_screens", "allowed_screens", TextListSetting.PickerMode.SCREENS, defaultAllowedScreens());
+            textList("allowed_screens", "allowed_screens", TextListSetting.PickerMode.SCREENS_WITHOUT_CLICK_GUI, defaultAllowedScreens());
     private final SetValue blockedScreens =
-            textList("blocked_screens", "blocked_screens", TextListSetting.PickerMode.SCREENS, defaultBlockedScreens());
+            textList("blocked_screens", "blocked_screens", TextListSetting.PickerMode.SCREENS_WITHOUT_CLICK_GUI, defaultBlockedScreens());
     private final NumberValue<Integer> screenSlowdown = num("screen_slowdown", "screen_slowdown", 0, 0, 90);
     private final List<ServerboundContainerClickPacket> heldPackets = new ArrayList<>();
     private GrimPhase grimPhase = GrimPhase.IDLE;
@@ -107,13 +110,19 @@ public class InventoryMove extends Module {
         LinkedHashSet<String> screens = new LinkedHashSet<>();
         screens.add(AbstractContainerScreen.class.getName());
         screens.add(PauseScreen.class.getName());
-        screens.add(ScreenCatalog.CLICK_GUI);
-        screens.add(ScreenCatalog.CLICK_GUI_EDITOR);
-        screens.add(ScreenCatalog.CLICK_GUI_PICKER);
         screens.add(CreativeModeInventoryScreen.class.getName());
         screens.add(InventoryScreen.class.getName());
         screens.add(ContainerScreen.class.getName());
         return screens;
+    }
+
+    private static java.util.Map<String, Boolean> defaultClickGuiSections() {
+        java.util.LinkedHashMap<String, Boolean> choices = new java.util.LinkedHashMap<>();
+        choices.put("Modules", true);
+        choices.put("Settings", true);
+        choices.put("Map", false);
+        choices.put("Schematics", false);
+        return choices;
     }
 
     private static java.util.Map<String, Boolean> defaultMovementToggles() {
@@ -400,6 +409,19 @@ public class InventoryMove extends Module {
 
     private boolean isMovementAllowed(Screen screen) {
         if (screen == null || mc.player == null) return false;
+        if (screen instanceof ClickGuiScreen) {
+            if (isClickGuiTextInputActive(screen)) return false;
+            String key = switch (ClickGuiRenderer.activeSectionId()) {
+                case "combatant:modules" -> "Modules";
+                case "combatant:settings" -> "Settings";
+                case "combatant:map" -> "Map";
+                case "combatant:schematics" -> "Schematics";
+                default -> ""; // Unknown or addon sections are locked by default.
+            };
+            return !key.isEmpty() && clickGuiSections.get(key);
+        }
+        // Key bind editing and color picking are modal, never movement-allowed.
+        if (screen instanceof ClickGuiEditorScreen || screen instanceof ClickGuiPickerScreen) return false;
         if (isClickGuiTextInputActive(screen)) return false;
         if (textFieldDisablesMovement.get() && hasActiveTextField(screen)) return false;
         if (ScreenCatalog.matches(screen, blockedScreens.get())) return false;
@@ -420,7 +442,9 @@ public class InventoryMove extends Module {
                 || screen instanceof ClickGuiPickerScreen)) {
             return false;
         }
-        return ClickGuiRenderer.isBlockingModuleKeybinds() || RelationsComponent.isMovementInputBlocked();
+        return ClickGuiRenderer.isBlockingModuleKeybinds()
+                || ClickGuiRenderer.activeSectionBlocksMovement()
+                || RelationsComponent.isMovementInputBlocked();
     }
 
     private boolean hasActiveTextField(Screen screen) {

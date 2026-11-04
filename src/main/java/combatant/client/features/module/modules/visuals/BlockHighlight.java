@@ -48,17 +48,42 @@ public class BlockHighlight extends Module {
     private static final double RAINBOW_SPATIAL_SCALE = 12.0;
     private static final double GEOMETRY_EXPAND = 0.0025;
     private final Minecraft mc = Minecraft.getInstance();
+    private final EnumValue<RenderStyle> renderStyle =
+            enumMode("render_style", RenderStyle.NORMAL);
     private final BooleanValue outlineEnabled =
             bool(
                     "outline_enabled",
                     true
             );
+    private final BooleanValue surfaceEnabled =
+            visibleWhen(bool("surface_enabled", true), this::isGlowStyle);
+    private final RGBAColorValue surfaceColor =
+            visibleWhen(color("surface_color", "#1F66DDFF"), () -> isGlowStyle() && surfaceEnabled.get());
+    private final BooleanValue surfaceGradient =
+            visibleWhen(bool("surface_gradient", false), () -> isGlowStyle() && surfaceEnabled.get());
+    private final RGBAColorValue surfaceColor2 =
+            visibleWhen(color("surface_color2", "#6066AFFF"),
+                    () -> isGlowStyle() && surfaceEnabled.get() && surfaceGradient.get());
+    private final NumberValue<Float> surfaceGlow =
+            visibleWhen(num("surface_glow", 0.65f, 0.0f, 2.0f), () -> isGlowStyle() && surfaceEnabled.get());
+    private final NumberValue<Float> lineGlow =
+            visibleWhen(num("line_glow", 1.35f, 0.0f, 4.0f), () -> isGlowStyle() && outlineEnabled.get());
+    private final EnumValue<GlowSurfaces.Animation> glowAnimation =
+            visibleWhen(enumMode("glow_animation", GlowSurfaces.Animation.BREATHE), this::isGlowStyle);
+    private final NumberValue<Float> glowSpeed =
+            visibleWhen(num("glow_speed", 1.0f, 0.1f, 5.0f),
+                    () -> isGlowStyle() && glowAnimation.get() != GlowSurfaces.Animation.STATIC);
+    private final NumberValue<Float> glowAccent =
+            visibleWhen(num("glow_accent", 0.75f, 0.0f, 1.0f), this::isGlowStyle);
+
+    private boolean isGlowStyle() { return renderStyle.get() == RenderStyle.GLOW; }
+
     private final EnumValue<OutlineMode> outlineMode =
             visibleWhen(enumMode(
                     "outline_mode",
                     OutlineMode.LINES,
                     OutlineMode.values()
-            ), outlineEnabled::get);
+            ), () -> outlineEnabled.get() && !isGlowStyle());
     private final RGBAColorValue outlineColor =
             visibleWhen(color(
                     "outline_color",
@@ -95,7 +120,7 @@ public class BlockHighlight extends Module {
             visibleWhen(bool(
                     "outline_depth_test",
                     false
-            ), outlineEnabled::get);
+            ), () -> outlineEnabled.get() || (isGlowStyle() && surfaceEnabled.get()));
     private final BooleanValue breakingEnabled =
             bool(
                     "breaking_enabled",
@@ -249,7 +274,7 @@ public class BlockHighlight extends Module {
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
         if (!isEnabled() || mc.level == null || mc.player == null) return;
 
-        if (outlineEnabled.get()) {
+        if (outlineEnabled.get() || (isGlowStyle() && surfaceEnabled.get())) {
             renderTargetOutline(renderer);
         }
 
@@ -273,6 +298,10 @@ public class BlockHighlight extends Module {
         if (shape.isEmpty()) return;
 
         VoxelShape worldShape = shape.move(pos.getX(), pos.getY(), pos.getZ());
+        if (isGlowStyle()) {
+            renderGlowShape(renderer, worldShape);
+            return;
+        }
         OutlineMode mode = outlineMode.get();
 
         if (mode == OutlineMode.BOX || mode == OutlineMode.BOTH) {
@@ -281,6 +310,31 @@ public class BlockHighlight extends Module {
 
         if (mode == OutlineMode.LINES || mode == OutlineMode.BOTH) {
             renderShapeLines(renderer, worldShape);
+        }
+    }
+
+    /** Surface and luminous edge ribbons share a single world_glow_surface GPU mesh batch. */
+    private void renderGlowShape(Renderer3D renderer, VoxelShape worldShape) {
+        GlowSurfaces.Batch batch = GlowSurfaces.begin(
+                renderer, outlineDepthTest.get(), glowAnimation.get(), glowSpeed.get(), glowAccent.get());
+        if (batch == null) return;
+
+        if (surfaceEnabled.get()) {
+            int bottom = surfaceColor.getArgb();
+            int top = surfaceGradient.get() ? surfaceColor2.getArgb() : bottom;
+            float rim = surfaceGlow.get();
+            worldShape.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) ->
+                    batch.box(new AABB(minX - GEOMETRY_EXPAND, minY - GEOMETRY_EXPAND,
+                                    minZ - GEOMETRY_EXPAND, maxX + GEOMETRY_EXPAND,
+                                    maxY + GEOMETRY_EXPAND, maxZ + GEOMETRY_EXPAND),
+                            bottom, top, rim, false, true));
+        }
+        if (outlineEnabled.get()) {
+            float glow = lineGlow.get();
+            float thickness = outlineThickness.get();
+            worldShape.forAllEdges((x1, y1, z1, x2, y2, z2) ->
+                    batch.edge(x1, y1, z1, x2, y2, z2,
+                            getOutlineColor(x1, y1, z1), getOutlineColor(x2, y2, z2), glow, thickness));
         }
     }
 
@@ -476,7 +530,8 @@ public class BlockHighlight extends Module {
             if (isRenderable(box)) {
                 if (breakingGlow.get()) {
                     float rim = Mth.clamp(alpha(argb) / 255.0f * 2.0f, 0.25f, 1.0f);
-                    GlowSurfaces.box(renderer, box, argb, argb, rim, 1.0f, false, true, false);
+                    GlowSurfaces.box(renderer, box, argb, argb, rim,
+                            glowAnimation.get(), glowSpeed.get(), glowAccent.get(), false, true, false);
                 } else {
                     addFilledBox(renderer, box, argb);
                 }
@@ -547,6 +602,13 @@ public class BlockHighlight extends Module {
             case THEME -> AnimatedRenderColors.Mode.THEME;
             case STATIC -> AnimatedRenderColors.Mode.STATIC;
         };
+    }
+
+    public enum RenderStyle implements EnumValue.IdProvider {
+        NORMAL("normal"), GLOW("glow");
+        private final String id;
+        RenderStyle(String id) { this.id = id; }
+        @Override public String id() { return id; }
     }
 
     public enum ColorMode implements EnumValue.IdProvider {

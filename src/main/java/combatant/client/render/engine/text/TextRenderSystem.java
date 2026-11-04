@@ -306,7 +306,8 @@ public enum TextRenderSystem {
                 command.uniform("UIClip", UiClipUniforms.write(clip));
             }
 
-            if (font.isMsdf()) {
+            if (font.isMsdf() && pipeline != UiRenderPipelines.UI_TEXT_OUTLINE_FAST
+                    && pipeline != UiRenderPipelines.UI_TEXT_OUTLINE_FAST_ANALYTIC_CLIP) {
                 MsdfTextUniforms.update(font.getPxRange(), font.getAtlasWidth(), font.getAtlasHeight());
                 command.uniform("MsdfText", MsdfTextUniforms.get());
             }

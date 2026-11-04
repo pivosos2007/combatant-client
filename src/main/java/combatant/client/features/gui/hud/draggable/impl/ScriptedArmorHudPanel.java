@@ -11,6 +11,7 @@ import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiDynamicPatchBuffer;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
@@ -30,6 +31,13 @@ import java.util.List;
 final class ScriptedArmorHudPanel {
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedArmorHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
+    @SuppressWarnings("unchecked")
+    private final LinkedHashMap<String, Object>[] reusableItems = new LinkedHashMap[4];
+    private final ArrayList<LinkedHashMap<String, Object>> currentItems = new ArrayList<>(4);
+    private final Object[] cachedItemTypes = new Object[4];
+    private final String[] cachedItemIds = new String[4];
+
+    private static final String[] ITEM_KEYS = {"armor:item:0", "armor:item:1", "armor:item:2", "armor:item:3"};
 
     boolean render(Renderer2D renderer,
                    TextRenderer textRenderer,
@@ -49,8 +57,7 @@ final class ScriptedArmorHudPanel {
         if (module == null) return false;
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
-        LinkedHashMap<String, Object> props = panel.toProps();
-        UiRuntime baked = runtime.bake(
+        UiRuntime baked = runtime.bakeDynamic(
                 moduleHandle,
                 module,
                 "armor",
@@ -62,8 +69,8 @@ final class ScriptedArmorHudPanel {
                 panel.y,
                 panel.width,
                 panel.height,
-                () -> props,
-                panel::patches
+                panel::toProps,
+                panel::writeDynamicPatches
         );
         if (baked == null) return false;
         baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT));
@@ -79,24 +86,37 @@ final class ScriptedArmorHudPanel {
         return moduleHandle.module();
     }
 
-    static List<LinkedHashMap<String, Object>> items(ItemStack[] stacks, boolean reverse) {
-        List<LinkedHashMap<String, Object>> out = new ArrayList<>(4);
-        if (stacks == null) return out;
-        for (int visualIndex = 0; visualIndex < stacks.length; visualIndex++) {
+    List<LinkedHashMap<String, Object>> items(ItemStack[] stacks, boolean reverse) {
+        currentItems.clear();
+        if (stacks == null) return currentItems;
+        for (int visualIndex = 0, n = Math.min(stacks.length, reusableItems.length); visualIndex < n; visualIndex++) {
             int sourceIndex = reverse ? (stacks.length - 1 - visualIndex) : visualIndex;
             ItemStack stack = stacks[sourceIndex];
-            if (stack == null || stack.isEmpty()) continue;
-            LinkedHashMap<String, Object> item = new LinkedHashMap<>();
-            item.put("visualIndex", visualIndex);
+            if (stack == null || stack.isEmpty()) {
+                LinkedHashMap<String, Object> old = reusableItems[visualIndex];
+                if (old != null) old.remove("stack");
+                continue;
+            }
+            LinkedHashMap<String, Object> item = reusableItems[visualIndex];
+            if (item == null) {
+                item = new LinkedHashMap<>(7);
+                item.put("visualIndex", visualIndex);
+                reusableItems[visualIndex] = item;
+            }
             item.put("stack", stack.copy());
-            item.put("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+            Object itemType = stack.getItem();
+            if (cachedItemTypes[visualIndex] != itemType) {
+                cachedItemTypes[visualIndex] = itemType;
+                cachedItemIds[visualIndex] = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+            }
+            item.put("item", cachedItemIds[visualIndex]);
             item.put("count", stack.getCount());
             item.put("damage", stack.getDamageValue());
             item.put("maxDamage", stack.getMaxDamage());
             item.put("componentsHash", stack.getComponents().hashCode());
-            out.add(item);
+            currentItems.add(item);
         }
-        return out;
+        return currentItems;
     }
 
     record Panel(float x,
@@ -177,21 +197,19 @@ final class ScriptedArmorHudPanel {
             return h;
         }
 
-        LinkedHashMap<String, LinkedHashMap<String, Object>> patches() {
-            LinkedHashMap<String, LinkedHashMap<String, Object>> patches = new LinkedHashMap<>();
-            if (items != null) {
-                for (LinkedHashMap<String, Object> item : items) {
-                    int visualIndex = intValue(item.get("visualIndex"));
-                    LinkedHashMap<String, Object> patch = new LinkedHashMap<>();
-                    patch.put("stack", item.get("stack"));
-                    patch.put("item", string(item.get("item")));
-                    patch.put("count", intValue(item.get("count")));
-                    patch.put("damage", intValue(item.get("damage")));
-                    patch.put("maxDamage", intValue(item.get("maxDamage")));
-                    patches.put("armor:item:" + visualIndex, patch);
-                }
+        /** Direct typed instructions; actual stacks remain on the render thread. */
+        void writeDynamicPatches(UiDynamicPatchBuffer patches) {
+            if (items == null) return;
+            for (LinkedHashMap<String, Object> item : items) {
+                int visualIndex = intValue(item.get("visualIndex"));
+                if (visualIndex < 0 || visualIndex >= ITEM_KEYS.length) continue;
+                String key = ITEM_KEYS[visualIndex];
+                patches.put(key, "stack", item.get("stack"));
+                patches.put(key, "item", string(item.get("item")));
+                patches.putInt(key, "count", intValue(item.get("count")));
+                patches.putInt(key, "damage", intValue(item.get("damage")));
+                patches.putInt(key, "maxDamage", intValue(item.get("maxDamage")));
             }
-            return patches;
         }
     }
 

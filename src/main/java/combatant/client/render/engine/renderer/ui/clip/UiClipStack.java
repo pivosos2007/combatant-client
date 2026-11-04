@@ -87,6 +87,11 @@ public final class UiClipStack {
         return layers.size();
     }
 
+    /** Drop abandoned shape clips between frames, without changing snapshot IDs. */
+    public void clear() {
+        layers.clear();
+    }
+
     public int currentReference() {
         return current().stencilReference();
     }

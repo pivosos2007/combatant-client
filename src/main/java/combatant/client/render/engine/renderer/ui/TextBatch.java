@@ -29,6 +29,8 @@ public final class TextBatch {
     public UiClipSnapshot clipSnapshot = UiClipSnapshot.NONE;
     public UiScissorSnapshot scissorSnapshot = UiScissorSnapshot.NONE;
     public MeshBuilder mesh;
+    /** Retain the other vertex layout when switching between ordinary/MSDF and outline glyphs. */
+    private MeshBuilder spareMesh;
     public boolean liquidGlass;
     public UiRect glassBounds;
     public UiBackdropBlendSpec backdropBlend;
@@ -46,11 +48,22 @@ public final class TextBatch {
         this.glassBounds = null;
         this.backdropBlend = null;
         this.backdropRequest = UiBackdropRequest.NONE;
-        if (mesh == null) {
+        if (mesh != null && !mesh.isCompatibleWith(pipeline)) {
+            // The text-batch pool is positional, not keyed by pipeline. An outline glyph
+            // (POS2_TEXTURE_COLOR_RECT_PARAMS) can reuse a slot prewarmed for MSDF
+            // (POS2_TEXTURE_COLOR). Never append bytes using the old stride.
+            if (mesh.isBuilding()) mesh.end();
+            if (spareMesh != null && !spareMesh.isCompatibleWith(pipeline)) {
+                spareMesh.close();
+                spareMesh = null;
+            }
+            MeshBuilder previous = mesh;
+            mesh = spareMesh != null ? spareMesh : new MeshBuilder(pipeline);
+            spareMesh = previous;
+        } else if (mesh == null) {
             mesh = new MeshBuilder(pipeline);
-        } else if (mesh.isBuilding()) {
-            mesh.end();
         }
+        if (mesh.isBuilding()) mesh.end();
         mesh.begin();
     }
 
@@ -151,6 +164,14 @@ public final class TextBatch {
             begin(label, font, pipeline, placement, scissorSnapshot, clipSnapshot);
         }
         mesh.appendMesh(source);
+    }
+
+    /** Release both retained layouts on RHI shutdown/reload. */
+    public void closeRetainedMeshes() {
+        if (mesh != null) mesh.close();
+        if (spareMesh != null) spareMesh.close();
+        mesh = null;
+        spareMesh = null;
     }
 
     public boolean isEmpty() {

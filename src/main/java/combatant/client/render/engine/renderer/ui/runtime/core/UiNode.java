@@ -30,6 +30,7 @@ public final class UiNode {
     private final UiState state = new UiState();
     private final ObjectArrayList<UiNode> children = new ObjectArrayList<>();
     private UiProps props;
+    private boolean runtimePropsPrepared;
     private UiStyle style;
     private String styleClass;
     private Map<String, String> events = Map.of();
@@ -188,6 +189,81 @@ public final class UiNode {
      */
     public void setProps(UiProps props) {
         this.props = props != null ? props : UiProps.EMPTY;
+        this.runtimePropsPrepared = false;
+        syncDisabledState();
+    }
+
+    /**
+     * Update dynamic props in a private, preallocated runtime map. Node specs are
+     * never modified; the map is copied once on the first actual patch, not per frame.
+     */
+    public boolean patchProps(Map<String, ?> patch) {
+        if (patch == null || patch.isEmpty()) return false;
+        if (!runtimePropsPrepared) {
+            if (!props.differsFrom(patch)) return false;
+            props = props.runtimeCopy(patch.size());
+            runtimePropsPrepared = true;
+        }
+        boolean changed = props.updateRuntime(patch);
+        if (changed && (patch.containsKey("disabled") || patch.containsKey("stateValues"))) {
+            syncDisabledState();
+        }
+        return changed;
+    }
+
+    /** Patch one prebound object slot without building a temporary Map. */
+    public boolean patchProp(String key, Object value) {
+        if (key == null) return false;
+        if (!runtimePropsPrepared) {
+            if (java.util.Objects.equals(props.get(key), value) && props.values().containsKey(key)) return false;
+            props = props.runtimeCopy(1);
+            runtimePropsPrepared = true;
+        }
+        boolean changed = props.updateRuntime(key, value);
+        if (changed && ("disabled".equals(key) || "stateValues".equals(key))) syncDisabledState();
+        return changed;
+    }
+
+    /** Patch a primitive numeric slot; unchanged floats do not allocate boxes. */
+    public boolean patchFloatProp(String key, float value) {
+        if (key == null) return false;
+        if (!runtimePropsPrepared) {
+            Object before = props.get(key);
+            if (before instanceof Float f && Float.floatToIntBits(f) == Float.floatToIntBits(value)) return false;
+            props = props.runtimeCopy(1);
+            runtimePropsPrepared = true;
+        }
+        boolean changed = props.updateRuntimeFloat(key, value);
+        if (changed && ("disabled".equals(key) || "stateValues".equals(key))) syncDisabledState();
+        return changed;
+    }
+
+    /** Patch a prebound integer slot without allocating on equal values. */
+    public boolean patchIntProp(String key, int value) {
+        if (key == null) return false;
+        if (!runtimePropsPrepared) {
+            Object before = props.get(key);
+            if (before instanceof Integer i && i == value) return false;
+            props = props.runtimeCopy(1);
+            runtimePropsPrepared = true;
+        }
+        boolean changed = props.updateRuntimeInt(key, value);
+        if (changed && ("disabled".equals(key) || "stateValues".equals(key))) syncDisabledState();
+        return changed;
+    }
+
+    /** Patch a prebound boolean slot without a temporary map. */
+    public boolean patchBooleanProp(String key, boolean value) {
+        if (key == null) return false;
+        if (!runtimePropsPrepared) {
+            Object before = props.get(key);
+            if (before instanceof Boolean b && b == value) return false;
+            props = props.runtimeCopy(1);
+            runtimePropsPrepared = true;
+        }
+        boolean changed = props.updateRuntimeBoolean(key, value);
+        if (changed && ("disabled".equals(key) || "stateValues".equals(key))) syncDisabledState();
+        return changed;
     }
 
     /**
@@ -209,10 +285,15 @@ public final class UiNode {
      */
     public void updateFromSpec(UiNodeSpec spec) {
         this.props = spec.props();
+        this.runtimePropsPrepared = false;
         this.style = spec.style();
         this.styleClass = spec.styleClass();
         this.events = spec.events();
         this.metadata = spec.metadata();
+        syncDisabledState();
+    }
+
+    private void syncDisabledState() {
         // Semantic disabled is owned by the component spec. Previously this
         // value existed only in stateValues (for colors), while UiState.disabled
         // was never synchronized. Disabled controls were therefore clickable

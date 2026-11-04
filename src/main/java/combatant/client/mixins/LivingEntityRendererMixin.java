@@ -164,9 +164,39 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
         PlayerPoseCapture.capture(model, modelState, matrices);
         if (model instanceof PlayerModel && combatant.client.features.playermodel.PlayerModels.submit(
                 modelState, collector, matrices, renderType, light, overlay, tint, outlineColor)) {
+            // Skin-backed pieces (helmets, face masks, pauldrons) are additive, not a
+            // replacement for the player. Reuse the actual vanilla AvatarRenderState:
+            // skin, pose, slim geometry and second skin layer stay under Minecraft's control.
+            var skinBacked = combatant.client.features.playermodel.PlayerModels.skinBacked(modelState);
+            if (skinBacked != null) {
+                // The player's existing skin must use the SAME frozen pose as the helmet.
+                // The normal vanilla submission would animate the head and spine using a
+                // different skeleton. Reuse the already-existing Combatant skin renderer;
+                // it caches the native mesh and preserves AvatarRenderState visibility/UVs.
+                if (!(modelState instanceof AvatarRenderState avatarState)
+                        || !PlayerRigCpuRenderer.submitPlayer(collector, (PlayerModel) model,
+                                avatarState, skinBacked.rig(), matrices, renderType, light,
+                                overlay, tint, sprite, outlineColor, null)) {
+                    original.call(collector, model, modelState, matrices, renderType, light,
+                            overlay, tint, sprite, outlineColor);
+                }
+                for (var clothing : skinBacked.asset().clothingSprites()) {
+                    // Clothing uses the exact same pose and Minecraft player UVs, too.
+                    if (!(modelState instanceof AvatarRenderState avatarState)
+                            || !PlayerRigCpuRenderer.submitPlayer(collector, (PlayerModel) model,
+                                    avatarState, skinBacked.rig(), matrices,
+                                    RenderTypes.entityTranslucent(clothing), light, overlay,
+                                    tint, sprite, outlineColor, null)) {
+                        original.call(collector, model, modelState, matrices,
+                                RenderTypes.entityTranslucent(clothing), light, overlay,
+                                tint, sprite, outlineColor);
+                    }
+                }
+            }
             return;
         }
-        if (model instanceof PlayerModel playerModel
+        if (!combatant.client.features.playermodel.PlayerModels.active(modelState)
+                && model instanceof PlayerModel playerModel
                 && modelState instanceof AvatarRenderState avatarState
                 && avatarState instanceof PlayerRigRenderState rigState
                 && PlayerRigCpuRenderer.submitPlayer(
@@ -185,7 +215,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             PoseStack matrices, SubmitNodeCollector collector, int light,
             net.minecraft.client.renderer.entity.state.EntityRenderState state, float yaw, float pitch,
             Operation<Void> original) {
-        if (combatant.client.features.playermodel.PlayerModels.active(state)
+        if (combatant.client.features.playermodel.PlayerModels.replacesBody(state)
                 && (layer instanceof net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer<?, ?, ?>
                 || layer instanceof net.minecraft.client.renderer.entity.layers.CapeLayer
                 || layer instanceof net.minecraft.client.renderer.entity.layers.WingsLayer<?, ?>
@@ -290,6 +320,9 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             constant = @Constant(intValue = 654311423)
     )
     private int combatant$seeInvisibles$overrideInvisiblePlayerAlpha(int vanillaTint, S state) {
+        // Depth silhouettes are fully opaque: a translucent SeeInvisibles tint would
+        // otherwise survive the cutout RenderType switch and discard/attenuate pixels.
+        if (SeeInvisiblesVisualDepth.isCapturing()) return 0xFFFFFFFF;
         SeeInvisibles seeInvisibles = Modules.get(SeeInvisibles.class);
         if (seeInvisibles != null
                 && state instanceof ViewObstructionFadeState fadeState

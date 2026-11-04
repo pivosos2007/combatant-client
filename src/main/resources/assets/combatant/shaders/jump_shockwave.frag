@@ -32,24 +32,25 @@ vec4 scenePosition(vec2 uv) {
 
 void main() {
     vec2 uv = v_TexCoord;
-    vec3 base = texture(u_Texture, uv).rgb;
+    vec4 sceneColor = texture(u_Texture, uv);
+    vec3 base = sceneColor.rgb;
     vec2 ndc = uv * 2.0 - 1.0;
 
     vec4 farWorld = u_InvViewProj * vec4(ndc, u_DepthTransform.z, 1.0);
     if (abs(farWorld.w) < 1.0e-6) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
     vec3 rayDir = normalize(farWorld.xyz / farWorld.w);
     float rayY = rayDir.y;
     if (abs(rayY) < 1.0e-4) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
 
     float t = u_CenterRadius.y / rayY;
     if (t <= 0.0) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
 
@@ -63,7 +64,7 @@ void main() {
     // Coarse rejection only: the final ring boundary is filtered according
     // to the actual pixel footprint, so no hard one-pixel outline remains.
     if (thickness <= 0.0001 || ringDist > thickness + 0.5) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
 
@@ -93,7 +94,7 @@ void main() {
             max(0.0, thickness - edgeAA), thickness + edgeAA, ringDist);
     float visibility = footprintFade * grazingFade * ringCoverage;
     if (visibility <= 1.0e-4) {
-        color = vec4(base, 1.0);
+        color = vec4(base, sceneColor.a);
         return;
     }
 
@@ -106,7 +107,7 @@ void main() {
         if (surface.w > 0.0) {
             float sceneDist = length(surface.xyz);
             if (t > sceneDist + max(0.05, sceneDist * 0.005)) {
-                color = vec4(base, 1.0);
+                color = vec4(base, sceneColor.a);
                 return;
             }
         }
@@ -163,5 +164,5 @@ void main() {
     vec3 refracted = texture(u_Texture, safeUv).rgb;
     vec3 glow = u_RingColor.rgb * (glowProfile * u_RingColor.a);
     color = vec4(mix(base, refracted, refractionMask * visibility)
-            + glow * visibility, 1.0);
+            + glow * visibility, sceneColor.a);
 }

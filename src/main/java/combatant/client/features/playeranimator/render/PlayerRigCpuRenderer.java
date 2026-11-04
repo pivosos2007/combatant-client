@@ -177,6 +177,9 @@ public final class PlayerRigCpuRenderer {
         if (topology != PrimitiveTopology.QUADS && topology != PrimitiveTopology.TRIANGLES)
             throw new IllegalStateException("Unsupported replacement topology: " + topology);
         RigDeformState deform = rig.rig().deform();
+        boolean diagnostic = combatant.client.features.playermodel.PlayerModelRenderDiagnostics.enabled();
+        long started = diagnostic ? System.nanoTime() : 0L;
+        int emitted = 0;
         // Two tightly grouped geometry submissions, no matrix skinning in the triangle loop.
         // Preserve original triangle winding / per-vertex attributes / outline tint.
         Vector3f position = new Vector3f();
@@ -184,6 +187,7 @@ public final class PlayerRigCpuRenderer {
         for (RigMeshPart part : mesh.parts()) {
             if (!visiblePart.test(part.name())) continue;
             float[] skinned = cache.vertices(part, rig, deform);
+            if (diagnostic) emitted += part.indexCount() / 3 * (topology == PrimitiveTopology.QUADS ? 4 : 3);
             for (int i = 0; i < part.indexCount(); i += 3) {
                 for (int corner = 0; corner < (topology == PrimitiveTopology.QUADS ? 4 : 3); corner++) {
                     int offset = Math.min(corner, 2);
@@ -201,6 +205,8 @@ public final class PlayerRigCpuRenderer {
                 }
             }
         }
+        if (diagnostic) combatant.client.features.playermodel.PlayerModelRenderDiagnostics
+                .cpuGeometry(System.nanoTime() - started, emitted);
     }
 
     private static void submit(OrderedSubmitNodeCollector collector, RigMeshData mesh, PlayerRigInstance rig,

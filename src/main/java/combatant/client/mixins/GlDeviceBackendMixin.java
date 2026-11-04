@@ -14,8 +14,11 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import org.lwjgl.opengl.GLCapabilities;
 import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL20C;
+import org.lwjgl.opengl.GL32C;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
+import combatant.client.render.engine.rhi.backend.gl.GlCapabilityLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -70,6 +73,12 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
         combatant$attachmentInvalidation = caps.OpenGL43 || caps.GL_ARB_invalidate_subdata;
         combatant$vendor = combatant$glString(GL11C.GL_VENDOR);
         combatant$renderer = combatant$glString(GL11C.GL_RENDERER);
+        // Query the current context exactly once, on the thread that created Mojang's GL capabilities.
+        // This may differ from the minimum OpenGL version requested by the game.
+        combatant$glVersion = combatant$glString(GL11C.GL_VERSION);
+        combatant$glslVersion = combatant$glString(GL20C.GL_SHADING_LANGUAGE_VERSION);
+        combatant$glProfile = combatant$readContextProfile();
+        combatant$availableCapabilitiesLevel = GlCapabilityLevel.describe(caps);
         return caps;
     }
 
@@ -102,6 +111,30 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
     @Override
     public String combatant$renderer() { return combatant$renderer; }
 
+    @Override
+    public String combatant$glVersion() { return combatant$glVersion; }
+
+    @Override
+    public String combatant$glslVersion() { return combatant$glslVersion; }
+
+    @Override
+    public String combatant$glProfile() { return combatant$glProfile; }
+
+    @Override
+    public String combatant$availableCapabilitiesLevel() { return combatant$availableCapabilitiesLevel; }
+
+    @Unique
+    private static String combatant$readContextProfile() {
+        try {
+            int mask = GL11C.glGetInteger(GL32C.GL_CONTEXT_PROFILE_MASK);
+            if ((mask & GL32C.GL_CONTEXT_CORE_PROFILE_BIT) != 0) return "Core";
+            if ((mask & GL32C.GL_CONTEXT_COMPATIBILITY_PROFILE_BIT) != 0) return "Compatibility";
+        } catch (Throwable ignored) {
+            // Profile is informational; version and capabilities remain authoritative.
+        }
+        return "unknown";
+    }
+
     @Unique
     private static String combatant$glString(int name) {
         try {
@@ -122,6 +155,10 @@ public abstract class GlDeviceBackendMixin implements IGlBackendInfo {
     @Unique private boolean combatant$attachmentInvalidation;
     @Unique private String combatant$vendor = "";
     @Unique private String combatant$renderer = "";
+    @Unique private String combatant$glVersion = "";
+    @Unique private String combatant$glslVersion = "";
+    @Unique private String combatant$glProfile = "unknown";
+    @Unique private String combatant$availableCapabilitiesLevel = "";
 
     @Unique
     private ProfilerPhase.Scope combatant$pipelineCompileScope;

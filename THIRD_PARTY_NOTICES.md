@@ -42,3 +42,10 @@ See `THIRD_PARTY_LICENSES/liquidGL-MIT.txt`.
 are the Khronos BoomBox sample asset. They are public-domain/CC0 material and are included only
 in the development source set for imported PBR geometry testing.
 Source: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BoomBox
+
+## Adobe Source Sans 3
+
+Combatant bundles Source Sans 3 Regular and Semibold, version 3.046.
+© 2010 – 2021 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’
+Licensed under SIL OFL 1.1; see `THIRD_PARTY_LICENSES/SourceSans3-OFL-1.1.txt`.
+Runtime files: `assets/combatant/font/source_sans3_{regular,semibold}.ttf`.

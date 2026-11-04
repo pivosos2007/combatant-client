@@ -10,6 +10,8 @@ package combatant.client.features.gui.hud.script;
 import combatant.client.render.engine.text.TextSizing;
 import java.util.LinkedHashMap;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiPatchWriter;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiDynamicPatchBuffer;
 
 /**
  * Mutable frame snapshot for compact stat widgets such as FPS, TPS, ping, and game time.
@@ -18,6 +20,7 @@ public final class CompactHudStatModel {
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
 
     private final String id;
+    private final String rootNodeKey;
     private final Background background = new Background();
     private final Icon icon = new Icon();
     private final Divider divider = new Divider();
@@ -25,6 +28,8 @@ public final class CompactHudStatModel {
     private final TextRun unit = new TextRun();
     private final TextRun extra = new TextRun();
     private final Animation animation = new Animation();
+    // Direct-mapped, preallocated ARGB -> String cache for stable HUD paint colors.
+    private final ColorCache dynamicColors = new ColorCache();
     private final LinkedHashMap<String, Object> data = new LinkedHashMap<>();
     private boolean visible;
     private float rootX;
@@ -36,6 +41,7 @@ public final class CompactHudStatModel {
 
     public CompactHudStatModel(String id) {
         this.id = id != null ? id : "";
+        this.rootNodeKey = "compact-stat:" + this.id;
     }
 
     private static void putBounds(LinkedHashMap<String, UiBounds> patches,
@@ -76,6 +82,17 @@ public final class CompactHudStatModel {
         if (color != null) props.put("color", color);
         if (!Float.isNaN(textOffsetY)) props.put("textOffsetY", textOffsetY);
         patches.put(key, props);
+    }
+
+    private static void putTextPatch(UiPatchWriter writer, String key, String text, String color) {
+        putTextPatch(writer, key, text, color, Float.NaN);
+    }
+
+    private static void putTextPatch(UiPatchWriter writer, String key, String text,
+                                     String color, float textOffsetY) {
+        writer.put(key, "text", text != null ? text : "");
+        if (color != null) writer.put(key, "color", color);
+        if (!Float.isNaN(textOffsetY)) writer.putFloat(key, "textOffsetY", textOffsetY);
     }
 
     private static long mix(long hash, boolean value) {
@@ -136,6 +153,35 @@ public final class CompactHudStatModel {
 
     private static String color(int argb) {
         return colorString(argb);
+    }
+
+    private String dynamicColor(int argb) {
+        return dynamicColors.get(argb);
+    }
+
+    private String dynamicAlpha(int argb, float alpha) {
+        int a = Math.round(((argb >>> 24) & 0xFF) * clamp01(alpha));
+        return dynamicColors.get((argb & 0x00FFFFFF) | (a << 24));
+    }
+
+    private String dynamicWithAlpha(int argb, float alpha) {
+        int a = Math.round(255.0f * clamp01(alpha));
+        return dynamicColors.get((argb & 0x00FFFFFF) | (a << 24));
+    }
+
+    private static final class ColorCache {
+        private final int[] colors = new int[128];
+        private final String[] strings = new String[128];
+
+        String get(int argb) {
+            int slot = (argb * 0x9E3779B9) >>> 25;
+            String cached = strings[slot];
+            if (cached != null && colors[slot] == argb) return cached;
+            String encoded = colorString(argb);
+            colors[slot] = argb;
+            strings[slot] = encoded;
+            return encoded;
+        }
     }
 
     public static String colorString(int argb) {
@@ -322,109 +368,149 @@ public final class CompactHudStatModel {
         return h;
     }
 
+    /**
+     * Fast retained-UI path: both prop and bounds instructions use stable,
+     * preallocated slots instead of nested per-frame HashMaps/UiBounds records.
+     */
+    public void writeDynamicPatches(UiDynamicPatchBuffer patches) {
+        writeRuntimePropPatches(patches);
+        writeRuntimeBoundsPatches(patches);
+    }
+
+    /** Compatibility for older HUD consumers and tests. */
     public LinkedHashMap<String, LinkedHashMap<String, Object>> runtimePatches() {
         LinkedHashMap<String, LinkedHashMap<String, Object>> patches = new LinkedHashMap<>(12);
-        putPropPatch(patches, "compact-stat:" + id, "renderBlurAlpha", background.blurAlpha);
-        putPropPatch(patches, "fill", "materialMode", background.materialMode);
-        putPropPatch(patches, "fill", "startColor", color(background.primary));
-        putPropPatch(patches, "fill", "endColor", color(background.secondary));
+        writeRuntimePropPatches(new LegacyPatchWriter(patches, null));
+        return patches;
+    }
+
+    /** Compatibility for older HUD consumers and tests. */
+    public LinkedHashMap<String, UiBounds> runtimeBoundsPatches() {
+        LinkedHashMap<String, UiBounds> patches = new LinkedHashMap<>(24);
+        writeRuntimeBoundsPatches(new LegacyPatchWriter(null, patches));
+        return patches;
+    }
+
+    private void writeRuntimePropPatches(UiPatchWriter writer) {
+        writer.putFloat(rootNodeKey, "renderBlurAlpha", background.blurAlpha);
+        writer.put("fill", "materialMode", background.materialMode);
+        writer.put("fill", "startColor", dynamicColor(background.primary));
+        writer.put("fill", "endColor", dynamicColor(background.secondary));
         // These are renderer props, not layout-only values; patch them directly instead of
         // relying on an unrelated layout signature to eventually rebuild the tree.
-        putPropPatch(patches, "fill", "strokeWidth", Math.max(0.45f, background.strokeWidth));
-        putPropPatch(patches, "fill", "softness", background.softness);
+        writer.putFloat("fill", "strokeWidth", Math.max(0.45f, background.strokeWidth));
+        writer.putFloat("fill", "softness", background.softness);
         float paintAlpha = Math.max(alpha01(background.primary), alpha01(background.secondary));
         float resolvedStrokeAlpha = background.strokeControlled
                 ? (background.strokeEnabled ? clamp01(background.strokeAlpha) : 0.0f)
                 : Math.max(alpha01(background.stroke), paintAlpha);
         String solidStroke = background.strokeControlled
-                ? withAlpha(color(background.stroke), resolvedStrokeAlpha)
-                : alpha(color(background.stroke), resolvedStrokeAlpha);
+                ? dynamicWithAlpha(background.stroke, resolvedStrokeAlpha)
+                : dynamicAlpha(background.stroke, resolvedStrokeAlpha);
         String strokeStart = background.strokeControlled
-                ? withAlpha(color(background.strokeGradient ? background.strokeStartColor : background.stroke), resolvedStrokeAlpha)
-                : alpha("#FFFFFFFF", 0.16f * resolvedStrokeAlpha);
+                ? dynamicWithAlpha(background.strokeGradient ? background.strokeStartColor : background.stroke, resolvedStrokeAlpha)
+                : dynamicAlpha(0xFFFFFFFF, 0.16f * resolvedStrokeAlpha);
         String strokeEnd = background.strokeControlled
-                ? withAlpha(color(background.strokeGradient ? background.strokeEndColor : background.stroke), resolvedStrokeAlpha)
+                ? dynamicWithAlpha(background.strokeGradient ? background.strokeEndColor : background.stroke, resolvedStrokeAlpha)
                 : solidStroke;
-        putPropPatch(patches, "fill", "stroke", solidStroke);
-        putPropPatch(patches, "fill", "strokeStartColor", strokeStart);
-        putPropPatch(patches, "fill", "strokeEndColor", strokeEnd);
-        putPropPatch(patches, "top-glint", "startColor", alpha("#FFFFFFFF", 0.065f * paintAlpha));
-        putPropPatch(patches, "top-glint", "endColor", "#00000000");
+        writer.put("fill", "stroke", solidStroke);
+        writer.put("fill", "strokeStartColor", strokeStart);
+        writer.put("fill", "strokeEndColor", strokeEnd);
+        writer.put("top-glint", "startColor", dynamicAlpha(0xFFFFFFFF, 0.065f * paintAlpha));
+        writer.put("top-glint", "endColor", "#00000000");
         if (icon.visible) {
             if ("glyph".equals(icon.kind)) {
-                putPropPatch(patches, "icon:glyph", "color", color(icon.color));
+                writer.put("icon:glyph", "color", dynamicColor(icon.color));
             } else {
-                putPropPatch(patches, "icon:texture", "tint", color(icon.color));
+                writer.put("icon:texture", "tint", dynamicColor(icon.color));
             }
         }
         if (divider.visible) {
-            putPropPatch(patches, "divider", "fill", color(divider.color));
+            writer.put("divider", "fill", dynamicColor(divider.color));
         }
 
         if ("xyz".equals(id)) {
-            String coordinateColor = stringData("valueColor", color(value.color));
-            putTextPatch(patches, "x:v", stringData("xText", "0"), coordinateColor);
-            putTextPatch(patches, "y:v", stringData("yText", "0"), coordinateColor);
-            putTextPatch(patches, "z:v", stringData("zText", "0"), coordinateColor);
+            String coordinateColor = stringData("valueColor", dynamicColor(value.color));
+            putTextPatch(writer, "x:v", stringData("xText", "0"), coordinateColor);
+            putTextPatch(writer, "y:v", stringData("yText", "0"), coordinateColor);
+            putTextPatch(writer, "z:v", stringData("zText", "0"), coordinateColor);
             if (booleanData("showNether") && !stringData("netherText", "").isEmpty()) {
-                putTextPatch(patches, "nether", stringData("netherText", ""), color(extra.color));
+                putTextPatch(writer, "nether", stringData("netherText", ""), dynamicColor(extra.color));
             }
         } else if (animation.digitAnimation) {
             float progress = clamp01(animation.digitProgress);
             float offset = animation.digitOffset;
-            putTextPatch(patches, "digit:current", value.text, alpha(color(value.color), progress), -offset * (1.0f - progress) + 2.0f);
-            putTextPatch(patches, "digit:prev", animation.previousValue, alpha(color(value.color), 1.0f - progress), offset * progress + 2.0f);
-            if (unit.visible) putTextPatch(patches, "unit", unit.text, color(unit.color));
-            if (extra.visible) putTextPatch(patches, "extra", extra.text, color(extra.color));
+            putTextPatch(writer, "digit:current", value.text, dynamicAlpha(value.color, progress), -offset * (1.0f - progress) + 2.0f);
+            putTextPatch(writer, "digit:prev", animation.previousValue, dynamicAlpha(value.color, 1.0f - progress), offset * progress + 2.0f);
+            if (unit.visible) putTextPatch(writer, "unit", unit.text, dynamicColor(unit.color));
+            if (extra.visible) putTextPatch(writer, "extra", extra.text, dynamicColor(extra.color));
         } else {
-            if (value.visible) putTextPatch(patches, "value", value.text, color(value.color));
-            if (unit.visible) putTextPatch(patches, "unit", unit.text, color(unit.color));
-            if (extra.visible) putTextPatch(patches, "extra", extra.text, color(extra.color));
+            if (value.visible) putTextPatch(writer, "value", value.text, dynamicColor(value.color));
+            if (unit.visible) putTextPatch(writer, "unit", unit.text, dynamicColor(unit.color));
+            if (extra.visible) putTextPatch(writer, "extra", extra.text, dynamicColor(extra.color));
         }
-        return patches;
     }
 
-    public LinkedHashMap<String, UiBounds> runtimeBoundsPatches() {
-        LinkedHashMap<String, UiBounds> patches = new LinkedHashMap<>(24);
+    private void writeRuntimeBoundsPatches(UiPatchWriter writer) {
         float visualW = visualWidth();
-        putBounds(patches, "compact-stat:" + id, rootX, rootY, visualW, height);
-        putBounds(patches, "clip", rootX, rootY, visualW, height);
-        putBounds(patches, "fill", rootX, rootY, visualW, height);
-        putBounds(patches, "top-glint", rootX + 1.0f, rootY + 1.0f, Math.max(0.0f, visualW - 2.0f), Math.max(1.0f, height * 0.42f));
+        writer.putBounds(rootNodeKey, rootX, rootY, visualW, height);
+        writer.putBounds("clip", rootX, rootY, visualW, height);
+        writer.putBounds("fill", rootX, rootY, visualW, height);
+        writer.putBounds("top-glint", rootX + 1.0f, rootY + 1.0f, Math.max(0.0f, visualW - 2.0f), Math.max(1.0f, height * 0.42f));
         if (icon.visible) {
             String iconKey = "glyph".equals(icon.kind) ? "icon:glyph" : "icon:texture";
-            putBounds(patches, iconKey, rootX + icon.x, rootY + icon.y, icon.width, icon.height);
+            writer.putBounds(iconKey, rootX + icon.x, rootY + icon.y, icon.width, icon.height);
         }
         if (divider.visible) {
-            putBounds(patches, "divider", rootX + divider.x, rootY + divider.y, divider.width, divider.height);
+            writer.putBounds("divider", rootX + divider.x, rootY + divider.y, divider.width, divider.height);
         }
 
         if ("xyz".equals(id)) {
-            putCoordinateBounds(patches, visualW);
+            putCoordinateBounds(writer, visualW);
         } else if (animation.digitAnimation) {
-            putBounds(patches, "digit:layer", rootX, rootY, width, height);
-            putBounds(patches, "digit:clip", rootX + value.x, rootY + value.y - 2.0f, value.width, Math.max(8.0f, height));
-            putBounds(patches, "digit:prev", rootX + value.x, rootY + value.y - 2.0f, value.width, Math.max(8.0f, height));
-            putBounds(patches, "digit:current", rootX + value.x, rootY + value.y - 2.0f, value.width, Math.max(8.0f, height));
+            writer.putBounds("digit:layer", rootX, rootY, width, height);
+            writer.putBounds("digit:clip", rootX + value.x, rootY + value.y - 2.0f, value.width, Math.max(8.0f, height));
+            writer.putBounds("digit:prev", rootX + value.x, rootY + value.y - 2.0f, value.width, Math.max(8.0f, height));
+            writer.putBounds("digit:current", rootX + value.x, rootY + value.y - 2.0f, value.width, Math.max(8.0f, height));
             if (unit.visible) {
-                putBounds(patches, "unit", rootX + unit.x, rootY + unit.y, unit.width, Math.max(8.0f, height));
+                writer.putBounds("unit", rootX + unit.x, rootY + unit.y, unit.width, Math.max(8.0f, height));
             }
             if (extra.visible) {
-                putBounds(patches, "extra", rootX + extra.x, rootY + extra.y, extra.width, Math.max(8.0f, height));
+                writer.putBounds("extra", rootX + extra.x, rootY + extra.y, extra.width, Math.max(8.0f, height));
             }
         } else {
-            putBounds(patches, "text:layer", rootX, rootY, width, height);
+            writer.putBounds("text:layer", rootX, rootY, width, height);
             if (value.visible) {
-                putBounds(patches, "value", rootX + value.x, rootY + value.y, value.width, Math.max(8.0f, height));
+                writer.putBounds("value", rootX + value.x, rootY + value.y, value.width, Math.max(8.0f, height));
             }
             if (unit.visible) {
-                putBounds(patches, "unit", rootX + unit.x, rootY + unit.y, unit.width, Math.max(8.0f, height));
+                writer.putBounds("unit", rootX + unit.x, rootY + unit.y, unit.width, Math.max(8.0f, height));
             }
             if (extra.visible) {
-                putBounds(patches, "extra", rootX + extra.x, rootY + extra.y, extra.width, Math.max(8.0f, height));
+                writer.putBounds("extra", rootX + extra.x, rootY + extra.y, extra.width, Math.max(8.0f, height));
             }
         }
-        return patches;
+    }
+
+    private static final class LegacyPatchWriter implements UiPatchWriter {
+        private final LinkedHashMap<String, LinkedHashMap<String, Object>> props;
+        private final LinkedHashMap<String, UiBounds> bounds;
+
+        private LegacyPatchWriter(LinkedHashMap<String, LinkedHashMap<String, Object>> props,
+                                  LinkedHashMap<String, UiBounds> bounds) {
+            this.props = props;
+            this.bounds = bounds;
+        }
+
+        @Override
+        public void put(String key, String property, Object value) {
+            putPropPatch(props, key, property, value);
+        }
+
+        @Override
+        public void putBounds(String key, float x, float y, float width, float height) {
+            CompactHudStatModel.putBounds(bounds, key, x, y, width, height);
+        }
     }
 
     private long mixDataShape(long h) {
@@ -505,7 +591,7 @@ public final class CompactHudStatModel {
         return value instanceof Boolean b && b;
     }
 
-    private void putCoordinateBounds(LinkedHashMap<String, UiBounds> patches, float visualW) {
+    private void putCoordinateBounds(UiPatchWriter writer, float visualW) {
         float rowX = rootX + value.x;
         float rowY = rootY + value.y;
         float rowH = Math.max(8.0f, height - value.y);
@@ -519,21 +605,21 @@ public final class CompactHudStatModel {
         float valueZW = numberData("valueZW", valueXW);
         float extraW = numberData("xyzExtraW", extra.width);
         float cursor = rowX;
-        putBounds(patches, "coords:row", rowX, rowY, Math.max(0.0f, visualW - value.x - 4.0f), rowH);
-        putBounds(patches, "x:l", cursor, rowY, labelXW, rowH);
+        writer.putBounds("coords:row", rowX, rowY, Math.max(0.0f, visualW - value.x - 4.0f), rowH);
+        writer.putBounds("x:l", cursor, rowY, labelXW, rowH);
         cursor += labelXW + pairGap;
-        putBounds(patches, "x:v", cursor, rowY, valueXW, rowH);
+        writer.putBounds("x:v", cursor, rowY, valueXW, rowH);
         cursor += valueXW + gap;
-        putBounds(patches, "y:l", cursor, rowY, labelYW, rowH);
+        writer.putBounds("y:l", cursor, rowY, labelYW, rowH);
         cursor += labelYW + pairGap;
-        putBounds(patches, "y:v", cursor, rowY, valueYW, rowH);
+        writer.putBounds("y:v", cursor, rowY, valueYW, rowH);
         cursor += valueYW + gap;
-        putBounds(patches, "z:l", cursor, rowY, labelZW, rowH);
+        writer.putBounds("z:l", cursor, rowY, labelZW, rowH);
         cursor += labelZW + pairGap;
-        putBounds(patches, "z:v", cursor, rowY, valueZW, rowH);
+        writer.putBounds("z:v", cursor, rowY, valueZW, rowH);
         cursor += valueZW + gap;
         if (booleanData("showNether") && !stringData("netherText", "").isEmpty()) {
-            putBounds(patches, "nether", cursor, rowY, extraW, rowH);
+            writer.putBounds("nether", cursor, rowY, extraW, rowH);
         }
     }
 

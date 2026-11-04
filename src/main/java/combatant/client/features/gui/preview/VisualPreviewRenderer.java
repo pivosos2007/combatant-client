@@ -51,9 +51,15 @@ public enum VisualPreviewRenderer {
             SystemCursor.beginFrame(context);
             try {
                 renderBackgroundBase(width, height);
-                Renderer2D.deferRenderThreadAction(() -> VisualPreviewBackgroundRenderer.render(scene));
+                Renderer2D.deferRenderThreadAction(() -> {
+                    if (VisualPreviewRuntime.activeScreen() == screen)
+                        VisualPreviewBackgroundRenderer.render(scene);
+                });
                 renderBackgroundShade(width, height);
-                Renderer2D.deferRenderThreadAction(() -> screen.provider().renderSubject(scene));
+                Renderer2D.deferRenderThreadAction(() -> {
+                    if (VisualPreviewRuntime.activeScreen() == screen)
+                        screen.provider().renderSubject(scene);
+                });
                 renderChrome(scene);
             } finally {
                 SystemCursor.endFrame();

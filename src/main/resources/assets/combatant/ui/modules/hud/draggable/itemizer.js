@@ -21,7 +21,7 @@ function keyText(id, text, x, y, w, a, tint, size = 11) {
   });
 }
 
-function card(row, index, pal, isChat, hovered, blur, materialMode) {
+function card(row, index, pal, isChat, hovered, blur, materialMode, retained) {
   const x = num(row.x, 0);
   const y = num(row.y, 0);
   const w = num(row.w, 30);
@@ -72,28 +72,29 @@ function card(row, index, pal, isChat, hovered, blur, materialMode) {
       endColor: rgba("#FF760A0A", 0.05 * panelA), angle: 92,
     }));
   }
-  if (hot > 0.01) {
+  if (retained || hot > 0.01) {
     nodes.push(ui.roundedGradient({
       key: `${index}:aware`, x, y, w, h, radius: 3 * scale,
       startColor: rgba(accent, 0.12 * hot * panelA),
       endColor: rgba(accent, 0.018 * hot * panelA), angle: 95,
     }));
   }
-  if (inProgress) {
+  if (retained || inProgress) {
     const remaining = clamp(1 - num(row.progress, 0));
     nodes.push(ui.shape({
       key: `${index}:consume-overlay`, shape: "rounded",
       style: ui.absolute(x + 0.6 * scale, y + h * (1 - remaining) + 0.5 * scale,
         14.8 * scale, Math.max(0, h * remaining - scale)),
-      radius: 0.5 * scale, fill: rgba(accent, 0.13 * panelA),
+      radius: 0.5 * scale, fill: rgba(accent, inProgress ? 0.13 * panelA : 0),
     }));
-  } else if (num(row.cooldown, 0) > 0) {
+  }
+  if (retained || (!inProgress && num(row.cooldown, 0) > 0)) {
     const cd = clamp(num(row.cooldown, 0));
     nodes.push(ui.shape({
       key: `${index}:cooldown-fill`, shape: "rounded",
       style: ui.absolute(x + 0.7 * scale, y + h * (1 - cd), 14.6 * scale,
         Math.max(0, h * cd - 0.7 * scale)),
-      radius: 0.6 * scale, fill: rgba("#FF101010", 0.3 * panelA),
+      radius: 0.6 * scale, fill: rgba("#FF101010", !inProgress && cd > 0 ? 0.3 * panelA : 0),
     }));
   }
   nodes.push(ui.roundedStrokeGradient({
@@ -129,7 +130,7 @@ export function render(ctx) {
   const chat = props.chat === true;
   const hovered = num(props.hovered, -1);
   for (let i = 0; i < items.length; i++) {
-    nodes.push(...card(items[i], i, palette, chat, hovered, props.blur === true, props.materialMode));
+    nodes.push(...card(items[i], i, palette, chat, hovered, props.blur === true, props.materialMode, props.retained === true));
   }
   return ui.root({
     key: "itemizer",

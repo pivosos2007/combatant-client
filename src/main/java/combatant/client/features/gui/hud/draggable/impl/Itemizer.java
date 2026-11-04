@@ -29,6 +29,7 @@ import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
@@ -279,13 +280,19 @@ public final class Itemizer extends DraggableHudElement {
         int hovered = chat ? hoveredCard(mx, my) : -1;
         UiScriptModule script = ensureModule();
         if (script == null) return;
-        LinkedHashMap<String, Object> props = buildProps(hovered, chat);
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
-        UiRuntime baked = runtime.bake(moduleHandle, script, "itemizer", signature(props),
-                layoutW, layoutH, fallback, 0.0f, 0.0f, layoutW, layoutH, () -> props);
-        if (baked == null) return;
-        baked.render(new UiRenderContext(renderer, fallback, graphics, tickDelta, UiProjectionMode.CURRENT)
-                .at(drawnX, drawnY, drawnScale));
+        for (int i = 0; i < drawn.size(); i++) {
+            Entry entry = drawn.get(i);
+            LinkedHashMap<String, Object> props = buildProps(entry, chat && hovered == i, chat);
+            UiRuntime baked = runtime.bake(moduleHandle, script, entry.id, signature(props),
+                    entry.w, CARD_HEIGHT, fallback, 0, 0, entry.w, CARD_HEIGHT, () -> props,
+                    () -> cardPatches(entry), () -> cardBounds(entry));
+            if (baked != null) {
+                baked.render(new UiRenderContext(renderer, fallback, graphics, tickDelta, UiProjectionMode.CURRENT)
+                        .at(drawnX + entry.renderX * drawnScale, drawnY + entry.renderY * drawnScale,
+                                drawnScale * entry.cardScale).multiplyAlpha(entry.renderAlpha));
+            }
+        }
         for (int i = 0; i < drawn.size(); i++) {
             Entry entry = drawn.get(i);
             if (chat && hovered == i) continue;
@@ -365,14 +372,15 @@ public final class Itemizer extends DraggableHudElement {
         return moduleHandle.module();
     }
 
-    private LinkedHashMap<String, Object> buildProps(int hovered, boolean chat) {
+    private LinkedHashMap<String, Object> buildProps(Entry entry, boolean selected, boolean chat) {
         LinkedHashMap<String, Object> props = new LinkedHashMap<>();
-        props.put("width", layoutW);
-        props.put("height", layoutH);
+        props.put("width", entry.w);
+        props.put("height", CARD_HEIGHT);
         props.put("blur", blur.get());
         props.put("materialMode", HudMaterialChoice.shaderMode(surfaceMaterial.get()));
         props.put("chat", chat);
-        props.put("hovered", hovered);
+        props.put("hovered", selected ? 0 : -1);
+        props.put("retained", true);
         Themes.Theme theme = Theme.theme();
         float mix = themeMix.get() / 100.0f;
         LinkedHashMap<String, Object> palette = new LinkedHashMap<>();
@@ -383,17 +391,17 @@ public final class Itemizer extends DraggableHudElement {
         palette.put("accent", hex(theme.accent()));
         props.put("palette", palette);
         ArrayList<Map<String, Object>> cards = new ArrayList<>();
-        for (Entry entry : drawn) {
+        {
             HudActionRegistry.Snapshot state = entry.snapshot;
             LinkedHashMap<String, Object> card = new LinkedHashMap<>();
             card.put("key", entry.id);
             card.put("bind", entry.key);
-            card.put("x", entry.renderX);
-            card.put("y", entry.renderY);
-            card.put("w", entry.renderW);
-            card.put("h", entry.renderH);
-            card.put("scale", entry.cardScale);
-            card.put("alpha", entry.renderAlpha);
+            card.put("x", 0.0f);
+            card.put("y", 0.0f);
+            card.put("w", entry.w);
+            card.put("h", CARD_HEIGHT);
+            card.put("scale", 1.0f);
+            card.put("alpha", 1.0f);
             card.put("available", state.available());
             card.put("aware", state.aware());
             card.put("heat", entry.heat);
@@ -409,37 +417,39 @@ public final class Itemizer extends DraggableHudElement {
     }
 
     private long signature(Map<String, Object> props) {
-        long hash = CachedUiScriptRuntime.mix(0xcbf29ce484222325L, props.get("width").toString());
-        hash = CachedUiScriptRuntime.mix(hash, props.get("height").toString());
-        hash = CachedUiScriptRuntime.mix(hash, props.get("hovered").toString());
-        hash = CachedUiScriptRuntime.mix(hash, (boolean) props.get("chat") ? 1 : 0);
-        hash = CachedUiScriptRuntime.mix(hash, blur.get() ? 1 : 0);
-        hash = CachedUiScriptRuntime.mix(hash, surfaceMaterial.get());
-        hash = CachedUiScriptRuntime.mix(hash, bgAlpha.get());
-        hash = CachedUiScriptRuntime.mix(hash, themeMix.get());
-        Themes.Theme selectedTheme = Theme.theme();
-        hash = CachedUiScriptRuntime.mix(hash, selectedTheme.accent());
-        hash = CachedUiScriptRuntime.mix(hash, selectedTheme.windowBg());
-        hash = CachedUiScriptRuntime.mix(hash, selectedTheme.surface());
-        hash = CachedUiScriptRuntime.mix(hash, selectedTheme.textPrimary());
-        for (Entry entry : drawn) {
-            HudActionRegistry.Snapshot state = entry.snapshot;
-            hash = CachedUiScriptRuntime.mix(hash, entry.id);
-            hash = CachedUiScriptRuntime.mix(hash, entry.key);
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.renderX * 100.0f));
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.renderY * 100.0f));
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.cardScale * 1000.0f));
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.renderAlpha * 255.0f));
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(entry.heat * 255.0f));
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(state.progress() * 100.0f));
-            hash = CachedUiScriptRuntime.mix(hash, Math.round(state.cooldown() * 100.0f));
-            hash = CachedUiScriptRuntime.mix(hash, state.aware() ? 1 : 0);
-            hash = CachedUiScriptRuntime.mix(hash, state.available() ? 1 : 0);
-            hash = CachedUiScriptRuntime.mix(hash, state.active() ? 1 : 0);
-            hash = CachedUiScriptRuntime.mix(hash, state.inProgress() ? 1 : 0);
-            hash = CachedUiScriptRuntime.mix(hash, visibleActions.get(entry.id) ? 1 : 0);
-        }
-        return hash;
+        Map<String, Object> structure = new LinkedHashMap<>(props);
+        Object[] items = (Object[]) props.get("items");
+        Map<?, ?> card = (Map<?, ?>) items[0];
+        structure.put("items", Map.of("key", card.get("key"), "bind", card.get("bind"),
+                "available", card.get("available"), "visible", card.get("visible")));
+        return CachedUiScriptRuntime.signature(structure);
+    }
+
+    private Map<String, Map<String, Object>> cardPatches(Entry entry) {
+        float panelAlpha = visibleActions.get(entry.id) ? 1.0f : 0.38f;
+        int accent = Theme.theme().accent();
+        float hot = Math.max(0, Math.min(1, entry.heat));
+        boolean consuming = entry.snapshot.inProgress();
+        return Map.of(
+                "0:aware", Map.of("startColor", alphaColor(accent, 0.12f * hot * panelAlpha),
+                        "endColor", alphaColor(accent, 0.018f * hot * panelAlpha)),
+                "0:consume-overlay", Map.of("fill", alphaColor(accent, consuming ? 0.13f * panelAlpha : 0)),
+                "0:cooldown-fill", Map.of("fill", alphaColor(0xFF101010,
+                        !consuming && entry.snapshot.cooldown() > 0 ? 0.3f * panelAlpha : 0)));
+    }
+
+    private Map<String, UiBounds> cardBounds(Entry entry) {
+        float remaining = Math.max(0, Math.min(1, 1 - entry.snapshot.progress()));
+        float cooldown = Math.max(0, Math.min(1, entry.snapshot.cooldown()));
+        return Map.of(
+                "0:consume-overlay", new UiBounds(0.6f, CARD_HEIGHT * (1 - remaining) + 0.5f,
+                        14.8f, Math.max(0, CARD_HEIGHT * remaining - 1)),
+                "0:cooldown-fill", new UiBounds(0.7f, CARD_HEIGHT * (1 - cooldown),
+                        14.6f, Math.max(0, CARD_HEIGHT * cooldown - 0.7f)));
+    }
+
+    private static String alphaColor(int argb, float multiplier) {
+        return hex((argb & 0xFFFFFF) | (Math.round((argb >>> 24) * Math.max(0, Math.min(1, multiplier))) << 24));
     }
 
     private static boolean unbound(String bind) { return bind == null || bind.isBlank() || "NONE".equalsIgnoreCase(bind); }

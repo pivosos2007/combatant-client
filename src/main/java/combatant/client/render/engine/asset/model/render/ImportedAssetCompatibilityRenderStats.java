@@ -10,7 +10,9 @@ public record ImportedAssetCompatibilityRenderStats(
         int visibleInstances,
         int submittedPrimitives,
         int skippedSkinnedPrimitives,
-        int skippedTranslucentPrimitives
+        int skippedTranslucentPrimitives,
+        int submittedDrawCalls,
+        int drawsEliminatedByInstancing
 ) {
-    public static final ImportedAssetCompatibilityRenderStats EMPTY = new ImportedAssetCompatibilityRenderStats(-1L, 0, 0, 0, 0);
+    public static final ImportedAssetCompatibilityRenderStats EMPTY = new ImportedAssetCompatibilityRenderStats(-1L, 0, 0, 0, 0, 0, 0);
 }

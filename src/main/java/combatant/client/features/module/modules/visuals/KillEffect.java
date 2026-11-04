@@ -37,18 +37,16 @@ import combatant.client.render.engine.TextureStorage;
 import combatant.client.render.engine.color.ColorUtils;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
-import combatant.client.render.engine.pipeline.PostProcessRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
+import combatant.client.render.engine.postprocess.FullScreenBlur;
 import combatant.client.render.engine.postprocess.PostProcessExecutionContext;
 import combatant.client.render.engine.postprocess.PostProcessPass;
-import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.effects.emitter.BoxSurfaceEmitter;
 import combatant.client.render.effects.emitter.SurfaceEmitterSample;
 import combatant.client.render.effects.particle.ParticleEmitterDescriptor;
 import combatant.client.features.playeranimator.render.PlayerRigSurfaceEmitter;
 import combatant.client.render.engine.uniform.MeshBuilder;
-import combatant.client.render.engine.uniform.impl.PostProcessUniforms;
 import combatant.client.util.time.Timer;
 import combatant.client.util.sound.SoundAsset;
 import combatant.client.util.sound.SoundCatalog;
@@ -247,14 +245,7 @@ public class KillEffect extends Module implements PostProcessPass {
         float strength = getKillBlurStrength(System.currentTimeMillis());
         if (strength <= 0.001f) return false;
 
-        PostProcessUniforms.update(strength, 0.0f, 0.0f, 0.0f);
-        FullScreenRenderer.begin("Combatant Kill Blur")
-                .attachment(dst)
-                .pipeline(PostProcessRenderPipelines.KILL_BLUR)
-                .uniform("PostProcess", PostProcessUniforms.get())
-                .sampler("u_Texture", src, PostProcessManager.getSampler())
-                .end();
-        return true;
+        return FullScreenBlur.render("Combatant Kill Blur", src, dst, strength);
     }
 
     @Override

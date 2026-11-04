@@ -204,6 +204,7 @@ public enum PickerCatalogFactory {
         if (mode == null) return owner -> List.of();
         return switch (mode) {
             case SCREENS -> PickerCatalogFactory::screenEntries;
+            case SCREENS_WITHOUT_CLICK_GUI -> owner -> screenEntries(owner, true);
             case BLOCKS -> owner -> blockEntries();
             case ITEMS -> owner -> itemEntries();
             case POTIONS -> owner -> {
@@ -222,9 +223,19 @@ public enum PickerCatalogFactory {
     }
 
     private static List<PickerEntryData> screenEntries(TextListSetting owner) {
+        return screenEntries(owner, false);
+    }
+
+    private static List<PickerEntryData> screenEntries(TextListSetting owner, boolean excludeClickGui) {
         Set<String> selected = owner == null ? Set.of() : owner.getValueSet();
         List<PickerEntryData> out = new ArrayList<>();
         for (ScreenCatalog.Entry entry : ScreenCatalog.entries(selected)) {
+            if (excludeClickGui && (ScreenCatalog.CLICK_GUI.equals(entry.getId())
+                    || ScreenCatalog.CLICK_GUI_EDITOR.equals(entry.getId())
+                    || ScreenCatalog.CLICK_GUI_PICKER.equals(entry.getId())
+                    || entry.getId().endsWith(".ClickGuiScreen")
+                    || entry.getId().endsWith(".ClickGuiEditorScreen")
+                    || entry.getId().endsWith(".ClickGuiPickerScreen"))) continue;
             out.add(new PickerEntryData(entry.getId(), entry.label(), ItemStack.EMPTY));
         }
         out.sort(ENTRY_ORDER);

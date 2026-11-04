@@ -16,6 +16,8 @@ import net.minecraft.resources.Identifier;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
@@ -241,8 +243,8 @@ final class ScriptedListHudPanel {
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
         // Props are only materialised when the cached tree has to be (re)built.
-        float logicalWidth = panel.logical(panel.width);
-        float logicalHeight = panel.logical(panel.height);
+        float logicalWidth = panel.templateWidth();
+        float logicalHeight = panel.templateHeight();
         UiRuntime baked = runtime.bake(
                 moduleHandle,
                 module,
@@ -260,7 +262,7 @@ final class ScriptedListHudPanel {
         );
         if (baked == null) return false;
         baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT)
-                .at(panel.x, panel.y, panel.renderScale()));
+                .at(panel.x, panel.y, panel.renderScale()), () -> panel.patchAnimatedBounds(baked.root()));
         return true;
     }
 
@@ -398,7 +400,7 @@ final class ScriptedListHudPanel {
         }
 
         float logical(float renderValue) {
-            return renderValue / renderScale;
+            return Math.round(renderValue / renderScale * 1024.0f) / 1024.0f;
         }
 
         private List<LinkedHashMap<String, Object>> logicalRows() {
@@ -406,6 +408,7 @@ final class ScriptedListHudPanel {
             List<LinkedHashMap<String, Object>> normalized = new ArrayList<>(rows.size());
             for (LinkedHashMap<String, Object> row : rows) {
                 LinkedHashMap<String, Object> copy = new LinkedHashMap<>(row);
+                copy.put("layoutProgress", 1.0f);
                 Object rightTextWidth = copy.get("rightTextWidth");
                 if (rightTextWidth instanceof Number number) {
                     copy.put("rightTextWidth", logical(number.floatValue()));
@@ -439,9 +442,9 @@ final class ScriptedListHudPanel {
             out.put("id", variant.id);
             out.put("title", variant.title);
             out.put("headerIcon", variant.headerIcon);
-            out.put("width", logical(width));
-            out.put("height", logical(height));
-            out.put("fontSize", TextSizing.sizeForScale(fontScale / renderScale()));
+            out.put("width", templateWidth());
+            out.put("height", templateHeight());
+            out.put("fontSize", TextSizing.sizeForScale(logical(fontScale)));
             out.put("headerIconHeight", logical(headerIconHeight));
             out.put("headerTextHeight", logical(headerTextHeight));
             out.put("rowTextHeight", logical(rowTextHeight));
@@ -494,9 +497,7 @@ final class ScriptedListHudPanel {
             h = CachedUiScriptRuntime.mix(h, variant.id);
             h = mixVariant(h);
             h = mixPalette(h);
-            h = CachedUiScriptRuntime.mix(h, logical(width));
-            h = CachedUiScriptRuntime.mix(h, logical(height));
-            h = CachedUiScriptRuntime.mix(h, TextSizing.sizeForScale(fontScale / renderScale()));
+            h = CachedUiScriptRuntime.mix(h, TextSizing.sizeForScale(logical(fontScale)));
             h = CachedUiScriptRuntime.mix(h, logical(headerIconHeight));
             h = CachedUiScriptRuntime.mix(h, logical(headerTextHeight));
             h = CachedUiScriptRuntime.mix(h, logical(rowTextHeight));
@@ -514,7 +515,6 @@ final class ScriptedListHudPanel {
             h = CachedUiScriptRuntime.mix(h, strokeEndColor);
             h = CachedUiScriptRuntime.mix(h, shadowControlled);
             h = CachedUiScriptRuntime.mix(h, String.valueOf(Math.max(0, activeCount)).length());
-            h = CachedUiScriptRuntime.mix(h, activeCount);
             h = CachedUiScriptRuntime.mix(h, rows.size());
             for (LinkedHashMap<String, Object> row : rows) {
                 String key = string(row.get("key"));
@@ -522,7 +522,6 @@ final class ScriptedListHudPanel {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("iconKind")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightMode")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightText")).length());
-                h = CachedUiScriptRuntime.mix(h, Math.round(floatValue(row.get("layoutProgress")) * 100.0f));
                 h = CachedUiScriptRuntime.mix(h, Math.round(logical(floatValue(row.get("rightTextWidth"))) * 100.0f));
                 Object partsValue = row.get("nameParts");
                 Object[] parts = partsValue instanceof Object[] arr ? arr : new Object[0];
@@ -550,6 +549,7 @@ final class ScriptedListHudPanel {
                 String iconTint = string(row.get("iconTint"));
                 if ("item".equals(iconKind)) {
                     putPatch(patches, rowPrefix + ":item", "item", icon);
+                    putPatch(patches, rowPrefix + ":item", "alpha", floatValue(row.getOrDefault("alpha", 1.0f)));
                 } else if ("head".equals(iconKind) && !icon.isEmpty()) {
                     putPatch(patches, rowPrefix + ":head", "asset", icon);
                     putPatch(patches, rowPrefix + ":head", "tint", iconTint);
@@ -589,6 +589,85 @@ final class ScriptedListHudPanel {
                 }
             }
             return patches;
+        }
+
+        float templateWidth() {
+            return variant.minWidth;
+        }
+
+        float templateHeight() {
+            return 18.5f + 6.5f + rows.size() * 11.0f + 8.0f;
+        }
+
+        void patchAnimatedBounds(UiNode root) {
+            if (root == null) return;
+            Map<String, UiBounds> clips = new LinkedHashMap<>();
+            float cursor = 18.5f + 6.5f;
+            for (Map<String, Object> row : rows) {
+                float progress = Math.max(0, Math.min(1, floatValue(row.getOrDefault("layoutProgress", row.getOrDefault("alpha", 1.0f)))));
+                float clipHeight = 11.0f * progress;
+                clips.put("row:" + string(row.get("key")) + ":clip",
+                        new UiBounds(0, cursor + variant.rowCenterOffset - clipHeight * 0.5f,
+                                logical(width), clipHeight));
+                cursor += clipHeight;
+            }
+            patchAnimatedNode(root, clips, logical(width) - root.bounds().width());
+        }
+
+        private void patchAnimatedNode(UiNode node, Map<String, UiBounds> clips, float widthDelta) {
+            UiBounds rowClip = clips.get(node.key());
+            if (rowClip != null) {
+                UiBounds before = node.bounds();
+                float dy = rowClip.y() + rowClip.height() * 0.5f - before.y() - before.height() * 0.5f;
+                node.setBounds(rowClip);
+                for (UiNode child : node.children()) translateRow(child, dy, widthDelta);
+                return;
+            }
+            float w = logical(width);
+            float h = logical(height);
+            float bodyHeight = Math.max(0, h - 18.5f);
+            switch (node.key()) {
+                case "header", "blur:header" -> node.setBounds(new UiBounds(0, 0, w, 15.5f));
+                case "header:top-glint" -> node.setBounds(new UiBounds(1, 1, Math.max(0, w - 2), 15.5f * 0.42f));
+                case "header:count-label", "header:count-value" -> {
+                    UiBounds b = node.bounds();
+                    node.setBounds(new UiBounds(b.x() + widthDelta, b.y(), b.width(), b.height()));
+                }
+                case "header:title" -> {
+                    UiBounds b = node.bounds();
+                    float titleWidth = b.width() + widthDelta;
+                    if (node.parent() != null) {
+                        for (UiNode sibling : node.parent().children()) {
+                            if (sibling.key().equals("header:count-label")) {
+                                titleWidth = sibling.bounds().x() - b.x() - 4;
+                                break;
+                            }
+                        }
+                    }
+                    node.setBounds(new UiBounds(b.x(), b.y(), Math.max(0, titleWidth), b.height()));
+                }
+                case "header:separator" -> {
+                    node.setBounds(new UiBounds(6, 16.9f, Math.max(1, w - 12), 1));
+                    node.setProps(node.props().withPatch(Map.of("x2", Math.max(1, w - 12))));
+                }
+                case "plate", "blur:plate" -> node.setBounds(new UiBounds(0, 0, w, h));
+                case "body", "blur:body", "rows:clip" -> node.setBounds(new UiBounds(0, 18.5f, w, bodyHeight));
+                case "body:top-glint" -> node.setBounds(new UiBounds(1, 19.5f, Math.max(0, w - 2),
+                        bodyHeight > 0 ? Math.max(1, bodyHeight * 0.18f) : 0));
+                case "plate:top-glint" -> node.setBounds(new UiBounds(1, 1, Math.max(0, w - 2),
+                        Math.max(1, Math.min(h * 0.34f, 15.5f * 0.52f))));
+                default -> {
+                    if (node.key().equals("panel:" + variant.id)) node.setBounds(new UiBounds(0, 0, w, h));
+                }
+            }
+            for (UiNode child : node.children()) patchAnimatedNode(child, clips, widthDelta);
+        }
+
+        private static void translateRow(UiNode node, float dy, float widthDelta) {
+            UiBounds b = node.bounds();
+            boolean rightAligned = node.key().endsWith(":right") || node.key().contains(":time-");
+            node.setBounds(new UiBounds(b.x() + (rightAligned ? widthDelta : 0), b.y() + dy, b.width(), b.height()));
+            for (UiNode child : node.children()) translateRow(child, dy, widthDelta);
         }
 
         private long mixVariant(long h) {

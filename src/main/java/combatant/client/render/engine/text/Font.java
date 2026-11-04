@@ -15,6 +15,7 @@ package combatant.client.render.engine.text;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.AddressMode;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap;
@@ -162,7 +163,10 @@ public class Font implements GlyphFont {
         STBTruetype.stbtt_PackFontRanges(packContext, fontData, 0, packRange);
         STBTruetype.stbtt_PackEnd(packContext);
 
-        texture = new Texture(SIZE, SIZE, GpuFormat.R8_UNORM, FilterMode.LINEAR, FilterMode.LINEAR);
+        // Glyph atlas texels are not periodic; avoid wrap-around samples at
+        // the outer edge of the dynamically populated atlas.
+        texture = new Texture(SIZE, SIZE, GpuFormat.R8_UNORM,
+                FilterMode.LINEAR, FilterMode.LINEAR, AddressMode.CLAMP_TO_EDGE);
         texture.upload(bitmap);
         TextRenderSystem.glyphAtlases().registerPage("bitmap:" + height + ":"
                 + Integer.toHexString(System.identityHashCode(this)), texture, SIZE, SIZE, false);
@@ -399,8 +403,10 @@ public class Font implements GlyphFont {
 
         int length = string.length();
         int previous = -1;
+        int glyphIndex = 0;
         for (int i = 0; i < length; ) {
             int cp = string.codePointAt(i);
+            int index = glyphIndex++;
             CharData c = resolvedGlyph(cp);
             if (c == null) {
                 previous = -1;
@@ -413,7 +419,7 @@ public class Font implements GlyphFont {
             previous = current;
 
             if (c.visible) {
-                consumer.accept(
+                consumer.accept(index, cp,
                         x + c.x0 * scale,
                         y + c.y0 * scale,
                         x + c.x1 * scale,
@@ -551,7 +557,7 @@ public class Font implements GlyphFont {
             if (c == null || !c.visible) continue;
             double gx = x + slot.x() * factor;
             double gy = baseline + slot.y() * factor;
-            consumer.accept(gx + c.x0 * scale, gy + c.y0 * scale,
+            consumer.accept(slot.codePointIndex(), slot.codePoint(), gx + c.x0 * scale, gy + c.y0 * scale,
                     gx + c.x1 * scale, gy + c.y1 * scale,
                     c.u0, c.v0, c.u1, c.v1);
         }

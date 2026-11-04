@@ -114,10 +114,7 @@ final class JavetUiEngine implements UiScriptEngine {
     }
 
     private static String executableSource(UiScriptModule module) {
-        String source = module.sourceKind() == UiScriptSourceKind.TYPESCRIPT
-                ? UiTypeScriptStripper.strip(module.source())
-                : module.source();
-        return UiScriptModuleTransform.toExecutableScript(source);
+        return UiScriptPreparedSource.prepare(module);
     }
 
     private static Map<String, Object> contextMap(UiScriptRenderContext context) {
@@ -130,7 +127,11 @@ final class JavetUiEngine implements UiScriptEngine {
         map.put("delta", ctx.delta());
         map.put("width", ctx.width());
         map.put("height", ctx.height());
-        map.put("props", plainValue(ctx.props() != null ? ctx.props().values() : Map.of()));
+        // Async snapshots are already immutable, recursively normalized Java/JS values.
+        // Avoid a second complete deep copy immediately before Javet conversion.
+        map.put("props", ctx.props() != null && ctx.props().isDetachedSnapshot()
+                ? ctx.props().values()
+                : plainValue(ctx.props() != null ? ctx.props().values() : Map.of()));
         return map;
     }
 

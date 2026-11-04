@@ -73,6 +73,9 @@ public final class VisualPreviewItemRenderer {
         ensureRenderer(mc);
         PreviewRenderState previous = PreviewRenderState.capture();
         try (VisualPreviewRuntime.Scope ignored = VisualPreviewRuntime.enterSubjectRender()) {
+            combatant.client.features.playermodel.PlayerModelGpuRenderer.beginPreview();
+            var previewDepth = VisualPreviewDepthTarget.clear(mc);
+            if (previewDepth == null) return;
             enterPreviewState(mc, blockLight);
 
             SubmitNodeStorage storage = new SubmitNodeStorage();
@@ -81,8 +84,11 @@ public final class VisualPreviewItemRenderer {
             combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
                     "combatant:visual-preview-item", dispatcher, storage,
                     mc.gameRenderer.mainRenderTarget().getColorTextureView(),
-                    mc.gameRenderer.mainRenderTarget().getDepthTextureView(),
+                    previewDepth.getDepthTextureView(),
                     combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
+            combatant.client.features.playermodel.PlayerModelGpuRenderer.renderPreview(
+                    mc.gameRenderer.mainRenderTarget().getColorTextureView(),
+                    previewDepth.getDepthTextureView(), projection.getMatrix(new Matrix4f()));
             renderBuffers.endFrame();
         } catch (RuntimeException failure) {
             resetRenderer();
@@ -149,9 +155,6 @@ public final class VisualPreviewItemRenderer {
 
     private static void enterPreviewState(Minecraft mc, boolean blockLight) {
         RenderState.rendering3D = true;
-        RenderSystem.getDevice().createCommandEncoder()
-                .clearDepthTexture(mc.gameRenderer.mainRenderTarget().getDepthTexture(), 0.0D);
-
         projection.setupPerspective(
                 0.05f,
                 100.0f,

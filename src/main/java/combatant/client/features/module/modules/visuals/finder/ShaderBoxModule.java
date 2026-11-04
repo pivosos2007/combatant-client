@@ -30,7 +30,7 @@ public abstract class ShaderBoxModule extends Module {
         BOX,
         OUTLINE,
         FILL,
-        /** Animated glow surface: translucent fill, glowing rim and a band climbing the faces. */
+        /** Glow surface with selectable animation and pixel-space rim. */
         GLOW,
         /** Outline and fill like the entity ESP shader mode, with a solid or gradient fill. */
         SHADER
@@ -46,6 +46,8 @@ public abstract class ShaderBoxModule extends Module {
     private final NumberValue<Float> glowFillAlpha;
     private final NumberValue<Float> glowRim;
     private final NumberValue<Float> glowScan;
+    private final EnumValue<GlowSurfaces.Animation> glowAnimation;
+    private final NumberValue<Float> glowSpeed;
 
     private final BooleanValue shaderOutline;
     private final NumberValue<Float> shaderOutlineAlpha;
@@ -60,6 +62,9 @@ public abstract class ShaderBoxModule extends Module {
         glowFillAlpha = visibleWhen(num("glow_fill_alpha", 0.16f, 0.0f, 1.0f), this::isGlow);
         glowRim = visibleWhen(num("glow_rim", 0.55f, 0.0f, 1.0f), this::isGlow);
         glowScan = visibleWhen(num("glow_scan", 1.0f, 0.0f, 1.0f), this::isGlow);
+        glowAnimation = visibleWhen(enumMode("glow_animation", GlowSurfaces.Animation.BREATHE), this::isGlow);
+        glowSpeed = visibleWhen(num("glow_speed", 1.0f, 0.1f, 5.0f),
+                () -> isGlow() && glowAnimation.get() != GlowSurfaces.Animation.STATIC);
 
         shaderOutline = visibleWhen(bool("shader_outline", true), this::isShader);
         shaderOutlineAlpha = visibleWhen(num("shader_outline_alpha", 0.92f, 0.0f, 1.0f),
@@ -95,7 +100,8 @@ public abstract class ShaderBoxModule extends Module {
         int rgb = argb & 0x00FFFFFF;
         if (mode == RenderMode.GLOW) {
             int fill = withAlpha(rgb, glowFillAlpha.get() * scale);
-            GlowSurfaces.box(renderer, box, fill, fill, glowRim.get() * scale, glowScan.get(), false, true, false);
+            GlowSurfaces.box(renderer, box, fill, fill, glowRim.get() * scale,
+                    glowAnimation.get(), glowSpeed.get(), glowScan.get(), false, true, false);
             return true;
         }
 
@@ -105,7 +111,8 @@ public abstract class ShaderBoxModule extends Module {
                 ? withAlpha(shaderGradientColor.getArgb() & 0x00FFFFFF, fillAlpha)
                 : bottom;
         float rim = shaderOutline.get() ? shaderOutlineAlpha.get() * scale : 0.0f;
-        GlowSurfaces.box(renderer, box, bottom, top, rim, 0.0f, false, true, false);
+        GlowSurfaces.box(renderer, box, bottom, top, rim,
+                GlowSurfaces.Animation.STATIC, 1.0f, 0.0f, false, true, false);
         return true;
     }
 

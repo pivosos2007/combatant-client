@@ -172,6 +172,22 @@ public final class UiMsaaClipLayer {
         resolveTarget = null;
     }
 
+    /** Recovery at the next frame boundary; never composite an unfinished subtree. */
+    public static void abortAbandonedLayer() {
+        ActiveLayer layer = active;
+        if (layer == null) return;
+        active = null;
+        colorClearPending = false;
+        msaaTarget = null;
+        resolveTarget = null;
+        try {
+            restoreScissor(layer.parentScissor());
+        } finally {
+            ViewportContext.applyCaptured(layer.parentViewport());
+            state = "abandoned_layer_recovered";
+        }
+    }
+
     public static boolean active() {
         return active != null;
     }

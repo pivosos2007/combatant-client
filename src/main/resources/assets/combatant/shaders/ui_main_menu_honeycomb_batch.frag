@@ -27,6 +27,10 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+#include <combatant:ui_clip.glsl>
+#endif
+
 const float SQRT3 = 1.73205080757;
 const float INV_SQRT3 = 0.57735026919;
 const float COS30 = 0.86602540378;
@@ -172,6 +176,11 @@ void main() {
         vec3 composed = (material * blurAlpha
                 + rimColor * rimAlpha * (1.0 - blurAlpha)) / max(alpha, 1e-5);
         fragColor = vec4(clamp(composed, 0.0, 1.0), alpha);
+#ifdef COMBATANT_ANALYTIC_CLIP
+        vec2 clipPixel = uScreen.zw / max(uScreen.xy, vec2(1.0));
+        fragColor.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), clipPixel);
+        if (fragColor.a <= 0.001) discard;
+#endif
         return;
     }
 
@@ -228,4 +237,9 @@ void main() {
     vec3 composed = (material * bodyAlpha
             + rimColor * rimAlpha * (1.0 - bodyAlpha)) / max(alpha, 1e-5);
     fragColor = vec4(clamp(composed, 0.0, 1.0), alpha);
+#ifdef COMBATANT_ANALYTIC_CLIP
+    vec2 clipPixel = uScreen.zw / max(uScreen.xy, vec2(1.0));
+    fragColor.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), clipPixel);
+    if (fragColor.a <= 0.001) discard;
+#endif
 }

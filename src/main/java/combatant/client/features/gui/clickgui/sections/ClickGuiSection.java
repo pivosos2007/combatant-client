@@ -37,6 +37,12 @@ public interface ClickGuiSection {
         return false;
     }
 
+    /** First-chance cancellation event, before ClickGUI decides whether ESC closes the screen. */
+    default boolean onCancel() { return false; }
+
+    /** True when this section currently owns text/modal input and movement must be suppressed. */
+    default boolean blocksMovementInput() { return false; }
+
     default boolean charTyped(char chr, int modifiers) {
         return false;
     }

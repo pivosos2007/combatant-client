@@ -10,15 +10,19 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.subsystem;
 import combatant.client.config.subsystem.RuntimeConfig;
 import combatant.client.config.SettingDef;
 import combatant.client.config.SettingOwner;
+import combatant.client.features.gui.clickgui.settings.Setting;
+import combatant.client.features.gui.clickgui.settings.ConfigurationDirectorySetting;
 
 import java.util.List;
 
 public final class RuntimeSettingsContributor implements MainSettingsContributor {
+    private final ConfigurationDirectorySetting directory = new ConfigurationDirectorySetting();
     @Override public String id() { return "runtime"; }
-    @Override public String titleKey() { return "clickgui.settings.main.runtime"; }
-    @Override public String fallbackTitle() { return "Runtime"; }
+    @Override public String titleKey() { return "clickgui.settings.main.system"; }
+    @Override public String fallbackTitle() { return "System"; }
     @Override public String icon() { return "brain-cog"; }
     @Override public int order() { return 400; }
     @Override public SettingOwner owner() { return RuntimeConfig.get(); }
     @Override public List<SettingDef> settingDefs() { return RuntimeConfig.get().getSettingDefs(); }
+    @Override public List<Setting> additionalSettings() { return List.of(directory); }
 }

@@ -13,14 +13,14 @@ const kits = [
     ['navigation','Navigation'],['surfaces','Surfaces'],['overlays','Overlays'],['states','States']
   ]]],render:renderGoogleMaterial3Gallery,overlay:renderGoogleMaterial3Overlay},
   {id:'adobe',label:'Adobe Spectrum 2',groups:[
-    ['Actions', [['buttons','Buttons'],['action-bar','Action bar'],['button-group','Button group'],['action-buttons','Action buttons'],['action-group','Action group'],['toggle-button','Toggle button'],['toggle-button-group','Toggle button group'],['links','Links']]],
-    ['Selection', [['checkbox','Checkbox'],['checkbox-group','Checkbox group'],['select-box-group','Select box group'],['segmented-control','Segmented control'],['switch','Switch'],['radio','Radio']]],
+    ['Actions', [['buttons','Buttons'],['action-bar','Action bar'],['button-group','Button group'],['action-buttons','Action buttons'],['action-group','Action group'],['toggle-button','Toggle button'],['toggle-button-group','Toggle button group'],['links','Links'],['link-button','Link button']]],
+    ['Selection', [['checkbox','Checkbox'],['checkbox-group','Checkbox group'],['select-box-group','Select box group'],['segmented-control','Segmented control'],['switch','Switch'],['radio','Radio'],['radio-group','Radio group']]],
     ['Inputs', [['text-field','Text field'],['search-field','Search field'],['picker','Picker'],['combo-box','Combo box'],['number-field','Number field'],['date-picker','Date picker'],['calendar','Calendar'],['slider','Slider'],['range-slider','Range slider'],['color-area','Color area'],['color-slider','Color slider'],['color-wheel','Color wheel'],['color-field','Color field'],['color-swatch-picker','Color swatch picker']]],
     ['Navigation', [['tabs','Tabs'],['side-navigation','Side navigation'],['breadcrumbs','Breadcrumbs'],['tree-view','Tree view']]],
     ['Disclosure', [['accordion','Accordion'],['disclosure','Disclosure']]],
-    ['Feedback', [['inline-alert','Inline alert'],['skeleton','Skeleton']]],
-    ['Data display', [['table','Table'],['labeled-value','Labeled value'],['color-swatch','Color swatch'],['illustrated-message','Illustrated message'],['badges','Badges'],['avatars','Avatars'],['avatar-group','Avatar group'],['tags','Tags'],['tag-group','Tag group'],['cards','Cards'],['status-light','Status light'],['progress-bar','Progress bar'],['progress-circle','Progress circle'],['meter','Meter'],['dividers','Dividers']]],
-    ['Overlays', [['menu','Menu'],['alert-dialog','Alert dialog'],['toast','Toast'],['tooltip','Tooltip']]],
+    ['Feedback', [['inline-alert','Inline alert'],['contextual-help','Contextual help'],['skeleton','Skeleton']]],
+    ['Data display', [['table','Table'],['list-view','List view'],['card-view','Card view'],['labeled-value','Labeled value'],['color-swatch','Color swatch'],['illustrated-message','Illustrated message'],['badges','Badges'],['avatars','Avatars'],['avatar-group','Avatar group'],['tags','Tags'],['tag-group','Tag group'],['cards','Cards'],['status-light','Status light'],['progress-bar','Progress bar'],['progress-circle','Progress circle'],['meter','Meter'],['dividers','Dividers']]],
+    ['Overlays', [['menu','Menu'],['popover','Popover'],['standard-dialog','Standard dialog'],['alert-dialog','Alert dialog'],['toast','Toast'],['tooltip','Tooltip']]],
     ['States', [['states','Disabled states']]]
   ],render:renderAdobeSpectrum2Gallery,overlay:renderAdobeSpectrum2Overlay}
 ];
@@ -65,15 +65,38 @@ export function buildTemplate(ctx) {
   // Query is owned by Java's SingleLineTextInput, not by a parallel JS state loop.
   const searchX=28,searchY=navTop+5,searchW=sidebar-38;
   const query=ui.str(data.catalogQuery,'');
-  children.push(rectangle('catalog:search:surface',searchX,searchY,searchW,40,7,'#29272F',host.border));
+  children.push(rectangle('catalog:search:surface',searchX,searchY,searchW,40,7,'#29272F',
+    data.catalogFocused?'#9795FF':host.border));
   children.push(position(ui.svg({key:'catalog:search:icon',asset:'search',tint:host.muted,
     interactive:false,class:ui.abs(0,0,17,17)}),searchX+10,searchY+12,17,17));
-  children.push(label('catalog:search:text',query||'Search components…',searchX+32,searchY,
-    searchW-65,40,15,query?host.text:host.muted));
-  if(data.catalogFocused){
-    const caretX=Math.min(searchW-37,32+Math.max(0,ui.num(data.catalogCaretOffset,0)));
-    children.push(rectangle('catalog:search:caret',searchX+caretX,searchY+9,1.5,22,0,host.text));
+  // The visible text, selection and IME preedit all share the native editor's
+  // horizontal viewport. Only this inset is clipped; the clear action stays hit-testable.
+  const insetX=searchX+32,insetW=searchW-68;
+  const scroll=Math.max(0,ui.num(data.catalogScroll,0));
+  const painted=ui.str(data.catalogDisplay,query);
+  const displayW=Math.max(insetW+10,ui.num(data.catalogTextWidth,0)+12);
+  const textNodes=[];
+  if(data.catalogHasSelection){
+    const x=ui.num(data.catalogSelectionStart,0)-scroll;
+    const right=ui.num(data.catalogSelectionEnd,0)-scroll;
+    textNodes.push(rectangle('catalog:search:selection',x,9,
+      Math.max(0,right-x),22,2,'#6555A7'));
   }
+  textNodes.push(ui.text({key:'catalog:search:text',text:painted||'Search components…',
+    color:painted?host.text:host.muted,verticalAlign:'center',interactive:false,
+    style:ui.absolute(-scroll,0,displayW,40),
+    class:'font-Onest font-size-15 text-align-left'}));
+  if(data.catalogFocused&&ui.num(data.catalogCompositionWidth,0)>0){
+    textNodes.push(rectangle('catalog:search:composition-underline',
+      ui.num(data.catalogCompositionStart,0)-scroll,32,
+      ui.num(data.catalogCompositionWidth,0),1,0,host.text));
+  }
+  if(data.catalogFocused){
+    const cx=ui.num(data.catalogCaretOffset,0)-scroll;
+    textNodes.push(rectangle('catalog:search:caret',cx,9,1.5,22,0,host.text));
+  }
+  children.push(ui.stack({key:'catalog:search:viewport',interactive:false,
+    class:ui.abs(insetX,searchY,insetW,40,'clip overflow-hidden'),children:textNodes}));
   children.push(position(ui.button({key:'catalog:search',onClick:'lab:catalog:search:focus',
     class:ui.abs(0,0,searchW,40,'cursor-text'),children:[]}),searchX,searchY,searchW,40));
   if(query){

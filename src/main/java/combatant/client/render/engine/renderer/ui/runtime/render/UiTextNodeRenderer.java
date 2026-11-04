@@ -84,11 +84,17 @@ final class UiTextNodeRenderer {
                 + node.props().number("textMorphOffsetY", 0.0f) * textMorph;
         float textOffsetX = node.props().number("textOffsetX", 0.0f);
         boolean runtimeMarquee = node.props().bool("runtimeMarquee", false);
-        float runtimeMarqueeOffset = runtimeMarquee
-                ? marqueeOffset(node, context, text, bounds, style)
+        // The layout's measured width is capped at the element width. A marquee
+        // needs the *unclipped glyph advance* or its overflow is always zero.
+        float marqueeOverflow = runtimeMarquee
+                ? Math.max(0.0f, textRenderer.measureUnclippedWidth(context.textRenderer(), text, style)
+                    - Math.max(0.0f, bounds.width() - style.paddingX()))
                 : 0.0f;
+        float runtimeMarqueeOffset = runtimeMarquee ? marqueeOffset(node, marqueeOverflow) : 0.0f;
         textOffsetX -= runtimeMarqueeOffset;
-        boolean textFade = node.props().bool("textFade", false) || runtimeMarquee;
+        // Do not fade a fully fitting label simply because marquee is enabled.
+        boolean textFade = node.props().bool("textFade", false)
+                || (runtimeMarquee && marqueeOverflow > 0.5f);
         float fadeWidth = node.props().number("marqueeFadeWidth", Math.min(16.0f, bounds.width() * 0.25f));
         float fadeLeft = node.props().number("fadeLeft", runtimeMarqueeOffset > 0.5f ? fadeWidth : 0.0f);
         float fadeRight = node.props().number("fadeRight", textFade ? fadeWidth : 0.0f);
@@ -262,10 +268,7 @@ final class UiTextNodeRenderer {
         };
     }
 
-    private float marqueeOffset(UiNode node, UiRenderContext context, String text, UiBounds bounds, UiStyle style) {
-        float available = Math.max(0.0f, bounds.width() - style.paddingX());
-        float measured = textRenderer.measureWidth(context.textRenderer(), text, style);
-        float overflow = Math.max(0.0f, measured - available);
+    private float marqueeOffset(UiNode node, float overflow) {
         var state = node.state();
         long now = System.nanoTime();
         long last = state.marqueeLastNanos();

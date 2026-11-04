@@ -36,15 +36,21 @@ import java.util.concurrent.Executors;
 
 public final class PlayerModels {
     public record Ready(List<PlayerModelCompiler.Surface> surfaces, Identifier texture,
-                        ReplacementSkinCache handSkin) {
+                        ReplacementSkinCache handSkin, String bodyMode, List<Identifier> clothingSprites) {
         public Ready(List<PlayerModelCompiler.Surface> surfaces, Identifier texture) {
-            this(surfaces, texture, new ReplacementSkinCache());
+            this(surfaces, texture, new ReplacementSkinCache(), "replace", List.of());
         }
+        public Ready(List<PlayerModelCompiler.Surface> surfaces, Identifier texture,
+                     ReplacementSkinCache handSkin) {
+            this(surfaces, texture, handSkin, "replace", List.of());
+        }
+        public boolean usesPlayerSkin() { return "player_skin".equals(bodyMode); }
     }
     public record Snapshot(Ready asset, PlayerRigInstance rig, Matrix4f fitting, ReplacementSkinCache skin) {}
-    private record Loaded(List<PlayerModelCompiler.Surface> surfaces, List<PlayerModelTexture.Level> texture) {}
+    private record Loaded(List<PlayerModelCompiler.Surface> surfaces, List<PlayerModelTexture.Level> texture,
+                          String bodyMode, List<Identifier> clothingSprites) {}
     private record Key(String model, PlayerModelTexture.Quality quality, long generation) {}
-    private record GeometryKey(String model, String profile, long generation) {}
+    private record GeometryKey(String model, String profile, List<String> renderGroups, long generation) {}
     private static final AtomicLong GENERATION = new AtomicLong();
     private static final java.util.concurrent.ExecutorService LOADER = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "Combatant player models");
@@ -75,6 +81,10 @@ public final class PlayerModels {
     private static Ready ready;
     private static String status = "";
     private static final PlayerRigInstance HAND_BIND_RIG = createHandRig();
+    // Cache the arm-only mesh once per imported asset. No per-frame vertex
+    // filtering, skinning, or new GPU geometry allocations.
+    private static final Map<Ready, Map<HumanoidArm, List<PlayerModelCompiler.Surface>>> HAND_GEOMETRY =
+            new WeakHashMap<>();
 
     private static PlayerRigInstance createHandRig() {
         PlayerRigInstance rig = new PlayerRigInstance();
@@ -141,7 +151,8 @@ public final class PlayerModels {
                 pending = null;
                 Loaded loaded = completed.join();
                 Identifier texture = upload(loaded.texture, requested.quality);
-                ready = new Ready(loaded.surfaces, texture);
+                ready = new Ready(loaded.surfaces, texture, new ReplacementSkinCache(),
+                        loaded.bodyMode, loaded.clothingSprites);
                 TEXTURES.add(new TextureOwner(ready));
                 CACHE.put(requested, ready);
                 while (CACHE.size() > 4) CACHE.remove(CACHE.keySet().iterator().next());
@@ -161,17 +172,34 @@ public final class PlayerModels {
     private static Loaded load(Key key, List<ModelCatalog.Entry> entries, combatant.client.render.engine.asset.model.io.ModelResourceResolver source) throws IOException {
         ModelCatalog.Entry entry = entries.stream().filter(e -> e.id().equals(key.model)).findFirst()
                 .orElseThrow(() -> new IOException("Complete model not found: " + key.model));
-        GeometryKey geometryKey = new GeometryKey(entry.model(), entry.profile(), key.generation);
+        GeometryKey geometryKey = new GeometryKey(entry.model(), entry.profile(),
+                entry.renderGroups(), key.generation);
         List<PlayerModelCompiler.Surface> surfaces = GEOMETRY.get(geometryKey);
         if (surfaces == null) {
             var imported = ModelImporters.load(ModelCatalog.id(entry.model()), id -> source.open(
                     id.equals(ModelCatalog.id(entry.atlas())) ? ModelCatalog.id(entry.texture()) : id));
             var runtime = new ModelRuntimeAsset(imported, ModelMaterialBridge.build(imported));
-            surfaces = PlayerModelCompiler.compile(runtime, PlayerModelProfile.load(source, entry.profile()));
+            surfaces = PlayerModelCompiler.compile(runtime, PlayerModelProfile.load(source, entry.profile()),
+                    entry.renderGroups());
             GEOMETRY.put(geometryKey, surfaces);
             while (GEOMETRY.size() > 4) GEOMETRY.remove(GEOMETRY.keySet().iterator().next());
         }
-        return new Loaded(surfaces, PlayerModelTexture.decode(ModelCatalog.read(source, entry.texture()), key.quality));
+        // Resource-only clothing sprites must be actual player-UV PNG layers. They are never
+        // mixed into or cached as the Minecraft skin; resource reload owns their lifetime.
+        for (String sprite : entry.clothingSprites()) {
+            byte[] png = ModelCatalog.read(source, sprite);
+            validatePng(png);
+            int width = ByteBuffer.wrap(png, 16, 4).getInt();
+            int height = ByteBuffer.wrap(png, 20, 4).getInt();
+            // PNG color type 6 = RGBA; color type 4 = gray+alpha. Indexed palettes
+            // require separate tRNS parsing and are intentionally rejected here.
+            int colorType = png[25] & 0xff;
+            if (width != height || width < 64 || width > 2048 || (width & (width - 1)) != 0
+                    || (colorType != 6 && colorType != 4))
+                throw new IOException("Clothing sprite must use square RGBA player-skin UVs: " + sprite);
+        }
+        return new Loaded(surfaces, PlayerModelTexture.decode(ModelCatalog.read(source, entry.texture()), key.quality),
+                entry.bodyMode(), entry.clothingSprites().stream().map(ModelCatalog::id).toList());
     }
 
     static void validatePng(byte[] bytes) throws IOException {
@@ -210,17 +238,18 @@ public final class PlayerModels {
         matrices.pushPose();
         try {
             matrices.mulPose(snapshot.fitting);
+            PlayerModel module = Modules.get(PlayerModel.class);
+            PlayerModelRenderDiagnostics.setEnabled(module != null && module.performanceDiagnostics.get());
+            // Both opaque and translucent surfaces are GPU-skinned. The latter are
+            // flushed at the correct world transparency boundary, not via a second
+            // per-frame CPU mesh emission into Vanilla's collector.
             if (PlayerModelGpuRenderer.trySubmit(snapshot, matrices, originalType, light, overlay, tint, outlineColor))
                 return true;
-            for (var surface : snapshot.asset.surfaces) {
-                RenderType type = originalType.isOutline() ? RenderTypes.outline(snapshot.asset.texture)
-                        : surface.translucent() || originalType.hasBlending() || (tint >>> 24) < 255
-                        ? RenderTypes.entityTranslucent(snapshot.asset.texture, true)
-                        : RenderTypes.entityCutout(snapshot.asset.texture);
-                PlayerRigCpuRenderer.submitReplacement(collector, surface.mesh(), snapshot.rig, matrices,
-                        type, light, overlay, tint, outlineColor, snapshot.asset, snapshot.skin, part -> true);
-            }
-            return true;
+            // Do not upload skinned geometry through VertexConsumer when a GPU
+            // contract is unavailable. Let the caller use the vanilla player model
+            // rather than silently doing an O(vertices) CPU replacement draw.
+            PlayerModelRenderDiagnostics.fallback(snapshot.asset, PlayerModelGpuRenderer.lastRejectReason());
+            return false;
         } finally { matrices.popPose(); }
     }
 
@@ -239,24 +268,48 @@ public final class PlayerModels {
         String group = arm == HumanoidArm.LEFT ? "leftArmModel" : "rightArmModel";
         // The source model uses vanilla model-pixel coordinates. Do not apply entity world
         // offsets / animation to the camera-space hand: vanilla has already placed the hand.
-        boolean any = false;
-        ReplacementSkinCache cache = selected.handSkin();
-        for (var surface : selected.surfaces()) {
-            boolean hasArm = surface.mesh().parts().stream().anyMatch(p -> isArmGroup(p.name(), group));
-            if (!hasArm) continue;
-            RenderType type = surface.translucent()
-                    ? RenderTypes.entityTranslucent(selected.texture(), true)
-                    : RenderTypes.entityCutout(selected.texture());
-            PlayerRigCpuRenderer.submitReplacement(collector, surface.mesh(), HAND_BIND_RIG, matrices,
-                    type, light, net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY,
-                    -1, 0, selected, cache, name -> isArmGroup(name, group));
-            any = true;
-        }
-        return any;
+        List<PlayerModelCompiler.Surface> armSurfaces = HAND_GEOMETRY
+                .computeIfAbsent(selected, ignored -> new EnumMap<>(HumanoidArm.class))
+                .computeIfAbsent(arm, ignored -> {
+                    List<PlayerModelCompiler.Surface> parts = new ArrayList<>();
+                    for (var surface : selected.surfaces()) {
+                        var matching = surface.mesh().parts().stream()
+                                .filter(part -> isArmGroup(part.name(), group)).toList();
+                        if (!matching.isEmpty()) {
+                            parts.add(new PlayerModelCompiler.Surface(
+                                    new combatant.client.render.engine.rig.mesh.RigMeshData(matching),
+                                    surface.translucent()));
+                        }
+                    }
+                    return List.copyOf(parts);
+                });
+        if (armSurfaces.isEmpty()) return false;
+        return PlayerModelGpuRenderer.submitHand(
+                new Snapshot(selected, HAND_BIND_RIG, new Matrix4f(), selected.handSkin()),
+                armSurfaces, matrices, light);
     }
 
     private static boolean isArmGroup(String name, String group) {
         return name.equals(group) || name.startsWith(group + "/");
+    }
+
+    /** The original Avatar model retains the player's live skin, visibility and head pose.
+     *  Replacement armor is submitted separately on the GPU using the same extracted rig. */
+    /** The exact immutable pose used for the imported GPU armor is also used for the
+     *  player's native skin geometry. This prevents the vanilla pose diverging at the
+     *  neck/shoulders during flight, crouching, and custom animator transitions. */
+    public static Snapshot skinBacked(Object state) {
+        if (state instanceof PlayerModelRenderState replacement) {
+            Snapshot snapshot = replacement.combatant$getReplacement();
+            if (snapshot != null && snapshot.asset().usesPlayerSkin()) return snapshot;
+        }
+        return null;
+    }
+
+    /** Only a full imported body replaces native armor, cape, wings and attachments.
+     *  A partial skin-backed helmet must not suppress unrelated vanilla layers. */
+    public static boolean replacesBody(Object state) {
+        return active(state) && skinBacked(state) == null;
     }
 
     public static boolean active(Object state) {
@@ -273,6 +326,7 @@ public final class PlayerModels {
         key = null;
         ready = null;
         CACHE.clear();
+        HAND_GEOMETRY.clear();
         LOADER.execute(GEOMETRY::clear);
     }
 

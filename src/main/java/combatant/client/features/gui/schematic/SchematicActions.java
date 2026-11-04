@@ -9,7 +9,6 @@ package combatant.client.features.gui.schematic;
 
 import com.mojang.blaze3d.Blaze3D;
 import combatant.client.features.module.ModuleManager;
-import combatant.client.features.module.Notifier;
 import combatant.client.features.module.modules.player.schematic.SchematicBuilder;
 import combatant.client.features.module.modules.visuals.schematic.SchematicProjection;
 import combatant.client.util.schematic.SchematicFormats;
@@ -29,12 +28,30 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletionException;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Operations shared by the schematic menu and the {@code @schematic} command. Main thread only. */
 public final class SchematicActions {
 
     private static volatile Path loadingPath;
     private static volatile String lastError = "";
+    private static long feedbackSequence;
+    private static final List<Feedback> FEEDBACK = new ArrayList<>();
+
+    /** UI-local status feed. The HUD notifier is intentionally not used by Schematics. */
+    public record Feedback(long sequence, String message, String variant) {}
+
+    private static synchronized void feedback(String message, String variant) {
+        FEEDBACK.add(new Feedback(++feedbackSequence, message, variant));
+        if (FEEDBACK.size() > 16) FEEDBACK.removeFirst();
+    }
+
+    public static synchronized long feedbackSequence() { return feedbackSequence; }
+
+    public static synchronized List<Feedback> feedbackSince(long last) {
+        return FEEDBACK.stream().filter(item -> item.sequence() > last).toList();
+    }
 
     private SchematicActions() {
     }
@@ -63,7 +80,7 @@ public final class SchematicActions {
             if (error != null) {
                 Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
                 lastError = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
-                Notifier.error(I18n.get("screen.combatant.schematic.status.load_failed", SchematicFormats.baseName(path), lastError));
+                feedback(I18n.get("screen.combatant.schematic.status.load_failed", SchematicFormats.baseName(path), lastError), "negative");
                 return;
             }
             applyLoaded(mc, loaded);
@@ -77,11 +94,11 @@ public final class SchematicActions {
             state.setOrigin(mc.player.blockPosition());
         }
         Schematic schematic = loaded.schematic();
-        Notifier.success(I18n.get("screen.combatant.schematic.status.loaded", schematic.name(),
-                schematic.sizeX() + "x" + schematic.sizeY() + "x" + schematic.sizeZ(), schematic.totalBlocks()));
+        feedback(I18n.get("screen.combatant.schematic.status.loaded", schematic.name(),
+                schematic.sizeX() + "x" + schematic.sizeY() + "x" + schematic.sizeZ(), schematic.totalBlocks()), "positive");
         if (!schematic.warnings().isEmpty()) {
-            Notifier.warning(I18n.get("screen.combatant.schematic.status.warnings", schematic.warnings().size(),
-                    schematic.warnings().getFirst()));
+            feedback(I18n.get("screen.combatant.schematic.status.warnings", schematic.warnings().size(),
+                    schematic.warnings().getFirst()), "informative");
         }
     }
 
@@ -94,7 +111,7 @@ public final class SchematicActions {
         try {
             dir = Files.createDirectories(SchematicLibrary.INSTANCE.directory()).toAbsolutePath().normalize();
         } catch (IOException | RuntimeException e) {
-            Notifier.error(I18n.get("screen.combatant.schematic.status.open_folder_failed", e.getMessage()));
+            feedback(I18n.get("screen.combatant.schematic.status.open_folder_failed", e.getMessage()), "negative");
             return;
         }
         Minecraft mc = Minecraft.getInstance();
@@ -110,7 +127,7 @@ public final class SchematicActions {
                 Blaze3D.openPath(dir);
             }
             // The file manager can open behind an exclusive-fullscreen game window, so always say where the folder is.
-            mc.execute(() -> Notifier.info(I18n.get("screen.combatant.schematic.status.folder_path", dir.toString())));
+            mc.execute(() -> feedback(I18n.get("screen.combatant.schematic.status.folder_path", dir.toString()), "informative"));
         });
     }
 

@@ -30,6 +30,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.rhi.scissor.GlobalScissorState;
+import combatant.client.render.engine.core.RenderPhase;
+import combatant.client.render.engine.core.RenderFrameContext;
+import combatant.client.render.engine.renderer.ui.UiDeferredScheduler;
 import combatant.client.util.logging.DebugLog;
 
 import java.nio.ByteBuffer;
@@ -100,7 +103,19 @@ public abstract class CommandEncoderMixin {
             DebugLog.error("[RHI] render pass native-state boundary hook failed for %s", t, combatant$label(descriptor.label()));
         }
         try {
-            GlobalScissorState.applyTo(pass, descriptor.renderArea());
+            // GlobalScissorState belongs to Combatant UI. A UI clip can still be
+            // recorded while vanilla is extracting GUI state, before world render.
+            // Applying it indiscriminately to every pass clips the next world frame
+            // to the HUD element's rectangle (only a small patch of terrain remains).
+            RenderFrameContext context = CombatantRenderSystem.currentContext();
+            RenderPhase phase = context != null ? context.phase() : RenderPhase.NONE;
+            boolean uiPhase = switch (phase) {
+                case HUD_CAPTURE, HUD_MAIN, HUD_EFFECTS, SCREEN_TOP, SCREEN -> true;
+                default -> false;
+            };
+            if (uiPhase || UiDeferredScheduler.isDraining()) {
+                GlobalScissorState.applyTo(pass, descriptor.renderArea());
+            }
         } catch (Throwable t) {
             DebugLog.error("[Scissor] render pass scissor hook failed for %s", t, combatant$label(descriptor.label()));
         }

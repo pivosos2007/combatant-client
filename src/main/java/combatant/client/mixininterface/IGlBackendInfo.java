@@ -42,4 +42,16 @@ public interface IGlBackendInfo {
     String combatant$vendor();
 
     String combatant$renderer();
+
+    /** Driver-reported GL_VERSION, captured from the active context at GlDevice initialization. */
+    String combatant$glVersion();
+
+    /** Driver-reported GL_SHADING_LANGUAGE_VERSION; distinct from GL context version. */
+    String combatant$glslVersion();
+
+    /** Actual context profile (Core / Compatibility), not the game's requested minimum. */
+    String combatant$glProfile();
+
+    /** Core OpenGL version plus any independently supported newer feature groups. */
+    String combatant$availableCapabilitiesLevel();
 }

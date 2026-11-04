@@ -31,19 +31,16 @@ void main() {
     vec2 dy = vec2(0.0, texel.y * radius);
     vec2 dd = vec2(texel.x * radius * 0.72, texel.y * radius * 0.72);
 
-    vec3 sum = texture(u_Texture, v_TexCoord).rgb * 0.20;
-    sum += texture(u_Texture, clamp(v_TexCoord + dx, 0.0, 1.0)).rgb * 0.10;
-    sum += texture(u_Texture, clamp(v_TexCoord - dx, 0.0, 1.0)).rgb * 0.10;
-    sum += texture(u_Texture, clamp(v_TexCoord + dy, 0.0, 1.0)).rgb * 0.10;
-    sum += texture(u_Texture, clamp(v_TexCoord - dy, 0.0, 1.0)).rgb * 0.10;
-    sum += texture(u_Texture, clamp(v_TexCoord + dd, 0.0, 1.0)).rgb * 0.075;
-    sum += texture(u_Texture, clamp(v_TexCoord - dd, 0.0, 1.0)).rgb * 0.075;
-    sum += texture(u_Texture, clamp(v_TexCoord + vec2(dd.x, -dd.y), 0.0, 1.0)).rgb * 0.075;
-    sum += texture(u_Texture, clamp(v_TexCoord + vec2(-dd.x, dd.y), 0.0, 1.0)).rgb * 0.075;
-    sum += texture(u_Texture, clamp(v_TexCoord + dx * 2.0, 0.0, 1.0)).rgb * 0.025;
-    sum += texture(u_Texture, clamp(v_TexCoord - dx * 2.0, 0.0, 1.0)).rgb * 0.025;
-    sum += texture(u_Texture, clamp(v_TexCoord + dy * 2.0, 0.0, 1.0)).rgb * 0.025;
-    sum += texture(u_Texture, clamp(v_TexCoord - dy * 2.0, 0.0, 1.0)).rgb * 0.025;
+    // Nine taps, one pass. Fine structure remains legible behind tools and windows.
+    vec3 sum = texture(u_Texture, v_TexCoord).rgb * 0.24;
+    sum += texture(u_Texture, clamp(v_TexCoord + dx, 0.0, 1.0)).rgb * 0.12;
+    sum += texture(u_Texture, clamp(v_TexCoord - dx, 0.0, 1.0)).rgb * 0.12;
+    sum += texture(u_Texture, clamp(v_TexCoord + dy, 0.0, 1.0)).rgb * 0.12;
+    sum += texture(u_Texture, clamp(v_TexCoord - dy, 0.0, 1.0)).rgb * 0.12;
+    sum += texture(u_Texture, clamp(v_TexCoord + dd, 0.0, 1.0)).rgb * 0.07;
+    sum += texture(u_Texture, clamp(v_TexCoord - dd, 0.0, 1.0)).rgb * 0.07;
+    sum += texture(u_Texture, clamp(v_TexCoord + vec2(dd.x, -dd.y), 0.0, 1.0)).rgb * 0.07;
+    sum += texture(u_Texture, clamp(v_TexCoord + vec2(-dd.x, dd.y), 0.0, 1.0)).rgb * 0.07;
 
     vec3 base = texture(u_Texture, v_TexCoord).rgb;
     color = vec4(mix(base, sum, smoothstep(0.0, 1.0, strength)), 1.0);

@@ -65,6 +65,19 @@ public final class UiRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(true)
             .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_COLORED_LINES_FAST_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_colored_lines_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_COLOR, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.DEBUG_LINES)
+            .withVertexShader(shader("ui_pos_color_fast.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("pos_color.frag")))
+            .withContract(RenderPipelineContract.UI_FAST)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
     /**
      * UI textured triangles (pos2 + tex + color).
      */
@@ -309,6 +322,34 @@ public final class UiRenderPipelines {
             .withVertexShader(shader("pos2_tex_color.vert"))
             .withFragmentShader(shader("text_mask.frag"))
             .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_TEXT_OUTLINE_FAST = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_text_outline_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR_RECT_PARAMS, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_text_outline.vert"))
+            .withFragmentShader(shader("text_outline.frag"))
+            .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_FAST)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_TEXT_OUTLINE_FAST_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_text_outline_fast"))
+            .withVertexFormat(CombatantVertexFormats.POS2_TEXTURE_COLOR_RECT_PARAMS, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("ui_text_outline.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("text_outline.frag")))
+            .withSampler("u_Texture")
+            .withContract(RenderPipelineContract.UI_FAST)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)

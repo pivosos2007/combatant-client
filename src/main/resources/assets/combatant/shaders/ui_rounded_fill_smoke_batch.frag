@@ -27,6 +27,10 @@ layout (std140) uniform UIBatch {
 #include <combatant:ui_aa.glsl>
 #include <combatant:ui_geometry.glsl>
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+#include <combatant:ui_clip.glsl>
+#endif
+
 float random(vec2 st) {
     return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453123);
 }
@@ -123,4 +127,12 @@ void main() {
     vec3 outColor = mix(base, smoke, smokeMix);
 
     fragColor = vec4(outColor, v_Color.a * mask);
+#ifdef COMBATANT_ANALYTIC_CLIP
+
+    vec2 clipPixel = uScreen.zw / max(uScreen.xy, vec2(1.0));
+
+    fragColor.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), clipPixel);
+
+    if (fragColor.a <= 0.001) discard;
+#endif
 }

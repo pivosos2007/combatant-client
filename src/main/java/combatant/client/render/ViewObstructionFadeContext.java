@@ -46,6 +46,11 @@ public enum ViewObstructionFadeContext {
      * marker explicitly at submit time.
      */
     public static int applyToArgb(int argb, boolean msaaActive) {
+        // Rig geometry bypasses SubmitNodeCollection.submitModel(), so it applies the
+        // view fade here. Keep that fade out of the separate depth-only silhouette.
+        if (combatant.client.render.engine.depth.SeeInvisiblesVisualDepth.isCapturing()) {
+            return argb == -1 ? -1 : (argb | 0xFF000000);
+        }
         State state = current();
         if (!state.active || state.alpha >= 0.99f) return argb;
         int baseColor = argb == -1 ? 0xFFFFFFFF : ((argb & 0x00FFFFFF) | 0xFF000000);

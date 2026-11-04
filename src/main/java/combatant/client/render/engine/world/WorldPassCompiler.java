@@ -34,6 +34,8 @@ import combatant.client.util.logging.DebugLog;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.function.Predicate;
 
 /**
  * Converts world commands into RHI draw commands and submits them through CombatantRHI.
@@ -83,6 +85,31 @@ public final class WorldPassCompiler {
             // This also covers commands after a backend exception before their pass was opened.
             for (RhiDrawCommand draw : compiled) draw.mesh.close();
             buffer.clearAfterSubmit();
+        }
+    }
+
+    /**
+     * Submit only commands eligible for the current physical world pass. Commands
+     * assigned to later passes remain in the same buffer with their mesh ownership
+     * intact; nothing is re-recorded or dropped.
+     */
+    public void submitMatching(WorldCommandBuffer buffer, @Nullable RenderTarget framebuffer,
+                               @Nullable PoseStack matrices, Predicate<WorldDrawCommand> selected) {
+        if (buffer == null || buffer.size() == 0 || selected == null) return;
+        List<WorldDrawCommand> deferred = new ArrayList<>();
+        for (Iterator<WorldDrawCommand> it = buffer.commands().iterator(); it.hasNext();) {
+            WorldDrawCommand command = it.next();
+            if (!selected.test(command)) {
+                deferred.add(command);
+                it.remove();
+            }
+        }
+        try {
+            submit(buffer, framebuffer, matrices);
+        } finally {
+            // submit() consumes only the selected batch. Keep deferred GPU/CPU mesh
+            // objects alive until the post-translucent phase submits them.
+            buffer.commands().addAll(deferred);
         }
     }
 
@@ -207,6 +234,13 @@ public final class WorldPassCompiler {
             if (depth == null) depth = PreTranslucentDepth.getDepthViewFor(colorView);
             stats.depthPrePassBinding();
         } else {
+            if (combatant.client.render.iris.IrisEarlyWorldBridge.isRendering()) {
+                GpuTextureView earlyDepth = framebuffer != null ? framebuffer.getDepthTextureView() : null;
+                if (earlyDepth != null && samples(earlyDepth) == samples(colorView)) {
+                    stats.depthMainBinding();
+                    return earlyDepth;
+                }
+            }
             // SeeInvisibles remains normally alpha-blended in the scene. Late 3D visuals
             // depth-test against a separate scene+player silhouette, not an altered scene depth.
             depth = SeeInvisiblesVisualDepth.depthViewFor(colorView);

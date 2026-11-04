@@ -166,7 +166,7 @@ public final class Armor extends DraggableHudElement {
         HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(255);
         HudRenderUtil.ThemeGradient accentGradient = HudRenderUtil.themeAccentGradient(255);
 
-        List<LinkedHashMap<String, Object>> items = ScriptedArmorHudPanel.items(stacks, isReverseOrder());
+        List<LinkedHashMap<String, Object>> items = scriptedPanel.items(stacks, isReverseOrder());
         scriptedPanel.render(
                 renderer,
                 textRenderer,

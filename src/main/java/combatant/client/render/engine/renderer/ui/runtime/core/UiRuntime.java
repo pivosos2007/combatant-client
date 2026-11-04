@@ -27,6 +27,7 @@ import combatant.client.render.engine.renderer.ui.runtime.style.UiStyleResolver;
 import combatant.client.render.engine.text.TextRenderer;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * Owns the current runtime UI tree and the base services around it.
@@ -57,6 +58,9 @@ public final class UiRuntime {
     private float lastLayoutWidth;
     private float lastLayoutHeight;
     private boolean hasLayout;
+    private boolean propPatchRequiresLayout;
+    private long treeRevision;
+    private long legacyPropRevision;
 
     public UiRuntime() {
         this.textRenderer = new UiTextRenderer();
@@ -99,6 +103,8 @@ public final class UiRuntime {
             long reconcileStart = System.nanoTime();
             this.root = reconciler.reconcile(root, resolved);
             rebuildKeyIndex();
+            treeRevision++;
+            renderer.compile(root);
             diagnostics.counters().setReconcileNanos(System.nanoTime() - reconcileStart);
             this.lastSuccessfulRoot = root;
             diagnostics.counters().setNodeCount(countNodes(root));
@@ -111,6 +117,8 @@ public final class UiRuntime {
             if (errorPolicy == UiErrorPolicy.KEEP_LAST_SUCCESSFUL) {
                 this.root = lastSuccessfulRoot;
                 rebuildKeyIndex();
+                treeRevision++;
+                renderer.compile(root);
             }
         }
     }
@@ -201,15 +209,64 @@ public final class UiRuntime {
      * conversion, style resolution, and reconciliation.</p>
      */
     public int patchPropsByKey(Map<String, ? extends Map<String, ?>> patches) {
+        propPatchRequiresLayout = false;
         if (root == null || patches == null || patches.isEmpty()) {
             diagnostics.counters().setPropPatchCount(0);
             return 0;
         }
         long start = System.nanoTime();
         int patched = patchPropsByKeyIndexed(patches);
+        // A map-based patch may overwrite a cached typed slot. Invalidate
+        // optimistic value equality so the next typed write restores it.
+        if (patched != 0) legacyPropRevision++;
         diagnostics.counters().addPatchNanos(System.nanoTime() - start);
         diagnostics.counters().setPropPatchCount(patched);
         return patched;
+    }
+
+    /**
+     * Applies typed, preallocated prop instructions. Unlike legacy map patches,
+     * bound keys and unchanged primitive values are reused across frames.
+     */
+    public int applyDynamicProps(UiDynamicPatchBuffer patches) {
+        propPatchRequiresLayout = false;
+        if (root == null || patches == null) {
+            diagnostics.counters().setPropPatchCount(0);
+            return 0;
+        }
+        long start = System.nanoTime();
+        patches.applyProps(this);
+        propPatchRequiresLayout = patches.requiresLayout();
+        diagnostics.counters().addPatchNanos(System.nanoTime() - start);
+        diagnostics.counters().setPropPatchCount(patches.propChanges());
+        return patches.propChanges();
+    }
+
+    /** Applied after layout, just like patchBoundsByKey() on the legacy path. */
+    public int applyDynamicBounds(UiDynamicPatchBuffer patches) {
+        if (root == null || patches == null) {
+            diagnostics.counters().setBoundsPatchCount(0);
+            return 0;
+        }
+        long start = System.nanoTime();
+        patches.applyBounds(this);
+        diagnostics.counters().addPatchNanos(System.nanoTime() - start);
+        diagnostics.counters().setBoundsPatchCount(patches.boundsChanges());
+        return patches.boundsChanges();
+    }
+
+    long treeRevision() { return treeRevision; }
+    long legacyPropRevision() { return legacyPropRevision; }
+
+    List<UiNode> nodesForDynamicPatch(String key, String kind) {
+        ObjectArrayList<UiNode> nodes = nodesByKey.get(key);
+        validatePatchTarget(key, nodes, kind);
+        return nodes != null ? nodes : List.of();
+    }
+
+    /** True only when the latest prop patch changed a value read by UiLayoutEngine. */
+    public boolean lastPropPatchRequiresLayout() {
+        return propPatchRequiresLayout;
     }
 
     public int patchBoundsByKey(Map<String, UiBounds> patches) {
@@ -234,10 +291,12 @@ public final class UiRuntime {
             validatePatchTarget(key, nodes, "props");
             if (nodes == null || nodes.isEmpty()) continue;
             for (UiNode node : nodes) {
-                UiProps before = node.props();
-                UiProps after = before.withPatch(patch);
-                if (after != before) {
-                    node.setProps(after);
+                // Check the small set of layout dependencies BEFORE mutating the
+                // runtime-owned prop slots. No per-frame props/map allocation.
+                boolean geometryChanged = !propPatchRequiresLayout
+                        && UiPropLayoutDependency.requiresLayout(node.type(), node.props(), patch);
+                if (node.patchProps(patch)) {
+                    if (geometryChanged) propPatchRequiresLayout = true;
                     patched++;
                 }
             }

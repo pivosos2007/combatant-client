@@ -33,6 +33,8 @@ public class CustomTextRenderer implements TextRenderer {
     public static final RenderColor SHADOW_COLOR = new RenderColor(60, 60, 60, 180);
     public final FontFace fontFace;
     private final MeshBuilder mesh = new MeshBuilder(UiRenderPipelines.UI_TEXT);
+    private final MeshBuilder outlineMesh = new MeshBuilder(UiRenderPipelines.UI_TEXT_OUTLINE_FAST);
+    private boolean outlineStarted;
     private final MeshBuilder liquidGlassMesh = new MeshBuilder(UiRenderPipelines.UI_TEXT_MSDF_GLASS_FAST);
     private GlyphFont[] fonts;
     private GlyphFont font;
@@ -154,6 +156,7 @@ public class CustomTextRenderer implements TextRenderer {
     @Override
     public void setAlpha(double a) {
         mesh.alpha = a;
+        outlineMesh.alpha = a;
     }
 
     @Override
@@ -342,6 +345,74 @@ public class CustomTextRenderer implements TextRenderer {
 
         if (!wasBuilding) end();
         return width;
+    }
+
+    @Override
+    public double renderOutlined(String text, double x, double y, RenderColor color, float radius, float opacity) {
+        return renderOutlinedQuadGradient(text, x, y,
+                (index, cp, x0, y0, x1, y1, colors) -> java.util.Arrays.fill(colors, color.argb()), radius, opacity);
+    }
+
+    @Override
+    public double renderOutlinedQuadGradient(String text, double x, double y, Font.GlyphQuadGradient gradient,
+                                             float radius, float opacity) {
+        if (text == null || text.isEmpty() || gradient == null) return x;
+        ViewportContext.ProjectionMode projection = ViewportContext.activeMode();
+        if (RenderWarpStack.active() || (projection != ViewportContext.ProjectionMode.LOGICAL
+                && projection != ViewportContext.ProjectionMode.SCALED)) {
+            return renderQuadGradient(text, x, y, gradient, true);
+        }
+        boolean implicitBegin = !building;
+        if (implicitBegin) begin();
+        try {
+            prepareTextSource(text, x, y, false);
+            if (meshStarted) flushActiveMesh();
+            if (!outlineStarted) {
+                outlineMesh.begin();
+                outlineStarted = true;
+            }
+            float outlineRadius = Float.isFinite(radius) ? Math.max(0, radius) : 0;
+            float outlineOpacity = Float.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 0;
+            float mode = font instanceof GlyphMaskFont ? -1 : font.isMsdf() ? font.getPxRange() : 0;
+            int[] colors = new int[4];
+            return font.emitGlyphs(text, x, y, scale / 1.5, new GlyphFont.GlyphConsumer() {
+                @Override
+                public void accept(double x0, double y0, double x1, double y1, float u0, float v0, float u1, float v1) {
+                    accept(0, 0, x0, y0, x1, y1, u0, v0, u1, v1);
+                }
+
+                @Override
+                public void accept(int index, int codePoint, double x0, double y0, double x1, double y1,
+                                   float u0, float v0, float u1, float v1) {
+                    if (x1 <= x0 || y1 <= y0) return;
+                    gradient.colors(index, codePoint, x0, y0, x1, y1, colors);
+                    float du = (float) ((u1 - u0) / (x1 - x0));
+                    float dv = (float) ((v1 - v0) / (y1 - y0));
+                    double padding = outlineRadius + 1.0 / Math.max(1.0, FontRasterSelection.activePixelDensity());
+                    outlineMesh.ensureCapacity(4, 6);
+                    int a = outlineVertex(x0 - padding, y0 - padding, u0 - du * padding, v0 - dv * padding,
+                            colors[0], u0, v0, u1, v1, du * outlineRadius, dv * outlineRadius, outlineOpacity, mode);
+                    int b = outlineVertex(x0 - padding, y1 + padding, u0 - du * padding, v1 + dv * padding,
+                            colors[1], u0, v0, u1, v1, du * outlineRadius, dv * outlineRadius, outlineOpacity, mode);
+                    int c = outlineVertex(x1 + padding, y1 + padding, u1 + du * padding, v1 + dv * padding,
+                            colors[2], u0, v0, u1, v1, du * outlineRadius, dv * outlineRadius, outlineOpacity, mode);
+                    int d = outlineVertex(x1 + padding, y0 - padding, u1 + du * padding, v0 - dv * padding,
+                            colors[3], u0, v0, u1, v1, du * outlineRadius, dv * outlineRadius, outlineOpacity, mode);
+                    outlineMesh.quad(a, b, c, d);
+                }
+            });
+        } finally {
+            if (implicitBegin) end();
+        }
+    }
+
+    private int outlineVertex(double x, double y, double u, double v, int color,
+                              float u0, float v0, float u1, float v1,
+                              float radiusU, float radiusV, float opacity, float mode) {
+        return outlineMesh.vec2(x, y).raw2(u, v)
+                .color((color >>> 16) & 255, (color >>> 8) & 255, color & 255, (color >>> 24) & 255)
+                .vec4(Math.min(u0, u1), Math.min(v0, v1), Math.max(u0, u1), Math.max(v0, v1))
+                .vec4(radiusU, radiusV, opacity, mode).next();
     }
 
     public double renderGradient(String text, double x, double y, Font.GlyphGradient gradient, boolean shadow) {
@@ -633,6 +704,7 @@ public class CustomTextRenderer implements TextRenderer {
      * must retain their original font, texture and pipeline.
      */
     private void flushActiveMesh() {
+        flushOutlineMesh();
         if (!meshStarted) return;
         mesh.end();
         GlyphFont drawnFont = font;
@@ -657,6 +729,16 @@ public class CustomTextRenderer implements TextRenderer {
         fastUiText = false;
     }
 
+    private void flushOutlineMesh() {
+        if (!outlineStarted) return;
+        outlineMesh.end();
+        if (font.isReady()) {
+            TextRenderSystem.submitGlyphMesh("Combatant UI Text Outline", font, outlineMesh,
+                    UiRenderPipelines.UI_TEXT_OUTLINE_FAST, TextPlacementMode.UI);
+        }
+        outlineStarted = false;
+    }
+
     /** Preallocates the text mesh so the first glyph draw does not allocate native buffers. */
     public void prewarmBuffers() {
         mesh.prewarmDefaultCapacity();
@@ -664,6 +746,7 @@ public class CustomTextRenderer implements TextRenderer {
     }
 
     private void ensureMeshStarted() {
+        flushOutlineMesh();
         if (meshStarted) {
             return;
         }
@@ -683,6 +766,7 @@ public class CustomTextRenderer implements TextRenderer {
 
     public void destroy() {
         mesh.close();
+        outlineMesh.close();
         liquidGlassMesh.close();
         GlyphFont[] current = this.fonts;
         this.fonts = null;

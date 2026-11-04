@@ -570,6 +570,14 @@ public final class MeshBuilder implements AutoCloseable {
         return building;
     }
 
+    /** Vertex-layout/topology compatibility for pooled UI batch builders. */
+    public boolean isCompatibleWith(RenderPipeline pipeline) {
+        return pipeline != null
+                && vertexStride == Objects.requireNonNull(pipeline.getVertexFormatBinding(0)).getVertexSize()
+                && format.equals(pipeline.getVertexFormatBinding(0))
+                && primitiveIndicesCount == pipeline.getPrimitiveTopology().primitiveLength;
+    }
+
     /**
      * Append an already-built mesh into this builder, rebasing INT indices by the current vertex count.
      * This is used by higher level batchers (UI/text) to preserve draw order without flushing per element.

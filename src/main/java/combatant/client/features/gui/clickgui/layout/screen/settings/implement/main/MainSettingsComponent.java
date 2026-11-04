@@ -73,8 +73,9 @@ public final class MainSettingsComponent {
         rebuildSettings();
     }
 
-    private static List<Setting> buildSettings(List<SettingDef> defs, SettingOwner owner) {
-        List<Setting> out = SettingFactory.fromDefs(defs);
+    private static List<Setting> buildSettings(List<SettingDef> defs, SettingOwner owner, List<Setting> additional) {
+        List<Setting> out = new ArrayList<>(SettingFactory.fromDefs(defs));
+        if (additional != null) out.addAll(additional);
         for (Setting setting : out) {
             setting.setParent(owner);
             setting.preflightI18n();
@@ -529,7 +530,7 @@ public final class MainSettingsComponent {
                         id,
                         contributor,
                         title,
-                        buildSettings(defs, owner),
+                        buildSettings(defs, owner, contributor.additionalSettings()),
                         contributor
                 ));
             } catch (RuntimeException failure) {

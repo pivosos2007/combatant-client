@@ -88,6 +88,16 @@ record UiBlurRegion(int x, int y, int width, int height) {
                 && y + height >= other.y + other.height;
     }
 
+    UiBlurRegion mergeNearby(UiBlurRegion other) {
+        if (other == null) return this;
+        int left = Math.min(x, other.x);
+        int bottom = Math.min(y, other.y);
+        int w = Math.max(x + width, other.x + other.width) - left;
+        int h = Math.max(y + height, other.y + other.height) - bottom;
+        long area = (long) width * height + (long) other.width * other.height;
+        return (long) w * h <= area * 2 ? new UiBlurRegion(left, bottom, w, h) : this;
+    }
+
     private static int kernelPaddingPx(int iterations, float offsetPx) {
         int n = Math.max(1, Math.min(8, iterations));
         double sampleOffset = Math.max(0.0, Float.isFinite(offsetPx) ? offsetPx : 1.0f) + 0.5;

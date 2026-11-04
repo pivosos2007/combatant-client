@@ -230,6 +230,11 @@ public final class RhiDrawCommand {
             }
             validateBindings();
             List<RhiColorAttachment> colors = buildColorAttachments();
+            // Catch the exact RenderPearl color-target-count/format failure before a rig
+            // enters an RHI render pass. Other families keep their existing contracts.
+            if (combatant.client.render.engine.pipeline.CombatantRenderPipelines.isRigPipeline(pipeline)) {
+                RenderPassCompatibility.requirePipelineColorTargets(pipeline, colors);
+            }
             if (mesh == null) throw new IllegalStateException("RHI draw command without mesh");
             return new RhiDrawCommand(this, colors);
         }

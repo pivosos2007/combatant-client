@@ -74,7 +74,7 @@ import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMod
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
-import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiDynamicPatchBuffer;
 import combatant.client.runtime.discovery.CombatantIndex;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import combatant.client.render.engine.svg.SvgRenderOptions;
@@ -139,6 +139,22 @@ final class XaeroMapSettingsPanel {
 
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(XaeroMapSettingsPanel.class);
     private final CachedUiScriptRuntime scriptRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
+    // Precompiled navigation instructions. Stable handles avoid Map.of(), UiBounds,
+    // and property-key lookup while the hover/selection animation is running.
+    private final UiDynamicPatchBuffer navigationPatchProgram = new UiDynamicPatchBuffer();
+    private final int navHoverColorSlot = navigationPatchProgram.propertyHandle("map-settings:nav-group:hover", "fill");
+    private final int navHoverBoundsSlot = navigationPatchProgram.boundsHandle("map-settings:nav-group:hover");
+    private final int navSelectedBoundsSlot = navigationPatchProgram.boundsHandle("map-settings:nav-group:selected");
+    private static final String[] NAV_HOVER_COLORS = navigationHoverColors();
+
+    private static String[] navigationHoverColors() {
+        String[] colors = new String[256];
+        final char[] hex = "0123456789ABCDEF".toCharArray();
+        for (int i = 0; i < colors.length; i++) {
+            colors[i] = new String(new char[]{'#', hex[i >>> 4], hex[i & 15], 'F', 'F', 'F', 'F', 'F', 'F'});
+        }
+        return colors;
+    }
     private final Supplier<MapProcessor> processorSupplier;
     private final Supplier<MapDimension> dimensionSupplier;
     private final List<Entry> entries = new ArrayList<>();
@@ -407,29 +423,31 @@ final class XaeroMapSettingsPanel {
                 targetHover >= 0 ? 1.0f : 0.0f, dt, targetHover >= 0 ? 15.0f : 11.0f);
     }
 
-    private Map<String, Map<String, ?>> navigationVisualPatches() {
+    private void writeNavigationPatches(SolidBrowserLayout layout) {
+        navigationPatchProgram.beginFrame();
         int alpha = Math.max(0, Math.min(255, Math.round(navigationHoverAlpha * 25.0f)));
-        String hoverColor = String.format(Locale.ROOT, "#%02XFFFFFF", alpha);
-        return Map.of("map-settings:nav-group:hover", Map.of("fill", hoverColor));
-    }
+        navigationPatchProgram.put(navHoverColorSlot, NAV_HOVER_COLORS[alpha]);
 
-    private Map<String, UiBounds> navigationBoundsPatches(SolidBrowserLayout layout) {
         float navX = x + layout.navX + 3.0f;
         float navY = y + layout.navStartY + 3.0f;
         float rowStep = layout.navRowHeight + layout.navRowGap;
         float width = Math.max(1.0f, layout.navRowWidth - 6.0f);
         float height = Math.max(1.0f, layout.navRowHeight - 2.0f);
         float hoverPosition = navigationHoverPosition < 0 ? navigationSelectedPosition : navigationHoverPosition;
-        return Map.of(
-                "map-settings:nav-group:hover", new UiBounds(navX, navY + Math.max(0, hoverPosition) * rowStep, width, height),
-                "map-settings:nav-group:selected", new UiBounds(navX, navY + navigationSelectedPosition * rowStep, width, height));
+        navigationPatchProgram.putBounds(navHoverBoundsSlot, navX,
+                navY + Math.max(0, hoverPosition) * rowStep, width, height);
+        navigationPatchProgram.putBounds(navSelectedBoundsSlot, navX,
+                navY + navigationSelectedPosition * rowStep, width, height);
     }
 
     private void renderBrowserSurface(SolidBrowserLayout layout, float lifecycleAlpha, float mouseX, float mouseY) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getResourceManager() == null) return;
         HudScriptLayouts.pollReloadCombo(mc);
-        if (moduleHandle.consumeChanged()) scriptRuntime.reset();
+        if (moduleHandle.consumeChanged()) {
+            scriptRuntime.reset();
+            navigationPatchProgram.invalidateBindings();
+        }
         if (!moduleHandle.ensureLoaded(mc.getResourceManager())) {
             HudScriptLayouts.reportLoadError(moduleHandle);
             return;
@@ -473,13 +491,15 @@ final class XaeroMapSettingsPanel {
                 height,
                 () -> props,
                 null,
-                devUiKits ? () -> navigationBoundsPatches(layout) : null
+                null
         );
         if (runtime != null) {
             if (devUiKits) {
                 // The hover alpha is paint-only: update it after layout rather than
                 // forcing CachedUiScriptRuntime to remeasure the entire tree.
-                runtime.patchPropsByKey(navigationVisualPatches());
+                writeNavigationPatches(layout);
+                runtime.applyDynamicProps(navigationPatchProgram);
+                runtime.applyDynamicBounds(navigationPatchProgram);
                 runtime.input().updateHover(runtime.root(), mouseX, mouseY);
             }
             // Use the same dedicated Map UI-underlay source as the chrome controls. The map

@@ -85,6 +85,7 @@ public final class Inventory extends DraggableHudElement {
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final ScriptedInventoryHudPanel scriptedPanel = new ScriptedInventoryHudPanel();
+    private final ArrayList<ItemStack> frameInventoryStacks = new ArrayList<>(COLS * ROWS);
 
     private final KeyBindValue toggleBind =
             new KeyBindValue("toggle_bind", "I");
@@ -415,7 +416,7 @@ public final class Inventory extends DraggableHudElement {
                         HudPanelLayoutModes.current(layoutMode),
                         new ScriptedListHudPanel.Palette(uiHeaderLeft, uiHeaderRight, uiBodyLeft, uiBodyRight,
                                 uiOutline, uiText, uiMuted, uiCounter, uiTitleText, uiDivider, uiBlurTint),
-                        ScriptedInventoryHudPanel.cells(stacks)
+                        scriptedPanel.cells(stacks)
                 ,
                         HudMaterialChoice.shaderMode(surfaceMaterial.get())
                 )
@@ -450,14 +451,12 @@ public final class Inventory extends DraggableHudElement {
     }
 
     private List<ItemStack> collectStacks() {
-        List<ItemStack> stacks = new ArrayList<>(LAST_INV_SLOT - FIRST_INV_SLOT);
-        if (mc == null || mc.player == null) {
-            return stacks;
-        }
+        frameInventoryStacks.clear();
+        if (mc == null || mc.player == null) return frameInventoryStacks;
         for (int slot = FIRST_INV_SLOT; slot < LAST_INV_SLOT; slot++) {
-            stacks.add(mc.player.getInventory().getItem(slot));
+            frameInventoryStacks.add(mc.player.getInventory().getItem(slot));
         }
-        return stacks;
+        return frameInventoryStacks;
     }
 
     private void updatePalette() {

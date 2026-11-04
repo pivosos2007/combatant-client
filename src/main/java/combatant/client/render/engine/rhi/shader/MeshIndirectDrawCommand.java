@@ -8,15 +8,29 @@ import java.util.List;
 public record MeshIndirectDrawCommand(String label, RhiMeshPipeline pipeline,
                                       GpuTextureView colorAttachment, GpuMeshHandle mesh,
                                       RhiStorageBuffer indirectCommands, long indirectOffset,
-                                      List<StorageBinding> storageBindings, List<SampledTextureBinding> sampledTextures) {
+                                      List<StorageBinding> storageBindings, List<SampledTextureBinding> sampledTextures,
+                                      int drawCount, int strideBytes) {
     public MeshIndirectDrawCommand {
         if (pipeline == null || colorAttachment == null || mesh == null || indirectCommands == null)
             throw new IllegalArgumentException("Indirect draw requires pipeline, render target, mesh and command buffer");
         if (!indirectCommands.descriptor().indirectSource() || indirectOffset < 0L || (indirectOffset & 3L) != 0L
-                || indirectOffset > indirectCommands.descriptor().byteSize() - 20L)
-            throw new IllegalArgumentException("Invalid indirect buffer or command offset");
+                || drawCount < 1 || strideBytes < 20 || (strideBytes & 3) != 0
+                || (long) (drawCount - 1) * strideBytes > Long.MAX_VALUE - indirectOffset
+                || indirectOffset + (long) (drawCount - 1) * strideBytes
+                    > indirectCommands.descriptor().byteSize() - 20L)
+            throw new IllegalArgumentException("Invalid indexed-indirect command range/count/stride");
         label = label == null || label.isBlank() ? "combatant-mesh-indirect" : label;
         storageBindings = storageBindings == null ? List.of() : List.copyOf(storageBindings);
         sampledTextures = sampledTextures == null ? List.of() : List.copyOf(sampledTextures);
+    }
+
+    /** Existing one-command API remains source compatible. */
+    public MeshIndirectDrawCommand(String label, RhiMeshPipeline pipeline,
+                                   GpuTextureView colorAttachment, GpuMeshHandle mesh,
+                                   RhiStorageBuffer indirectCommands, long indirectOffset,
+                                   List<StorageBinding> storageBindings,
+                                   List<SampledTextureBinding> sampledTextures) {
+        this(label, pipeline, colorAttachment, mesh, indirectCommands, indirectOffset,
+                storageBindings, sampledTextures, 1, 20);
     }
 }

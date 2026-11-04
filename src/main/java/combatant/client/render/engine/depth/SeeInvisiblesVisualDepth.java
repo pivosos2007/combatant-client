@@ -77,8 +77,14 @@ public final class SeeInvisiblesVisualDepth {
         }
         List<EntityRenderState> selected = new ArrayList<>();
         for (EntityRenderState state : entities) {
-            if (state instanceof ViewObstructionFadeState fade
-                    && fade.combatant$isSeeInvisibleFadeActive()) {
+            // The auxiliary world-visual depth must also include ordinary vanilla
+            // player geometry: PRE_DEPTH can precede the vanilla entity submission
+            // on some render paths. This does not affect the entity's color pass.
+            if (state instanceof net.minecraft.client.renderer.entity.state.LivingEntityRenderState living
+                    && living.entityType == net.minecraft.world.entity.EntityTypes.PLAYER
+                    && (state instanceof ViewObstructionFadeState fade
+                        && fade.combatant$isSeeInvisibleFadeActive()
+                        || !living.isInvisible)) {
                 selected.add(state);
             }
         }

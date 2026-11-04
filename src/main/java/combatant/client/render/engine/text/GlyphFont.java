@@ -74,5 +74,10 @@ public interface GlyphFont {
     interface GlyphConsumer {
         void accept(double x0, double y0, double x1, double y1,
                     float u0, float v0, float u1, float v1);
+
+        default void accept(int index, int codePoint, double x0, double y0, double x1, double y1,
+                            float u0, float v0, float u1, float v1) {
+            accept(x0, y0, x1, y1, u0, v0, u1, v1);
+        }
     }
 }

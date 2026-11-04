@@ -24,6 +24,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.ClipFunction;
 import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
+import combatant.client.render.engine.rhi.scissor.GlobalScissorState;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.renderer.ProjectionMatrixBuffer;
 import org.joml.Matrix4f;
@@ -78,6 +79,15 @@ public final class UiDeferredScheduler {
         if (lifecycle == Lifecycle.RECORDING) {
             invalidTransition("beginExtractFrame", "extraction is already recording");
         }
+        // Extraction is a frame boundary: recover from any UI clip left active
+        // by a previous frame's failed HUD element before recording new work.
+        if (lifecycle != Lifecycle.RECORDING) {
+            combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer.abortAbandonedLayer();
+            ClipFunction.resetForNewFrame();
+            ScissorFunction.resetForNewFrame();
+            GlobalScissorState.resetForNewFrame();
+        }
+        // Clear the previous recording before the new frame starts.
         UiBlurResources.beginDeferredFrame();
         releaseSubmits(RECORDING);
         RECORDING.clear();
@@ -253,7 +263,20 @@ public final class UiDeferredScheduler {
             // Enqueue every compatible facade submission before compiling. UiPassCompiler can
             // then join their direct RHI streams and the backend can continue one render pass
             // across UI-runtime/HUD tree boundaries without changing draw order.
+            int plannedEnd = start;
             for (int i = start; i < end; i++) {
+                if (i >= plannedEnd) {
+                    UiBlurResources.REPLAY_BLUR_PLAN.clear();
+                    plannedEnd = i;
+                    while (plannedEnd < end) {
+                        OrderedUiBatcher candidate = ((DeferredOrderedSubmit) DRAINING.get(plannedEnd)).batcher();
+                        if (candidate != null && candidate.hudBackdropContribution) break;
+                        if (candidate != null) candidate.collectCapturedBlurDemand(UiBlurResources.REPLAY_BLUR_PLAN);
+                        plannedEnd++;
+                    }
+                    // A backdrop writer ends the immutable generation; never prewarm across it.
+                    if (plannedEnd == i) plannedEnd++;
+                }
                 DeferredOrderedSubmit ordered = (DeferredOrderedSubmit) DRAINING.get(i);
                 if (ordered != null && ordered.batcher() != null) {
                     ordered.batcher().flush(true);
@@ -261,14 +284,17 @@ public final class UiDeferredScheduler {
             }
             Renderer2D.flushUiLayer();
         } finally {
+            UiBlurResources.REPLAY_BLUR_PLAN.clear();
             if (scissored) {
-                // An exceptional offscreen pass can exit while the replay scissor is suspended.
-                // In that case there is nothing left on the device stack to pop here.
-                if (!replayScissorSuspended) {
+                try {
+                    // If an offscreen pass aborted, its masking scope must be closed before
+                    // removing this replay-owned scissor. The outer UI clip remains intact.
+                    if (replayScissorSuspended) GlobalScissorState.resume();
+                } finally {
                     ((IGpuDevice) RenderSystem.getDevice()).combatant$popScissor();
+                    activeReplayScissor = null;
+                    replayScissorSuspended = false;
                 }
-                activeReplayScissor = null;
-                replayScissorSuspended = false;
             }
             for (int i = start; i < end; i++) {
                 Deferred2DSubmit ordered = DRAINING.get(i);
@@ -281,7 +307,7 @@ public final class UiDeferredScheduler {
     /** Temporarily removes the scheduler-owned framebuffer scissor for an offscreen pass. */
     static boolean suspendReplayScissorForOffscreenPass() {
         if (lifecycle != Lifecycle.DRAINING || activeReplayScissor == null || replayScissorSuspended) return false;
-        ((IGpuDevice) RenderSystem.getDevice()).combatant$popScissor();
+        if (!GlobalScissorState.suspend()) return false;
         replayScissorSuspended = true;
         return true;
     }
@@ -289,9 +315,7 @@ public final class UiDeferredScheduler {
     /** Restores a scheduler-owned framebuffer scissor after an offscreen pass. */
     static void restoreReplayScissorAfterOffscreenPass(boolean suspended) {
         if (!suspended || activeReplayScissor == null || !replayScissorSuspended) return;
-        int[] scissor = activeReplayScissor;
-        ((IGpuDevice) RenderSystem.getDevice())
-                .combatant$pushScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+        GlobalScissorState.resume();
         replayScissorSuspended = false;
     }
 
@@ -320,7 +344,8 @@ public final class UiDeferredScheduler {
         return lifecycle == Lifecycle.RECORDING;
     }
 
-    static boolean isDraining() {
+    /** Allow RHI render-pass hooks to scope replay clipping to UI only. */
+    public static boolean isDraining() {
         return lifecycle == Lifecycle.DRAINING;
     }
 

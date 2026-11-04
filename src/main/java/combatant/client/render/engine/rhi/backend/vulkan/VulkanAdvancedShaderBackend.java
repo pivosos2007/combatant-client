@@ -623,15 +623,31 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                         stack.longs(vertex.vkBuffer()), stack.longs(0L));
                 vkCmdBindIndexBuffer(commandBuffer, index.vkBuffer(), 0L,
                         mesh.indexType() == IndexType.SHORT ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+                boolean multiIndirect = command.indirectCommands() != null
+                        && command.indirectDrawCount() > 1 && RhiCapabilities.current().multiDrawIndirect();
                 if (command.indirectCommands() != null) {
                     if (!(command.indirectCommands() instanceof VulkanStorageBuffer indirect))
                         throw new IllegalArgumentException("Indirect buffer belongs to another GPU backend");
-                    vkCmdDrawIndexedIndirect(commandBuffer, indirect.vkBuffer(),
-                            indirect.bindingOffset(command.indirectOffset()), 1, 20);
+                    if (multiIndirect) {
+                        vkCmdDrawIndexedIndirect(commandBuffer, indirect.vkBuffer(),
+                                indirect.bindingOffset(command.indirectOffset()),
+                                command.indirectDrawCount(), command.indirectStrideBytes());
+                    } else {
+                        for (int draw = 0; draw < command.indirectDrawCount(); draw++) {
+                            vkCmdDrawIndexedIndirect(commandBuffer, indirect.vkBuffer(),
+                                    indirect.bindingOffset(command.indirectOffset()
+                                            + (long) draw * command.indirectStrideBytes()), 1, 20);
+                        }
+                    }
                 } else {
                     vkCmdDrawIndexed(commandBuffer, mesh.indexCount(), 1, mesh.firstIndex(), mesh.baseVertex(), 0);
                 }
-                stats.drawCall();
+                if (multiIndirect) {
+                    stats.multiDrawCall(command.indirectDrawCount());
+                } else {
+                    for (int draw = 0; draw < (command.indirectCommands() == null
+                            ? 1 : command.indirectDrawCount()); draw++) stats.drawCall();
+                }
             } finally {
                 vkCmdEndRenderingKHR(commandBuffer);
             }
@@ -644,7 +660,8 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
         drawPatches(new PatchDrawCommand(command.label(), command.pipeline(),
                 List.of(command.colorAttachment()), null, command.mesh(),
                 command.storageBindings(), command.sampledTextures(), List.of(), List.of(),
-                command.indirectCommands(), command.indirectOffset()));
+                command.indirectCommands(), command.indirectOffset(),
+                command.drawCount(), command.strideBytes()));
     }
 
     @Override

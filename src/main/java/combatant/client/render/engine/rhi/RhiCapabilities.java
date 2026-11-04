@@ -40,6 +40,10 @@ public final class RhiCapabilities {
     private final boolean attachmentInvalidation;
     private final String glVendor;
     private final String glRenderer;
+    private final String glVersion;
+    private final String glslVersion;
+    private final String glProfile;
+    private final String availableCapabilitiesLevel;
 
     private RhiCapabilities(DeviceInfo deviceInfo,
                             boolean nativeDirectStateAccess,
@@ -53,7 +57,11 @@ public final class RhiCapabilities {
                             boolean copyImage,
                             boolean attachmentInvalidation,
                             String glVendor,
-                            String glRenderer) {
+                            String glRenderer,
+                            String glVersion,
+                            String glslVersion,
+                            String glProfile,
+                            String availableCapabilitiesLevel) {
         this.deviceInfo = deviceInfo;
         this.nativeDirectStateAccess = nativeDirectStateAccess;
         this.khrDebug = khrDebug;
@@ -67,6 +75,10 @@ public final class RhiCapabilities {
         this.attachmentInvalidation = attachmentInvalidation;
         this.glVendor = glVendor == null ? "" : glVendor;
         this.glRenderer = glRenderer == null ? "" : glRenderer;
+        this.glVersion = glVersion == null ? "" : glVersion;
+        this.glslVersion = glslVersion == null ? "" : glslVersion;
+        this.glProfile = glProfile == null ? "unknown" : glProfile;
+        this.availableCapabilitiesLevel = availableCapabilitiesLevel == null ? "" : availableCapabilitiesLevel;
     }
 
     public static RhiCapabilities current() {
@@ -96,7 +108,11 @@ public final class RhiCapabilities {
                 vulkan || gl != null && gl.combatant$copyImage(),
                 vulkan || gl != null && gl.combatant$attachmentInvalidation(),
                 gl != null ? gl.combatant$vendor() : "",
-                gl != null ? gl.combatant$renderer() : ""
+                gl != null ? gl.combatant$renderer() : "",
+                gl != null ? gl.combatant$glVersion() : "",
+                gl != null ? gl.combatant$glslVersion() : "",
+                gl != null ? gl.combatant$glProfile() : "unknown",
+                gl != null ? gl.combatant$availableCapabilitiesLevel() : ""
         );
     }
 
@@ -213,6 +229,24 @@ public final class RhiCapabilities {
 
     public String glRenderer() {
         return glRenderer;
+    }
+
+    /** Actual version of the current OpenGL context, not the minimum requested by Minecraft. */
+    public String glVersion() {
+        return glVersion;
+    }
+
+    public String glslVersion() {
+        return glslVersion;
+    }
+
+    public String glProfile() {
+        return glProfile;
+    }
+
+    /** Feature availability in the currently created GL context; NOT the driver's maximum possible context. */
+    public String availableCapabilitiesLevel() {
+        return availableCapabilitiesLevel;
     }
 
     /**

@@ -51,6 +51,23 @@ public final class UiTextRenderer {
         return layout(fallback, text, style).width();
     }
 
+    /**
+     * Measure the full single-line advance, ignoring the node's clipping/ellipsis width.
+     * Layout width is intentionally constrained by the element's style, so it cannot
+     * be used to decide whether a retained marquee has any distance to travel.
+     */
+    public float measureUnclippedWidth(TextRenderer fallback, String text, UiStyle style) {
+        String value = RuntimeTextLayout.singleLine(text);
+        if (value.isEmpty()) return 0.0f;
+        TextRenderer renderer = resolve(fallback, style);
+        renderer.beginSize(style.fontSize(), true, false);
+        try {
+            return (float) renderer.getWidth(value, style.textShadow());
+        } finally {
+            renderer.end();
+        }
+    }
+
     public float measureHeight(TextRenderer fallback, String text, UiStyle style) {
         return layout(fallback, text, style).height();
     }

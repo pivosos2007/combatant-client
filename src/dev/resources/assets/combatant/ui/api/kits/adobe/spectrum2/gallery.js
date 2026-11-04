@@ -53,6 +53,14 @@ import { SpectrumColorWheel } from './color-wheel.js';
 import { SpectrumColorField } from './color-field.js';
 import { SpectrumColorSwatchPicker } from './color-swatch-picker.js';
 import { hsvHex, opacityHex } from './color-utils.js';
+import { SpectrumListView } from './list-view.js';
+import { SpectrumCardView } from './card-view.js';
+import { SpectrumRadioGroup } from './radio-group.js';
+import { SpectrumContextualHelp } from './contextual-help.js';
+import { SpectrumLinkButton } from './link-button.js';
+import { SpectrumPopover } from './popover.js';
+import { SpectrumStandardDialog } from './standard-dialog.js';
+
 /* Spectrum 2 component-by-component dev reference. No Material tokens or imports. */
 const SpectrumPalette = SpectrumFoundation.dark;
 const SpectrumAt = (node,x,y,w,h) => ({...node,style:ui.absolute(x,y,w,h)});
@@ -129,9 +137,16 @@ const SpectrumDescriptions = Object.freeze({
   'progress-bar':['Progress bar','A determinate progress indicator.'],
   meter:['Meter','Semantic feedback for a measurement rather than task progress.'],
   menu:['Menu','Popup actions, shortcuts, headers, separators and disabled items.'],
+  popover:['Popover','Anchored transient content with viewport-aware flipping and offset.'],
+  'standard-dialog':['Standard dialog','A modal content container with S, M and L sizes and actions.'],
   'alert-dialog':['Alert dialog','Five Spectrum variants, modal actions and an animated lifecycle.'],
   toast:['Toast','Non-modal status feedback with a close button and an optional contextual action.'],
   tooltip:['Tooltip','Brief contextual labels; hover to test delayed appearance and animated exit.'],
+  'list-view':['List view','Selectable collection with descriptions, unavailable items and checkbox/highlight selection.'],
+  'card-view':['Card view','Responsive grid of selectable asset cards with controlled selection.'],
+  'radio-group':['Radio group','A single-choice field with label, help text and validation.'],
+  'contextual-help':['Contextual help','Small info/help triggers with an anchored popover.'],
+  'link-button':['Link button','A button with a navigation affordance, variants and disabled state.'],
   states:['Disabled states','Side-by-side enabled and unavailable controls; this page scrolls.']
 });
 export function renderAdobeSpectrum2Gallery(data,width,page) {
@@ -150,7 +165,31 @@ export function renderAdobeSpectrum2Gallery(data,width,page) {
   const col2=width>=660?Math.floor(width/2)+12:24;
   const wide=width>=660;
   const fieldWidth=Math.min(440,width-52);
-  if(page==='buttons') {
+  if(page==='popover') {
+    sub('s2g:pop:heading','Placement and adaptive flipping',136);
+    const options=[['bottom','Below'],['top','Above'],['left','Left'],['right','Right']];
+    let px=24,py=205;
+    for(const [id,label] of options){
+      const bw=116;
+      if(px+bw>width-20){px=24;py+=58;}
+      place(SpectrumButton.render({key:`s2:popover:trigger:${id}`,width:bw,label,
+        variant:'secondary',outline:true,onClick:`lab:adobe:popover:open:${id}`}),px,py,bw,40);
+      px+=bw+12;
+    }
+    divider('s2g:pop:divider',py+87);
+    detail('s2g:pop:hint','Click a trigger to inspect its anchored overlay. Escape closes it.',py+108);
+  } else if(page==='standard-dialog') {
+    sub('s2g:standard-dialog:title','Standard dialog sizes',136);
+    let dx=24,dy=206;
+    for(const [id,label] of [['S','Small'],['M','Medium'],['L','Large']]){
+      if(dx+128>width-20){dx=24;dy+=58;}
+      place(SpectrumButton.render({key:`s2:standard-dialog:trigger:${id}`,width:122,
+        label,onClick:`lab:adobe:standard-dialog:open:${id}`}),dx,dy,122,40);
+      dx+=138;
+    }
+    divider('s2g:standard-dialog:rule',dy+88);
+    detail('s2g:standard-dialog:help','Modal content with keyboard focus and dismiss actions.',dy+108);
+  } else if(page==='buttons') {
     sub('s2g:button-sub','Emphasis',132);
     let x=24,y=198;
     for(const [variant,label,bw] of [['accent','Accent',116],['primary','Primary',126],
@@ -1069,6 +1108,97 @@ export function renderAdobeSpectrum2Gallery(data,width,page) {
       place(node,24,y,w,h);y+=h+14;
     }
     detail('s2g:disclosure:help','Each trigger retains its own expanded state. No per-frame script tick.',y+30);
+  } else if(page==='list-view') {
+    sub('s2g:lv:heading','Multiple selection · checkbox',133);
+    const w=Math.min(490,width-48);
+    const rows=[['ps','Photoshop','Image editing'],['ai','Illustrator','Vector graphics'],
+      ['pdf','Acrobat','Document editing'],['locked','Unavailable item','Restricted access']];
+    place(SpectrumListView.render({key:'s2:lv:files',width:w,selectionMode:'multiple',
+      selectionStyle:'checkbox',selectedIds:data.adobeListViewSelected||['ps'],
+      items:rows.map(([id,label,description])=>({id,label,description,
+        disabled:id==='locked',onClick:`lab:adobe:list-view:toggle:${id}`}))}),24,205,w,260);
+    divider('s2g:lv:separator',516);
+    sub('s2g:lv:single-heading','Single selection · highlight',539);
+    place(SpectrumListView.render({key:'s2:lv:single',width:w,quiet:true,density:'compact',
+      selectionMode:'single',selectionStyle:'highlight',
+      selectedIds:[ui.str(data.adobeListViewSingle,'grid')],items:[
+        {id:'grid',label:'Grid view',onClick:'lab:adobe:list-view:single:grid'},
+        {id:'list',label:'List view',onClick:'lab:adobe:list-view:single:list'},
+        {id:'detail',label:'Details',onClick:'lab:adobe:list-view:single:detail'}]}),24,607,w,153);
+  } else if(page==='card-view') {
+    sub('s2g:cv:heading','Asset cards · responsive grid',133);
+    const w=Math.min(720,width-48);
+    const cards=[['brand','Brand identity','Updated today','#FF6A4C98'],
+      ['campaign','Campaign hero','2 days ago','#FF2E7A76'],
+      ['logo','Logo variants','Yesterday','#FFB56F40'],
+      ['restricted','Private archive','Restricted','#FF53565C']];
+    place(SpectrumCardView.render({key:'s2:cv:assets',width:w,selectionMode:'multiple',
+      selectionStyle:'checkbox',selectedIds:data.adobeCardViewSelected||['brand'],
+      items:cards.map(([id,label,description,color])=>({id,label,description,color,
+        disabled:id==='restricted',onClick:`lab:adobe:card-view:toggle:${id}`}))}),
+      24,204,w,410);
+    divider('s2g:cv:separator',642);
+    sub('s2g:cv:small','Compact · single selection',664);
+    place(SpectrumCardView.render({key:'s2:cv:compact',width:w,size:'S',density:'compact',
+      selectionMode:'single',selectionStyle:'highlight',
+      selectedIds:[ui.str(data.adobeCardViewSingle,'recent')],items:[
+        {id:'recent',label:'Recent',description:'6 assets',color:'#FF4B6AC7',onClick:'lab:adobe:card-view:single:recent'},
+        {id:'shared',label:'Shared',description:'8 assets',color:'#FF487B68',onClick:'lab:adobe:card-view:single:shared'}]}),24,734,w,171);
+  } else if(page==='radio-group') {
+    sub('s2g:rg:heading','Grouped options',133);
+    const w=Math.min(450,width-48);
+    place(SpectrumRadioGroup.render({key:'s2:rg:quality',width:w,label:'Export quality',required:true,
+      selectedId:ui.str(data.adobeRadioGroupSelected,'balanced'),
+      description:'Choose the level of compression for the export.',items:[
+        {id:'fast',label:'Fast',onClick:'lab:adobe:radio-group:fast'},
+        {id:'balanced',label:'Balanced',onClick:'lab:adobe:radio-group:balanced'},
+        {id:'high',label:'High quality',onClick:'lab:adobe:radio-group:high'},
+        {id:'offline',label:'Unavailable',disabled:true}]}),24,207,w,245);
+    divider('s2g:rg:divider',511);
+    sub('s2g:rg:horizontal','Horizontal · emphasized',533);
+    place(SpectrumRadioGroup.render({key:'s2:rg:orientation',width:w,label:'Orientation',
+      orientation:'horizontal',emphasized:true,
+      selectedId:ui.str(data.adobeRadioGroupOrientation,'landscape'),items:[
+        {id:'portrait',label:'Portrait',onClick:'lab:adobe:radio-group:orientation:portrait'},
+        {id:'landscape',label:'Landscape',onClick:'lab:adobe:radio-group:orientation:landscape'}]}),24,604,w,90);
+    divider('s2g:rg:error-divider',738);
+    sub('s2g:rg:error-heading','Invalid / disabled',762);
+    place(SpectrumRadioGroup.render({key:'s2:rg:error',width:w,label:'Access level',invalid:true,
+      errorMessage:'You must select an access level.',items:[
+        {id:'reader',label:'Reader',disabled:true}, {id:'writer',label:'Writer',disabled:true}]}),24,830,w,185);
+  } else if(page==='contextual-help') {
+    sub('s2g:help:heading','Attached help and information',133);
+    const p=SpectrumFoundation.dark;
+    for(const [id,title,description,y] of [
+      ['help','Export settings','Learn how to configure document exports.',217],
+      ['info','Sharing permissions','Who can access this project?',316]]) {
+      const w=Math.min(430,width-48);
+      place(SpectrumFoundation.rect(`s2:help:${id}:surface`,0,0,w,72,8,p.surface,p.border,1),24,y,w,72);
+      place(SpectrumFoundation.text(`s2:help:${id}:title`,title,0,0,w-80,28,
+        {size:17,strong:true}),42,y+7,w-80,28);
+      place(SpectrumFoundation.text(`s2:help:${id}:description`,description,0,0,w-80,24,
+        {size:14,color:p.muted}),42,y+35,w-80,24);
+      place(SpectrumContextualHelp.render({key:`s2:help:${id}`,variant:id,
+        open:data.overlay==='adobe-context-help-'+id,
+        onClick:`lab:adobe:context-help:open:${id}`}),24+w-43,y+23,26,26);
+    }
+    divider('s2g:help:rule',463);
+    detail('s2g:help:hint','Click the question mark or info icon; Escape closes the popover.',490);
+    place(SpectrumContextualHelp.render({key:'s2:help:disabled',disabled:true}),24,560,26,26);
+    detail('s2g:help:disabled-hint','Unavailable contextual help',64,558);
+  } else if(page==='link-button') {
+    sub('s2g:lb:heading','Link buttons · navigational action',133);
+    place(SpectrumLinkButton.render({key:'s2:lb:primary',label:'View documentation',width:205,
+      onClick:'lab:adobe:link-button:docs'}),24,212,205,40);
+    place(SpectrumLinkButton.render({key:'s2:lb:secondary',label:'Show details',width:165,
+      variant:'secondary',onClick:'lab:adobe:link-button:details'}),24,280,165,40);
+    divider('s2g:lb:divider',383);
+    sub('s2g:lb:quiet','Quiet and disabled',403);
+    place(SpectrumLinkButton.render({key:'s2:lb:quiet',label:'Learn more',quiet:true,width:162,
+      onClick:'lab:adobe:link-button:learn'}),24,472,162,40);
+    place(SpectrumLinkButton.render({key:'s2:lb:disabled',label:'Unavailable',disabled:true,
+      width:172}),24,534,172,40);
+    detail('s2g:lb:last',ui.str(data.adobeLastAction,'Click a link button to invoke the action router.'),603);
   } else if(page==='states') {
     sub('s2g:states-button-head','Buttons',133);
     place(SpectrumButton.render({key:'s2:states:button',variant:'accent',label:'Enabled',

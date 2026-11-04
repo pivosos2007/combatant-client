@@ -6,10 +6,12 @@
 package combatant.client.render.iris.geometry;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.pipeline.IndexType;
 import com.mojang.renderpearl.backend.opengl.GlBuffer;
 import combatant.client.features.playermodel.PlayerModels;
 import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.features.playermodel.PlayerModelRenderDiagnostics;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.RhiCapabilities;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
@@ -66,11 +68,13 @@ public final class IrisPlayerRigGpu {
     public static boolean preflight(PlayerModels.Ready asset) {
         if (disabled || !IrisRuntime.isShaderpackRendererActive() || IrisRuntime.isRenderingShadowPass()) return false;
         try {
-            RhiCapabilities capabilities = RhiCapabilities.current();
-            if (!capabilities.computeShaders() || !capabilities.shaderStorageBuffers()
-                    || capabilities.backendName().toLowerCase(java.util.Locale.ROOT).contains("vulkan")) return false;
             RenderSystem.assertOnRenderThread();
             CombatantRhi rhi = CombatantRenderSystem.rhi();
+            // The active RHI caches its device capability snapshot. Avoid allocating and
+            // probing a new capability object for every player submission each frame.
+            RhiCapabilities capabilities = rhi.capabilities();
+            if (!capabilities.computeShaders() || !capabilities.shaderStorageBuffers()
+                    || capabilities.backendName().toLowerCase(java.util.Locale.ROOT).contains("vulkan")) return false;
             if (owner != rhi) { closeAll(); owner = rhi; }
             if (shader == 0) initialize();
             for (var surface : asset.surfaces()) {
@@ -89,6 +93,10 @@ public final class IrisPlayerRigGpu {
         var mc = Minecraft.getInstance();
         if (mc == null || mc.gameRenderer == null || mc.gameRenderer.mainRenderTarget() == null) return;
         var target = mc.gameRenderer.mainRenderTarget();
+        var lightmap = mc.gameRenderer.levelLightmap();
+        var overlayTexture = mc.gameRenderer.overlayTexture().getTextureView();
+        if (lightmap == null || overlayTexture == null) return;
+        var lightSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         var color = target.getColorTextureView();
         var depth = IrisSceneDepth.importedGeometryDepthAttachment();
         if (color == null || depth == null) return;
@@ -110,6 +118,7 @@ public final class IrisPlayerRigGpu {
                     Mesh mesh = MESHES.get(surface.mesh());
                     if (mesh == null) continue;
                     // Flush each dispatch before its draw; a second actor may share this mesh.
+                    long started = PlayerModelRenderDiagnostics.enabled() ? System.nanoTime() : 0L;
                     skin(mesh, draw.snapshot(), draw.light(), draw.overlay());
                     RhiDrawCommand command = RhiDrawCommand.builder("Iris indexed skinned player rig")
                             .pipeline(translucent
@@ -118,10 +127,12 @@ public final class IrisPlayerRigGpu {
                             .colorAttachment(color).depthAttachment(depth)
                             .mesh(mesh.allocation.handle()).transform(draw.model())
                             .sampler("Sampler0", texture.getTextureView(), texture.getSampler())
-                            .sampler("Sampler1", texture.getTextureView(), texture.getSampler())
-                            .sampler("Sampler2", texture.getTextureView(), texture.getSampler())
+                            .sampler("Sampler1", overlayTexture, lightSampler)
+                            .sampler("Sampler2", lightmap, lightSampler)
                             .build();
                     CombatantRenderSystem.rhi().drawMeshes(List.of(command));
+                    if (PlayerModelRenderDiagnostics.enabled())
+                        PlayerModelRenderDiagnostics.irisIssued(1, mesh.vertices, System.nanoTime() - started);
                 }
             }
         } catch (RuntimeException | LinkageError failure) {
@@ -355,15 +366,16 @@ public final class IrisPlayerRigGpu {
                 vec3 p=vec3(a(b),a(b+1u),a(b+2u));
                 vec3 n=vec3(a(b+5u),a(b+6u),a(b+7u));
                 vec3 t=vec3(a(b+17u),a(b+18u),a(b+19u));
-                vec3 skp=vec3(0.0), skn=vec3(0.0), skt=vec3(0.0);
-                for(int i=0;i<4;i++) {
-                    float w=a(b+13u+uint(i));
-                    int bone=int(a(b+9u+uint(i)));
-                    if(w<=0.0 || bone<0) continue;
-                    skp+=(joints[bone]*vec4(p,1.0)).xyz*w;
-                    skn+=(joints[bone]*vec4(n,0.0)).xyz*w;
-                    skt+=(joints[bone]*vec4(t,0.0)).xyz*w;
+                // PlayerModelCompiler emits at most two influences, with normalized weights.
+                // Do not fetch/branch over four matrix slots for every vertex.
+                mat4 skin=joints[int(a(b+9u))];
+                float w1=a(b+14u);
+                if(w1>0.0) {
+                    skin=skin*a(b+13u)+joints[int(a(b+10u))]*w1;
                 }
+                vec3 skp=(skin*vec4(p,1.0)).xyz;
+                vec3 skn=(skin*vec4(n,0.0)).xyz;
+                vec3 skt=(skin*vec4(t,0.0)).xyz;
                 skn=length(skn)>1e-8 ? normalize(skn) : normalize(n);
                 skt-=skn*dot(skn,skt);
                 skt=length(skt)>1e-8 ? normalize(skt) : vec3(1.0,0.0,0.0);

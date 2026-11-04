@@ -44,15 +44,19 @@ public final class PostProcessGraphResources implements AutoCloseable {
     private @Nullable PostProcessContext context;
     private boolean usePingAsSource = true;
 
-    public boolean prepare(PostProcessPass.Phase phase, float tickDelta, CombatantRhi rhi, boolean preferStorageTargets) {
+    public boolean prepare(PostProcessPass.Phase phase, float tickDelta, CombatantRhi rhi,
+                           boolean preferStorageTargets, @Nullable RenderTarget targetOverride) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
-        RenderTarget main = mc.gameRenderer.mainRenderTarget();
+        RenderTarget main = targetOverride != null ? targetOverride : mc.gameRenderer.mainRenderTarget();
         if (main == null || main.getColorTextureView() == null) return false;
 
-        int w = Math.max(1, mc.getWindow().getWidth());
-        int h = Math.max(1, mc.getWindow().getHeight());
-        ensurePingPong(w, h, rhi, preferStorageTargets);
+        int w = main.width;
+        int h = main.height;
+        GpuFormat colorFormat = targetOverride != null
+                ? main.getColorTexture().getFormat() : GpuFormat.RGBA8_UNORM;
+        if (colorFormat != GpuFormat.RGBA8_UNORM && colorFormat != GpuFormat.RGBA16_FLOAT) return false;
+        ensurePingPong(w, h, rhi, preferStorageTargets, colorFormat);
         if (pingView == null || pongView == null) return false;
 
         clearFrameState();
@@ -124,13 +128,13 @@ public final class PostProcessGraphResources implements AutoCloseable {
         context = null;
     }
 
-    private void ensurePingPong(int w, int h, CombatantRhi rhi, boolean preferStorageTargets) {
+    private void ensurePingPong(int w, int h, CombatantRhi rhi, boolean preferStorageTargets, GpuFormat colorFormat) {
         if (storageOwner != null && storageOwner != rhi) {
             closeStoragePingPong();
             storageTargetsFailed = false;
         }
         long now = System.nanoTime();
-        if (preferStorageTargets && PostProcessExecutionPolicy.useCompute(rhi) && !storageTargetsFailed) {
+        if (colorFormat == GpuFormat.RGBA8_UNORM && preferStorageTargets && PostProcessExecutionPolicy.useCompute(rhi) && !storageTargetsFailed) {
             try {
                 ensureStoragePingPong(w, h, rhi);
                 pingView = pingStorage != null ? pingStorage.view() : null;
@@ -159,9 +163,9 @@ public final class PostProcessGraphResources implements AutoCloseable {
             closeStoragePingPong();
         }
         ping = CombatantRenderSystem.resources().persistentFramebuffer(
-                "combatant-postprocess-graph-ping", w, h, false, "PostProcessGraph");
+                "combatant-postprocess-graph-ping", w, h, false, colorFormat, "PostProcessGraph");
         pong = CombatantRenderSystem.resources().persistentFramebuffer(
-                "combatant-postprocess-graph-pong", w, h, false, "PostProcessGraph");
+                "combatant-postprocess-graph-pong", w, h, false, colorFormat, "PostProcessGraph");
         pingView = ping != null ? ping.getColorTextureView() : null;
         pongView = pong != null ? pong.getColorTextureView() : null;
     }

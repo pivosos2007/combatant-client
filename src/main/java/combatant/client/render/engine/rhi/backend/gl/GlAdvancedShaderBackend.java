@@ -453,13 +453,23 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
                 }
                 int topology = pipeline.controlPoints() > 0 ? GL40C.GL_PATCHES : GL11C.GL_TRIANGLES;
                 if (pipeline.controlPoints() > 0) GL40C.glPatchParameteri(GL40C.GL_PATCH_VERTICES, pipeline.controlPoints());
+                boolean multiIndirect = command.indirectCommands() != null
+                        && command.indirectDrawCount() > 1 && RhiCapabilities.current().multiDrawIndirect();
                 if (command.indirectCommands() != null) {
                     if (!(command.indirectCommands() instanceof GlStorageBuffer indirect))
                         throw new IllegalArgumentException("Indirect buffer belongs to a different GPU backend");
                     int previousIndirect = GL11C.glGetInteger(GL40C.GL_DRAW_INDIRECT_BUFFER_BINDING);
                     try {
                         GL15C.glBindBuffer(GL40C.GL_DRAW_INDIRECT_BUFFER, indirect.id);
-                        GL40C.glDrawElementsIndirect(topology, glIndexType(mesh.indexType()), command.indirectOffset());
+                        if (multiIndirect) {
+                            GL43C.glMultiDrawElementsIndirect(topology, glIndexType(mesh.indexType()),
+                                    command.indirectOffset(), command.indirectDrawCount(), command.indirectStrideBytes());
+                        } else {
+                            for (int draw = 0; draw < command.indirectDrawCount(); draw++) {
+                                GL40C.glDrawElementsIndirect(topology, glIndexType(mesh.indexType()),
+                                        command.indirectOffset() + (long) draw * command.indirectStrideBytes());
+                            }
+                        }
                     } finally {
                         GL15C.glBindBuffer(GL40C.GL_DRAW_INDIRECT_BUFFER, previousIndirect);
                     }
@@ -467,7 +477,12 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
                     GL32C.glDrawElementsBaseVertex(topology, mesh.indexCount(), glIndexType(mesh.indexType()),
                             (long) mesh.firstIndex() * mesh.indexType().bytes, mesh.baseVertex());
                 }
-                stats.drawCall();
+                if (multiIndirect) {
+                    stats.multiDrawCall(command.indirectDrawCount());
+                } else {
+                    for (int draw = 0; draw < (command.indirectCommands() == null
+                            ? 1 : command.indirectDrawCount()); draw++) stats.drawCall();
+                }
             } finally {
                 GL30C.glBindVertexArray(previousVao);
                 GL15C.glBindBuffer(GL15C.GL_ARRAY_BUFFER, previousArrayBuffer);
@@ -488,7 +503,8 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         drawPatches(new PatchDrawCommand(command.label(), command.pipeline(),
                 List.of(command.colorAttachment()), null, command.mesh(),
                 command.storageBindings(), command.sampledTextures(), List.of(), List.of(),
-                command.indirectCommands(), command.indirectOffset()));
+                command.indirectCommands(), command.indirectOffset(),
+                command.drawCount(), command.strideBytes()));
     }
 
     @Override

@@ -21,6 +21,7 @@ public final class PlayerModel extends Module {
     public final ModeValue textureResolution = textureResolutionSetting();
     public final ModeValue textureFiltering = mode("texture_filtering", "Linear", "Nearest", "Linear");
     public final BooleanValue replacement = bool("replacement", true);
+    public final BooleanValue performanceDiagnostics = bool("performance_diagnostics", false);
     public final BooleanValue firstPersonHands = visibleWhen(bool("first_person_hands", false), replacement::get);
     public final ModeValue previewPose = mode("preview_pose", "Live", "Live", "Idle", "Walk", "Sneak", "Swim");
     public final NumberValue<Float> offsetX = num("offset_x", 0f, -2f, 2f);
@@ -88,5 +89,8 @@ public final class PlayerModel extends Module {
         return result;
     }
 
-    @Override public void onDisable() { PlayerModels.invalidate(); }
+    @Override public void onDisable() {
+        combatant.client.features.playermodel.PlayerModelRenderDiagnostics.setEnabled(false);
+        PlayerModels.invalidate();
+    }
 }

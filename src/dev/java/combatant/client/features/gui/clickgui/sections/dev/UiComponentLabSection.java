@@ -14,6 +14,7 @@ import combatant.client.input.InputKeys;
 import combatant.client.input.InputModifierMask;
 import combatant.client.input.minecraft.CombatantTextInputBridge;
 import combatant.client.util.text.SingleLineTextInput;
+import combatant.client.util.text.TextSelection;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
@@ -55,6 +56,8 @@ public final class UiComponentLabSection implements ClickGuiSection {
     private boolean adobeChecked, adobeEnabled = true, adobeAction;
     private int adobeActionBarSelected = 3;
     private String adobeActionGroupSingle = "list";
+    private String adobePopoverPlacement = "bottom";
+    private String adobeStandardDialogSize = "M";
     private String adobeSwatchShape = "square";
     private String adobeSwatchRounding = "default";
     private String adobeSwatchDensity = "regular";
@@ -214,6 +217,12 @@ public final class UiComponentLabSection implements ClickGuiSection {
     private int adobeCalendarFocusDay = 15;
     private LocalDate adobeDateSingle = LocalDate.of(2026, 10, 15);
     private LocalDate adobeDateRangeStart, adobeDateRangeEnd, adobeDateRangeDraftStart;
+    private final Set<String> adobeListViewSelected = new LinkedHashSet<>(List.of("ps"));
+    private String adobeListViewSingle = "grid";
+    private final Set<String> adobeCardViewSelected = new LinkedHashSet<>(List.of("brand"));
+    private String adobeCardViewSingle = "recent";
+    private String adobeRadioGroupSelected = "balanced";
+    private String adobeRadioGroupOrientation = "landscape";
     private int adobeRadio;
     private String adobeTab = "files", adobeView = "list";
     private String adobeNav = "projects";
@@ -502,6 +511,8 @@ public final class UiComponentLabSection implements ClickGuiSection {
     // The catalog filter is scoped to the active kit; preserve both queries on kit changes.
     private final SingleLineTextInput googleCatalogInput = new SingleLineTextInput(100);
     private final SingleLineTextInput adobeCatalogInput = new SingleLineTextInput(100);
+    // The editor is authoritative. This selection is its paint-only TextSelection snapshot.
+    private final TextSelection catalogPaintSelection = new TextSelection();
     private SingleLineTextInput catalogEditor() {
         return "adobe".equals(kit) ? adobeCatalogInput : googleCatalogInput;
     }
@@ -615,6 +626,8 @@ public final class UiComponentLabSection implements ClickGuiSection {
             adobeColorLastParsed = adobeColorInput.text();
         }
         m.put("adobeColorInput", adobeColorInput.text());
+        m.put("adobePopoverPlacement", adobePopoverPlacement);
+        m.put("adobeStandardDialogSize", adobeStandardDialogSize);
         m.put("adobeColorFieldFocused", "adobe-color".equals(focus));
         m.put("adobeColorCaretOffset", "adobe-color".equals(focus)
                 ? adobeEditorCaretOffset(adobeColorInput) : 0f);
@@ -651,6 +664,12 @@ public final class UiComponentLabSection implements ClickGuiSection {
         m.put("adobeDateRangeEnd", adobeDateRangeEnd != null ? adobeDateRangeEnd.toString() : "");
         m.put("adobeDateRangeDraftStart", adobeDateRangeDraftStart != null
                 ? adobeDateRangeDraftStart.toString() : "");
+        m.put("adobeListViewSelected", List.copyOf(adobeListViewSelected));
+        m.put("adobeListViewSingle", adobeListViewSingle);
+        m.put("adobeCardViewSelected", List.copyOf(adobeCardViewSelected));
+        m.put("adobeCardViewSingle", adobeCardViewSingle);
+        m.put("adobeRadioGroupSelected", adobeRadioGroupSelected);
+        m.put("adobeRadioGroupOrientation", adobeRadioGroupOrientation);
         m.put("adobeRadio", adobeRadio);
         m.put("adobeTab", adobeTab);
         m.put("adobeView", adobeView);
@@ -683,9 +702,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
         m.put("adobeSlider", adobeSlider);
         m.put("adobeSearch", adobeSearchInput.text());
         m.put("adobeSearchCaretOffset", "adobe-search".equals(focus) ? adobeSearchCaretOffset() : 0f);
-        m.put("catalogQuery", catalogEditor().text());
-        m.put("catalogFocused", "catalog-search".equals(focus));
-        m.put("catalogCaretOffset", "catalog-search".equals(focus) ? catalogCaretOffset() : 0f);
+        putCatalogTextModel(m);
         m.put("page", page);
         m.put("tab", tab);
         m.put("chip", chip);
@@ -767,19 +784,67 @@ public final class UiComponentLabSection implements ClickGuiSection {
         }
     }
 
-    private float catalogCaretOffset() {
-        TextRenderer renderer = Fonts.renderer("adobe".equals(kit) ? "SourceSans3" : "Roboto",
-                FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium());
+    /** Use precisely the same font metrics as SingleLineTextInput.hit/keepCursorVisible. */
+    private float catalogTextWidth(TextRenderer font, String text) {
+        return font == null ? text.length() * 7f : ClickGuiRenderer.textWidth(font, text, 15f);
+    }
+
+    private void putCatalogTextModel(Map<String, Object> model) {
         SingleLineTextInput editor = catalogEditor();
-        if (renderer == null) return editor.cursor() * 7f;
-        renderer.beginSize(15f, true, false);
-        try {
-            String value = editor.text();
-            return (float) renderer.getWidth(value.substring(0,
-                    Math.max(0, Math.min(value.length(), editor.cursor()))), false);
-        } finally {
-            renderer.end();
+        String value = editor.text();
+        boolean focused = "catalog-search".equals(focus);
+        if (!focused) {
+            model.put("catalogQuery", value);
+            model.put("catalogDisplay", value);
+            model.put("catalogFocused", false);
+            model.put("catalogScroll", 0f);
+            model.put("catalogTextWidth", 0f);
+            model.put("catalogCaretOffset", 0f);
+            model.put("catalogSelectionStart", 0f);
+            model.put("catalogSelectionEnd", 0f);
+            model.put("catalogHasSelection", false);
+            model.put("catalogCompositionStart", 0f);
+            model.put("catalogCompositionWidth", 0f);
+            return;
         }
+        // The kit-neutral catalog uses Onest in JS in both kits.
+        TextRenderer font = Fonts.renderer("Onest", FontInfo.Type.Regular,
+                ClickGuiRenderer.getOnestMedium());
+        // Keep the editor viewport in sync before baking the tree, including after
+        // keyboard navigation, selection, pasting and IME commits.
+        if (focused && runtime != null) {
+            UiNode node = find(runtime.root(), "catalog:search");
+            if (node != null) {
+                UiBounds bounds = node.bounds();
+                editor.layout(bounds.x() + 32f, Math.max(1f, bounds.width() - 68f), font, 15f);
+            }
+        }
+        float scroll = focused ? editor.viewportOffset() : 0f;
+        float caret = catalogTextWidth(font, value.substring(0, editor.cursor()));
+        String composition = focused ? editor.compositionText() : "";
+        float compositionWidth = catalogTextWidth(font, composition);
+        float compositionCaret = catalogTextWidth(font, composition.substring(0,
+                Math.max(0, Math.min(editor.compositionCaret(), composition.length()))));
+        String painted = composition.isEmpty() ? value
+                : value.substring(0, editor.cursor()) + composition + value.substring(editor.cursor());
+        catalogPaintSelection.clear();
+        if (focused && editor.hasSelection()) {
+            catalogPaintSelection.begin(0, editor.selectionStart());
+            catalogPaintSelection.updateCaret(0, editor.selectionEnd());
+        }
+        model.put("catalogQuery", value);
+        model.put("catalogDisplay", painted);
+        model.put("catalogFocused", focused);
+        model.put("catalogScroll", scroll);
+        model.put("catalogTextWidth", catalogTextWidth(font, painted));
+        model.put("catalogCaretOffset", caret + (composition.isEmpty() ? 0f : compositionCaret));
+        model.put("catalogSelectionStart", catalogPaintSelection.hasRange()
+                ? catalogTextWidth(font, value.substring(0, catalogPaintSelection.start())) : 0f);
+        model.put("catalogSelectionEnd", catalogPaintSelection.hasRange()
+                ? catalogTextWidth(font, value.substring(0, catalogPaintSelection.end())) : 0f);
+        model.put("catalogHasSelection", catalogPaintSelection.hasRange());
+        model.put("catalogCompositionStart", caret);
+        model.put("catalogCompositionWidth", compositionWidth);
     }
 
     @Override
@@ -1054,6 +1119,8 @@ public final class UiComponentLabSection implements ClickGuiSection {
             List<Integer> indices = adobeBreadcrumbHiddenIndices();
             if (!indices.isEmpty()) key = "s2:breadcrumbs:option:" +
                     ADOBE_BREADCRUMB_IDS[indices.get(Math.min(indices.size() - 1, overlayIndex))];
+        } else if ("adobe-standard-dialog".equals(overlay)) {
+            key = "s2:standard-dialog:" + (overlayIndex == 0 ? "cancel" : "confirm");
         } else if ("adobe-dialog".equals(overlay)) {
             String[] ids = adobeDialogActionIds();
             key = "s2:dialog:" + ids[Math.floorMod(overlayIndex, ids.length)];
@@ -1078,6 +1145,52 @@ public final class UiComponentLabSection implements ClickGuiSection {
     }
 
     private void registerActions(UiRuntime ui) {
+        for (String id : new String[]{"ps", "ai", "pdf"}) {
+            ui.actions().register("lab:adobe:list-view:toggle:" + id, action -> {
+                if (!adobeListViewSelected.add(id)) adobeListViewSelected.remove(id);
+                return true;
+            });
+        }
+        for (String id : new String[]{"grid", "list", "detail"}) {
+            ui.actions().register("lab:adobe:list-view:single:" + id, action -> {
+                adobeListViewSingle = id; return true;
+            });
+        }
+        for (String id : new String[]{"brand", "campaign", "logo"}) {
+            ui.actions().register("lab:adobe:card-view:toggle:" + id, action -> {
+                if (!adobeCardViewSelected.add(id)) adobeCardViewSelected.remove(id);
+                return true;
+            });
+        }
+        for (String id : new String[]{"recent", "shared"}) {
+            ui.actions().register("lab:adobe:card-view:single:" + id, action -> {
+                adobeCardViewSingle = id; return true;
+            });
+        }
+        for (String id : new String[]{"fast", "balanced", "high"}) {
+            ui.actions().register("lab:adobe:radio-group:" + id, action -> {
+                adobeRadioGroupSelected = id; return true;
+            });
+        }
+        for (String id : new String[]{"portrait", "landscape"}) {
+            ui.actions().register("lab:adobe:radio-group:orientation:" + id, action -> {
+                adobeRadioGroupOrientation = id; return true;
+            });
+        }
+        for (String variant : new String[]{"help", "info"}) {
+            ui.actions().register("lab:adobe:context-help:open:" + variant, action -> {
+                openOverlay("adobe-context-help-" + variant, "s2:help:" + variant);
+                return true;
+            });
+        }
+        ui.actions().register("lab:adobe:context-help:close", action -> {
+            finishOverlayClose(); return true;
+        });
+        for (String actionId : new String[]{"docs", "details", "learn"}) {
+            ui.actions().register("lab:adobe:link-button:" + actionId, action -> {
+                adobeLastAction = "Link button: " + actionId; return true;
+            });
+        }
         for (String id : new String[]{"budget", "roadmap", "proposal", "welcome", "locked"}) {
             ui.actions().register("lab:adobe:table:row:" + id, action -> {
                 if ("locked".equals(id)) return true;
@@ -1162,6 +1275,29 @@ public final class UiComponentLabSection implements ClickGuiSection {
         ui.actions().register("lab:adobe:date:clear", action -> {
             adobeDateRangeStart = null; adobeDateRangeEnd = null;
             adobeDateRangeDraftStart = null; return true;
+        });
+        for (String placement : new String[]{"bottom", "top", "left", "right"}) {
+            ui.actions().register("lab:adobe:popover:open:" + placement, action -> {
+                adobePopoverPlacement = placement;
+                openOverlay("adobe-popover", "s2:popover:trigger:" + placement);
+                return true;
+            });
+        }
+        ui.actions().register("lab:adobe:popover:close", action -> {
+            finishOverlayClose(); return true;
+        });
+        for (String size : new String[]{"S", "M", "L"}) {
+            ui.actions().register("lab:adobe:standard-dialog:open:" + size, action -> {
+                adobeStandardDialogSize = size;
+                openOverlay("adobe-standard-dialog", "s2:standard-dialog:trigger:" + size);
+                return true;
+            });
+        }
+        ui.actions().register("lab:adobe:standard-dialog:cancel", action -> {
+            adobeLastAction = "Cancelled"; finishOverlayClose(); return true;
+        });
+        ui.actions().register("lab:adobe:standard-dialog:confirm", action -> {
+            adobeLastAction = "Saved project settings"; finishOverlayClose(); return true;
         });
         ui.actions().register("lab:catalog:search:focus", action -> {
             focusTextField("catalog-search", false, 0f);
@@ -1575,7 +1711,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
                 "tabs","side-navigation","text-field","search-field","tags","picker",
                 "slider","progress-bar","meter","cards","status-light","menu",
                 "alert-dialog","links","accordion","breadcrumbs","tree-view","toast","tooltip","inline-alert","skeleton","labeled-value","color-swatch",
-                "badges","avatars","avatar-group","dividers","progress-circle","toggle-button","toggle-button-group","tag-group","select-box-group","disclosure","range-slider","table","number-field","combo-box","calendar","date-picker","color-area","color-slider","color-wheel","color-field","color-swatch-picker"}) {
+                "badges","avatars","avatar-group","dividers","progress-circle","toggle-button","toggle-button-group","tag-group","select-box-group","disclosure","range-slider","table","number-field","combo-box","calendar","date-picker","color-area","color-slider","color-wheel","color-field","color-swatch-picker","list-view","card-view","radio-group","contextual-help","link-button"}) {
             ui.actions().register("lab:nav:" + p, action -> {
                 page = p;
                 clearTextFocus();
@@ -1878,8 +2014,10 @@ public final class UiComponentLabSection implements ClickGuiSection {
             return;
         }
         UiBounds bounds = field.bounds();
-        TextRenderer font = Fonts.renderer("adobe".equals(kit) ? "SourceSans3" : "Roboto",
-                FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium());
+        TextRenderer font = "catalog-search".equals(focus)
+                ? Fonts.renderer("Onest", FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium())
+                : Fonts.renderer("adobe".equals(kit) ? "SourceSans3" : "Roboto",
+                    FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium());
         SingleLineTextInput editor = focusedEditor();
         float left = "catalog-search".equals(focus) ? 32f :
                 "search".equals(focus) ? 56f : "adobe-search".equals(focus) ? 43f :
@@ -2110,7 +2248,8 @@ public final class UiComponentLabSection implements ClickGuiSection {
                 overlayIndex = 0;
                 return true;
             }
-            if ("dialog".equals(overlay) || "adobe-dialog".equals(overlay)) return true;
+            if ("dialog".equals(overlay) || "adobe-dialog".equals(overlay)
+                    || "adobe-standard-dialog".equals(overlay)) return true;
             if ("adobe-breadcrumbs".equals(overlay)) {
                 String[] titles = {"", "projects", "brand assets", "campaign", "hero images"};
                 List<Integer> indices = adobeBreadcrumbHiddenIndices();
@@ -2182,6 +2321,14 @@ public final class UiComponentLabSection implements ClickGuiSection {
 
     @Override
     public boolean keyPressed(int keyCode, int shortcutKey, int modifiers) {
+        if (InputModifierMask.has(modifiers, InputModifierMask.SHORTCUT) && shortcutKey == 'f'
+                && !"adobe-dialog".equals(overlay) && !"adobe-standard-dialog".equals(overlay)) {
+            if (!overlay.isEmpty()) finishOverlayClose();
+            focusTextField("catalog-search", false, 0f);
+            catalogEditor().selectAll();
+            updateTextInputArea();
+            return true;
+        }
         if (overlay.isEmpty() && keyCode == InputKeys.ESCAPE && dismissNewestAdobeToast())
             return true;
         if (!overlay.isEmpty()) {
@@ -2233,7 +2380,10 @@ public final class UiComponentLabSection implements ClickGuiSection {
                 return true;
             }
             if (keyCode == InputKeys.TAB) {
-                if ("adobe-dialog".equals(overlay)) {
+                if ("adobe-standard-dialog".equals(overlay)) {
+                    int shift = InputModifierMask.has(modifiers, InputModifierMask.SHIFT) ? -1 : 1;
+                    overlayIndex = Math.floorMod(overlayIndex + shift, 2);
+                } else if ("adobe-dialog".equals(overlay)) {
                     int shift = InputModifierMask.has(modifiers, InputModifierMask.SHIFT) ? -1 : 1;
                     overlayIndex = Math.floorMod(overlayIndex + shift, adobeDialogActionIds().length);
                 } else closeOverlay();
@@ -2247,6 +2397,18 @@ public final class UiComponentLabSection implements ClickGuiSection {
                     if ("adobe-dialog".equals(overlay))
                         adobeLastAction = "error".equals(adobeDialogVariant) ? "Acknowledged" : "Cancelled";
                     closeOverlay();
+                }
+                return true;
+            }
+            if ("adobe-standard-dialog".equals(overlay)) {
+                if (keyCode == InputKeys.LEFT || keyCode == InputKeys.RIGHT) {
+                    overlayIndex = 1 - overlayIndex; return true;
+                }
+                if (keyCode == InputKeys.ENTER || keyCode == InputKeys.KP_ENTER
+                        || keyCode == InputKeys.SPACE) {
+                    if (overlayIndex == 0) adobeLastAction = "Cancelled";
+                    else adobeLastAction = "Saved project settings";
+                    finishOverlayClose(); return true;
                 }
                 return true;
             }
@@ -2377,6 +2539,96 @@ public final class UiComponentLabSection implements ClickGuiSection {
             return true;
         }
         UiNode focused = runtime != null ? runtime.input().state().focusedNode() : null;
+        // Native collection keyboard handling. Arrow keys move the retained focus;
+        // Space/Enter activate the selected item. Disabled elements are never targets.
+        if (focused != null && focused.key() != null && "adobe".equals(kit)
+                && !focused.state().disabled()) {
+            String id = focused.key();
+            boolean activate = keyCode == InputKeys.ENTER || keyCode == InputKeys.KP_ENTER
+                    || keyCode == InputKeys.SPACE;
+            int move = keyCode == InputKeys.RIGHT || keyCode == InputKeys.DOWN ? 1
+                    : keyCode == InputKeys.LEFT || keyCode == InputKeys.UP ? -1 : 0;
+            if ("list-view".equals(page) && id.startsWith("s2:lv:")) {
+                String[] names = id.startsWith("s2:lv:files:item:")
+                        ? new String[]{"ps", "ai", "pdf"}
+                        : id.startsWith("s2:lv:single:item:")
+                        ? new String[]{"grid", "list", "detail"} : new String[0];
+                String prefix = id.startsWith("s2:lv:files:item:")
+                        ? "s2:lv:files:item:" : "s2:lv:single:item:";
+                String option = id.substring(id.lastIndexOf(':') + 1);
+                int current = Arrays.asList(names).indexOf(option);
+                if (current >= 0) {
+                    if (move != 0) {
+                        UiNode next = find(runtime.root(), prefix
+                                + names[Math.floorMod(current + move, names.length)]);
+                        if (next != null) runtime.input().focus(next);
+                        return true;
+                    }
+                    if (activate) {
+                        if (prefix.contains(":files:")) {
+                            if (!adobeListViewSelected.add(option)) adobeListViewSelected.remove(option);
+                        } else adobeListViewSingle = option;
+                        return true;
+                    }
+                }
+            }
+            if ("card-view".equals(page) && id.startsWith("s2:cv:")) {
+                boolean compact = id.startsWith("s2:cv:compact:card:");
+                String prefix = compact ? "s2:cv:compact:card:" : "s2:cv:assets:card:";
+                String[] names = compact ? new String[]{"recent", "shared"}
+                        : new String[]{"brand", "campaign", "logo"};
+                String option = id.substring(id.lastIndexOf(':') + 1);
+                int current = Arrays.asList(names).indexOf(option);
+                if (current >= 0) {
+                    if (move != 0) {
+                        UiNode next = find(runtime.root(), prefix
+                                + names[Math.floorMod(current + move, names.length)]);
+                        if (next != null) runtime.input().focus(next);
+                        return true;
+                    }
+                    if (activate) {
+                        if (compact) adobeCardViewSingle = option;
+                        else if (!adobeCardViewSelected.add(option)) adobeCardViewSelected.remove(option);
+                        return true;
+                    }
+                }
+            }
+            if ("radio-group".equals(page) && id.startsWith("s2:rg:")) {
+                boolean horizontal = id.startsWith("s2:rg:orientation:item:");
+                String prefix = horizontal ? "s2:rg:orientation:item:" : "s2:rg:quality:item:";
+                String[] names = horizontal ? new String[]{"portrait", "landscape"}
+                        : new String[]{"fast", "balanced", "high"};
+                String option = id.substring(id.lastIndexOf(':') + 1);
+                int current = Arrays.asList(names).indexOf(option);
+                if (current >= 0 && (move != 0 || activate)) {
+                    int nextIndex = move == 0 ? current : Math.floorMod(current + move, names.length);
+                    UiNode next = find(runtime.root(), prefix + names[nextIndex]);
+                    if (next != null && !next.state().disabled()) {
+                        runtime.input().focus(next);
+                        if (horizontal) adobeRadioGroupOrientation = names[nextIndex];
+                        else adobeRadioGroupSelected = names[nextIndex];
+                    }
+                    return true;
+                }
+            }
+            if ("contextual-help".equals(page) && activate) {
+                if ("s2:help:help".equals(id) || "s2:help:info".equals(id)) {
+                    openOverlay("adobe-context-help-" + id.substring("s2:help:".length()), id);
+                    return true;
+                }
+            }
+            if ("link-button".equals(page) && activate && id.startsWith("s2:lb:")) {
+                String actionId = id.substring("s2:lb:".length());
+                if (Set.of("primary", "secondary", "quiet").contains(actionId)) {
+                    adobeLastAction = "Link button: " + switch (actionId) {
+                        case "primary" -> "docs";
+                        case "secondary" -> "details";
+                        default -> "learn";
+                    };
+                    return true;
+                }
+            }
+        }
         if (focused != null && "adobe".equals(kit) && focused.key().startsWith("s2:color:")
                 && !focused.state().disabled()) {
             String key = focused.key();

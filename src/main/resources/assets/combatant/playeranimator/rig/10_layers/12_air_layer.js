@@ -76,19 +76,20 @@
       const outward=(sprintJump?12:9)+hover*4+Math.abs(lateralLaunch)*3;
       const rFoot=-(rHip+rKnee)*.52-hover*2.5;
       const lFoot=-(lHip+lKnee)*.52-hover*2.5;
-      const legLagX=(m.inertiaStrafe*.145-lateralLaunch*.018*Math.exp(-m.airTime*2.2))*k;
-      const legLagZ=-m.inertiaForward*.105*k;
-      this.rig.move('right_thigh',legLagX,0,legLagZ);
-      this.rig.move('left_thigh',legLagX,0,legLagZ);
-      this.rig.rotate('right_thigh',rHip*k,-4*k,(outward+m.inertiaStrafe*8)*k);
-      this.rig.rotate('left_thigh',lHip*k,4*k,(-outward+m.inertiaStrafe*8)*k);
+      // Hip sockets must stay attached to the pelvis: independent thigh translations made
+      // the pelvis/leg seam slide in creative flight. Express lag as joint rotation instead.
+      const lagRoll=(m.inertiaStrafe*5.5-lateralLaunch*1.6*Math.exp(-m.airTime*2.2))*k;
+      const lagPitch=-m.inertiaForward*5*k;
+      this.rig.rotate('right_thigh',rHip*k+lagPitch,-4*k,(outward+m.inertiaStrafe*8)*k+lagRoll);
+      this.rig.rotate('left_thigh',lHip*k+lagPitch,4*k,(-outward+m.inertiaStrafe*8)*k+lagRoll);
       this.rig.rotate('right_knee',rKnee*k,0,0);
       this.rig.rotate('left_knee',lKnee*k,0,0);
       this.rig.rotate('right_foot',rFoot*k,0,-2*k);
       this.rig.rotate('left_foot',lFoot*k,0,2*k);
 
       const takeoffImpulse=saturate((m.takeoffVertical+.02)/.34)*Math.exp(-m.airTime*4.0);
-      this.rig.move('pelvis',-m.inertiaStrafe*.034*k,-.018*takeoffImpulse*k,m.inertiaForward*.026*k);
+      // Horizontal inertia rotates the hip chain, but must not slide the pelvis through the body.
+      this.rig.move('pelvis',0,-.018*takeoffImpulse*k,0);
       this.rig.rotate('spine_lower',(-m.inertiaForward*5+takeoffImpulse*4)*k,0,-m.inertiaStrafe*6*k);
       this.rig.rotate('chest',((sprintJump?8:3)*takeoffImpulse+2*rising)*k-m.inertiaForward*5*k,0,-m.inertiaStrafe*8*k);
 

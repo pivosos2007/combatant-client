@@ -219,6 +219,16 @@ public enum CombatantShaderSources {
                                Resource resource, boolean analyticClip, boolean uiUnderlay) {
         try (Reader reader = resource.openAsReader()) {
             String raw = IOUtils.toString(reader);
+            // Mojang compiles the same RenderPipeline vertex sources on GL and Vulkan.
+            // Vulkan GLSL uses gl_InstanceIndex while OpenGL GLSL uses gl_InstanceID.
+            // Keep the definition scoped to this pipeline instead of changing global shader state.
+            if (sourceId.getPath().endsWith("asset_compat_instanced.vert")) {
+                var device = com.mojang.blaze3d.systems.RenderSystem.tryGetDevice();
+                if (device != null && device.getDeviceInfo().backendName() != null
+                        && device.getDeviceInfo().backendName().toLowerCase(java.util.Locale.ROOT).contains("vulkan")) {
+                    raw = injectDefineAfterVersion(raw, "#define VULKAN 1\n");
+                }
+            }
             if (analyticClip) raw = injectDefineAfterVersion(raw, ANALYTIC_CLIP_DEFINE);
             if (uiUnderlay) raw = injectDefineAfterVersion(raw, UI_UNDERLAY_DEFINE);
             return expandIncludes(resourceManager, sourceId, raw, new HashSet<>());

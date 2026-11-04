@@ -28,6 +28,10 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+#include <combatant:ui_clip.glsl>
+#endif
+
 #include <combatant:ui_aa.glsl>
 #include <combatant:ui_stroke.glsl>
 
@@ -167,4 +171,9 @@ void main() {
     }
     if (alpha <= 0.001) discard;
     fragColor = vec4(v_Color.rgb, v_Color.a * alpha);
+#ifdef COMBATANT_ANALYTIC_CLIP
+    vec2 clipPixel = uScreen.zw / max(uScreen.xy, vec2(1.0));
+    fragColor.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), clipPixel);
+    if (fragColor.a <= 0.001) discard;
+#endif
 }

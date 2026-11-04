@@ -76,11 +76,17 @@ final class SchematicLayerGrid {
     int step = 1;
 
     void layout(Schematic schematic, float x, float y, float w, float h) {
-        float raw = Math.min(w / schematic.sizeX(), h / schematic.sizeZ());
+        layout(schematic, x, y, w, h, 1f, 0f, 0f);
+    }
+
+    /** Pan and zoom never affect the schematic or cached block runs, only viewport projection. */
+    void layout(Schematic schematic, float x, float y, float w, float h,
+                float zoom, float panX, float panY) {
+        float raw = Math.min(w / schematic.sizeX(), h / schematic.sizeZ()) * zoom;
         step = raw >= MIN_CELL ? 1 : (int) Math.ceil(MIN_CELL / Math.max(raw, 1.0e-4f));
         cellSize = raw;
-        originX = x + (w - raw * schematic.sizeX()) * 0.5f;
-        originY = y + (h - raw * schematic.sizeZ()) * 0.5f;
+        originX = x + (w - raw * schematic.sizeX()) * 0.5f + panX;
+        originY = y + (h - raw * schematic.sizeZ()) * 0.5f + panY;
     }
 
     void render(Schematic schematic, int layer, SchematicDiff diff, float alpha) {

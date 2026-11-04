@@ -842,14 +842,8 @@ lastHoverWasOutsideSuggest = false;
                 }
                 float textY = baseY + (lineHeight - currentHeight) * 0.5f;
                 float gx = g.x0() + xOffset;
-                int shadowColor = mulAlpha(0xFF000000, alpha * shadowAlpha);
-                applyColor(shadowColor);
-                current.render(g.text(), gx + shadowOffset, textY, TMP_COLOR, false);
-                current.render(g.text(), gx - shadowOffset, textY, TMP_COLOR, false);
-                current.render(g.text(), gx, textY + shadowOffset, TMP_COLOR, false);
-                current.render(g.text(), gx, textY - shadowOffset, TMP_COLOR, false);
                 applyColor(mulAlpha(g.color(), alpha));
-                current.render(g.text(), gx, textY, TMP_COLOR, false);
+                current.renderOutlined(g.text(), gx, textY, TMP_COLOR, shadowOffset, shadowAlpha);
             }
         }
         if (current != null) {
@@ -890,14 +884,7 @@ lastHoverWasOutsideSuggest = false;
         tr.begin(scale, false, false);
         try {
             float textY = baseY + (lineHeight - (float) tr.getHeight(false)) * 0.5f;
-            int shadowColor = mulAlpha(0xFF000000, alpha * shadowAlpha);
-            applyColor(shadowColor);
-            tr.render(text.toString(), runX + shadowOffset, textY, TMP_COLOR, false);
-            tr.render(text.toString(), runX - shadowOffset, textY, TMP_COLOR, false);
-            tr.render(text.toString(), runX, textY + shadowOffset, TMP_COLOR, false);
-            tr.render(text.toString(), runX, textY - shadowOffset, TMP_COLOR, false);
-
-            tr.renderQuadGradient(text.toString(), runX, textY, (idx, cp, x0, y0, x1, y1, out) -> {
+            tr.renderOutlinedQuadGradient(text.toString(), runX, textY, (idx, cp, x0, y0, x1, y1, out) -> {
                 float t0 = (float) ((x0 - runX) / runW);
                 float t1 = (float) ((x1 - runX) / runW);
                 int leftTop = mulAlpha(CommandOutput.mixRgb(start, end, t0), alpha);
@@ -908,7 +895,7 @@ lastHoverWasOutsideSuggest = false;
                 out[1] = leftBottom;
                 out[2] = rightBottom;
                 out[3] = rightTop;
-            }, false);
+            }, shadowOffset, shadowAlpha);
         } finally {
             tr.end();
         }

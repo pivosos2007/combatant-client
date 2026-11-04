@@ -244,6 +244,15 @@ public enum ClipFunction {
         applyPreviousShapeTest();
     }
 
+    /** Previous HUD extraction may have aborted before its matching pop. */
+    public static void resetForNewFrame() {
+        if (STACK.depth() == 0) return;
+        STACK.clear();
+        // Incomplete stencil scopes must not survive a failed HUD extraction.
+        ShapeClipBackend backend = clipBackend();
+        if (backend.isActive()) backend.disable();
+    }
+
     public static int depth() {
         return STACK.depth();
     }

@@ -125,6 +125,15 @@ public interface TextRenderer {
 
     double render(String text, double x, double y, RenderColor color, boolean shadow);
 
+    default double renderOutlined(String text, double x, double y, RenderColor color, float radius, float opacity) {
+        return render(text, x, y, color, true);
+    }
+
+    default double renderOutlinedQuadGradient(String text, double x, double y, Font.GlyphQuadGradient gradient,
+                                              float radius, float opacity) {
+        return renderQuadGradient(text, x, y, gradient, true);
+    }
+
     default double render(String text, double x, double y, RenderColor color) {
         return render(text, x, y, color, false);
     }

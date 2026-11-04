@@ -8,6 +8,7 @@
 package combatant.client.render.effects.shockwave;
 
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.textures.GpuSampler;
@@ -141,11 +142,14 @@ public final class WorldJumpShockwaves implements PostProcessPass {
         if (valid.size() > 1) {
             int width = execution.context().width();
             int height = execution.context().height();
+            GpuFormat format = execution.source().texture().getFormat();
             tempA = CombatantRenderSystem.resources().frameTransient(
-                    TransientTargetDescriptor.frame(TEMP_A, width, height, false, OWNER));
+                    new TransientTargetDescriptor(TEMP_A, width, height, false, format, 1,
+                            TransientTargetDescriptor.Lifetime.FRAME, OWNER));
             if (valid.size() > 2) {
                 tempB = CombatantRenderSystem.resources().frameTransient(
-                        TransientTargetDescriptor.frame(TEMP_B, width, height, false, OWNER));
+                        new TransientTargetDescriptor(TEMP_B, width, height, false, format, 1,
+                                TransientTargetDescriptor.Lifetime.FRAME, OWNER));
             }
             if (tempA == null || tempA.getColorTextureView() == null) return false;
             if (valid.size() > 2 && (tempB == null || tempB.getColorTextureView() == null)) return false;
@@ -184,7 +188,9 @@ public final class WorldJumpShockwaves implements PostProcessPass {
             execution.rhi().drawFullscreen(
                     FullscreenDrawCommand.builder("Combatant jump shockwave")
                             .colorAttachment(destination)
-                            .pipeline(PostProcessRenderPipelines.POSTPROCESS_JUMP_SHOCKWAVE)
+                            .pipeline(destination.texture().getFormat() == GpuFormat.RGBA16_FLOAT
+                                    ? PostProcessRenderPipelines.POSTPROCESS_JUMP_SHOCKWAVE_HDR
+                                    : PostProcessRenderPipelines.POSTPROCESS_JUMP_SHOCKWAVE)
                             .uniform("JumpShockwave", JumpShockwaveUniforms.get())
                             .sampler("u_Texture", source, linear)
                             .sampler("u_Depth", useDepth ? depth : source, nearest)

@@ -26,6 +26,10 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+#include <combatant:ui_clip.glsl>
+#endif
+
 const float PI = 3.141592653589793;
 const float TAU = 6.283185307179586;
 
@@ -74,4 +78,9 @@ void main() {
 
     float alpha = mix(v_Color.a * 0.58, max(v_Color.a, v_Params2.a), max(head, tail * 0.52));
     fragColor = vec4(color, alpha * a);
+#ifdef COMBATANT_ANALYTIC_CLIP
+    vec2 clipPixel = uScreen.zw / max(uScreen.xy, vec2(1.0));
+    fragColor.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), clipPixel);
+    if (fragColor.a <= 0.001) discard;
+#endif
 }

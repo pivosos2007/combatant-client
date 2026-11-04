@@ -26,17 +26,93 @@ public final class GlobalScissorState {
     private static int height;
     private static boolean set;
 
+    // A deferred HUD replay may run inside a logical UI clip. Keep the previous GPU
+    // scissor instead of treating nested submissions as an illegal state. Reuse a
+    // primitive stack to avoid allocations during the render thread hot path.
+    private static int depth;
+    private static int[] saved = new int[4 * 8];
+
+    // Offscreen post-process targets have their own coordinate system. Suspending
+    // clipping must mask ALL nested scopes, not pop just the innermost scope.
+    private static int suspensionDepth;
+
     private GlobalScissorState() {
     }
 
     public static void push(int x, int y, int width, int height) {
+        validate(x, y, width, height);
         if (set) {
-            throw new IllegalStateException("Global scissor already set");
+            int offset = depth * 4;
+            if (offset + 4 > saved.length) {
+                saved = java.util.Arrays.copyOf(saved, saved.length * 2);
+            }
+            saved[offset] = GlobalScissorState.x;
+            saved[offset + 1] = GlobalScissorState.y;
+            saved[offset + 2] = GlobalScissorState.width;
+            saved[offset + 3] = GlobalScissorState.height;
+            depth++;
         }
-        if (x < 0 || y < 0 || width <= 0 || height <= 0) {
-            throw new IllegalArgumentException("Invalid global scissor: x=" + x + ", y=" + y
-                    + ", width=" + width + ", height=" + height);
+        setRect(x, y, width, height);
+    }
+
+    public static void pop() {
+        if (!set) {
+            throw new IllegalStateException("No global scissor set");
         }
+        if (depth == 0) {
+            set = false;
+            return;
+        }
+        int offset = --depth * 4;
+        setRect(saved[offset], saved[offset + 1], saved[offset + 2], saved[offset + 3]);
+    }
+
+    public static boolean isSet() {
+        return set;
+    }
+
+    /**
+     * Called only at the beginning of the next UI extraction frame. The previous
+     * frame may have aborted a HUD element before its matching pop/resume.
+     * Discard stale logical scopes; no render pass may inherit their rectangles.
+     */
+    public static void resetForNewFrame() {
+        set = false;
+        depth = 0;
+        suspensionDepth = 0;
+    }
+
+    /** The actually applied rectangle (null while an offscreen pass masks clipping). */
+    public static Snapshot snapshot() {
+        return set && suspensionDepth == 0 ? new Snapshot(x, y, width, height) : null;
+    }
+
+    /** Replace only the current scope, retaining any enclosing UI scissor. */
+    public static void replace(int x, int y, int width, int height) {
+        validate(x, y, width, height);
+        if (!set) {
+            push(x, y, width, height);
+        } else {
+            setRect(x, y, width, height);
+        }
+    }
+
+    /** Mask all scissor scopes while drawing into a different framebuffer space. */
+    public static boolean suspend() {
+        if (!set) return false;
+        suspensionDepth++;
+        return true;
+    }
+
+    /** Resume the previous effective scope after an offscreen draw. */
+    public static void resume() {
+        if (suspensionDepth <= 0) {
+            throw new IllegalStateException("No suspended global scissor");
+        }
+        suspensionDepth--;
+    }
+
+    private static void setRect(int x, int y, int width, int height) {
         GlobalScissorState.x = x;
         GlobalScissorState.y = y;
         GlobalScissorState.width = width;
@@ -44,28 +120,15 @@ public final class GlobalScissorState {
         set = true;
     }
 
-    public static void pop() {
-        if (!set) {
-            throw new IllegalStateException("No global scissor set");
+    private static void validate(int x, int y, int width, int height) {
+        if (x < 0 || y < 0 || width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("Invalid global scissor: x=" + x + ", y=" + y
+                    + ", width=" + width + ", height=" + height);
         }
-        set = false;
-    }
-
-    public static boolean isSet() {
-        return set;
-    }
-
-    public static Snapshot snapshot() {
-        return set ? new Snapshot(x, y, width, height) : null;
-    }
-
-    public static void replace(int x, int y, int width, int height) {
-        if (set) pop();
-        push(x, y, width, height);
     }
 
     public static boolean applyTo(RenderPass pass, RenderPass.RenderArea renderArea) {
-        if (!set || pass == null || renderArea == null) {
+        if (!set || suspensionDepth > 0 || pass == null || renderArea == null) {
             return false;
         }
 
@@ -81,7 +144,12 @@ public final class GlobalScissorState {
         int sw = sx2 - sx1;
         int sh = sy2 - sy1;
         if (sw <= 0 || sh <= 0) {
-            return false;
+            // "No intersection" must not silently disable clipping and render the
+            // entire offscreen target. RenderPass does not accept an empty scissor;
+            // restrict to a single legal pixel instead.
+            if (renderArea.width() <= 0 || renderArea.height() <= 0) return false;
+            pass.enableScissor(ax1, ay1, 1, 1);
+            return true;
         }
 
         pass.enableScissor(sx1, sy1, sw, sh);

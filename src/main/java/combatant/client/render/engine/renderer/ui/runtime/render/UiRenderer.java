@@ -15,7 +15,6 @@ import combatant.client.render.engine.renderer.ui.runtime.asset.UiAssetRegistry;
 import combatant.client.render.engine.renderer.ui.runtime.asset.UiAssetResolver;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
-import combatant.client.render.engine.renderer.ui.runtime.core.UiNodeType;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 
 public final class UiRenderer {
@@ -29,6 +28,7 @@ public final class UiRenderer {
     private final UiBoxRenderer boxRenderer = new UiBoxRenderer();
     private final UiTextNodeRenderer textNodeRenderer;
     private final UiScrollbarRenderer scrollbarRenderer = new UiScrollbarRenderer();
+    private UiRenderProgram program;
 
     public UiRenderer(UiTextRenderer textRenderer) {
         this(textRenderer, null);
@@ -39,69 +39,102 @@ public final class UiRenderer {
         this.assetResolver = new UiAssetResolver(assetRegistry);
     }
 
+    /** Pre-bake the instruction tape after reconciliation (never during a frame). */
+    public void compile(UiNode root) {
+        program = UiRenderProgram.compile(root);
+    }
+
     public void render(UiNode root, UiRenderContext context) {
         if (root == null || context == null || context.renderer() == null) return;
+        if (program == null || program.root != root) compile(root);
 
-        /* Keep one Renderer2D batch across the runtime tree; flush only at render-state boundaries. */
+        // Preserve the existing single-batch draw path. This changes only CPU traversal.
         boolean ownBatch = !Renderer2D.isBatching();
         try (RenderCostProfiler.Scope ignored = RenderCostProfiler.uiRuntime("ui-batch-tree")) {
             if (ownBatch) context.renderer().begin();
             try {
-                renderNode(root, context);
+                execute(program, context);
             } finally {
                 if (ownBatch) context.renderer().render();
             }
         }
     }
 
-    private void renderNode(UiNode node, UiRenderContext context) {
-        // uiNode() is a permanent no-op; building a label for it cost string work per node per frame.
-        try (RenderCostProfiler.Scope ignoredNode = RenderCostProfiler.uiNode(node)) {
-            UiStyle style = node.style();
-            UiRenderContext nodeContext = context.multiplyAlpha(style.opacity());
-            if (nodeContext.alpha() <= 0.001f) return;
-            UiBounds bounds = animatedBounds(node);
-            boxRenderer.render(node, style, bounds, nodeContext);
+    private void execute(UiRenderProgram tape, UiRenderContext context) {
+        int depth = 0;
+        try {
+            for (int pc = 0; pc < tape.length; pc++) {
+                UiNode node = tape.nodes[pc];
+                if (tape.operation[pc] == UiRenderProgram.LEAVE) {
+                    --depth;
+                    try {
+                        if ((tape.flags[pc] & UiRenderProgram.SCROLL) != 0) {
+                            scrollbarRenderer.render(node, tape.nodeContexts[depth]);
+                        }
+                    } finally {
+                        if (tape.pushedClips[depth]) {
+                            clipStack.pop();
+                            tape.pushedClips[depth] = false;
+                        }
+                    }
+                    continue;
+                }
 
-            UiRenderContext childContext = nodeContext;
-            if (node.type() == UiNodeType.VECTOR) {
-                UiBounds viewport = new UiBounds(
-                        bounds.x() + style.paddingLeft(),
-                        bounds.y() + style.paddingTop(),
-                        Math.max(0.0f, bounds.width() - style.paddingX()),
-                        Math.max(0.0f, bounds.height() - style.paddingY())
-                );
-                childContext = nodeContext.withVectorSpace(UiVectorSpace.from(node.props(), viewport));
-            }
+                UiRenderContext parentContext = depth == 0 ? context : tape.childContexts[depth - 1];
+                UiStyle style = node.style();
+                UiRenderContext nodeContext = parentContext.multiplyAlpha(style.opacity());
+                if (nodeContext.alpha() <= 0.001f) {
+                    pc = tape.jump[pc] - 1;
+                    continue;
+                }
+                UiBounds bounds = animatedBounds(node);
+                boolean clipped = (tape.flags[pc] & UiRenderProgram.CLIP) != 0;
+                if (clipped && (bounds.width() <= 0.0f || bounds.height() <= 0.0f)) {
+                    pc = tape.jump[pc] - 1;
+                    continue;
+                }
+                boxRenderer.render(node, style, bounds, nodeContext);
 
-            boolean clipped = style.clip() || style.marquee();
-            if (clipped) {
-                clipStack.push(bounds, nodeContext);
-            }
-            try {
-                switch (node.type()) {
-                    case TEXT -> textNodeRenderer.render(node, bounds, style, nodeContext);
-                    case IMAGE, SVG -> {
+                UiRenderContext childContext = nodeContext;
+                if ((tape.flags[pc] & UiRenderProgram.VECTOR) != 0) {
+                    UiBounds viewport = new UiBounds(
+                            bounds.x() + style.paddingLeft(),
+                            bounds.y() + style.paddingTop(),
+                            Math.max(0.0f, bounds.width() - style.paddingX()),
+                            Math.max(0.0f, bounds.height() - style.paddingY())
+                    );
+                    childContext = nodeContext.withVectorSpace(UiVectorSpace.from(node.props(), viewport));
+                }
+
+                tape.nodeContexts[depth] = nodeContext;
+                tape.childContexts[depth] = childContext;
+                tape.pushedClips[depth] = clipped;
+                if (clipped) {
+                    clipStack.push(bounds, nodeContext);
+                }
+                depth++;
+
+                switch (tape.drawCode[pc]) {
+                    case UiRenderProgram.DRAW_TEXT -> textNodeRenderer.render(node, bounds, style, nodeContext);
+                    case UiRenderProgram.DRAW_ASSET -> {
                         UiAssetRef asset = assetResolver.resolve(node.props());
                         imageRenderer.render(node, asset, bounds, nodeContext);
                     }
-                    case SHAPE -> shapeRenderer.render(node, bounds, nodeContext);
-                    case CONNECTOR -> connectorRenderer.render(node, bounds, nodeContext);
-                    case PATH -> pathNodeRenderer.render(node, bounds, nodeContext);
-                    case ITEM -> itemRenderer.render(node, bounds, nodeContext);
-                    default -> {
-                    }
+                    case UiRenderProgram.DRAW_SHAPE -> shapeRenderer.render(node, bounds, nodeContext);
+                    case UiRenderProgram.DRAW_CONNECTOR -> connectorRenderer.render(node, bounds, nodeContext);
+                    case UiRenderProgram.DRAW_PATH -> pathNodeRenderer.render(node, bounds, nodeContext);
+                    case UiRenderProgram.DRAW_ITEM -> itemRenderer.render(node, bounds, nodeContext);
+                    default -> { }
                 }
-
-                for (UiNode child : node.children()) {
-                    renderNode(child, childContext);
-                }
-                if (node.type() == UiNodeType.SCROLL) {
-                    scrollbarRenderer.render(node, nodeContext);
-                }
-            } finally {
-                if (clipped) {
+            }
+        } finally {
+            // Unwind only active nested clips when drawing aborts unexpectedly.
+            // Normal frames finish with depth == 0 and perform no cleanup walk.
+            while (depth > 0) {
+                --depth;
+                if (tape.pushedClips[depth]) {
                     clipStack.pop();
+                    tape.pushedClips[depth] = false;
                 }
             }
         }

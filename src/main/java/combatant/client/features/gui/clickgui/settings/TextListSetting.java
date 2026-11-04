@@ -126,6 +126,7 @@ public class TextListSetting extends Setting implements TextEditorOwner {
     public enum PickerMode {
         TEXT,
         SCREENS,
+        SCREENS_WITHOUT_CLICK_GUI,
         BLOCKS,
         ITEMS,
         POTIONS,

@@ -8,8 +8,10 @@
 package combatant.client.render.engine.rhi.resource;
 
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import combatant.client.render.engine.msaa.MsaaFramebuffer;
+import combatant.client.util.logging.DebugLog;
 
 /**
  * Single lifecycle owner for Combatant render resources.
@@ -25,6 +27,7 @@ public final class RenderResourceManager implements AutoCloseable {
     private final SamplerCache samplerCache = new SamplerCache();
     private final GlyphAtlasManager glyphAtlasManager = new GlyphAtlasManager();
     private long frameId;
+    private boolean hdrFramebufferSupported = true;
 
     public void retire(AutoCloseable resource) {
         retirementQueue.retire(resource);
@@ -38,8 +41,43 @@ public final class RenderResourceManager implements AutoCloseable {
         return framebufferPool.persistent(name, width, height, depth, owner);
     }
 
+    /**
+     * Explicit-format framebuffer. HDR is opt-in for Combatant-owned intermediate passes;
+     * never replaces Minecraft/Iris' externally-owned scene attachments.
+     */
+    public TextureTarget persistentFramebuffer(String name, int width, int height, boolean depth,
+                                               GpuFormat format, String owner) {
+        return framebufferPool.persistent(FramebufferDescriptor.persistent(
+                name, width, height, depth, format, owner));
+    }
+
+    /** Attempts 16-bit floating point scene-linear color, with SDR fallback on older GPUs.
+     * The caller can inspect getColorTextureView().texture().getFormat() and must choose a
+     * matching color-target pipeline. HDR allocation does not perform tonemapping/compositing.
+     */
+    public TextureTarget persistentHdrFramebuffer(String name, int width, int height,
+                                                  boolean depth, String owner) {
+        if (hdrFramebufferSupported) {
+            try {
+                return persistentFramebuffer(name, width, height, depth, GpuFormat.RGBA16_FLOAT, owner);
+            } catch (RuntimeException | LinkageError unsupported) {
+                hdrFramebufferSupported = false; // Don't repeatedly attempt a failed allocation per frame.
+                DebugLog.warnOnce("rhi.hdr.framebuffer.fallback",
+                        "[RHI] RGBA16F framebuffer unavailable (%s); falling back to RGBA8",
+                        unsupported.getMessage());
+            }
+        }
+        return persistentFramebuffer(name, width, height, depth, GpuFormat.RGBA8_UNORM, owner);
+    }
+
     public TextureTarget borrowFramebuffer(String name, int width, int height, boolean depth, String owner) {
         return framebufferPool.borrowTemporary(name, width, height, depth, owner);
+    }
+
+    public TextureTarget borrowFramebuffer(String name, int width, int height, boolean depth,
+                                           GpuFormat format, String owner) {
+        return framebufferPool.borrowTemporary(FramebufferDescriptor.temporary(
+                name, width, height, depth, format, owner));
     }
 
     public void releaseFramebuffer(TextureTarget framebuffer, String owner) {
@@ -52,6 +90,30 @@ public final class RenderResourceManager implements AutoCloseable {
                     + descriptor.logicalName());
         }
         return framebufferPool.acquireFrameTransient(descriptor);
+    }
+
+    /** One-frame HDR color attachment for explicit offscreen passes (not Iris' G-buffer). */
+    public TextureTarget frameTransientHdr(String name, int width, int height,
+                                           boolean depth, String owner) {
+        return frameTransient(new TransientTargetDescriptor(name, width, height, depth,
+                GpuFormat.RGBA16_FLOAT, 1, TransientTargetDescriptor.Lifetime.FRAME, owner));
+    }
+
+    /** Opt-in HDR transient; falls back to RGBA8 if the device rejects RGBA16F. */
+    public TextureTarget frameTransientHdrOrSdr(String name, int width, int height,
+                                                boolean depth, String owner) {
+        if (hdrFramebufferSupported) {
+            try {
+                return frameTransientHdr(name, width, height, depth, owner);
+            } catch (RuntimeException | LinkageError unsupported) {
+                hdrFramebufferSupported = false;
+                DebugLog.warnOnce("rhi.hdr.framebuffer.fallback",
+                        "[RHI] RGBA16F framebuffer unavailable (%s); falling back to RGBA8",
+                        unsupported.getMessage());
+            }
+        }
+        return frameTransient(new TransientTargetDescriptor(name, width, height, depth,
+                GpuFormat.RGBA8_UNORM, 1, TransientTargetDescriptor.Lifetime.FRAME, owner));
     }
 
     public MsaaFramebuffer frameTransientMsaa(TransientTargetDescriptor descriptor) {
@@ -108,6 +170,7 @@ public final class RenderResourceManager implements AutoCloseable {
     }
 
     public void onReload() {
+        hdrFramebufferSupported = true; // Device/resource reload may change format availability.
         frameGraphResources.invalidateAll();
         framebufferPool.invalidateSizeDependent();
         msaaFramebufferPool.invalidate();

@@ -491,7 +491,10 @@ public enum ClickGuiRenderer {
         }
 
         if (action.isDown()) {
-            return getActiveSection().keyPressed(key, shortcutKey, modifiersMask);
+            ClickGuiSection active = getActiveSection();
+            if (active == null) return false;
+            if (key == InputKeys.ESCAPE && active.onCancel()) return true;
+            return active.keyPressed(key, shortcutKey, modifiersMask);
         }
         return false;
     }
@@ -1051,6 +1054,14 @@ public enum ClickGuiRenderer {
             }
         }
         return false;
+    }
+
+    /** Stable section identifier used by input policies; never infer it from screen classes. */
+    public static String activeSectionId() { return activeTabId; }
+
+    public static boolean activeSectionBlocksMovement() {
+        ClickGuiSection section = getActiveSection();
+        return section != null && section.blocksMovementInput();
     }
 
     private static ClickGuiSection getActiveSection() {

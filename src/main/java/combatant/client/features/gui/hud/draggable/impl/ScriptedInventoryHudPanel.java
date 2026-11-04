@@ -16,6 +16,7 @@ import net.minecraft.world.item.ItemStack;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiDynamicPatchBuffer;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
@@ -31,24 +32,54 @@ import java.util.List;
 final class ScriptedInventoryHudPanel {
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(ScriptedInventoryHudPanel.class);
     private final CachedUiScriptRuntime runtime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
+    // The JS snapshot detaches cell maps before sending work to the V8 worker.
+    // The render-thread cell metadata can therefore be overwritten each frame.
+    @SuppressWarnings("unchecked")
+    private final LinkedHashMap<String, Object>[] reusableCells = new LinkedHashMap[27];
+    private final ArrayList<LinkedHashMap<String, Object>> currentCells = new ArrayList<>(27);
+    private final Object[] cachedItemTypes = new Object[27];
+    private final String[] cachedItemIds = new String[27];
 
-    static List<LinkedHashMap<String, Object>> cells(List<ItemStack> stacks) {
-        List<LinkedHashMap<String, Object>> out = new ArrayList<>();
-        if (stacks == null) return out;
-        for (int i = 0; i < stacks.size(); i++) {
+    // Reuse node key strings in the per-frame instruction stream.
+    private static final String[] ITEM_KEYS = itemKeys();
+
+    private static String[] itemKeys() {
+        String[] keys = new String[27];
+        for (int i = 0; i < keys.length; i++) keys[i] = "item:" + i;
+        return keys;
+    }
+
+    List<LinkedHashMap<String, Object>> cells(List<ItemStack> stacks) {
+        currentCells.clear();
+        if (stacks == null) return currentCells;
+        for (int i = 0, n = Math.min(stacks.size(), reusableCells.length); i < n; i++) {
             ItemStack stack = stacks.get(i);
-            if (stack == null || stack.isEmpty()) continue;
-            LinkedHashMap<String, Object> cell = new LinkedHashMap<>();
-            cell.put("slot", i);
+            if (stack == null || stack.isEmpty()) {
+                // Drop the previous item reference when a slot becomes empty.
+                LinkedHashMap<String, Object> old = reusableCells[i];
+                if (old != null) old.remove("stack");
+                continue;
+            }
+            LinkedHashMap<String, Object> cell = reusableCells[i];
+            if (cell == null) {
+                cell = new LinkedHashMap<>(8);
+                cell.put("slot", i);
+                reusableCells[i] = cell;
+            }
             cell.put("stack", stack.copy());
-            cell.put("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+            Object itemType = stack.getItem();
+            if (cachedItemTypes[i] != itemType) {
+                cachedItemTypes[i] = itemType;
+                cachedItemIds[i] = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+            }
+            cell.put("item", cachedItemIds[i]);
             cell.put("count", stack.getCount());
             cell.put("damage", stack.getDamageValue());
             cell.put("maxDamage", stack.getMaxDamage());
             cell.put("componentsHash", stack.getComponents().hashCode());
-            out.add(cell);
+            currentCells.add(cell);
         }
-        return out;
+        return currentCells;
     }
 
     private static String string(Object value) {
@@ -59,18 +90,6 @@ final class ScriptedInventoryHudPanel {
         return value instanceof Number n ? n.intValue() : 0;
     }
 
-
-    private static void putPatch(LinkedHashMap<String, LinkedHashMap<String, Object>> patches,
-                                 String key,
-                                 String prop,
-                                 Object value) {
-        LinkedHashMap<String, Object> patch = patches.get(key);
-        if (patch == null) {
-            patch = new LinkedHashMap<>();
-            patches.put(key, patch);
-        }
-        patch.put(prop, value);
-    }
 
     boolean render(Renderer2D renderer,
                    TextRenderer textRenderer,
@@ -90,10 +109,9 @@ final class ScriptedInventoryHudPanel {
         if (module == null) return false;
 
         TextRenderer fallback = textRenderer != null ? textRenderer : TextRenderer.get();
-        LinkedHashMap<String, Object> props = panel.toProps();
         float logicalWidth = panel.logical(panel.width);
         float logicalHeight = panel.logical(panel.height);
-        UiRuntime baked = runtime.bake(
+        UiRuntime baked = runtime.bakeDynamic(
                 moduleHandle,
                 module,
                 "inventory_panel",
@@ -105,8 +123,8 @@ final class ScriptedInventoryHudPanel {
                 0.0f,
                 logicalWidth,
                 logicalHeight,
-                () -> props,
-                panel::patches
+                panel::toProps,
+                panel::writeDynamicPatches
         );
         if (baked == null) return false;
         baked.render(new UiRenderContext(renderer, fallback, ctx, tickDelta, UiProjectionMode.CURRENT)
@@ -158,7 +176,7 @@ final class ScriptedInventoryHudPanel {
         }
 
         float logical(float renderValue) {
-            return renderValue / renderScale;
+            return Math.round(renderValue / renderScale * 1024.0f) / 1024.0f;
         }
 
         LinkedHashMap<String, Object> toProps() {
@@ -168,7 +186,7 @@ final class ScriptedInventoryHudPanel {
             out.put("headerIcon", "A");
             out.put("width", logical(width));
             out.put("height", logical(height));
-            out.put("fontSize", TextSizing.sizeForScale(fontScale / renderScale));
+            out.put("fontSize", TextSizing.sizeForScale(logical(fontScale)));
             out.put("headerIconHeight", logical(headerIconHeight));
             out.put("headerTextHeight", logical(headerTextHeight));
             out.put("rowTextHeight", logical(rowTextHeight));
@@ -225,7 +243,7 @@ final class ScriptedInventoryHudPanel {
             h = CachedUiScriptRuntime.mix(h, "inventory");
             h = CachedUiScriptRuntime.mix(h, logical(width));
             h = CachedUiScriptRuntime.mix(h, logical(height));
-            h = CachedUiScriptRuntime.mix(h, TextSizing.sizeForScale(fontScale / renderScale));
+            h = CachedUiScriptRuntime.mix(h, TextSizing.sizeForScale(logical(fontScale)));
             h = CachedUiScriptRuntime.mix(h, logical(headerIconHeight));
             h = CachedUiScriptRuntime.mix(h, logical(headerTextHeight));
             h = CachedUiScriptRuntime.mix(h, logical(rowTextHeight));
@@ -244,7 +262,6 @@ final class ScriptedInventoryHudPanel {
             h = CachedUiScriptRuntime.mix(h, layout);
             h = mixPalette(h);
             h = CachedUiScriptRuntime.mix(h, String.valueOf(Math.max(0L, itemCount)).length());
-            h = CachedUiScriptRuntime.mix(h, (int) Math.min(Integer.MAX_VALUE, Math.max(0L, itemCount)));
             h = CachedUiScriptRuntime.mix(h, items != null ? items.size() : 0);
             if (items != null) {
                 for (LinkedHashMap<String, Object> item : items) {
@@ -254,24 +271,25 @@ final class ScriptedInventoryHudPanel {
             return h;
         }
 
-        LinkedHashMap<String, LinkedHashMap<String, Object>> patches() {
-            LinkedHashMap<String, LinkedHashMap<String, Object>> patches = new LinkedHashMap<>();
-            putPatch(patches, "header:count-value", "text", String.valueOf(Math.max(0L, itemCount)));
-            putPatch(patches, "header:icon", "color", ScriptedListHudPanel.hex(headerIconColor));
-            putPatch(patches, "header:icon", "gradientStartColor", ScriptedListHudPanel.hex(headerIconGradientStart));
-            putPatch(patches, "header:icon", "gradientEndColor", ScriptedListHudPanel.hex(headerIconGradientEnd));
-            if (items != null) {
-                for (LinkedHashMap<String, Object> item : items) {
-                    String key = "item:" + intValue(item.get("slot"));
-                    putPatch(patches, key, "stack", item.get("stack"));
-                    putPatch(patches, key, "item", string(item.get("item")));
-                    putPatch(patches, key, "count", intValue(item.get("count")));
-                    putPatch(patches, key, "damage", intValue(item.get("damage")));
-                    putPatch(patches, key, "maxDamage", intValue(item.get("maxDamage")));
-                    putPatch(patches, key, "componentsHash", intValue(item.get("componentsHash")));
-                }
+        /** Direct typed instructions; never allocate per-item patch maps. */
+        void writeDynamicPatches(UiDynamicPatchBuffer patches) {
+            patches.put("header:count-value", "text", String.valueOf(Math.max(0L, itemCount)));
+            patches.put("header:icon", "color", ScriptedListHudPanel.hex(headerIconColor));
+            patches.put("header:icon", "gradientStartColor", ScriptedListHudPanel.hex(headerIconGradientStart));
+            patches.put("header:icon", "gradientEndColor", ScriptedListHudPanel.hex(headerIconGradientEnd));
+            if (items == null) return;
+            for (LinkedHashMap<String, Object> item : items) {
+                int slot = intValue(item.get("slot"));
+                if (slot < 0 || slot >= ITEM_KEYS.length) continue;
+                String key = ITEM_KEYS[slot];
+                // Keep ItemStack render-thread-owned; never forward it to V8.
+                patches.put(key, "stack", item.get("stack"));
+                patches.put(key, "item", string(item.get("item")));
+                patches.putInt(key, "count", intValue(item.get("count")));
+                patches.putInt(key, "damage", intValue(item.get("damage")));
+                patches.putInt(key, "maxDamage", intValue(item.get("maxDamage")));
+                patches.putInt(key, "componentsHash", intValue(item.get("componentsHash")));
             }
-            return patches;
         }
 
         private long mixPalette(long h) {

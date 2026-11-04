@@ -32,7 +32,27 @@ layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 
 void main() {
-    float alpha = texture(u_Texture, v_TexCoord).r * v_Color.a;
+    vec2 uvDx = dFdx(v_TexCoord);
+    vec2 uvDy = dFdy(v_TexCoord);
+    vec2 atlasSize = vec2(textureSize(u_Texture, 0));
+    float texelsPerPixel = max(length(uvDx * atlasSize), length(uvDy * atlasSize));
+
+    // A single bilinear fetch only integrates roughly one atlas texel. When
+    // bitmap glyphs are minified, cover the framebuffer pixel with four taps
+    // instead; fade in the resolve continuously to avoid scaling thresholds.
+    // Magnified glyphs retain their original single bilinear fetch.
+    float coverage = textureGrad(u_Texture, v_TexCoord, uvDx, uvDy).r;
+    float resolveWeight = smoothstep(1.0, 1.75, texelsPerPixel);
+    if (resolveWeight > 0.001) {
+        vec2 subpixelX = 0.25 * uvDx;
+        vec2 subpixelY = 0.25 * uvDy;
+        float resolved = (textureGrad(u_Texture, v_TexCoord - subpixelX - subpixelY, uvDx, uvDy).r
+                        + textureGrad(u_Texture, v_TexCoord + subpixelX - subpixelY, uvDx, uvDy).r
+                        + textureGrad(u_Texture, v_TexCoord - subpixelX + subpixelY, uvDx, uvDy).r
+                        + textureGrad(u_Texture, v_TexCoord + subpixelX + subpixelY, uvDx, uvDy).r) * 0.25;
+        coverage = mix(coverage, resolved, resolveWeight);
+    }
+    float alpha = coverage * v_Color.a;
 #ifdef COMBATANT_ANALYTIC_CLIP
     vec2 logicalScale = max(uScreen.zw, vec2(1.0)) / max(uScreen.xy, vec2(1.0));
     alpha *= combatantClipCoverage(

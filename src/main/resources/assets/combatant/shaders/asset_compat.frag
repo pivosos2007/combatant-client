@@ -54,6 +54,8 @@ void main() {
     }
 
     if (u_Flags.z > 0.5 && u_Flags.z < 1.5 && base.a < u_SurfaceAlpha.w) discard;
+    // glTF OPAQUE and MASK write fully opaque surviving fragments. BLEND remains translucent.
+    if (u_Flags.z < 1.5) base.a = 1.0;
 
     vec3 n = normalize(v_Normal);
     if ((presence & TEX_NORMAL) != 0u) {

@@ -57,6 +57,9 @@ public enum VisualPreviewHandRenderer {
 
         PreviewRenderState previous = PreviewRenderState.capture();
         try (VisualPreviewRuntime.Scope ignored = VisualPreviewRuntime.enterSubjectRender()) {
+            combatant.client.features.playermodel.PlayerModelGpuRenderer.beginPreview();
+            var previewDepth = VisualPreviewDepthTarget.clear(mc);
+            if (previewDepth == null) return;
             enterPreviewState(mc, context);
 
             SubmitNodeStorage subject = new SubmitNodeStorage();
@@ -78,8 +81,11 @@ public enum VisualPreviewHandRenderer {
             combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
                     "combatant:visual-preview-hand", dispatcher, subject,
                     mc.gameRenderer.mainRenderTarget().getColorTextureView(),
-                    mc.gameRenderer.mainRenderTarget().getDepthTextureView(),
+                    previewDepth.getDepthTextureView(),
                     combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
+            combatant.client.features.playermodel.PlayerModelGpuRenderer.renderPreview(
+                    mc.gameRenderer.mainRenderTarget().getColorTextureView(),
+                    previewDepth.getDepthTextureView(), projection.getMatrix(new Matrix4f()));
             renderBuffers.endFrame();
 
             if (chams != null && maskSubject != null && chams.renderPreparedHandScene(maskSubject)) {
@@ -96,9 +102,6 @@ public enum VisualPreviewHandRenderer {
     private static void enterPreviewState(Minecraft mc,
                                           VisualPreviewSceneContext context) {
         RenderState.rendering3D = true;
-        RenderSystem.getDevice().createCommandEncoder()
-                .clearDepthTexture(mc.gameRenderer.mainRenderTarget().getDepthTexture(), 0.0D);
-
         projection.setupPerspective(
                 0.05f,
                 100.0f,

@@ -14,12 +14,16 @@ layout (std140) uniform UIBatch {
     vec4 uLayer;
 };
 
+#ifdef COMBATANT_ANALYTIC_CLIP
+#include <combatant:ui_clip.glsl>
+#endif
+
 vec2 warpedLocal(vec4 local) {
     float invW = abs(local.z) > 0.000001 ? local.z : 1.0;
     return local.xy / invW;
 }
 
-float roundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
+float glowRoundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
     float r = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
     vec2 q = abs(p) - halfSize + r;
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
@@ -33,7 +37,7 @@ void main() {
     float radius = v_Params.y;
     float softness = max(v_Params.z, 0.0001);
     float glowRadius = max(v_Params.w, 0.0001);
-    float d = roundedBoxSdf(frag - center, halfSize, radius);
+    float d = glowRoundedBoxSdf(frag - center, halfSize, radius);
 
     float alpha;
     if (kind < 1.5) {
@@ -53,4 +57,12 @@ void main() {
     }
 
     fragColor = vec4(v_Color.rgb, v_Color.a * alpha);
+#ifdef COMBATANT_ANALYTIC_CLIP
+
+    vec2 clipPixel = uScreen.zw / max(uScreen.xy, vec2(1.0));
+
+    fragColor.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), clipPixel);
+
+    if (fragColor.a <= 0.001) discard;
+#endif
 }

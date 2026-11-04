@@ -13,6 +13,7 @@
 
 package combatant.client.render.engine.pipeline;
 
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.pipeline.UniformType;
 import com.mojang.renderpearl.api.pipeline.ShaderType;
@@ -144,6 +145,10 @@ public enum CombatantRenderPipelines {
     }
 
     public static RenderPipeline analyticClipTextPipeline(RenderPipeline pipeline) {
+        if (pipeline == UiRenderPipelines.UI_TEXT_OUTLINE_FAST
+                || pipeline == UiRenderPipelines.UI_TEXT_OUTLINE_FAST_ANALYTIC_CLIP) {
+            return UiRenderPipelines.UI_TEXT_OUTLINE_FAST_ANALYTIC_CLIP;
+        }
         if (pipeline == UiRenderPipelines.UI_TEXT) return UiRenderPipelines.UI_TEXT_ANALYTIC_CLIP;
         if (pipeline == UiRenderPipelines.UI_TEXT_FAST) return UiRenderPipelines.UI_TEXT_FAST_ANALYTIC_CLIP;
         if (pipeline == UiRenderPipelines.UI_TEXT_MASK) return UiRenderPipelines.UI_TEXT_MASK_ANALYTIC_CLIP;
@@ -233,6 +238,23 @@ public enum CombatantRenderPipelines {
             case TRANSLUCENT_NO_DEPTH_WRITE -> RigRenderPipelines.RIG_ENTITY_TRANSLUCENT_NO_DEPTH_WRITE;
             case TRANSLUCENT_NO_DEPTH_WRITE_CULL ->
                     RigRenderPipelines.RIG_ENTITY_TRANSLUCENT_NO_DEPTH_WRITE_CULL;
+        };
+    }
+
+    /**
+     * For RHI draws into Combatant-owned color targets, select the variant that matches the
+     * actual color texture format. Iris G-buffer programs are NOT routed through this API:
+     * they must continue through Iris' own entity pipelines and MRT bindings.
+     */
+    public static RenderPipeline rigEntity(RigRenderMode mode, GpuFormat targetFormat) {
+        RigRenderMode resolved = mode == null ? RigRenderMode.CUTOUT : mode;
+        return switch (resolved) {
+            case CUTOUT -> RigRenderPipelines.entityPipeline(false, true, false, targetFormat);
+            case CUTOUT_CULL -> RigRenderPipelines.entityPipeline(true, true, false, targetFormat);
+            case TRANSLUCENT -> RigRenderPipelines.entityPipeline(false, true, true, targetFormat);
+            case TRANSLUCENT_CULL -> RigRenderPipelines.entityPipeline(true, true, true, targetFormat);
+            case TRANSLUCENT_NO_DEPTH_WRITE -> RigRenderPipelines.entityPipeline(false, false, true, targetFormat);
+            case TRANSLUCENT_NO_DEPTH_WRITE_CULL -> RigRenderPipelines.entityPipeline(true, false, true, targetFormat);
         };
     }
 

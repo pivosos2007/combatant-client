@@ -1,1595 +1,919 @@
 /*
- * This file is part of the Combatant Client distribution.
- * Copyright (c) 2026 pivosos2007.
- *
- * Licensed under the GNU General Public License v3.0.
+ * Combatant Client, GPL-3.0. Copyright (c) 2026 pivosos2007.
  */
-
 package combatant.client.features.gui.schematic;
 
-import combatant.client.features.gui.hud.HudRenderUtil;
-import combatant.client.features.gui.schematic.view3d.FaceList;
-import combatant.client.features.module.ModuleManager;
-import combatant.client.features.module.Module;
-import combatant.client.features.module.modules.player.schematic.SchematicBuilder;
-import combatant.client.features.module.modules.visuals.schematic.SchematicProjection;
+import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.SettingsPanelComponent;
 import combatant.client.features.gui.clickgui.settings.SettingErrorView;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
+import combatant.client.features.gui.hud.script.HudScriptLayouts;
+import combatant.client.features.module.Module;
+import combatant.client.features.module.ModuleManager;
+import combatant.client.features.module.modules.player.schematic.SchematicBuilder;
+import combatant.client.features.module.modules.visuals.schematic.SchematicProjection;
 import combatant.client.features.theme.Theme;
-import combatant.client.features.theme.Themes;
+import combatant.client.input.CombatantInput;
+import combatant.client.input.InputDevice;
+import combatant.client.input.InputKeys;
+import combatant.client.input.InputModifierMask;
+import combatant.client.input.minecraft.CombatantTextInputBridge;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.helpers.ScissorFunction;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.input.UiPointerEvent;
+import combatant.client.render.engine.renderer.ui.runtime.input.UiScrollEvent;
+import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
+import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
+import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
+import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
+import combatant.client.render.engine.text.FontInfo;
+import combatant.client.render.engine.text.Fonts;
+import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.util.schematic.LayerStats;
-import combatant.client.util.schematic.SchematicFormats;
-import combatant.client.util.schematic.RedstoneRules;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicAttention;
 import combatant.client.util.schematic.SchematicDiff;
 import combatant.client.util.schematic.SchematicHeader;
+import combatant.client.util.schematic.SchematicFormats;
 import combatant.client.util.schematic.SchematicLibrary;
 import combatant.client.util.schematic.SchematicMaterials;
 import combatant.client.util.schematic.SchematicPlacement;
 import combatant.client.util.schematic.SchematicState;
+import combatant.client.util.text.SingleLineTextInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Util;
-import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.Item;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.Mirror;
-import net.minecraft.world.level.block.state.BlockState;
-import combatant.client.input.CombatantInput;
-import combatant.client.input.InputDevice;
-import combatant.client.input.InputKeys;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
- * The schematic menu: file browser on the left, the build as an orbitable 3D model (or the selected layer
- * top-down) in the middle with a layer strip that doubles as the slider, and placement, builder and material
- * controls on the right. Hosted either by {@link SchematicScreen} or embedded in the ClickGUI "Schematics" section.
+ * Spectrum 2 workspace. Java manages domain data, native mesh/voxel rendering and input;
+ * declarative script owns presentation, controls, layout, file list and material inspector.
+ * Standalone Schematics and ClickGUI use the same workspace.
  */
+@UiScriptAsset("combatant:modules/schematic/workspace")
 public final class SchematicPanel {
-
-    private static final float HEADER_H = 48f;
-    private static final float TOPBAR_H = 56f;
-    private static final float PAD = 14f;
-    private static final float GAP = 14f;
-    private static final float BUTTON_H = 36f;
-    private static final float OVERLAY_H = 30f;
-    private static final float ROW_H = 62f;
-    private static final float MATERIAL_ROW_H = 42f;
-    private static final float PANEL_RADIUS = 14f;
-    private static final float STRIP_W = 72f;
-    private static final float OPEN_SLIDE = 26f;
-    private static final int[] PLAY_SPEEDS = {1, 2, 4, 8};
-    private static final long HAVE_REFRESH_NANOS = 500_000_000L;
-    private static final long BUBBLE_HOLD_NANOS = 900_000_000L;
-    /** Input scale handed to the shared settings panel; the ClickGUI settings screen uses the same value. */
     private static final float SETTINGS_SCALE = 2.0f;
-
-    private enum Btn {
-        CLOSE, REFRESH, LOAD, OPEN_FOLDER,
-        ORIGIN_HERE, ORIGIN_LOOK, ROTATE, MIRROR, BUILDER, PROJECTION, LAYER_MODE, UNLOAD,
-        LAYER_DOWN10, LAYER_DOWN, PLAY, SPEED, LAYER_UP, LAYER_UP10,
-        TAB_LAYER, TAB_TOTAL, TAB_ISSUES,
-        TAB_3D, TAB_2D, VIEW_MODE, AUTO_ROTATE, RESET_VIEW,
-        BUILDER_SETTINGS, PROJECTION_SETTINGS
-    }
-
-    private static final Btn[] BUTTONS = Btn.values();
-
-    private static final long TICK_NANOS = 50_000_000L;
-
-    /** Null when embedded in a host; otherwise runs when the user closes the standalone menu. */
+    private static final int[] SPEEDS = {1, 2, 4, 8};
+    private static final long INVENTORY_INTERVAL = 500_000_000L;
+    private static final long DIFF_INTERVAL = 50_000_000L;
     private final Runnable onClose;
-    private boolean initialized;
-    private float embedX, embedY, embedW, embedH;
-    private long lastTickNanos;
-    private final SchematicUi ui = new SchematicUi();
-    private final SchematicLayerGrid grid = new SchematicLayerGrid();
-    private final SchematicViewport viewport = new SchematicViewport();
+    private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(SchematicPanel.class);
+    private final CachedUiScriptRuntime script = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
+    private final SettingsPanelComponent settingsPanel = new SettingsPanelComponent(SettingRenderSurface.MODULES);
     private final SchematicState state = SchematicState.INSTANCE;
     private final SchematicLibrary library = SchematicLibrary.INSTANCE;
-    private final float[] bx = new float[BUTTONS.length];
-    private final float[] by = new float[BUTTONS.length];
-    private final float[] bw = new float[BUTTONS.length];
-    private final float[] bh = new float[BUTTONS.length];
-    private final boolean[] bShown = new boolean[BUTTONS.length];
-    private final float[] hover = new float[BUTTONS.length];
-    private final float[] press = new float[BUTTONS.length];
-    private final float[] rowHover = new float[64];
-
-    private float fixedWidth;
-    private float fixedHeight;
-    private float panelX, panelY, panelW, panelH;
-    private float leftX, leftW, centreX, centreW, rightX, rightW;
-    private float contentY, contentBottom;
-    private float searchX, searchY, searchW, searchH;
-    private float listY, listH;
-    private float gridX, gridY, gridW, gridH;
-    private float insetX, insetY, insetS;
-    private float gapX, gapY, gapW;
-    private float stripX, stripY, stripH;
-    private float progressY;
-    private float infoY;
-    private float materialsY, materialsH;
-    private float bodyH, smallH, titleH, tinyH;
-    private float colTop, colBottom;
-    private float leftPX, leftPW, centrePX, centrePW, rightPX, rightPW;
-    private float detailsH, materialsPY, materialsPH;
-    private boolean libraryEmpty;
-    private int infoRows;
-    private final List<String[]> infoList = new ArrayList<>();
-    private List<String> emptyHint = List.of();
-    private float emptyY;
-    private float segView, segMat;
+    private final SchematicViewport viewport = new SchematicViewport();
+    private final SchematicLayerGrid grid = new SchematicLayerGrid();
+    private final SchematicUi nativeUi = new SchematicUi();
+    private final SingleLineTextInput searchInput = new SingleLineTextInput(96);
+    private TextRenderer searchFont;
+    private UiRuntime runtime;
+    private Layout bounds;
+    private boolean initialized;
     private float mouseX, mouseY;
-    /** The ClickGUI settings panel reused for the builder/projection module settings. */
-    private final SettingsPanelComponent settingsPanel = new SettingsPanelComponent(SettingRenderSurface.MODULES);
-    private String settingsId;
-    private String settingsClosedId;
     private float openAnim;
-    private float frameDt;
-
-    private List<SchematicHeader> filtered = List.of();
-    private int filteredGeneration = -1;
-    private String filteredQuery = "";
-    private int listFirst;
-    private Path selectedPath;
-    private String search = "";
+    private long lastFrame, lastDiffTick;
     private boolean searchFocused;
-
-    private boolean materialsTotal;
-    private boolean issuesShown;
-    private int materialsFirst;
-    private List<SchematicAttention.Entry> issues = List.of();
-    private List<ItemStack> issueStacks = List.of();
-    private Object issuesKey;
-    private boolean[] materialRedstone = new boolean[0];
-    private List<SchematicMaterials.Entry> materials = List.of();
-    private List<ItemStack> materialStacks = List.of();
-    private int[] materialHave = new int[0];
-    private Object materialsKey;
-    private long materialsHaveNanos;
-
+    private Path selectedPath;
+    private List<SchematicHeader> filtered = List.of();
+    private String filterKey = "";
+    private int filterGeneration = -1;
+    private boolean view3d = true;
     private boolean playing;
     private int speedIndex = 1;
     private float playAccumulator;
-    private boolean draggingStrip;
-    private boolean draggingGap;
-    private long lastFrameNanos;
+    private boolean layerDragging, gapDragging, gridDragging;
+    private float gridPanX, gridPanY, gridZoom = 1f, lastGridX, lastGridY;
+    private boolean doubleClickFile;
+    private boolean materialsTotal, issuesShown, libraryMode = true;
+    private boolean cardsMode;
+    private String visibleDrawer = "none";
+    private float drawerProgress;
+    private long lastFeedbackSequence;
+    private final List<LocalToast> localToasts = new ArrayList<>();
+    private static final long TOAST_DURATION = 4_500_000_000L;
+    private record LocalToast(long id, String message, String variant, long started) {}
+    private String drawerMode = "none";
+    private String settingsId;
+    private List<SchematicMaterials.Entry> materials = List.of();
+    private List<SchematicAttention.Entry> issues = List.of();
+    private int[] materialHave = new int[0];
+    private Object materialKey, issueKey;
+    private long materialHaveAt;
 
-    private boolean view3d = true;
-    private float viewFade = 1f;
-    private float thumbLayer;
-    private float bubble;
-    private int bubbleLayer = -1;
-    private long bubbleNanos;
+    public SchematicPanel(Runnable onClose) { this.onClose = onClose; }
+    public SchematicPanel() { this(null); }
 
-    /** Standalone menu: closing runs {@code onClose} and the panel owns the whole screen (dimmer, background, X button). */
-    public SchematicPanel(Runnable onClose) {
-        this.onClose = onClose;
+    private static String tr(String key, Object... args) { return I18n.get(key, args); }
+    private static float clamp(float value, float min, float max) { return Math.max(min, Math.min(max, value)); }
+    private static String color(int argb) { return String.format("#%08X", argb | 0xFF000000); }
+    private static Map<String, Object> map(Object... entries) {
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < entries.length; i += 2) result.put((String) entries[i], entries[i + 1]);
+        return result;
     }
-
-    /** Embedded in a host that provides the bounds (the ClickGUI section): no dimmer, no close button. */
-    public SchematicPanel() {
-        this.onClose = null;
-    }
-
-    private static String tr(String key, Object... args) {
-        return I18n.get(key, args);
+    private static boolean inside(float mx, float my, float x, float y, float w, float h) {
+        return mx >= x && my >= y && mx < x + w && my < y + h;
     }
 
     public void init() {
-        ui.init();
-        ui.clearCaches();
+        nativeUi.init();
         initialized = true;
-        bodyH = ui.height(SchematicUi.BODY);
-        smallH = ui.height(SchematicUi.SMALL);
-        titleH = ui.height(SchematicUi.TITLE);
-        tinyH = ui.height(SchematicUi.TINY);
         library.refresh();
-        if (selectedPath == null && state.schematic() != null) {
+        lastFeedbackSequence = SchematicActions.feedbackSequence();
+        localToasts.clear();
+        libraryMode = state.schematic() == null;
+        if (selectedPath == null && state.schematic() != null)
             selectedPath = library.resolve(state.schematic().fileName());
-        }
-        thumbLayer = state.layer();
     }
 
-    /** Replays the fade-in; used when a host shows an already constructed panel again. */
-    public void restartOpenAnimation() {
-        openAnim = 0f;
-        lastFrameNanos = 0L;
-    }
+    public void restartOpenAnimation() { openAnim = 0f; lastFrame = 0L; }
+    public void tick() { state.tickDiff(Minecraft.getInstance(), 256, 256); }
 
-    public void tick() {
-        state.tickDiff(Minecraft.getInstance(), 256, 256);
-    }
-
-    /** Renders the standalone menu; {@code mx}/{@code my} are vanilla GUI-scaled coordinates. */
     public void renderStandalone(GuiGraphicsExtractor context, int mx, int my) {
-        updateUiMetrics();
-        SchematicUi.syncTheme();
-        MenuBackgroundRenderer.renderConfigured(Minecraft.getInstance());
+        if (!initialized) init();
+        Minecraft mc = Minecraft.getInstance();
+        float fixedWidth = Math.max(1f, HudScale.virtualWidth(mc.getWindow().getWidth(), mc.getWindow().getHeight()));
+        float fixedHeight = Math.max(1f, HudScale.virtualHeight(mc.getWindow().getWidth(), mc.getWindow().getHeight()));
+        MenuBackgroundRenderer.renderConfigured(mc);
         mouseX = toFixed(mx);
         mouseY = toFixed(my);
-        layout();
-        animate();
-
+        float width = Math.min(fixedWidth - 34f, 1660f);
+        float height = Math.min(fixedHeight - 34f, 980f);
+        bounds = Layout.compute((fixedWidth - width) * .5f, (fixedHeight - height) * .5f, width, height, true, libraryMode, drawerProgress);
         ViewportContext.beginUnscaledLogical(context);
         Renderer2D.COLOR.begin();
-        try {
-            float alpha = AnimationUtility.easeOutCubic(openAnim);
-            renderDimmer(alpha);
-            renderBody(alpha);
-        } finally {
+        try { renderWorkspace(); }
+        finally {
             Renderer2D.COLOR.render();
             ViewportContext.end(context);
         }
     }
 
-    /**
-     * Renders inside an already running {@code Renderer2D.COLOR} batch, in the host's fixed coordinate space.
-     * Drag state is polled here because the host forwards presses and releases only.
-     */
     public void renderEmbedded(float x, float y, float w, float h, float mx, float my) {
         if (!initialized) init();
-        updateUiMetrics();
-        SchematicUi.syncTheme();
-        embedX = x;
-        embedY = y;
-        embedW = w;
-        embedH = h;
         mouseX = mx;
         mouseY = my;
-        long now = System.nanoTime();
-        if (now - lastTickNanos >= TICK_NANOS) {
-            lastTickNanos = now;
-            tick();
-        }
+        bounds = Layout.compute(x, y, w, h, false, libraryMode, drawerProgress);
+        // Embedded ClickGUI forwards button edges only; sample continuous drags per frame.
         mouseDragged(mx, my);
-        layout();
-        animate();
-        renderBody(AnimationUtility.easeOutCubic(openAnim));
+        renderWorkspace();
     }
 
-    private void renderBody(float alpha) {
-        if (onClose != null) renderTopBar(alpha);
-        ui.panel(leftPX, colTop, leftPW, colBottom - colTop, PANEL_RADIUS, alpha);
-        ui.panel(centrePX, colTop, centrePW, colBottom - colTop, PANEL_RADIUS, alpha);
-        ui.panel(rightPX, colTop, rightPW, detailsH, PANEL_RADIUS, alpha);
-        if (materialsPH > 1f) ui.panel(rightPX, materialsPY, rightPW, materialsPH, PANEL_RADIUS, alpha);
-        renderLeft(alpha);
-        renderCentre(alpha);
-        renderRight(alpha);
-        renderTooltip(alpha);
+    private void renderWorkspace() {
+        long now = System.nanoTime();
+        float dt = lastFrame == 0L ? .016f : clamp((now - lastFrame) / 1_000_000_000f, .001f, .05f);
+        lastFrame = now;
+        openAnim = Math.min(1f, openAnim + dt * 5f);
+        if (now - lastDiffTick >= DIFF_INTERVAL) { lastDiffTick = now; tick(); }
+        if (playing && state.hasSchematic()) {
+            playAccumulator += dt * SPEEDS[speedIndex] * 2f;
+            while (playAccumulator >= 1f) {
+                playAccumulator -= 1f;
+                if (state.layer() >= state.layerCount() - 1) { playing = false; break; }
+                state.stepLayer(1);
+            }
+        }
+        SchematicUi.syncTheme();
+        if (bounds != null) {
+            if (searchFont == null) searchFont = Fonts.renderer("SourceSans3", FontInfo.Type.Regular,
+                    ClickGuiRenderer.getOnestMedium());
+            searchInput.layout(bounds.searchX + 43f, Math.max(40f, bounds.searchW - 88f), searchFont, 17f);
+        }
+        refreshFiltered();
+        for (SchematicActions.Feedback item : SchematicActions.feedbackSince(lastFeedbackSequence)) {
+            lastFeedbackSequence = item.sequence();
+            localToasts.add(new LocalToast(item.sequence(), item.message(), item.variant(), now));
+        }
+        localToasts.removeIf(item -> now - item.started() >= TOAST_DURATION);
+        if (localToasts.size() > 3) localToasts.subList(0, localToasts.size() - 3).clear();
+        float desiredDrawer = "none".equals(drawerMode) || libraryMode ? 0f : 1f;
+        drawerProgress += (desiredDrawer - drawerProgress) * Math.min(1f, dt * 16f);
+        if (Math.abs(desiredDrawer - drawerProgress) < .005f) drawerProgress = desiredDrawer;
+        if (!"none".equals(drawerMode)) visibleDrawer = drawerMode;
+        else if (drawerProgress == 0f) visibleDrawer = "none";
+        refreshMaterials(now);
+        refreshIssues();
+        // One fullscreen region of the existing UI dual-Kawase blur, not a second
+        // postprocess pass. Runs in the same UI batch graph as ordinary glass.
+        Renderer2D.COLOR.blurRect(bounds.x, bounds.y, bounds.w, bounds.h,
+                0f, 29f, 1f, .94f, 0xFFFFFF);
+        // Draw the native canvas before the Spectrum overlay so toasts, inspector,
+        // header and animated controls remain above the voxel renderer.
+        if (!libraryMode) Renderer2D.COLOR.quad(bounds.x, bounds.y, bounds.w, bounds.h, 0xA8171717);
+        renderCanvas(dt);
+        renderScript();
+        renderCanvasTooltip();
+        if (searchFocused && bounds != null && libraryMode) {
+            CombatantTextInputBridge.focus(searchInput,
+                    Math.round(bounds.searchX), Math.round(bounds.searchY),
+                    Math.round(bounds.searchX + bounds.searchW), Math.round(bounds.searchY + 44f));
+        } else {
+            CombatantTextInputBridge.blur(searchInput);
+        }
         settingsPanel.render(0f, 0f, 0f, 0f, mouseX, mouseY, SETTINGS_SCALE);
     }
 
-    // ---------------------------------------------------------------- layout
-
-    private void layout() {
-        if (onClose == null) {
-            panelX = embedX;
-            panelY = embedY;
-            panelW = embedW;
-            panelH = embedH;
-        } else {
-            panelW = Math.min(fixedWidth - 60f, 1760f);
-            panelH = Math.min(fixedHeight - 60f, 1000f);
-            panelX = (fixedWidth - panelW) * 0.5f;
-            panelY = (fixedHeight - panelH) * 0.5f + (1f - AnimationUtility.easeOutCubic(openAnim)) * OPEN_SLIDE;
-        }
-        colTop = panelY + (onClose == null ? 0f : TOPBAR_H + GAP);
-        colBottom = panelY + panelH;
-        contentY = colTop + HEADER_H + 12f;
-        contentBottom = colBottom - PAD;
-
-        // Three separate glass columns with gaps; the side columns give way before the preview does.
-        float total = Math.max(1f, panelW - GAP * 2f);
-        float leftO = clamp(total * 0.22f, 200f, 380f);
-        float rightO = clamp(total * 0.26f, 240f, 440f);
-        float sides = leftO + rightO;
-        float maxSides = Math.max(total - 340f, Math.min(sides, total * 0.45f));
-        if (sides > maxSides) {
-            float factor = maxSides / sides;
-            leftO *= factor;
-            rightO *= factor;
-        }
-        float centreO = total - leftO - rightO;
-        leftPX = panelX;
-        leftPW = leftO;
-        centrePX = leftPX + leftO + GAP;
-        centrePW = centreO;
-        rightPX = centrePX + centreO + GAP;
-        rightPW = rightO;
-        leftX = leftPX + PAD;
-        leftW = leftPW - PAD * 2f;
-        centreX = centrePX + PAD;
-        centreW = centrePW - PAD * 2f;
-        rightX = rightPX + PAD;
-        rightW = rightPW - PAD * 2f;
-        java.util.Arrays.fill(bShown, false);
-
-        if (onClose != null) place(Btn.CLOSE, panelX + panelW - PAD - 44f, panelY + (TOPBAR_H - BUTTON_H) * 0.5f, 44f, BUTTON_H);
-        layoutLeft();
-        layoutCentre();
-        layoutRight();
-    }
-
-    private void layoutLeft() {
-        libraryEmpty = library.headers().isEmpty() && !library.isScanning();
-        // Refresh lives in the bottom action row (or under the empty-state call to action), not the header.
-        if (libraryEmpty) {
-            // No files: no search, no Load; the list is the hint and its call to action.
-            searchX = -10_000f;
-            searchY = 0f;
-            searchW = 0f;
-            searchH = 0f;
-            listY = contentY;
-            listH = Math.max(ROW_H, contentBottom - listY);
-            emptyHint = wrap(tr("screen.combatant.schematic.empty_hint"), SchematicUi.SMALL, leftW - 40f, 3);
-            emptyY = listY + Math.max(30f, listH * 0.5f - 100f);
-            float ctaY = emptyY + 10f + 40f + bodyH + 8f + emptyHint.size() * (smallH + 4f) + 16f;
-            float ctaW = Math.min(leftW - 32f, 220f);
-            place(Btn.OPEN_FOLDER, leftX + (leftW - ctaW) * 0.5f, ctaY, ctaW, 40f);
-            place(Btn.REFRESH, leftX + (leftW - ctaW) * 0.5f, ctaY + 50f, ctaW, 40f);
+    private void renderScript() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getResourceManager() == null) return;
+        HudScriptLayouts.pollReloadCombo(mc);
+        if (moduleHandle.consumeChanged()) { script.reset(); runtime = null; }
+        if (!moduleHandle.ensureLoaded(mc.getResourceManager())) {
+            HudScriptLayouts.reportLoadError(moduleHandle);
             return;
         }
-        searchX = leftX;
-        searchY = contentY;
-        searchH = 38f;
-        searchW = leftW;
-        listY = searchY + searchH + 10f;
-        float buttonsTop;
-        if (leftW >= 340f) {
-            buttonsTop = contentBottom - BUTTON_H;
-            float side = Math.min(120f, leftW * 0.28f);
-            place(Btn.LOAD, leftX, buttonsTop, leftW - side * 2f - 16f, BUTTON_H);
-            place(Btn.REFRESH, leftX + leftW - side * 2f - 8f, buttonsTop, side, BUTTON_H);
-            place(Btn.OPEN_FOLDER, leftX + leftW - side, buttonsTop, side, BUTTON_H);
-        } else {
-            buttonsTop = contentBottom - BUTTON_H * 2f - 8f;
-            float half = (leftW - 8f) * 0.5f;
-            place(Btn.LOAD, leftX, buttonsTop, leftW, BUTTON_H);
-            place(Btn.REFRESH, leftX, buttonsTop + BUTTON_H + 8f, half, BUTTON_H);
-            place(Btn.OPEN_FOLDER, leftX + half + 8f, buttonsTop + BUTTON_H + 8f, half, BUTTON_H);
-        }
-        listH = Math.max(ROW_H, buttonsTop - 10f - listY);
+        UiScriptModule module = moduleHandle.module();
+        if (module == null) return;
+        Map<String, Object> props = props();
+        runtime = script.bake(moduleHandle, module, "schematic-workspace",
+                CachedUiScriptRuntime.signature(props), bounds.w, bounds.h,
+                ClickGuiRenderer.getOnestMedium(), bounds.x, bounds.y, bounds.w, bounds.h, () -> props);
+        if (runtime == null) return;
+        registerActions();
+        runtime.render(new UiRenderContext(Renderer2D.COLOR, ClickGuiRenderer.getOnestMedium(),
+                        null, 0f, UiProjectionMode.CURRENT, AnimationUtility.easeOutCubic(openAnim)),
+                () -> runtime.input().updateHover(runtime.root(), mouseX, mouseY));
     }
 
-    /** Greedy word wrap into at most {@code maxLines} lines, each ellipsized to {@code maxW}. */
-    private List<String> wrap(String text, float size, float maxW, int maxLines) {
-        List<String> lines = new ArrayList<>();
-        StringBuilder cur = new StringBuilder();
-        for (String word : text.split(" ")) {
-            if (cur.length() > 0 && ui.width(cur + " " + word, size, false) > maxW) {
-                lines.add(cur.toString());
-                cur.setLength(0);
-            }
-            if (cur.length() > 0) cur.append(' ');
-            cur.append(word);
-        }
-        if (cur.length() > 0) lines.add(cur.toString());
-        while (lines.size() > maxLines) {
-            String last = lines.remove(lines.size() - 1);
-            lines.set(lines.size() - 1, lines.get(lines.size() - 1) + " " + last);
-        }
-        for (int i = 0; i < lines.size(); i++) lines.set(i, ui.ellipsize(lines.get(i), size, maxW));
-        return lines;
-    }
-
-    private void layoutCentre() {
-        boolean loaded = state.hasSchematic();
-        float ctrlY = contentBottom - BUTTON_H;
-        progressY = ctrlY - 14f - 12f - 6f - smallH;
-        gridX = centreX;
-        stripX = centreX + centreW - STRIP_W;
-        if (loaded) {
-            float[] widths = {60f, 50f, 90f, 68f, 50f, 60f};
-            Btn[] ids = {Btn.LAYER_DOWN10, Btn.LAYER_DOWN, Btn.PLAY, Btn.SPEED, Btn.LAYER_UP, Btn.LAYER_UP10};
-            float total = 8f * (ids.length - 1);
-            for (float w : widths) total += w;
-            float sc = Math.min(1f, centreW / total);
-            float x = centreX + (centreW - total * sc) * 0.5f;
-            for (int i = 0; i < ids.length; i++) {
-                place(ids[i], x, ctrlY, widths[i] * sc, BUTTON_H);
-                x += widths[i] * sc + 8f * sc;
-            }
-            gridY = contentY + titleH + smallH + 22f;
-            gridW = Math.max(60f, centreW - STRIP_W - 16f);
-            gridH = Math.max(40f, progressY - 14f - gridY);
-            float trackW = Math.min(132f, centreW * 0.5f);
-            float tabH = 34f;
-            float tabY = colTop + (HEADER_H - tabH) * 0.5f;
-            place(Btn.TAB_3D, centrePX + centrePW - PAD - trackW, tabY, trackW * 0.5f, tabH);
-            place(Btn.TAB_2D, centrePX + centrePW - PAD - trackW * 0.5f, tabY, trackW * 0.5f, tabH);
-        } else {
-            gridY = contentY;
-            gridW = centreW;
-            gridH = Math.max(40f, contentBottom - gridY);
-        }
-        stripY = gridY;
-        stripH = gridH;
-        insetS = clamp(Math.min(gridW, gridH) * 0.28f, 90f, 220f);
-        insetX = gridX + 10f;
-        insetY = gridY + gridH - 10f - insetS;
-        gapW = Math.min(170f, gridW * 0.4f);
-        gapX = gridX + gridW - 12f - gapW;
-        gapY = gridY + 10f + tinyH + 8f;
-        if (view3dActive()) {
-            float avail = gridW - 20f - 12f;
-            float sc = Math.min(1f, avail / 372f);
-            float x = gridX + 10f;
-            place(Btn.VIEW_MODE, x, gridY + 10f, 144f * sc, OVERLAY_H);
-            x += 144f * sc + 6f;
-            place(Btn.AUTO_ROTATE, x, gridY + 10f, 120f * sc, OVERLAY_H);
-            x += 120f * sc + 6f;
-            place(Btn.RESET_VIEW, x, gridY + 10f, 96f * sc, OVERLAY_H);
-        }
+    private Map<String, Object> props() {
         Schematic schematic = state.schematic();
-        if (schematic == null) return;
-        if (view3d) {
-            grid.layout(schematic, insetX + 6f, insetY + 24f, insetS - 12f, insetS - 30f);
-        } else {
-            grid.layout(schematic, gridX + 8f, gridY + 8f, gridW - 16f, gridH - 16f);
+        SchematicDiff diff = state.currentDiff();
+        SchematicPlacement placement = state.placement();
+        if (diff != null && diff.schematic() != schematic) diff = null;
+        String searchText = searchInput.text();
+        float searchScroll = searchInput.viewportOffset();
+        float caret = textTo(searchText, searchInput.cursor());
+        float selectFrom = textTo(searchText, searchInput.selectionStart());
+        float selectTo = textTo(searchText, searchInput.selectionEnd());
+        List<Map<String, Object>> files = new ArrayList<>();
+        boolean canLoad = false;
+        for (int i = 0; i < filtered.size(); i++) {
+            SchematicHeader file = filtered.get(i);
+            boolean selected = file.path().equals(selectedPath);
+            canLoad |= selected && !file.failed();
+            String extension = SchematicFormats.extensionOf(file.path());
+            files.add(map("id", String.valueOf(i), "title", file.name(), "file", file.fileName(),
+                    "format", extension == null ? "FILE" : extension.substring(1).toUpperCase(Locale.ROOT),
+                    "meta", file.failed() ? file.error() : file.dimensions() + " · " + file.totalBlocks(),
+                    "size", file.dimensions(), "blocks", file.totalBlocks(), "author", file.author(),
+                    "regions", file.regionCount(), "modified", file.lastModified(),
+                    "selected", selected, "failed", file.failed()));
         }
-    }
-
-    private void layoutRight() {
-        boolean loaded = state.hasSchematic();
-        buildInfoRows();
-        float step = smallH + 8f;
-        float btnH = 34f;
-        float bgap = 8f;
-        int rows = infoList.size();
-        float avail = colBottom - colTop - GAP;
-        float materialsMin = HEADER_H + 110f;
-        // Builder/projection rows (toggle + settings) are always present; the transform grid only with a schematic.
-        int gridRows = loaded ? 3 : 0;
-        while (true) {
-            int buttonRows = gridRows + 2;
-            detailsH = HEADER_H + 12f + rows * step + 10f + buttonRows * btnH + (buttonRows - 1) * bgap + PAD;
-            if (detailsH + materialsMin <= avail || (rows <= 3 && btnH <= 28f)) break;
-            if (rows > 3) {
-                rows--;
+        List<Map<String, Object>> info = new ArrayList<>();
+        if (schematic != null) {
+            info.add(map("label", tr("screen.combatant.schematic.info.size"),
+                    "value", schematic.sizeX() + " × " + schematic.sizeY() + " × " + schematic.sizeZ()));
+            info.add(map("label", tr("screen.combatant.schematic.info.blocks"), "value", String.valueOf(schematic.totalBlocks())));
+            info.add(map("label", tr("screen.combatant.schematic.info.author"), "value", schematic.author().isBlank() ? "—" : schematic.author()));
+            if (placement != null) {
+                BlockPos origin = placement.origin();
+                info.add(map("label", tr("screen.combatant.schematic.info.origin"),
+                        "value", origin.getX() + ", " + origin.getY() + ", " + origin.getZ()));
+                String rotation = switch (placement.rotation()) {
+                    case NONE -> "0°";
+                    case CLOCKWISE_90 -> "90°";
+                    case CLOCKWISE_180 -> "180°";
+                    case COUNTERCLOCKWISE_90 -> "270°";
+                };
+                info.add(map("label", tr("screen.combatant.schematic.info.rotation"), "value", rotation));
+                info.add(map("label", tr("screen.combatant.schematic.info.mirror"),
+                        "value", tr("screen.combatant.schematic.mirror." + placement.mirror().name().toLowerCase(Locale.ROOT))));
             } else {
-                btnH = 28f;
-                bgap = 6f;
+                info.add(map("label", tr("screen.combatant.schematic.info.origin"),
+                        "value", tr("screen.combatant.schematic.info.not_placed")));
             }
+            info.add(map("label", tr("screen.combatant.schematic.info.palette"), "value", String.valueOf(schematic.paletteSize() - 1)));
+            info.add(map("label", tr("screen.combatant.schematic.info.regions"), "value", String.valueOf(schematic.regionCount())));
+            info.add(map("label", tr("screen.combatant.schematic.info.warnings"), "value", String.valueOf(schematic.warnings().size())));
         }
-        infoRows = rows;
-        infoY = colTop + HEADER_H + 12f;
-        materialsPY = colTop + detailsH + GAP;
-        materialsPH = Math.max(0f, colBottom - materialsPY);
-        materialsY = materialsPY + HEADER_H + 10f;
-        materialsH = Math.max(MATERIAL_ROW_H, colBottom - PAD - materialsY);
-        float buttonsY = infoY + infoRows * step + 10f;
-        float half = (rightW - 8f) * 0.5f;
-        if (loaded) {
-            Btn[] ids = {Btn.ORIGIN_HERE, Btn.ORIGIN_LOOK, Btn.ROTATE, Btn.MIRROR, Btn.LAYER_MODE, Btn.UNLOAD};
-            for (int i = 0; i < ids.length; i++) {
-                place(ids[i], rightX + (i % 2) * (half + 8f), buttonsY + (i / 2) * (btnH + bgap), half, btnH);
+        List<Map<String, Object>> inventory = new ArrayList<>();
+        if (issuesShown) {
+            for (int i = 0; i < issues.size(); i++) {
+                SchematicAttention.Entry entry = issues.get(i);
+                String place = entry.pos() == null ? "×" + entry.count()
+                        : entry.pos().getX() + ", " + entry.pos().getY() + ", " + entry.pos().getZ();
+                inventory.add(map("id", String.valueOf(i), "name", entry.state().getBlock().getName().getString(),
+                        "item", BuiltInRegistries.ITEM.getKey(entry.state().getBlock().asItem()).toString(),
+                        "detail", tr("screen.combatant.schematic.attention." + entry.reason().name().toLowerCase(Locale.ROOT)),
+                        "quantity", place, "ratio", 0, "warning", true));
             }
-        }
-        float toggleW = (rightW - 8f) * 0.62f;
-        float settingsW = rightW - 8f - toggleW;
-        float builderY = buttonsY + gridRows * (btnH + bgap);
-        float projectionY = builderY + btnH + bgap;
-        place(Btn.BUILDER, rightX, builderY, toggleW, btnH);
-        place(Btn.BUILDER_SETTINGS, rightX + toggleW + 8f, builderY, settingsW, btnH);
-        place(Btn.PROJECTION, rightX, projectionY, toggleW, btnH);
-        place(Btn.PROJECTION_SETTINGS, rightX + toggleW + 8f, projectionY, settingsW, btnH);
-        if (!loaded) return;
-        float tabH = 34f;
-        float tabsY = materialsPY + (HEADER_H - tabH) * 0.5f;
-        float third = rightW / 3f;
-        place(Btn.TAB_LAYER, rightX, tabsY, third, tabH);
-        place(Btn.TAB_TOTAL, rightX + third, tabsY, third, tabH);
-        place(Btn.TAB_ISSUES, rightX + third * 2f, tabsY, third, tabH);
-    }
-
-    private void place(Btn id, float x, float y, float w, float h) {
-        int i = id.ordinal();
-        bx[i] = x;
-        by[i] = y;
-        bw[i] = w;
-        bh[i] = h;
-        bShown[i] = true;
-    }
-
-    private boolean over(Btn id) {
-        int i = id.ordinal();
-        return bShown[i] && SchematicUi.inside(mouseX, mouseY, bx[i], by[i], bw[i], bh[i]);
-    }
-
-    private boolean view3dActive() {
-        return view3d && state.hasSchematic() && SchematicActions.loadingPath() == null;
-    }
-
-    private boolean overViewportChrome(float mx, float my) {
-        if (over(Btn.VIEW_MODE) || over(Btn.AUTO_ROTATE) || over(Btn.RESET_VIEW)) return true;
-        if (SchematicUi.inside(mx, my, insetX, insetY, insetS, insetS)) return true;
-        return viewport.mode().exploded() && SchematicUi.inside(mx, my, gapX - 6f, gridY + 6f, gapW + 12f, gapY - gridY + 14f);
-    }
-
-    private boolean insideViewport(float mx, float my) {
-        return SchematicUi.inside(mx, my, gridX, gridY, gridW, gridH);
-    }
-
-    private void animate() {
-        long now = System.nanoTime();
-        float dt = lastFrameNanos == 0L ? 0f : Math.min(0.1f, (now - lastFrameNanos) / 1.0e9f);
-        lastFrameNanos = now;
-        frameDt = dt;
-        openAnim = AnimationUtility.snap(AnimationUtility.approach(openAnim, 1f, dt, 7f), 1f, 0.001f);
-        viewFade = AnimationUtility.snap(AnimationUtility.approach(viewFade, 1f, dt, 9f), 1f, 0.001f);
-        segView = AnimationUtility.snap(AnimationUtility.approach(segView, view3d ? 0f : 1f, dt, 16f), view3d ? 0f : 1f, 0.001f);
-        float matTarget = issuesShown ? 2f : materialsTotal ? 1f : 0f;
-        segMat = AnimationUtility.snap(AnimationUtility.approach(segMat, matTarget, dt, 16f), matTarget, 0.001f);
-        for (Btn id : BUTTONS) {
-            int i = id.ordinal();
-            hover[i] = AnimationUtility.snap(AnimationUtility.approach(hover[i], over(id) ? 1f : 0f, dt, 12f), over(id) ? 1f : 0f, 0.001f);
-            press[i] = AnimationUtility.snap(AnimationUtility.approach(press[i], 0f, dt, 8f), 0f, 0.001f);
-        }
-        animateStrip(dt, now);
-        advancePlayback(dt);
-    }
-
-    private void animateStrip(float dt, long now) {
-        int layer = state.layer();
-        thumbLayer = AnimationUtility.snap(AnimationUtility.approach(thumbLayer, layer, dt, 14f), layer, 0.01f);
-        if (layer != bubbleLayer) {
-            bubbleLayer = layer;
-            bubbleNanos = now;
-        }
-        boolean show = draggingStrip || SchematicUi.inside(mouseX, mouseY, stripX, stripY, STRIP_W, stripH)
-                || now - bubbleNanos < BUBBLE_HOLD_NANOS;
-        bubble = AnimationUtility.snap(AnimationUtility.approach(bubble, show ? 1f : 0f, dt, 10f), show ? 1f : 0f, 0.001f);
-    }
-
-    private void advancePlayback(float dt) {
-        if (!playing || !state.hasSchematic()) return;
-        playAccumulator += dt * PLAY_SPEEDS[speedIndex];
-        while (playAccumulator >= 1f) {
-            playAccumulator -= 1f;
-            int next = state.layer() + 1;
-            state.setLayer(next >= state.layerCount() ? 0 : next);
-        }
-    }
-
-    // ---------------------------------------------------------------- header + left
-
-    private void renderDimmer(float alpha) {
-        Themes.Theme t = Theme.theme();
-        int soft = SchematicUi.withAlpha(HudRenderUtil.mixColor(t.windowBg(), 0xFF000000, 0.46f), Math.round(150f * alpha));
-        int deep = SchematicUi.withAlpha(HudRenderUtil.mixColor(t.windowBg(), 0xFF000000, 0.70f), Math.round(190f * alpha));
-        Renderer2D.COLOR.quad(0, 0, fixedWidth, fixedHeight, soft, soft, deep, deep);
-    }
-
-    /** Standalone only: a glass pill with the title, the loaded schematic and the close button. */
-    private void renderTopBar(float alpha) {
-        ui.panel(panelX, panelY, panelW, TOPBAR_H, PANEL_RADIUS, alpha);
-        SchematicViewport.drawCubeIcon(panelX + 36f, panelY + TOPBAR_H * 0.5f + 5f, 7.5f,
-                SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.6f), alpha);
-        String title = tr("screen.combatant.schematic.title");
-        ui.text(title, panelX + 54f, panelY + (TOPBAR_H - titleH) * 0.5f, SchematicUi.TITLE, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
-        Schematic schematic = state.schematic();
-        String sub = schematic == null ? tr("screen.combatant.schematic.none_loaded")
-                : schematic.name() + "  ·  " + schematic.sizeX() + "x" + schematic.sizeY() + "x" + schematic.sizeZ();
-        float titleW = ui.width(title, SchematicUi.TITLE, true);
-        ui.text(ui.ellipsize(sub, SchematicUi.BODY, panelW * 0.5f), panelX + 54f + titleW + 20f, panelY + (TOPBAR_H - bodyH) * 0.5f,
-                SchematicUi.BODY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        drawButton(Btn.CLOSE, "X", false, true, alpha);
-    }
-
-    private void renderLeft(float alpha) {
-        ui.header(tr("screen.combatant.schematic.title"), leftPX, colTop, leftPW, HEADER_H, alpha);
-        drawButton(Btn.REFRESH, library.isScanning() ? "..." : tr("screen.combatant.schematic.refresh"), false, true, alpha);
-        if (!libraryEmpty) renderSearch(alpha);
-        ui.section(leftX, listY, leftW, listH, alpha);
-        refreshFiltered();
-        int visible = Math.max(1, (int) ((listH - 8f) / ROW_H));
-        listFirst = clampInt(listFirst, 0, Math.max(0, filtered.size() - visible));
-        if (filtered.isEmpty()) renderEmptyList(alpha);
-        for (int i = 0; i < visible && listFirst + i < filtered.size(); i++) {
-            renderRow(filtered.get(listFirst + i), listY + 4f + i * ROW_H, i, alpha);
-        }
-        if (filtered.size() > visible) ui.scrollbar(leftX + leftW - 7f, listY + 8f, listH - 16f, listFirst, visible, filtered.size(), alpha);
-        boolean canLoad = selectedPath != null && SchematicActions.loadingPath() == null;
-        drawButton(Btn.LOAD, tr("screen.combatant.schematic.load"), false, canLoad, canLoad, alpha);
-        drawButton(Btn.OPEN_FOLDER, tr("screen.combatant.schematic.open_folder"), false, true, libraryEmpty, alpha);
-    }
-
-    private void renderEmptyList(float alpha) {
-        float cx = leftX + leftW * 0.5f;
-        boolean scanning = library.isScanning();
-        float cy = libraryEmpty ? emptyY + 10f : listY + Math.min(listH * 0.35f, 120f);
-        if (scanning) {
-            float spin = (System.nanoTime() / 1_000_000L % 1200L) / 1200f * 360f;
-            Renderer2D.COLOR.arcStroke(cx, cy, 16f, 3f, spin, spin + 260f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
         } else {
-            SchematicViewport.drawCubeIcon(cx, cy, 20f, SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.4f), alpha);
+            for (int i = 0; i < materials.size(); i++) {
+                SchematicMaterials.Entry entry = materials.get(i);
+                int have = i < materialHave.length ? materialHave[i] : 0;
+                boolean missing = state.missingMaterials().stream().anyMatch(m -> m.item() == entry.item());
+                inventory.add(map("id", String.valueOf(i), "name", new ItemStack(entry.item()).getHoverName().getString(),
+                        "item", BuiltInRegistries.ITEM.getKey(entry.item()).toString(),
+                        "detail", missing ? tr("screen.combatant.schematic.materials_missing") : "",
+                        "quantity", have + " / " + entry.count(),
+                        "ratio", entry.count() <= 0 ? 1d : Math.min(1d, (double) have / entry.count()),
+                        "warning", missing));
+            }
         }
-        String title = scanning ? tr("screen.combatant.schematic.scanning")
-                : tr(libraryEmpty ? "screen.combatant.schematic.empty" : "screen.combatant.schematic.no_matches");
-        ui.textCentered(ui.ellipsize(title, SchematicUi.BODY, leftW - 24f), cx, cy + 40f, SchematicUi.BODY,
-                SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
-        if (!libraryEmpty) return;
-        for (int i = 0; i < emptyHint.size(); i++) {
-            ui.textCentered(emptyHint.get(i), cx, cy + 40f + bodyH + 8f + i * (smallH + 4f), SchematicUi.SMALL,
-                    SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
+        List<Map<String, Object>> layers = new ArrayList<>();
+        if (schematic != null) {
+            int n = Math.min(100, state.layerCount());
+            for (int i = 0; i < n; i++) {
+                int low = i * state.layerCount() / n;
+                int high = Math.max(low + 1, (i + 1) * state.layerCount() / n);
+                int ok = 0, all = 0;
+                if (diff != null) for (int j = low; j < high; j++) { ok += diff.correct(j); all += diff.total(j); }
+                layers.add(map("id", i, "index", low, "active", state.layer() >= low && state.layer() < high,
+                        "ratio", all == 0 ? 0d : (double) ok / all));
+            }
+        }
+        SchematicHeader selectedFile = filtered.stream().filter(f -> f.path().equals(selectedPath))
+                .findFirst().orElse(null);
+        Map<String, Object> fileDetails = selectedFile == null ? map() : map(
+                "name", selectedFile.name(), "file", selectedFile.fileName(),
+                "format", SchematicFormats.extensionOf(selectedFile.path()) == null ? "FILE" :
+                        SchematicFormats.extensionOf(selectedFile.path()).substring(1).toUpperCase(Locale.ROOT),
+                "author", selectedFile.author(),
+                "size", selectedFile.dimensions(), "blocks", selectedFile.totalBlocks(),
+                "regions", selectedFile.regionCount(), "error", selectedFile.error(),
+                "modified", selectedFile.lastModified());
+        List<Map<String, Object>> toastProps = new ArrayList<>();
+        for (LocalToast toast : localToasts) {
+            float age = (System.nanoTime() - toast.started()) / (float) TOAST_DURATION;
+            float fade = Math.min(1f, Math.min(age * 12f, (1f - age) * 12f));
+            toastProps.add(map("id", toast.id(), "message", toast.message(), "variant", toast.variant(),
+                    "alpha", clamp(fade, 0f, 1f)));
+        }
+        int correct = 0, total = 0;
+        if (diff != null) for (int i = 0; i < state.layerCount(); i++) {
+            correct += diff.correct(i); total += diff.total(i);
+        }
+        double progress = total > 0 ? (double) correct / total : 0d;
+        int themeAccent = Theme.theme() == null ? 0xFF4069FD : Theme.theme().accent();
+        // Spectrum neutral palette stays recognizable. Only semantic accent, focus and selected
+        // surfaces are derived from the active ClickGUI theme.
+        int synced = blend(0xFF4069FD, themeAccent, .82f);
+        int background = Theme.theme() == null ? 0xFF1D1D1D : blend(0xFF1D1D1D, Theme.theme().windowBg(), .15f);
+        int surface = Theme.theme() == null ? 0xFF292929 : blend(0xFF292929, Theme.theme().surface(), .18f);
+        int border = Theme.theme() == null ? 0xFF737373 : blend(0xFF737373, Theme.theme().strokeSoft(), .18f);
+        Map<String, Object> colors = map("accent", color(synced), "accentHover", color(blend(synced, 0xFFFFFFFF, .14f)),
+                "accentPress", color(blend(synced, 0xFFFFFFFF, .27f)),
+                "focus", color(blend(synced, 0xFFFFFFFF, .36f)),
+                "selected", color(blend(0xFF333333, synced, .31f)),
+                "background", color(background), "surface", color(surface), "border", color(border),
+                "raised", color(blend(surface, 0xFFFFFFFF, .05f)));
+        return map("width", bounds.w, "height", bounds.h, "layout", bounds.props(), "colors", colors,
+                "standalone", onClose != null, "fileCount", library.headers().size(),
+                "scanning", library.isScanning(), "files", files, "search", searchText, "searchFocused", searchFocused,
+                "searchScroll", searchScroll, "caretOffset", caret, "selectionStart", selectFrom, "selectionEnd", selectTo,
+                "selected", selectedFile != null, "selectedName", selectedFile == null ? "" : selectedFile.name(),
+                "canLoad", canLoad, "libraryMode", libraryMode, "drawerMode", visibleDrawer,
+                "drawerProgress", drawerProgress, "cardsMode", cardsMode,
+                "fileDetails", fileDetails, "toasts", toastProps,
+                "loaded", schematic != null, "title", schematic == null ? "" : schematic.name(),
+                "subtitle", schematic == null ? tr("screen.combatant.schematic.pick_file") : schematic.fileName(),
+                "loading", SchematicActions.loadingPath() != null, "error", SchematicActions.lastError(),
+                "placed", state.isPlaced(), "building", SchematicActions.builderEnabled(),
+                "projecting", SchematicActions.projectionEnabled(), "layer", state.layer() + 1,
+                "layerCount", state.layerCount(), "layerMode", state.layerMode().name(),
+                "playing", playing, "speed", SPEEDS[speedIndex], "view", view3d ? "3d" : "2d",
+                "viewMode", viewport.mode().name().toLowerCase(Locale.ROOT),
+                "viewModeLabel", tr("screen.combatant.schematic.view.mode." + viewport.mode().name().toLowerCase(Locale.ROOT)),
+                "autoRotate", viewport.autoRotate(), "gap", viewport.gap(), "exploded", viewport.mode().exploded(),
+                "materialView", issuesShown ? "issues" : materialsTotal ? "total" : "layer",
+                "issueCount", issues.size(), "inventory", inventory, "info", info,
+                "layers", layers, "progress", progress, "progressLabel", correct + " / " + total,
+                "builderStatus", builderStatus(), "closeLabel", tr("screen.combatant.schematic.close"),
+                "settingsLabel", tr("screen.combatant.schematic.module_settings"), "labels", translations());
+    }
+
+    private float textTo(String text, int index) {
+        return ClickGuiRenderer.textWidth(searchFont, text.substring(0, Math.min(Math.max(0,index), text.length())), 17f);
+    }
+
+    private Map<String, Object> translations() {
+        String base = "screen.combatant.schematic.";
+        return map("title", tr(base + "title"), "refresh", tr(base + "refresh"),
+                "scanning", tr(base + "scanning"), "empty", tr(base + "empty"),
+                "emptyHint", tr(base + "empty_hint"), "noMatches", tr(base + "no_matches"),
+                "load", tr(base + "load"), "folder", tr(base + "open_folder"),
+                "search", tr(base + "search"),
+                "details", tr(base + "panel.details"), "materials", tr(base + "panel.materials"),
+                "files", tr(base + "info.files"), "pick", tr(base + "pick_file"),
+                "play", tr(base + "play"), "pause", tr(base + "pause"),
+                "originHere", tr(base + "origin_here"), "originLook", tr(base + "origin_look"),
+                "rotate", tr(base + "rotate"), "mirror", tr(base + "mirror"),
+                "builderStart", tr(base + "builder_start"), "builderStop", tr(base + "builder_stop"),
+                "projectionShow", tr(base + "projection_show"), "projectionHide", tr(base + "projection_hide"),
+                "settings", tr(base + "module_settings"), "unload", tr(base + "unload"),
+                "layerMaterials", tr(base + "materials_layer"), "allMaterials", tr(base + "materials_total"),
+                "materialsNone", tr(base + "materials_none"), "attentionNone", tr(base + "attention_none"),
+                "attention", tr(base + "attention_tab", issues.size()));
+    }
+
+    private static int blend(int a, int b, float t) {
+        int out = 0xFF000000;
+        for (int shift : new int[]{16, 8, 0}) {
+            int aa = (a >>> shift) & 255, bb = (b >>> shift) & 255;
+            out |= Math.round(aa + (bb - aa) * t) << shift;
+        }
+        return out;
+    }
+
+    private String builderStatus() {
+        SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
+        return builder == null ? "" : tr("screen.combatant.schematic.builder." + builder.status().name().toLowerCase(Locale.ROOT));
+    }
+
+    private void registerActions() {
+        register("close", this::requestClose);
+        register("refresh", library::refresh);
+        register("folder", SchematicActions::openFolder);
+        register("load", () -> { if (selectedPath != null) {
+            SchematicActions.load(selectedPath); libraryMode = false; drawerMode = "none";
+            searchFocused = false; searchInput.unfocus();
+        } });
+        register("unload", () -> { SchematicActions.unload(); libraryMode = true; drawerMode = "none";
+            searchFocused = false; searchInput.unfocus(); });
+        register("search", () -> searchFocused = true);
+        register("list-mode", () -> cardsMode = false);
+        register("cards-mode", () -> cardsMode = true);
+        register("search-clear", () -> { searchInput.clear(); searchFocused = true; });
+        register("library", () -> { libraryMode = true; drawerMode = "none"; });
+        register("editor", () -> { if (state.hasSchematic() || SchematicActions.loadingPath() != null) {
+            libraryMode = false; searchFocused = false;
+        } });
+        register("properties-toggle", () -> toggleDrawer("properties"));
+        register("materials-toggle", () -> toggleDrawer("materials"));
+        register("layers-toggle", () -> toggleDrawer("layers"));
+        register("drawer-close", () -> drawerMode = "none");
+        for (LocalToast toast : localToasts) {
+            runtime.actions().register("schematic:toast-close:" + toast.id(), ctx -> {
+                localToasts.removeIf(item -> item.id() == toast.id());
+                return true;
+            });
+        }
+        register("origin-here", SchematicActions::setOriginHere);
+        register("origin-look", SchematicActions::setOriginLooked);
+        register("rotate", state::rotateClockwise);
+        register("mirror", state::cycleMirror);
+        register("builder", () -> {
+            if (state.isPlaced() || SchematicActions.builderEnabled()) SchematicActions.toggleBuilder();
+        });
+        register("projection", SchematicActions::toggleProjection);
+        register("layer-mode", SchematicActions::cycleLayerMode);
+        register("builder-settings", () -> toggleSettings(SchematicBuilder.class, "screen.combatant.schematic.builder_title"));
+        register("projection-settings", () -> toggleSettings(SchematicProjection.class, "screen.combatant.schematic.projection_title"));
+        register("view-3d", () -> view3d = true);
+        register("view-2d", () -> view3d = false);
+        register("view-mode", viewport::cycleMode);
+        register("gap-decrease", () -> viewport.setGap(clamp(viewport.gap() - .25f, 0f, SchematicViewport.MAX_GAP)));
+        register("gap-increase", () -> viewport.setGap(clamp(viewport.gap() + .25f, 0f, SchematicViewport.MAX_GAP)));
+        register("auto-rotate", viewport::toggleAutoRotate);
+        register("reset-camera", this::resetView);
+        register("layer-prev", () -> state.stepLayer(-1));
+        register("layer-next", () -> state.stepLayer(1));
+        register("layer-prev10", () -> state.stepLayer(-10));
+        register("layer-next10", () -> state.stepLayer(10));
+        register("play", () -> { playing = !playing && state.hasSchematic(); playAccumulator = 0f; });
+        register("speed", () -> speedIndex = (speedIndex + 1) % SPEEDS.length);
+        register("material-layer", () -> { materialsTotal = false; issuesShown = false; });
+        register("material-total", () -> { materialsTotal = true; issuesShown = false; });
+        register("material-issues", () -> issuesShown = true);
+        for (int i = 0; i < filtered.size(); i++) {
+            int row = i;
+            runtime.actions().register("schematic:file:" + i, context -> {
+                if (row >= filtered.size()) return true;
+                SchematicHeader file = filtered.get(row);
+                selectedPath = file.path();
+                if (doubleClickFile && !file.failed()) {
+                    SchematicActions.load(selectedPath); libraryMode = false; drawerMode = "none";
+            searchFocused = false; searchInput.unfocus();
+                }
+                searchFocused = false;
+                return true;
+            });
         }
     }
 
-    private void renderSearch(float alpha) {
-        float r = searchH * 0.5f;
-        int fill = SchematicUi.withAlpha(SchematicUi.mix(SchematicUi.GLASS_RGB, 0xFF000000, searchFocused ? 0.2f : 0.4f),
-                Math.round(alpha * (searchFocused ? 150f : 120f)));
-        Renderer2D.COLOR.roundedRect(searchX, searchY, searchW, searchH, r, fill);
-        if (searchFocused) {
-            Renderer2D.COLOR.roundedRectStroke(searchX, searchY, searchW, searchH, r, 1f, SchematicUi.scaleAlpha(SchematicUi.withAlpha(SchematicUi.ACCENT, 150), alpha));
-        }
-        String shown = search.isEmpty() && !searchFocused ? tr("screen.combatant.schematic.search") : search;
-        if (searchFocused && AnimationUtility.blink(500L)) shown += "|";
-        int color = search.isEmpty() && !searchFocused ? SchematicUi.FAINT : SchematicUi.TEXT;
-        ui.text(ui.ellipsize(shown, SchematicUi.BODY, searchW - 36f), searchX + 18f, searchY + (searchH - bodyH) * 0.5f,
-                SchematicUi.BODY, SchematicUi.scaleAlpha(color, alpha), false);
+    private void toggleDrawer(String requested) {
+        if (libraryMode) return;
+        drawerMode = requested.equals(drawerMode) ? "none" : requested;
+        searchFocused = false;
     }
 
-    private void renderRow(SchematicHeader header, float y, int slot, float alpha) {
-        float x = leftX + 4f;
-        float w = leftW - 16f;
-        float rh = ROW_H - 6f;
-        boolean selected = header.path().equals(selectedPath);
-        boolean hovered = SchematicUi.inside(mouseX, mouseY, x, y, w, rh);
-        boolean active = state.schematic() != null && SchematicFormats.baseName(header.path()).equals(state.schematic().fileName());
-        float h = 0f;
-        if (slot < rowHover.length) {
-            rowHover[slot] = AnimationUtility.approach(rowHover[slot], hovered ? 1f : 0f, frameDt, 14f);
-            h = rowHover[slot];
+    private boolean editorVisible() {
+        return !libraryMode && !(bounds != null && bounds.compact && !"none".equals(drawerMode));
+    }
+
+    private void register(String key, Runnable action) {
+        runtime.actions().register("schematic:" + key, ctx -> { action.run(); return true; });
+    }
+
+    private void renderCanvas(float dt) {
+        Schematic schematic = state.schematic();
+        if (bounds == null || schematic == null || SchematicActions.loadingPath() != null
+                || !editorVisible()) return;
+        SchematicDiff diff = state.currentDiff();
+        if (diff != null && diff.schematic() != schematic) diff = null;
+        float vx = canvasNativeX(), vy = canvasNativeY();
+        float vw = canvasNativeW(), vh = canvasNativeH();
+        boolean hot = inside(mouseX, mouseY, vx, vy, vw, vh) && !layerDragging && !gapDragging;
+        if (view3d) {
+            viewport.render(schematic, grid.paletteColors(schematic), state.layer(), diff, vx, vy, vw, vh,
+                    dt, mouseX, mouseY, hot && !insideInset(mouseX, mouseY), 1f);
+            float side = insetSize(vw, vh);
+            float ix = vx + 12f, iy = vy + vh - side - 14f;
+            grid.layout(schematic, ix + 4f, iy + 4f, side - 8f, side - 8f);
+            Renderer2D.COLOR.roundedRect(ix, iy, side, side, 8f, 0xEA1D1D1D);
+            grid.render(schematic, state.layer(), diff, 1f);
+        } else {
+            grid.layout(schematic, vx + 10f, vy + 10f, vw - 20f, vh - 20f,
+                    gridZoom, gridPanX, gridPanY);
+            boolean clipped = ScissorFunction.pushRaw(vx, vy, vw, vh);
+            try { grid.render(schematic, state.layer(), diff, 1f); }
+            finally { if (clipped) ScissorFunction.pop(); }
         }
-        if (selected) {
-            int fill = SchematicUi.withAlpha(SchematicUi.mix(SchematicUi.GLASS_RGB, SchematicUi.ACCENT, 0.42f), Math.round(165f + h * 35f));
-            Renderer2D.COLOR.roundedRect(x, y, w, rh, 10f, SchematicUi.scaleAlpha(fill, alpha));
-            Renderer2D.COLOR.roundedRect(x + 4f, y + 12f, 3f, rh - 24f, 1.5f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
-        } else if (h > 0.01f) {
-            Renderer2D.COLOR.roundedRect(x, y, w, rh, 10f, SchematicUi.withAlpha(SchematicUi.HOVER_RGB, Math.round(alpha * h * 120f)));
+    }
+
+    private float canvasNativeX() { return bounds.canvasX; }
+    private float canvasNativeY() { return bounds.canvasY; }
+    private float canvasNativeW() { return Math.max(20f, bounds.canvasW); }
+    private float canvasNativeH() { return Math.max(20f, bounds.canvasH); }
+    private static float insetSize(float vw, float vh) {
+        return Math.min(170f, Math.max(74f, Math.min(vw, vh) * .24f));
+    }
+    private boolean insideInset(float mx, float my) {
+        if (!view3d || bounds == null || !editorVisible()) return false;
+        float vx = canvasNativeX(), vy = canvasNativeY();
+        float vw = canvasNativeW(), vh = canvasNativeH(), side = insetSize(vw, vh);
+        return inside(mx, my, vx + 12f, vy + vh - side - 14f, side, side);
+    }
+
+    /** Native voxel hit tooltip; UI actions and layout are exclusively script-owned. */
+    private void renderCanvasTooltip() {
+        if (bounds == null || state.schematic() == null || settingsPanel.isActive()
+                || layerDragging || gapDragging || viewport.dragging()
+                || !editorVisible()
+                || !inside(mouseX, mouseY, canvasNativeX(), canvasNativeY(), canvasNativeW(), canvasNativeH())) return;
+        Schematic schematic = state.schematic();
+        int cx, cy, cz;
+        if (view3d) {
+            int hit = viewport.hovered();
+            if (hit < 0) return;
+            cx = schematic.xOf(hit); cy = schematic.yOf(hit); cz = schematic.zOf(hit);
+        } else {
+            int[] hit = grid.cellAt(schematic, mouseX, mouseY);
+            if (hit == null) return;
+            cx = hit[0]; cy = state.layer(); cz = hit[1];
         }
-        int nameColor = header.failed() ? SchematicUi.BAD : SchematicUi.TEXT;
-        ui.text(ui.ellipsize(header.name(), SchematicUi.BODY, w - 52f), x + 18f + h * 2f, y + 8f, SchematicUi.BODY,
-                SchematicUi.scaleAlpha(nameColor, alpha), selected);
-        if (active) {
-            Renderer2D.COLOR.circle(x + w - 16f, y + 8f + bodyH * 0.5f, 6f, SchematicUi.withAlpha(SchematicUi.GOOD, Math.round(alpha * 50f)));
-            Renderer2D.COLOR.circle(x + w - 16f, y + 8f + bodyH * 0.5f, 3f, SchematicUi.scaleAlpha(SchematicUi.GOOD, alpha));
+        int palette = schematic.paletteIndex(cx, cy, cz);
+        if (palette <= 0) return;
+        String name = schematic.paletteState(palette).getBlock().getName().getString();
+        String id = schematic.paletteId(palette);
+        String coords = tr("screen.combatant.schematic.tooltip.local", cx, cy, cz);
+        if (state.placement() != null) {
+            BlockPos world = state.placement().toWorld(cx, cy, cz);
+            coords += " · " + tr("screen.combatant.schematic.tooltip.world", world.getX(), world.getY(), world.getZ());
         }
-        float chipY = y + 12f + bodyH;
-        if (header.failed()) {
-            float cw = ui.chip(x + 18f, chipY, tr("screen.combatant.schematic.row_failed"), SchematicUi.BAD, alpha);
-            ui.text(ui.ellipsize(header.error(), SchematicUi.TINY, w - cw - 40f), x + 26f + cw, chipY + 3f, SchematicUi.TINY,
-                    SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-            return;
-        }
-        float cx = x + 18f;
-        cx += ui.chip(cx, chipY, header.dimensions(), SchematicUi.ACCENT, alpha) + 6f;
-        if (header.totalBlocks() >= 0 && cx + 60f < x + w) {
-            ui.chip(cx, chipY, tr("screen.combatant.schematic.blocks_count", header.totalBlocks()), SchematicUi.GOOD, alpha);
-        }
+        float width = Math.min(Math.max(174f,
+                Math.max(nativeUi.width(name, SchematicUi.BODY, true),
+                         Math.max(nativeUi.width(id, SchematicUi.SMALL, false),
+                                  nativeUi.width(coords, SchematicUi.SMALL, false))) + 28f),
+                Math.max(174f, bounds.w - 20f));
+        float height = 74f;
+        float tx = Math.max(bounds.x + 8f, Math.min(mouseX + 16f, bounds.x + bounds.w - width - 8f));
+        float ty = Math.max(bounds.y + 8f, Math.min(mouseY + 16f, bounds.y + bounds.h - height - 8f));
+        // Accent is the same *rounded card*, with its body clipped 4 px from the left.
+        // Both top-left and bottom-left corners inherit the tooltip's exact radius.
+        int swatch = grid.paletteColor(schematic, palette) | 0xFF000000;
+        Renderer2D.COLOR.roundedRect(tx, ty, width, height, 7f, swatch);
+        boolean bodyClip = ScissorFunction.pushRaw(tx + 4f, ty, width - 4f, height);
+        try { Renderer2D.COLOR.roundedRect(tx, ty, width, height, 7f, 0xF6292929); }
+        finally { if (bodyClip) ScissorFunction.pop(); }
+        Renderer2D.COLOR.roundedRectStroke(tx, ty, width, height, 7f, 1f, 0xFF737373);
+        nativeUi.text(nativeUi.ellipsize(name, SchematicUi.BODY, width - 26f), tx + 12f, ty + 7f,
+                SchematicUi.BODY, 0xFFF4F4F4, true);
+        nativeUi.text(nativeUi.ellipsize(id, SchematicUi.SMALL, width - 26f), tx + 12f, ty + 29f,
+                SchematicUi.SMALL, 0xFFB9B9B9, false);
+        nativeUi.text(nativeUi.ellipsize(coords, SchematicUi.SMALL, width - 26f), tx + 12f, ty + 49f,
+                SchematicUi.SMALL, 0xFFB9B9B9, false);
     }
 
     private void refreshFiltered() {
-        String query = search.trim().toLowerCase(Locale.ROOT);
-        if (filteredGeneration == library.scanGeneration() && query.equals(filteredQuery)) return;
-        filteredGeneration = library.scanGeneration();
-        filteredQuery = query;
-        List<SchematicHeader> next = new ArrayList<>();
-        for (SchematicHeader header : library.headers()) {
-            if (query.isEmpty() || header.name().toLowerCase(Locale.ROOT).contains(query)
-                    || header.fileName().toLowerCase(Locale.ROOT).contains(query)) next.add(header);
+        String query = searchInput.text().trim().toLowerCase(Locale.ROOT);
+        if (query.equals(filterKey) && filterGeneration == library.scanGeneration()) return;
+        filterKey = query;
+        filterGeneration = library.scanGeneration();
+        List<SchematicHeader> result = new ArrayList<>();
+        for (SchematicHeader f : library.headers()) {
+            if (query.isEmpty() || f.name().toLowerCase(Locale.ROOT).contains(query)
+                    || f.fileName().toLowerCase(Locale.ROOT).contains(query)) result.add(f);
         }
-        filtered = next;
+        filtered = result;
     }
 
-    // ---------------------------------------------------------------- centre
-
-    private void renderCentreHeader(float alpha) {
+    private void refreshMaterials(long now) {
         Schematic schematic = state.schematic();
-        boolean loaded = schematic != null;
-        float trackW = loaded ? bw[Btn.TAB_3D.ordinal()] + bw[Btn.TAB_2D.ordinal()] : 0f;
-        float limit = centrePX + centrePW - PAD - trackW - 12f;
-        String title = loaded ? schematic.name() : tr("screen.combatant.schematic.panel.preview");
-        String shown = ui.ellipsize(title, SchematicUi.TITLE, Math.max(60f, (limit - centrePX - 40f) * 0.6f));
-        float end = ui.header(shown, centrePX, colTop, centrePW, HEADER_H, alpha);
-        if (loaded) {
-            String dims = schematic.sizeX() + "x" + schematic.sizeY() + "x" + schematic.sizeZ();
-            float chipY = colTop + (HEADER_H - (tinyH + 6f)) * 0.5f;
-            if (end + 90f < limit) end += 10f + ui.chip(end + 10f, chipY, dims, SchematicUi.ACCENT, alpha);
-            float room = limit - end - 16f;
-            if (room > 150f) {
-                ui.text(ui.ellipsize(tr("screen.combatant.schematic.keys_hint"), SchematicUi.SMALL, room), end + 16f,
-                        colTop + (HEADER_H - smallH) * 0.5f, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.FAINT, alpha), false);
-            }
-            int a = Btn.TAB_3D.ordinal();
-            ui.segmentTrack(bx[a], by[a], trackW, bh[a], alpha);
-            ui.segmentPill(bx[a] + segView * bw[a], by[a], bw[a], bh[a], alpha);
-            drawTab(Btn.TAB_3D, tr("screen.combatant.schematic.view.tab_3d"), view3d, true, alpha);
-            drawTab(Btn.TAB_2D, tr("screen.combatant.schematic.view.tab_2d"), !view3d, true, alpha);
-        }
-    }
-
-    private void renderCentre(float alpha) {
-        renderCentreHeader(alpha);
-        Schematic schematic = state.schematic();
-        Path loading = SchematicActions.loadingPath();
-        if (loading != null) {
-            renderLoading(loading, alpha);
-            return;
-        }
-        if (schematic == null) {
-            renderNothingLoaded(alpha);
-            return;
-        }
-        renderLayerTitle(schematic, alpha);
-        SchematicDiff diff = state.currentDiff();
-        if (diff != null && diff.schematic() != schematic) diff = null;
-        float viewAlpha = alpha * (0.35f + 0.65f * AnimationUtility.easeOutCubic(viewFade));
-        if (view3d) {
-            render3d(schematic, diff, viewAlpha);
-        } else {
-            ui.well(gridX, gridY, gridW, gridH, 10f, alpha);
-            grid.render(schematic, state.layer(), diff, viewAlpha);
-        }
-        renderStrip(schematic, diff, alpha);
-        renderProgress(diff, alpha);
-        renderControls(alpha);
-    }
-
-    private void renderNothingLoaded(float alpha) {
-        ui.well(centreX, gridY, centreW, gridH, 10f, alpha);
-        float cx = centreX + centreW * 0.5f;
-        float cy = gridY + gridH * 0.5f - 30f;
-        String error = SchematicActions.lastError();
-        int iconColor = error.isEmpty() ? SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.45f)
-                : SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.BAD, 0.55f);
-        float bob = (float) Math.sin(System.nanoTime() / 1.0e9 * 1.6) * 3f;
-        SchematicViewport.drawCubeIcon(cx, cy + bob, 26f, iconColor, alpha);
-        if (error.isEmpty()) {
-            ui.textCentered(tr("screen.combatant.schematic.pick_file"), cx, cy + 48f, SchematicUi.BODY,
-                    SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-            return;
-        }
-        ui.textCentered(tr("screen.combatant.schematic.load_error"), cx, cy + 46f, SchematicUi.BODY,
-                SchematicUi.scaleAlpha(SchematicUi.BAD, alpha), true);
-        ui.textCentered(ui.ellipsize(error, SchematicUi.SMALL, centreW - 40f), cx, cy + 54f + bodyH,
-                SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-    }
-
-    private void renderLoading(Path loading, float alpha) {
-        ui.well(centreX, gridY, centreW, gridH, 10f, alpha);
-        float cx = centreX + centreW * 0.5f;
-        float cy = gridY + gridH * 0.5f - 20f;
-        float spin = (System.nanoTime() / 1_000_000L % 1200L) / 1200f * 360f;
-        Renderer2D.COLOR.circleStroke(cx, cy, 28f, 4f, SchematicUi.withAlpha(SchematicUi.ACCENT, Math.round(alpha * 40f)));
-        Renderer2D.COLOR.arcStroke(cx, cy, 28f, 4f, spin, spin + 260f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
-        SchematicViewport.drawCubeIcon(cx, cy, 11f, SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.5f), alpha);
-        ui.textCentered(tr("screen.combatant.schematic.loading", loading.getFileName().toString()), cx, cy + 46f,
-                SchematicUi.BODY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-    }
-
-    private void render3d(Schematic schematic, SchematicDiff diff, float alpha) {
-        ui.well(gridX, gridY, gridW, gridH, 10f, alpha);
-        boolean inside = insideViewport(mouseX, mouseY) && !overViewportChrome(mouseX, mouseY) && !draggingStrip && !draggingGap;
-        viewport.render(schematic, grid.paletteColors(schematic), state.layer(), diff, gridX, gridY, gridW, gridH,
-                frameDt, mouseX, mouseY, inside, alpha);
-        if (viewport.faces() == null) {
-            float spin = (System.nanoTime() / 1_000_000L % 1200L) / 1200f * 360f;
-            float cx = gridX + gridW * 0.5f, cy = gridY + gridH * 0.5f;
-            Renderer2D.COLOR.arcStroke(cx, cy, 20f, 3f, spin, spin + 260f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
-            ui.textCentered(tr("screen.combatant.schematic.view.building"), cx, cy + 32f, SchematicUi.SMALL,
-                    SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        }
-        renderViewChrome(alpha);
-        renderInset(schematic, diff, alpha);
-    }
-
-    private void renderViewChrome(float alpha) {
-        String mode = tr("screen.combatant.schematic.view.mode." + viewport.mode().name().toLowerCase(Locale.ROOT));
-        drawButton(Btn.VIEW_MODE, mode, false, true, alpha);
-        drawButton(Btn.AUTO_ROTATE, tr("screen.combatant.schematic.view.auto_rotate"), viewport.autoRotate(), true, alpha);
-        drawButton(Btn.RESET_VIEW, tr("screen.combatant.schematic.view.reset"), false, true, alpha);
-        if (viewport.mode().exploded()) renderGapSlider(alpha);
-        FaceList faces = viewport.faces();
-        float right = gridX + gridW - 12f;
-        float bottom = gridY + gridH - 10f - tinyH;
-        ui.textRight(ui.ellipsize(tr("screen.combatant.schematic.view.hint"), SchematicUi.TINY, gridW - insetS - 40f), right, bottom,
-                SchematicUi.TINY, SchematicUi.scaleAlpha(SchematicUi.FAINT, alpha), false);
-        if (faces == null) return;
-        String stats = tr("screen.combatant.schematic.view.faces", formatCount(faces.count()));
-        if (faces.lodStep() > 1) stats += "  ·  " + tr("screen.combatant.schematic.view.lod", faces.lodStep());
-        if (faces.truncated()) stats += "  ·  " + tr("screen.combatant.schematic.view.truncated");
-        if (viewport.meshing()) stats = tr("screen.combatant.schematic.view.building") + "  ·  " + stats;
-        int color = faces.truncated() ? SchematicUi.WARN : SchematicUi.MUTED;
-        ui.textRight(stats, right, bottom - tinyH - 4f, SchematicUi.TINY, SchematicUi.scaleAlpha(color, alpha), false);
-    }
-
-    private void renderGapSlider(float alpha) {
-        String label = tr("screen.combatant.schematic.view.gap", String.format(Locale.ROOT, "%.2f", viewport.gap()));
-        ui.text(label, gapX, gridY + 12f, SchematicUi.TINY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        float t = viewport.gap() / SchematicViewport.MAX_GAP;
-        Renderer2D.COLOR.roundedRect(gapX, gapY, gapW, 4f, 2f, SchematicUi.scaleAlpha(SchematicUi.SURFACE_HOVER, alpha));
-        Renderer2D.COLOR.roundedRect(gapX, gapY, Math.max(4f, gapW * t), 4f, 2f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
-        boolean hot = draggingGap || SchematicUi.inside(mouseX, mouseY, gapX - 6f, gapY - 8f, gapW + 12f, 20f);
-        float r = hot ? 7f : 6f;
-        Renderer2D.COLOR.circle(gapX + gapW * t, gapY + 2f, r + 3f, SchematicUi.withAlpha(SchematicUi.ACCENT, Math.round(alpha * (hot ? 60f : 30f))));
-        Renderer2D.COLOR.circle(gapX + gapW * t, gapY + 2f, r, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha));
-    }
-
-    private void renderInset(Schematic schematic, SchematicDiff diff, float alpha) {
-        boolean hot = SchematicUi.inside(mouseX, mouseY, insetX, insetY, insetS, insetS);
-        ui.well(insetX, insetY, insetS, insetS, 10f, alpha * 0.95f);
-        Renderer2D.COLOR.roundedRectStroke(insetX, insetY, insetS, insetS, 10f, 1f,
-                SchematicUi.scaleAlpha(hot ? SchematicUi.ACCENT : SchematicUi.PANEL_STROKE, alpha));
-        grid.render(schematic, state.layer(), diff, alpha);
-        ui.chip(insetX + 6f, insetY + 6f, tr("screen.combatant.schematic.view.tab_2d"), SchematicUi.ACCENT, alpha);
-    }
-
-    private static String formatCount(int count) {
-        return count >= 10_000 ? String.format(Locale.ROOT, "%.1fk", count / 1000f) : String.valueOf(count);
-    }
-
-    private void renderLayerTitle(Schematic schematic, float alpha) {
-        String layer = tr("screen.combatant.schematic.layer", state.layer() + 1, schematic.sizeY());
-        ui.text(layer, centreX, contentY, SchematicUi.TITLE, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
         LayerStats stats = state.stats();
-        String blocks = stats == null ? "" : tr("screen.combatant.schematic.blocks_count", stats.blocksInLayer(state.layer()));
-        String mode = tr("screen.combatant.schematic.layer_mode." + state.layerMode().name().toLowerCase(Locale.ROOT));
-        String worldY = state.placement() == null ? "" : "  ·  Y " + state.placement().worldY(state.layer());
-        ui.text(blocks + "  ·  " + mode + worldY, centreX, contentY + titleH + 6f, SchematicUi.SMALL,
-                SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        if (playing) {
-            ui.textRight(tr("screen.combatant.schematic.playing", PLAY_SPEEDS[speedIndex]), centreX + centreW, contentY + 6f,
-                    SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha), false);
+        if (schematic == null || stats == null) { materials = List.of(); materialKey = null; return; }
+        List<Object> key = List.of(schematic, materialsTotal ? -1 : state.layer());
+        if (!key.equals(materialKey)) {
+            materialKey = key;
+            materials = SchematicMaterials.materials(schematic,
+                    materialsTotal ? stats.paletteTotals() : stats.layerHistogram(state.layer()));
+            materialHave = new int[materials.size()];
+            materialHaveAt = 0L;
         }
-    }
-
-    private void renderStrip(Schematic schematic, SchematicDiff diff, float alpha) {
-        ui.section(stripX, stripY, STRIP_W, stripH, alpha);
-        LayerStats stats = state.stats();
-        int layers = schematic.sizeY();
-        int rows = Math.max(1, Math.min(layers, (int) (stripH - 8f)));
-        float rowH = (stripH - 8f) / rows;
-        float maxW = STRIP_W - 12f;
-        int max = stats == null ? 1 : Math.max(1, stats.maxLayerBlocks());
-        int low = state.visibleLow(), high = state.visibleHigh();
-        for (int r = 0; r < rows; r++) {
-            int from = r * layers / rows;
-            int to = Math.max(from, (r + 1) * layers / rows - 1);
-            int blocks = 0;
-            for (int y = from; y <= to; y++) blocks = Math.max(blocks, stats == null ? 0 : stats.blocksInLayer(y));
-            if (blocks == 0) continue;
-            float w = Math.max(2f, maxW * blocks / max);
-            float y = stripY + stripH - 4f - (r + 1) * rowH;
-            int color = stripColor(diff, from, to, from <= high && to >= low);
-            Renderer2D.COLOR.quad(stripX + 6f, y + Math.min(0.5f, rowH * 0.1f), w, Math.max(1f, rowH - Math.min(1f, rowH * 0.2f)),
-                    SchematicUi.scaleAlpha(color, alpha));
-        }
-        renderStripThumb(layers, alpha);
-    }
-
-    private void renderStripThumb(int layers, float alpha) {
-        float markerY = stripY + stripH - 4f - (thumbLayer + 0.5f) * (stripH - 8f) / layers;
-        boolean hot = draggingStrip || SchematicUi.inside(mouseX, mouseY, stripX, stripY, STRIP_W, stripH);
-        float th = hot ? 6f : 4f;
-        Renderer2D.COLOR.roundedRectSoftShadow(stripX + 2f, markerY - th * 0.5f, STRIP_W - 4f, th, th * 0.5f, 10f, 0.03f * alpha,
-                SchematicUi.withAlpha(SchematicUi.ACCENT, Math.round(alpha * 90f)));
-        Renderer2D.COLOR.roundedRect(stripX + 2f, markerY - th * 0.5f, STRIP_W - 4f, th, th * 0.5f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha));
-        if (bubble <= 0.01f) return;
-        float a = alpha * bubble;
-        String label = String.valueOf(state.layer() + 1);
-        float bw = Math.max(34f, ui.width(label, SchematicUi.SMALL, true) + 16f);
-        float bh = smallH + 10f;
-        float bxPos = stripX - 8f - bw + (1f - AnimationUtility.easeOutBack(bubble)) * 10f;
-        float byPos = clamp(markerY - bh * 0.5f, stripY, stripY + stripH - bh);
-        Renderer2D.COLOR.roundedRectSoftShadow(bxPos, byPos, bw, bh, bh * 0.5f, 12f, 0.03f * a, SchematicUi.withAlpha(0x000000, Math.round(a * 110f)));
-        Renderer2D.COLOR.roundedRect(bxPos, byPos, bw, bh, bh * 0.5f, SchematicUi.scaleAlpha(SchematicUi.mix(SchematicUi.SURFACE, SchematicUi.ACCENT, 0.3f), a));
-        Renderer2D.COLOR.roundedRectStroke(bxPos, byPos, bw, bh, bh * 0.5f, 1f, SchematicUi.scaleAlpha(SchematicUi.ACCENT, a));
-        ui.textCentered(label, bxPos + bw * 0.5f, byPos + 5f, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.TEXT, a), true);
-    }
-
-    private static int stripColor(SchematicDiff diff, int from, int to, boolean inWindow) {
-        int base = inWindow ? SchematicUi.mix(SchematicUi.MUTED, SchematicUi.ACCENT, 0.35f) : SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.MUTED, 0.3f);
-        if (diff == null) return base;
-        int total = 0, correct = 0;
-        for (int y = from; y <= to; y++) {
-            total += diff.total(y);
-            correct += diff.correct(y);
-        }
-        if (total == 0) return base;
-        return SchematicUi.mix(base, SchematicUi.GOOD, (float) correct / total);
-    }
-
-    private void renderProgress(SchematicDiff diff, float alpha) {
-        float barY = progressY;
-        float barH = 12f;
-        float w = centreW;
-        ui.well(centreX, barY, w, barH, 6f, alpha);
-        if (diff == null) {
-            ui.text(tr("screen.combatant.schematic.progress_unplaced"), centreX, barY + barH + 6f, SchematicUi.SMALL,
-                    SchematicUi.scaleAlpha(SchematicUi.FAINT, alpha), false);
-            return;
-        }
-        int layer = state.layer();
-        int total = Math.max(1, diff.total(layer));
-        float x = centreX;
-        x = segment(x, barY, w * diff.correct(layer) / total, barH, SchematicUi.GOOD, alpha);
-        segment(x, barY, w * diff.wrong(layer) / total, barH, SchematicUi.BAD, alpha);
-        int buildTotal = 0, buildCorrect = 0;
-        for (int y = 0; y < state.layerCount(); y++) {
-            buildTotal += diff.total(y);
-            buildCorrect += diff.correct(y);
-        }
-        String text = tr("screen.combatant.schematic.progress", diff.correct(layer), diff.total(layer), diff.missing(layer),
-                diff.wrong(layer), buildTotal == 0 ? 100 : buildCorrect * 100 / buildTotal);
-        ui.text(text, centreX, barY + barH + 6f, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha * 0.9f), false);
-    }
-
-    private static float segment(float x, float y, float w, float h, int color, float alpha) {
-        if (w <= 0.5f) return x;
-        Renderer2D.COLOR.roundedRect(x, y, w, h, Math.min(6f, w * 0.5f), SchematicUi.scaleAlpha(color, alpha));
-        return x + w;
-    }
-
-    private void renderControls(float alpha) {
-        drawButton(Btn.LAYER_DOWN10, "-10", false, true, alpha);
-        drawButton(Btn.LAYER_DOWN, "-1", false, true, alpha);
-        drawButton(Btn.PLAY, tr(playing ? "screen.combatant.schematic.pause" : "screen.combatant.schematic.play"), playing, true, alpha);
-        drawButton(Btn.SPEED, PLAY_SPEEDS[speedIndex] + "/s", false, true, alpha);
-        drawButton(Btn.LAYER_UP, "+1", false, true, alpha);
-        drawButton(Btn.LAYER_UP10, "+10", false, true, alpha);
-    }
-
-    // ---------------------------------------------------------------- right
-
-    private void renderRight(float alpha) {
-        boolean loaded = state.hasSchematic();
-        boolean placed = state.isPlaced();
-        ui.header(tr("screen.combatant.schematic.panel.details"), rightPX, colTop, rightPW, HEADER_H, alpha);
-        renderInfo(alpha);
-        renderModuleRows(placed, alpha);
-        if (!loaded) {
-            renderMaterialsPlaceholder(alpha);
-            return;
-        }
-        drawButton(Btn.ORIGIN_HERE, tr("screen.combatant.schematic.origin_here"), false, loaded, alpha);
-        drawButton(Btn.ORIGIN_LOOK, tr("screen.combatant.schematic.origin_look"), false, loaded, alpha);
-        drawButton(Btn.ROTATE, tr("screen.combatant.schematic.rotate"), false, placed, alpha);
-        drawButton(Btn.MIRROR, tr("screen.combatant.schematic.mirror"), false, placed, alpha);
-        drawButton(Btn.LAYER_MODE, tr("screen.combatant.schematic.layer_mode." + state.layerMode().name().toLowerCase(Locale.ROOT)),
-                false, true, alpha);
-        drawButton(Btn.UNLOAD, tr("screen.combatant.schematic.unload"), false, loaded, alpha);
-        refreshIssues();
-        float tabH = bh[Btn.TAB_LAYER.ordinal()];
-        float tabY = by[Btn.TAB_LAYER.ordinal()];
-        ui.segmentTrack(rightX, tabY, rightW, tabH, alpha);
-        ui.segmentPill(rightX + segMat * (rightW / 3f), tabY, rightW / 3f, tabH, alpha);
-        Renderer2D.COLOR.quad(rightPX + 14f, materialsPY + HEADER_H, rightPW - 28f, 1f, SchematicUi.scaleAlpha(SchematicUi.SPLIT, alpha));
-        drawTab(Btn.TAB_LAYER, tr("screen.combatant.schematic.materials_layer"), !materialsTotal && !issuesShown, loaded, alpha);
-        drawTab(Btn.TAB_TOTAL, tr("screen.combatant.schematic.materials_total"), materialsTotal && !issuesShown, loaded, alpha);
-        drawTab(Btn.TAB_ISSUES, tr("screen.combatant.schematic.attention_tab", issues.size()), issuesShown, loaded, alpha);
-        if (issuesShown) {
-            renderIssues(alpha);
-        } else {
-            renderMaterials(alpha);
-        }
-    }
-
-    /** Builder and projection: on/off toggle plus a button that opens the module's full settings. */
-    private void renderModuleRows(boolean placed, float alpha) {
-        boolean building = SchematicActions.builderEnabled();
-        drawButton(Btn.BUILDER, tr(building ? "screen.combatant.schematic.builder_stop" : "screen.combatant.schematic.builder_start"),
-                building, placed || building, placed && !building, alpha);
-        drawButton(Btn.BUILDER_SETTINGS, tr("screen.combatant.schematic.module_settings"), settingsOpenFor(SchematicBuilder.class), true, alpha);
-        boolean projecting = SchematicActions.projectionEnabled();
-        drawButton(Btn.PROJECTION, tr(projecting ? "screen.combatant.schematic.projection_hide" : "screen.combatant.schematic.projection_show"),
-                projecting, true, alpha);
-        drawButton(Btn.PROJECTION_SETTINGS, tr("screen.combatant.schematic.module_settings"), settingsOpenFor(SchematicProjection.class), true, alpha);
-    }
-
-    private boolean settingsOpenFor(Class<? extends Module> type) {
-        Module module = ModuleManager.get(type);
-        return module != null && module.name().equals(settingsId) && settingsPanel.isActive();
-    }
-
-    /** Nothing loaded: the materials card says so instead of showing an empty box. */
-    private void renderMaterialsPlaceholder(float alpha) {
-        ui.header(tr("screen.combatant.schematic.panel.materials"), rightPX, materialsPY, rightPW, HEADER_H, alpha);
-        float cx = rightX + rightW * 0.5f;
-        float cy = materialsPY + HEADER_H + Math.max(40f, (materialsPH - HEADER_H) * 0.38f);
-        SchematicViewport.drawCubeIcon(cx, cy, 16f, SchematicUi.mix(SchematicUi.SURFACE_HOVER, SchematicUi.ACCENT, 0.3f), alpha);
-        ui.textCentered(ui.ellipsize(tr("screen.combatant.schematic.none_loaded"), SchematicUi.BODY, rightW - 16f), cx, cy + 34f,
-                SchematicUi.BODY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-    }
-
-    private static String[] infoRow(String labelKey, String value) {
-        return new String[]{tr(labelKey), value};
-    }
-
-    /** Rows of the info card in priority order, so a short column drops the least useful ones first. */
-    private void buildInfoRows() {
-        infoList.clear();
-        Schematic schematic = state.schematic();
-        if (schematic == null) {
-            infoList.add(infoRow("screen.combatant.schematic.info.folder", library.directory().toAbsolutePath().normalize().toString()));
-            infoList.add(infoRow("screen.combatant.schematic.info.files", String.valueOf(library.headers().size())));
-            return;
-        }
-        infoList.add(infoRow("screen.combatant.schematic.info.name", schematic.name()));
-        infoList.add(infoRow("screen.combatant.schematic.info.size", schematic.sizeX() + " x " + schematic.sizeY() + " x " + schematic.sizeZ()));
-        infoList.add(infoRow("screen.combatant.schematic.info.blocks", String.valueOf(schematic.totalBlocks())));
-        SchematicPlacement placement = state.placement();
-        if (placement == null) {
-            infoList.add(infoRow("screen.combatant.schematic.info.origin", tr("screen.combatant.schematic.info.not_placed")));
-        } else {
-            BlockPos o = placement.origin();
-            infoList.add(infoRow("screen.combatant.schematic.info.origin", o.getX() + ", " + o.getY() + ", " + o.getZ()));
-            String rotation = switch (placement.rotation()) {
-                case NONE -> "0°";
-                case CLOCKWISE_90 -> "90°";
-                case CLOCKWISE_180 -> "180°";
-                case COUNTERCLOCKWISE_90 -> "270°";
-            };
-            infoList.add(infoRow("screen.combatant.schematic.info.rotation", rotation));
-            infoList.add(infoRow("screen.combatant.schematic.info.mirror", mirrorName(placement.mirror())));
-            SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
-            if (builder != null) {
-                String status = tr("screen.combatant.schematic.builder." + builder.status().name().toLowerCase(Locale.ROOT));
-                if (builder.placedCount() > 0) status += " · " + builder.placedCount();
-                infoList.add(infoRow("screen.combatant.schematic.info.builder", status));
-                int chests = builder.chestIndex().indexedKeys(Minecraft.getInstance().level).length;
-                if (chests > 0) infoList.add(infoRow("screen.combatant.schematic.info.chests", String.valueOf(chests)));
-            }
-        }
-        infoList.add(infoRow("screen.combatant.schematic.info.author", schematic.author().isEmpty() ? "-" : schematic.author()));
-        infoList.add(infoRow("screen.combatant.schematic.info.palette", String.valueOf(schematic.paletteSize() - 1)));
-        infoList.add(infoRow("screen.combatant.schematic.info.regions", String.valueOf(schematic.regionCount())));
-        infoList.add(infoRow("screen.combatant.schematic.info.warnings", String.valueOf(schematic.warnings().size())));
-    }
-
-    private void renderInfo(float alpha) {
-        float step = smallH + 8f;
-        for (int i = 0; i < infoRows && i < infoList.size(); i++) {
-            String[] row = infoList.get(i);
-            float y = infoY + i * step;
-            if ((i & 1) == 1) {
-                Renderer2D.COLOR.roundedRect(rightX - 4f, y - 4f, rightW + 8f, step, 4f,
-                        SchematicUi.scaleAlpha(SchematicUi.withAlpha(SchematicUi.SURFACE, 60), alpha));
-            }
-            infoLine(row[0], row[1], y, alpha);
-        }
-    }
-
-    private static String mirrorName(Mirror mirror) {
-        return tr("screen.combatant.schematic.mirror." + mirror.name().toLowerCase(Locale.ROOT));
-    }
-
-    private void infoLine(String label, String value, float y, float alpha) {
-        ui.text(ui.ellipsize(label, SchematicUi.SMALL, rightW * 0.38f - 8f), rightX, y, SchematicUi.SMALL,
-                SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        float valueX = rightX + rightW * 0.38f;
-        ui.textRight(ui.ellipsize(value, SchematicUi.SMALL, rightX + rightW - valueX), rightX + rightW, y, SchematicUi.SMALL,
-                SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
-    }
-
-    private void renderMaterials(float alpha) {
-        ui.section(rightX, materialsY, rightW, materialsH, alpha);
-        refreshMaterials();
-        if (materials.isEmpty()) {
-            String text = tr(state.hasSchematic() ? "screen.combatant.schematic.materials_none" : "screen.combatant.schematic.none_loaded");
-            ui.textCentered(text, rightX + rightW * 0.5f, materialsY + Math.min(materialsH * 0.4f, 60f), SchematicUi.SMALL,
-                    SchematicUi.scaleAlpha(SchematicUi.FAINT, alpha), false);
-            return;
-        }
-        int visible = Math.max(1, (int) ((materialsH - 8f) / MATERIAL_ROW_H));
-        materialsFirst = clampInt(materialsFirst, 0, Math.max(0, materials.size() - visible));
-        List<SchematicMaterials.Entry> missing = state.missingMaterials();
-        for (int i = 0; i < visible && materialsFirst + i < materials.size(); i++) {
-            int index = materialsFirst + i;
-            renderMaterialRow(index, materialsY + 4f + i * MATERIAL_ROW_H, isMissing(missing, materials.get(index)), alpha);
-        }
-        if (materials.size() > visible) {
-            ui.scrollbar(rightX + rightW - 7f, materialsY + 8f, materialsH - 16f, materialsFirst, visible, materials.size(), alpha);
-        }
-    }
-
-    /** What the builder cannot make exactly: the schematic's own impossibilities, then what the builder met. */
-    private void renderIssues(float alpha) {
-        ui.section(rightX, materialsY, rightW, materialsH, alpha);
-        if (issues.isEmpty()) {
-            String text = tr(state.hasSchematic() ? "screen.combatant.schematic.attention_none" : "screen.combatant.schematic.none_loaded");
-            ui.textCentered(text, rightX + rightW * 0.5f, materialsY + Math.min(materialsH * 0.4f, 60f), SchematicUi.SMALL,
-                    SchematicUi.scaleAlpha(SchematicUi.FAINT, alpha), false);
-            return;
-        }
-        int visible = Math.max(1, (int) ((materialsH - 8f) / MATERIAL_ROW_H));
-        materialsFirst = clampInt(materialsFirst, 0, Math.max(0, issues.size() - visible));
-        for (int i = 0; i < visible && materialsFirst + i < issues.size(); i++) {
-            renderIssueRow(materialsFirst + i, materialsY + 4f + i * MATERIAL_ROW_H, alpha);
-        }
-        if (issues.size() > visible) {
-            ui.scrollbar(rightX + rightW - 7f, materialsY + 8f, materialsH - 16f, materialsFirst, visible, issues.size(), alpha);
-        }
-    }
-
-    private void renderIssueRow(int index, float y, float alpha) {
-        SchematicAttention.Entry entry = issues.get(index);
-        float x = rightX + 6f;
-        float w = rightW - 16f;
-        float rh = MATERIAL_ROW_H - 2f;
-        Renderer2D.COLOR.roundedRect(x, y, w, rh, 6f, SchematicUi.scaleAlpha(SchematicUi.mix(SchematicUi.SURFACE, SchematicUi.WARN, 0.14f), alpha));
-        Renderer2D.COLOR.item(issueStacks.get(index), x + 4f, y + (rh - 20f) * 0.5f, 1.25f, index);
-        String where = entry.pos() == null
-                ? "x" + entry.count()
-                : entry.pos().getX() + ", " + entry.pos().getY() + ", " + entry.pos().getZ();
-        float whereW = ui.width(where, SchematicUi.TINY, false);
-        ui.text(ui.ellipsize(entry.state().getBlock().getName().getString(), SchematicUi.SMALL, w - whereW - 44f),
-                x + 32f, y + 3f, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), false);
-        ui.textRight(where, x + w - 4f, y + 4f, SchematicUi.TINY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        String reason = tr("screen.combatant.schematic.attention." + entry.reason().name().toLowerCase(Locale.ROOT));
-        ui.text(ui.ellipsize(reason, SchematicUi.TINY, w - 36f), x + 32f, y + rh - tinyH - 3f, SchematicUi.TINY,
-                SchematicUi.scaleAlpha(SchematicUi.WARN, alpha), false);
+        if (now - materialHaveAt < INVENTORY_INTERVAL) return;
+        materialHaveAt = now;
+        for (int i = 0; i < materials.size(); i++)
+            materialHave[i] = SchematicMaterials.countInInventory(Minecraft.getInstance().player, materials.get(i).item());
     }
 
     private void refreshIssues() {
         Schematic schematic = state.schematic();
         LayerStats stats = state.stats();
-        if (schematic == null || stats == null) {
-            issues = List.of();
-            issueStacks = List.of();
-            issuesKey = null;
-            return;
-        }
-        List<Object> key = List.of(schematic, state.attentionRevision(), state.placement() == null ? 0 : state.placement());
-        if (key.equals(issuesKey)) return;
-        issuesKey = key;
-        List<SchematicAttention.Entry> list = new ArrayList<>(SchematicAttention.staticIssues(schematic, stats.paletteTotals()));
-        list.addAll(state.attention());
-        issues = list;
-        List<ItemStack> stacks = new ArrayList<>(list.size());
-        for (SchematicAttention.Entry entry : list) {
-            Item item = SchematicMaterials.itemFor(entry.state());
-            stacks.add(new ItemStack(item == Items.AIR ? Items.BARRIER : item));
-        }
-        issueStacks = stacks;
+        if (schematic == null || stats == null) { issues = List.of(); issueKey = null; return; }
+        List<Object> key = List.of(schematic, state.attentionRevision());
+        if (key.equals(issueKey)) return;
+        issueKey = key;
+        List<SchematicAttention.Entry> result = new ArrayList<>(SchematicAttention.staticIssues(schematic, stats.paletteTotals()));
+        result.addAll(state.attention());
+        issues = result;
     }
 
-    private static boolean isMissing(List<SchematicMaterials.Entry> missing, SchematicMaterials.Entry entry) {
-        for (SchematicMaterials.Entry m : missing) {
-            if (m.item() == entry.item()) return true;
+    private <T extends Module> void toggleSettings(Class<T> type, String titleKey) {
+        T module = ModuleManager.get(type);
+        if (module == null || bounds == null) return;
+        if (settingsPanel.isActive() && module.name().equals(settingsId)) {
+            settingsPanel.close(); settingsId = null; return;
         }
-        return false;
+        settingsId = module.name();
+        settingsPanel.open(module.name(), tr(titleKey),
+                SettingErrorView.withDiagnostics(module, module.getSettings()), false);
+        settingsPanel.setAnchor(bounds.x + bounds.w - settingsPanel.panelWidth(SETTINGS_SCALE) - 12f,
+                bounds.y + bounds.header + 10f);
     }
 
-    private void renderMaterialRow(int index, float y, boolean builderMissing, float alpha) {
-        SchematicMaterials.Entry entry = materials.get(index);
-        int have = materialHave[index];
-        float x = rightX + 6f;
-        float w = rightW - 16f;
-        float rh = MATERIAL_ROW_H - 2f;
-        boolean rowHot = SchematicUi.inside(mouseX, mouseY, x, y, w, rh);
-        int card = builderMissing ? SchematicUi.mix(SchematicUi.SURFACE, SchematicUi.BAD, 0.22f)
-                : rowHot ? SchematicUi.SURFACE_HOVER : SchematicUi.SURFACE;
-        Renderer2D.COLOR.roundedRect(x, y, w, rh, 6f, SchematicUi.scaleAlpha(SchematicUi.withAlpha(card, builderMissing || rowHot ? 255 : 120), alpha));
-        Renderer2D.COLOR.item(materialStacks.get(index), x + 4f, y + (rh - 20f) * 0.5f, 1.25f, index);
-        if (index < materialRedstone.length && materialRedstone[index]) {
-            // Redstone parts carry a small dot so a machine's components stand out from its casing.
-            Renderer2D.COLOR.roundedRect(x + 2f, y + 3f, 6f, 6f, 3f, SchematicUi.scaleAlpha(SchematicUi.REDSTONE, alpha));
-        }
-        String counts = have + " / " + entry.count();
-        float countsW = ui.width(counts, SchematicUi.SMALL, false);
-        float textY = y + 4f;
-        ui.text(ui.ellipsize(materialStacks.get(index).getHoverName().getString(), SchematicUi.SMALL, w - countsW - 44f),
-                x + 32f, textY, SchematicUi.SMALL, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), false);
-        boolean done = have >= entry.count();
-        int color = done ? SchematicUi.GOOD : SchematicUi.BAD;
-        ui.textRight(counts, x + w - 4f, textY, SchematicUi.SMALL, SchematicUi.scaleAlpha(color, alpha), false);
-        float fraction = entry.count() <= 0 ? 1f : Math.min(1f, (float) have / entry.count());
-        float barX = x + 32f, barW = w - 36f, barY = y + rh - 8f;
-        Renderer2D.COLOR.roundedRect(barX, barY, barW, 4f, 2f, SchematicUi.scaleAlpha(SchematicUi.WELL, alpha));
-        int fill = done ? SchematicUi.GOOD : SchematicUi.mix(SchematicUi.ACCENT, SchematicUi.GOOD, fraction);
-        if (fraction > 0f) Renderer2D.COLOR.roundedRect(barX, barY, Math.max(4f, barW * fraction), 4f, 2f, SchematicUi.scaleAlpha(fill, alpha));
-    }
-
-    private void refreshMaterials() {
-        Schematic schematic = state.schematic();
-        LayerStats stats = state.stats();
-        if (schematic == null || stats == null) {
-            materials = List.of();
-            materialsKey = null;
-            return;
-        }
-        List<Object> key = List.of(schematic, materialsTotal ? -1 : state.layer());
-        if (!key.equals(materialsKey)) {
-            materialsKey = key;
-            int[] histogram = materialsTotal ? stats.paletteTotals() : stats.layerHistogram(state.layer());
-            materials = SchematicMaterials.materials(schematic, histogram);
-            List<ItemStack> stacks = new ArrayList<>(materials.size());
-            boolean[] redstone = new boolean[materials.size()];
-            for (int i = 0; i < materials.size(); i++) {
-                Item item = materials.get(i).item();
-                stacks.add(new ItemStack(item));
-                redstone[i] = item instanceof BlockItem blockItem
-                        && RedstoneRules.isComponent(blockItem.getBlock().defaultBlockState());
-            }
-            materialStacks = stacks;
-            materialRedstone = redstone;
-            materialHave = new int[materials.size()];
-            materialsHaveNanos = 0L;
-        }
-        long now = System.nanoTime();
-        if (now - materialsHaveNanos < HAVE_REFRESH_NANOS) return;
-        materialsHaveNanos = now;
-        for (int i = 0; i < materials.size(); i++) {
-            materialHave[i] = SchematicMaterials.countInInventory(Minecraft.getInstance().player, materials.get(i).item());
-        }
-    }
-
-    // ---------------------------------------------------------------- tooltip
-
-    private void renderTooltip(float alpha) {
-        Schematic schematic = state.schematic();
-        if (schematic == null || SchematicActions.loadingPath() != null || draggingStrip || draggingGap || viewport.dragging()) return;
-        if (view3d && viewport.hovered() >= 0) {
-            int index = viewport.hovered();
-            int x = schematic.xOf(index), y = schematic.yOf(index), z = schematic.zOf(index);
-            drawTooltip(schematic, x, y, z, y != state.layer(), alpha);
-            return;
-        }
-        boolean gridShown = !view3d || SchematicUi.inside(mouseX, mouseY, insetX, insetY, insetS, insetS);
-        int[] cell = gridShown ? grid.cellAt(schematic, mouseX, mouseY) : null;
-        if (cell == null) return;
-        drawTooltip(schematic, cell[0], state.layer(), cell[1], false, alpha);
-    }
-
-    private void drawTooltip(Schematic schematic, int cx, int cy, int cz, boolean clickHint, float alpha) {
-        int palette = schematic.paletteIndex(cx, cy, cz);
-        if (palette == 0) return;
-        BlockState block = schematic.paletteState(palette);
-        String name = block.getBlock().getName().getString();
-        String id = schematic.paletteId(palette);
-        String coords = tr("screen.combatant.schematic.tooltip.local", cx, cy, cz);
-        SchematicPlacement placement = state.placement();
-        if (placement != null) {
-            BlockPos world = placement.toWorld(cx, cy, cz);
-            coords += "  ·  " + tr("screen.combatant.schematic.tooltip.world", world.getX(), world.getY(), world.getZ());
-        }
-        String hint = clickHint ? tr("screen.combatant.schematic.tooltip.click_layer", cy + 1) : "";
-        float w = Math.max(ui.width(name, SchematicUi.BODY, true), Math.max(ui.width(id, SchematicUi.TINY, false),
-                Math.max(ui.width(coords, SchematicUi.TINY, false), ui.width(hint, SchematicUi.TINY, false)))) + 24f;
-        float h = bodyH + smallH * 2f + 24f + (hint.isEmpty() ? 0f : smallH + 2f);
-        float x = Math.min(mouseX + 16f, fixedWidth - w - 8f);
-        float y = Math.min(mouseY + 16f, fixedHeight - h - 8f);
-        int swatch = grid.paletteColor(schematic, palette);
-        Renderer2D.COLOR.roundedRectSoftShadow(x, y, w, h, 8f, 14f, 0.04f, SchematicUi.withAlpha(0x000000, 120));
-        Renderer2D.COLOR.roundedRect(x, y, w, h, 8f, SchematicUi.withAlpha(SchematicUi.PANEL_BOTTOM, Math.round(alpha * 245f)));
-        Renderer2D.COLOR.roundedRectStroke(x, y, w, h, 8f, 1f, SchematicUi.withAlpha(swatch, Math.round(alpha * 220f)));
-        Renderer2D.COLOR.roundedRect(x + 1f, y + 10f, 3f, h - 20f, 1.5f, SchematicUi.withAlpha(swatch, Math.round(alpha * 255f)));
-        ui.text(name, x + 12f, y + 8f, SchematicUi.BODY, SchematicUi.scaleAlpha(SchematicUi.TEXT, alpha), true);
-        ui.text(id, x + 12f, y + 12f + bodyH, SchematicUi.TINY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        ui.text(coords, x + 12f, y + 16f + bodyH + smallH, SchematicUi.TINY, SchematicUi.scaleAlpha(SchematicUi.MUTED, alpha), false);
-        if (!hint.isEmpty()) {
-            ui.text(hint, x + 12f, y + 18f + bodyH + smallH * 2f, SchematicUi.TINY, SchematicUi.scaleAlpha(SchematicUi.ACCENT, alpha), false);
-        }
-    }
-
-    private void drawButton(Btn id, String label, boolean active, boolean enabled, float alpha) {
-        drawButton(id, label, active, enabled, false, alpha);
-    }
-
-    private void drawButton(Btn id, String label, boolean active, boolean enabled, boolean primary, float alpha) {
-        int i = id.ordinal();
-        if (!bShown[i]) return;
-        ui.button(bx[i], by[i], bw[i], bh[i], label, enabled ? hover[i] : 0f, press[i], active, enabled, primary, alpha);
-    }
-
-    private void drawTab(Btn id, String label, boolean active, boolean enabled, float alpha) {
-        int i = id.ordinal();
-        if (!bShown[i]) return;
-        ui.tab(bx[i], by[i], bw[i], bh[i], label, enabled ? hover[i] : 0f, press[i], active, enabled, alpha);
-    }
-
-    // ---------------------------------------------------------------- input
-
-    /** Pointer press in the fixed (virtual) space; {@code doubled} marks a double-click. Always consumed. */
     public boolean mousePressed(float mx, float my, int button, boolean doubled) {
-        mouseX = mx;
+        mouseX = mx; mouseY = my;
+        doubleClickFile = doubled;
         if (settingsPanel.isActive()) {
-            int panelButton = button == 0 ? InputKeys.MOUSE_LEFT : button == 1 ? InputKeys.MOUSE_RIGHT : button == 2 ? InputKeys.MOUSE_MIDDLE : button;
-            if (settingsPanel.mouseClicked(mx, my, panelButton, SETTINGS_SCALE)) return true;
-            // A press outside the settings panel dismisses it; pressing its own button therefore just closes it.
-            settingsClosedId = settingsId;
-            settingsPanel.close();
-            settingsId = null;
-        } else {
-            settingsClosedId = null;
+            int mapped = button == 0 ? InputKeys.MOUSE_LEFT : button == 1 ? InputKeys.MOUSE_RIGHT : InputKeys.MOUSE_MIDDLE;
+            if (settingsPanel.mouseClicked(mx, my, mapped, SETTINGS_SCALE)) return true;
+            settingsPanel.close(); settingsId = null;
         }
-        mouseY = my;
-        if (button != 0) {
-            boolean pan = button == 1 || button == 2;
-            if (pan && view3dActive() && insideViewport(mx, my) && !overViewportChrome(mx, my)) viewport.beginDrag(button, mx, my);
+        if (bounds == null || !inside(mx, my, bounds.x, bounds.y, bounds.w, bounds.h)) return false;
+        if (button == 0 && libraryMode && inside(mx, my, bounds.searchX,
+                bounds.searchY, bounds.searchW, 44f)) {
+            searchFocused = true;
+            searchInput.beginDrag(mx, shiftDown());
+            if (runtime != null) runtime.input().pointerDown(runtime.root(), new UiPointerEvent(mx, my, button));
             return true;
         }
-        searchFocused = SchematicUi.inside(mx, my, searchX, searchY, searchW, searchH);
-        for (Btn id : BUTTONS) {
-            if (over(id)) {
-                press[id.ordinal()] = 1f;
-                onButton(id);
+        if (searchFocused) { searchFocused = false; searchInput.unfocus(); }
+        if (button == 0 && state.hasSchematic() && editorVisible()) {
+            if (inside(mx, my, bounds.stripX - 7f, bounds.stripY - 7f, bounds.stripW + 14f, 33f)) {
+                layerDragging = true; setLayerAt(mx); return true;
+            }
+            if (bounds.viewW >= 810f && view3d && viewport.mode().exploded()
+                    && inside(mx, my, bounds.gapX, bounds.gapY - 8f, bounds.gapW, 36f)) {
+                gapDragging = true; setGapAt(mx); return true;
+            }
+            if (insideInset(mx, my)) { view3d = false; return true; }
+            if (inside(mx, my, canvasNativeX(), canvasNativeY(), canvasNativeW(), canvasNativeH())) {
+                if (doubled) resetView();
+                if (view3d) viewport.beginDrag(button, mx, my, shiftDown());
+                else { gridDragging = true; lastGridX = mx; lastGridY = my; }
                 return true;
             }
         }
-        if (clickList(mx, my, doubled)) return true;
-        if (state.hasSchematic() && SchematicUi.inside(mx, my, stripX, stripY, STRIP_W, stripH)) {
-            draggingStrip = true;
-            setLayerFromStrip(my);
-            return true;
-        }
-        if (view3dActive()) clickViewport(mx, my, doubled);
-        return true;
+        return runtime == null || runtime.input().pointerDown(runtime.root(), new UiPointerEvent(mx, my, button));
     }
 
-    private void clickViewport(float mx, float my, boolean doubled) {
-        if (viewport.mode().exploded() && SchematicUi.inside(mx, my, gapX - 6f, gapY - 8f, gapW + 12f, 20f)) {
-            draggingGap = true;
-            setGapFrom(mx);
-            return;
-        }
-        if (SchematicUi.inside(mx, my, insetX, insetY, insetS, insetS)) {
-            setView3d(false);
-            return;
-        }
-        if (!insideViewport(mx, my)) return;
-        if (doubled) viewport.resetCamera();
-        viewport.beginDrag(0, mx, my);
-    }
-
-    private boolean clickList(float mx, float my, boolean doubled) {
-        if (!SchematicUi.inside(mx, my, leftX, listY, leftW, listH)) return false;
-        int index = listFirst + (int) ((my - listY - 4f) / ROW_H);
-        if (index < 0 || index >= filtered.size()) return true;
-        SchematicHeader header = filtered.get(index);
-        selectedPath = header.path();
-        if (doubled && !header.failed()) SchematicActions.load(selectedPath);
-        return true;
-    }
-
-    private void onButton(Btn id) {
-        switch (id) {
-            case CLOSE -> requestClose();
-            case REFRESH -> library.refresh();
-            case LOAD -> SchematicActions.load(selectedPath);
-            case OPEN_FOLDER -> SchematicActions.openFolder();
-            case ORIGIN_HERE -> SchematicActions.setOriginHere();
-            case ORIGIN_LOOK -> SchematicActions.setOriginLooked();
-            case ROTATE -> state.rotateClockwise();
-            case MIRROR -> state.cycleMirror();
-            case BUILDER -> {
-                if (state.isPlaced() || SchematicActions.builderEnabled()) SchematicActions.toggleBuilder();
-            }
-            case PROJECTION -> SchematicActions.toggleProjection();
-            case LAYER_MODE -> SchematicActions.cycleLayerMode();
-            case UNLOAD -> SchematicActions.unload();
-            case LAYER_DOWN10 -> state.stepLayer(-10);
-            case LAYER_DOWN -> state.stepLayer(-1);
-            case PLAY -> togglePlay();
-            case SPEED -> speedIndex = (speedIndex + 1) % PLAY_SPEEDS.length;
-            case LAYER_UP -> state.stepLayer(1);
-            case LAYER_UP10 -> state.stepLayer(10);
-            case TAB_LAYER -> {
-                materialsTotal = false;
-                issuesShown = false;
-            }
-            case TAB_TOTAL -> {
-                materialsTotal = true;
-                issuesShown = false;
-            }
-            case TAB_ISSUES -> {
-                issuesShown = true;
-                materialsFirst = 0;
-            }
-            case TAB_3D -> setView3d(true);
-            case TAB_2D -> setView3d(false);
-            case VIEW_MODE -> viewport.cycleMode();
-            case AUTO_ROTATE -> viewport.toggleAutoRotate();
-            case RESET_VIEW -> viewport.resetCamera();
-            case BUILDER_SETTINGS -> toggleModuleSettings(SchematicBuilder.class, "screen.combatant.schematic.builder_title");
-            case PROJECTION_SETTINGS -> toggleModuleSettings(SchematicProjection.class, "screen.combatant.schematic.projection_title");
-        }
-    }
-
-    /**
-     * Opens the module's own settings in the shared ClickGUI settings panel (same rows, theme and behaviour as the
-     * Modules tab), docked against the right edge of this panel; pressing the same button again closes it.
-     */
-    private <T extends Module> void toggleModuleSettings(Class<T> type, String titleKey) {
-        T module = ModuleManager.get(type);
-        if (module == null) return;
-        if (module.name().equals(settingsClosedId)) {
-            settingsClosedId = null;
-            return;
-        }
-        settingsId = module.name();
-        settingsPanel.open(module.name(), tr(titleKey), SettingErrorView.withDiagnostics(module, module.getSettings()), false);
-        settingsPanel.setAnchor(panelX + panelW - settingsPanel.panelWidth(SETTINGS_SCALE) - PAD,
-                panelY + (onClose == null ? PAD : TOPBAR_H + GAP));
-    }
-
-    private void setView3d(boolean next) {
-        if (view3d == next) return;
-        view3d = next;
-        viewFade = 0f;
-    }
-
-    private void togglePlay() {
-        playing = !playing && state.hasSchematic();
-        playAccumulator = 0f;
-    }
-
-    private void setLayerFromStrip(float my) {
-        int layers = state.layerCount();
-        if (layers <= 0) return;
-        float t = (stripY + stripH - 4f - my) / Math.max(1f, stripH - 8f);
-        state.setLayer((int) Math.floor(t * layers));
-    }
-
-    private void setGapFrom(float mx) {
-        viewport.setGap((mx - gapX) / gapW * SchematicViewport.MAX_GAP);
-    }
-
-    /** @return whether a drag of this panel is in progress and consumed the movement. */
     public boolean mouseDragged(float mx, float my) {
-        if (draggingStrip) {
-            setLayerFromStrip(my);
-            return true;
-        }
-        if (draggingGap) {
-            setGapFrom(mx);
-            return true;
-        }
-        if (viewport.dragging()) {
-            viewport.drag(mx, my);
+        mouseX = mx; mouseY = my;
+        SingleLineTextInput.mouseMoved(mx);
+        if (layerDragging) { setLayerAt(mx); return true; }
+        if (gapDragging) { setGapAt(mx); return true; }
+        if (viewport.dragging()) { viewport.drag(mx, my); return true; }
+        if (gridDragging) {
+            gridPanX += mx - lastGridX; gridPanY += my - lastGridY;
+            lastGridX = mx; lastGridY = my;
             return true;
         }
         return false;
     }
 
     public void mouseReleased(float mx, float my) {
+        SingleLineTextInput.mouseReleased();
+        if (bounds == null) return;
         settingsPanel.mouseReleased(mx, my, InputKeys.MOUSE_LEFT);
-        draggingStrip = false;
-        draggingGap = false;
         if (viewport.dragging()) {
-            int layer = viewport.endDrag(mx, my);
-            if (layer >= 0) state.setLayer(layer);
+            int pickedLayer = viewport.endDrag(mx, my);
+            if (pickedLayer >= 0) state.setLayer(pickedLayer);
         }
+        layerDragging = false; gapDragging = false; gridDragging = false;
+        if (runtime != null) runtime.input().pointerUp(runtime.root(), new UiPointerEvent(mx, my, 0));
     }
 
-    public boolean mouseScrolled(float mx, float my, double vertical) {
-        if (settingsPanel.isActive() && settingsPanel.mouseScrolled(mx, my, vertical)) return true;
-        int direction = vertical > 0 ? 1 : vertical < 0 ? -1 : 0;
-        if (direction == 0) return true;
-        if (SchematicUi.inside(mx, my, leftX, listY, leftW, listH)) {
-            listFirst -= direction;
-        } else if (SchematicUi.inside(mx, my, rightX, materialsY, rightW, materialsH)) {
-            materialsFirst -= direction;
-        } else if (view3dActive() && insideViewport(mx, my) && !ctrlDown()) {
-            viewport.zoom(direction);
-        } else if (SchematicUi.inside(mx, my, centreX, contentY, centreW, contentBottom - contentY)) {
-            state.stepLayer(direction * (shiftDown() ? 10 : 1));
+    public boolean mouseScrolled(float mx, float my, double amount) {
+        if (settingsPanel.isActive() && settingsPanel.mouseScrolled(mx, my, amount)) return true;
+        if (bounds == null) return false;
+        if (runtime != null && runtime.input().scroll(runtime.root(), new UiScrollEvent(mx, my, 0d, -amount))) return true;
+        int direction = amount > 0 ? 1 : amount < 0 ? -1 : 0;
+        if (direction == 0) return false;
+        if (editorVisible() && inside(mx, my, canvasNativeX(), canvasNativeY(), canvasNativeW(), canvasNativeH())) {
+            if (shiftDown()) state.stepLayer(direction);
+            else if (view3d) viewport.zoom(direction);
+            else zoomGrid(mx, my, direction);
+            return true;
         }
-        return true;
+        return false;
     }
 
-    /** @return whether the key was consumed; Escape is left to the host when the panel has no close action. */
+    private void zoomGrid(float mx, float my, int direction) {
+        float factor = direction > 0 ? 1.15f : 1f / 1.15f;
+        float next = clamp(gridZoom * factor, .4f, 12f);
+        float actualFactor = next / gridZoom;
+        float cx = canvasNativeX() + canvasNativeW() * .5f;
+        float cy = canvasNativeY() + canvasNativeH() * .5f;
+        // Keep the world point below the mouse stationary under zoom.
+        gridPanX += (mx - cx - gridPanX) * (1f - actualFactor);
+        gridPanY += (my - cy - gridPanY) * (1f - actualFactor);
+        gridZoom = next;
+    }
+
+    private void resetView() {
+        viewport.resetCamera();
+        gridZoom = 1f; gridPanX = 0f; gridPanY = 0f;
+    }
+
+    private void setLayerAt(float mx) {
+        if (bounds == null || state.layerCount() <= 0) return;
+        float fraction = clamp((mx - bounds.stripX) / Math.max(1f, bounds.stripW), 0f, 1f);
+        state.setLayer(Math.round(fraction * (state.layerCount() - 1)));
+    }
+    private void setGapAt(float mx) {
+        if (bounds != null) viewport.setGap(clamp((mx - bounds.gapX) / bounds.gapW, 0f, 1f) * SchematicViewport.MAX_GAP);
+    }
+
     public boolean keyPressed(int key) {
         if (settingsPanel.isActive() && settingsPanel.keyPressed(key, 0, 0)) return true;
         if (searchFocused) {
-            if (key == InputKeys.BACKSPACE) {
-                if (!search.isEmpty()) search = search.substring(0, search.length() - 1);
-                return true;
-            }
             if (key == InputKeys.ESCAPE || key == InputKeys.ENTER || key == InputKeys.KP_ENTER) {
-                searchFocused = false;
-                return true;
+                searchFocused = false; searchInput.unfocus(); return true;
             }
+            int mask = (ctrlDown() ? InputModifierMask.SHORTCUT : 0)
+                    | (shiftDown() ? InputModifierMask.SHIFT : 0);
+            int shortcut = key >= InputKeys.A && key <= InputKeys.Z ? 'a' + key - InputKeys.A : key;
+            searchInput.keyPressed(key, shortcut, mask);
+            return true;
+        }
+        if (ctrlDown() && key == InputKeys.F) { libraryMode = true; drawerMode = "none";
+            searchFocused = true; searchInput.selectAll(); return true; }
+        if (key == InputKeys.ESCAPE) {
+            // One-way unwinding: clear the current transient state, then leave the
+            // root screen on a subsequent ESC. Do not bounce endlessly between
+            // Library and Workspace when a document is loaded.
+            if (cancelCurrentAction()) return true;
+            if (onClose == null) return false; // ClickGUI owns root-level close.
+            requestClose();
             return true;
         }
         switch (key) {
-            case InputKeys.ESCAPE -> {
-                if (onClose == null) return false;
-                onClose.run();
-            }
             case InputKeys.UP -> state.stepLayer(1);
             case InputKeys.DOWN -> state.stepLayer(-1);
             case InputKeys.PAGE_UP -> state.stepLayer(10);
             case InputKeys.PAGE_DOWN -> state.stepLayer(-10);
             case InputKeys.HOME -> state.setLayer(0);
             case InputKeys.END -> state.setLayer(state.layerCount() - 1);
-            case InputKeys.SPACE -> togglePlay();
+            case InputKeys.SPACE -> { playing = !playing && state.hasSchematic(); playAccumulator = 0f; }
             case InputKeys.ENTER, InputKeys.KP_ENTER -> SchematicActions.load(selectedPath);
-            case InputKeys.R -> viewport.resetCamera();
-            case InputKeys.T -> setView3d(!view3d);
+            case InputKeys.R -> resetView();
+            case InputKeys.T -> view3d = !view3d;
             case InputKeys.E -> viewport.cycleMode();
-            default -> {
-                return false;
-            }
+            default -> { return false; }
         }
         return true;
     }
-
+    private boolean ctrlDown() {
+        return CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.LEFT_CONTROL)
+                || CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.RIGHT_CONTROL);
+    }
+    private boolean shiftDown() {
+        return CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.LEFT_SHIFT)
+                || CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.RIGHT_SHIFT);
+    }
     public boolean charTyped(int codepoint) {
         if (settingsPanel.isActive() && settingsPanel.charTyped((char) codepoint, 0)) return true;
         if (!searchFocused) return false;
-        if (codepoint >= 32 && codepoint != 127 && search.length() < 64) search += Character.toString(codepoint);
-        listFirst = 0;
+        if (!CombatantTextInputBridge.owns(searchInput) && codepoint >= 32 && !Character.isISOControl(codepoint))
+            searchInput.insert(new String(Character.toChars(codepoint)));
         return true;
     }
+    public boolean cancelCurrentAction() {
+        if (settingsPanel.isActive()) { settingsPanel.close(); settingsId = null; return true; }
+        if (searchFocused) { searchFocused = false; searchInput.unfocus(); return true; }
+        if (layerDragging || gapDragging || gridDragging || viewport.dragging()) {
+            mouseReleased(mouseX, mouseY);
+            return true;
+        }
+        if (!"none".equals(drawerMode)) { drawerMode = "none"; return true; }
+        if (libraryMode && state.hasSchematic()) { libraryMode = false; return true; }
+        return false;
+    }
 
-    /** The panel is leaving the screen: stop playback. */
+    public boolean isTextInputActive() { return searchFocused || settingsPanel.isActive(); }
+
     public void removed() {
+        drawerMode = "none";
+        visibleDrawer = "none";
+        drawerProgress = 0f;
+        localToasts.clear();
         settingsPanel.close();
         playing = false;
+        searchInput.unfocus();
+        CombatantTextInputBridge.blur(searchInput);
+        searchFont = null;
+        runtime = null;
+        script.reset();
     }
+    private void requestClose() { if (onClose != null) onClose.run(); }
 
-    private void requestClose() {
-        if (onClose != null) onClose.run();
-    }
-
-    private boolean shiftDown() {
-        return keyDown(InputKeys.LEFT_SHIFT) || keyDown(InputKeys.RIGHT_SHIFT);
-    }
-
-    private boolean ctrlDown() {
-        return keyDown(InputKeys.LEFT_CONTROL) || keyDown(InputKeys.RIGHT_CONTROL);
-    }
-
-    private boolean keyDown(int key) {
-        return CombatantInput.state().isPressed(InputDevice.KEYBOARD, key);
-    }
-
-    // ---------------------------------------------------------------- metrics
-
-    private void updateUiMetrics() {
-        Minecraft mc = Minecraft.getInstance();
-        int fbw = mc.getWindow().getWidth();
-        int fbh = mc.getWindow().getHeight();
-        float nextW = Math.max(1f, HudScale.virtualWidth(fbw, fbh));
-        float nextH = Math.max(1f, HudScale.virtualHeight(fbw, fbh));
-        if (nextW != fixedWidth || nextH != fixedHeight) ui.clearCaches();
-        fixedWidth = nextW;
-        fixedHeight = nextH;
-    }
-
-    /** Converts a vanilla GUI-scaled screen coordinate into the fixed (virtual) space this panel works in. */
     public static float toFixed(float screen) {
         Minecraft mc = Minecraft.getInstance();
-        float hudScale = HudScale.scale(mc.getWindow().getWidth(), mc.getWindow().getHeight());
-        if (hudScale <= 0f) return screen;
-        return screen * mc.getWindow().getGuiScale() / hudScale;
+        float scale = HudScale.scale(mc.getWindow().getWidth(), mc.getWindow().getHeight());
+        return scale <= 0f ? screen : screen * mc.getWindow().getGuiScale() / scale;
     }
 
-    private static float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private static int clampInt(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
+    /** Editing and browsing are distinct Spectrum 2 contexts, not three columns. */
+    private record Layout(float x, float y, float w, float h, float header,
+                          float libraryX, float libraryY, float libraryW, float libraryH,
+                          float viewX, float viewY, float viewW, float viewH,
+                          float canvasX, float canvasY, float canvasW, float canvasH,
+                          float inspectorX, float inspectorY, float inspectorW, float inspectorH,
+                          float searchX, float searchY, float searchW,
+                          float stripX, float stripY, float stripW, float stripH,
+                          float gapX, float gapY, float gapW,
+                          boolean compact) {
+        static Layout compute(float x, float y, float w, float h, boolean standalone,
+                              boolean browsing, float drawerProgress) {
+            float head = standalone ? 54f : 52f;
+            float rail = 54f;
+            boolean overlayDrawer = w < 760f;
+            float drawerW = overlayDrawer ? w - rail : clamp(w * .27f, 250f, 314f);
+            float workingW = Math.max(130f, w - rail - (!browsing && !overlayDrawer ? drawerW * clamp(drawerProgress, 0f, 1f) : 0f));
+            float workingH = Math.max(120f, h - head);
+            float drawerX = overlayDrawer ? rail : rail + workingW;
+            float drawerWidth = overlayDrawer ? w - rail : drawerW;
+            float canvasX = rail + 10f;
+            float canvasY = head + 56f;
+            float canvasW = Math.max(80f, workingW - 20f);
+            float canvasH = Math.max(40f, workingH - 56f - 75f);
+            float scrubX = rail + 154f;
+            float scrubY = h - 44f;
+            float scrubW = Math.max(35f, workingW - (workingW >= 470f ? 277f : 170f));
+            float gapW = 95f;
+            float gapX = rail + Math.max(475f, workingW - 230f);
+            float gapY = head + 7f;
+            float searchX = rail + 20f;
+            float searchW = Math.max(220f, Math.min(460f, workingW - 46f));
+            return new Layout(x, y, w, h, head,
+                    rail, head, w - rail, workingH,
+                    rail, head, workingW, workingH,
+                    x + canvasX, y + canvasY, canvasW, canvasH,
+                    drawerX, head, drawerWidth, workingH,
+                    x + searchX, y + head + 89f, searchW,
+                    x + scrubX, y + scrubY, scrubW, 25f,
+                    x + gapX, y + gapY, gapW, overlayDrawer);
+        }
+        Map<String, Object> props() {
+            return map("header", header, "rail", 54f,
+                    "library", rect(libraryX, libraryY, libraryW, libraryH),
+                    "view", rect(viewX, viewY, viewW, viewH),
+                    "inspector", rect(inspectorX, inspectorY, inspectorW, inspectorH),
+                    "canvas", rect(canvasX - x, canvasY - y, canvasW, canvasH),
+                    "search", rect(searchX - x, searchY - y, searchW, 44f),
+                    "compact", compact,
+                    "strip", rect(stripX - x, stripY - y, stripW, stripH),
+                    "gap", rect(gapX - x, gapY - y, gapW, 32f));
+        }
+        private static Map<String, Object> rect(float x, float y, float w, float h) {
+            return map("x", x, "y", y, "w", w, "h", h);
+        }
     }
 }

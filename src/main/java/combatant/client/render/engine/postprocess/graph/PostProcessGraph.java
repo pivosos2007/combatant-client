@@ -8,6 +8,8 @@
 package combatant.client.render.engine.postprocess.graph;
 
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import org.jetbrains.annotations.Nullable;
 import combatant.client.render.engine.postprocess.PostProcessBackendResourceOwner;
 import combatant.client.render.engine.postprocess.PostProcessExecutionContext;
 import combatant.client.render.engine.postprocess.PostProcessPass;
@@ -45,7 +47,7 @@ public final class PostProcessGraph implements AutoCloseable {
                            float tickDelta,
                            CombatantRhi rhi,
                            GraphCopy copy) {
-        return execute(phase, tickDelta, rhi, copy, pass -> true);
+        return execute(phase, tickDelta, rhi, copy, pass -> true, null);
     }
 
     public boolean execute(PostProcessPass.Phase phase,
@@ -53,6 +55,12 @@ public final class PostProcessGraph implements AutoCloseable {
                            CombatantRhi rhi,
                            GraphCopy copy,
                            Predicate<? super PostProcessPass> selector) {
+        return execute(phase, tickDelta, rhi, copy, selector, null);
+    }
+
+    public boolean execute(PostProcessPass.Phase phase, float tickDelta, CombatantRhi rhi,
+                           GraphCopy copy, Predicate<? super PostProcessPass> selector,
+                           @Nullable RenderTarget targetOverride) {
         List<PostProcessPass> activePasses = new ArrayList<>();
         for (PostProcessPass pass : passes) {
             if (pass.getPhase() == phase && selector.test(pass) && pass.isActive()) activePasses.add(pass);
@@ -71,7 +79,7 @@ public final class PostProcessGraph implements AutoCloseable {
                     break;
                 }
             }
-            if (!resources.prepare(phase, tickDelta, rhi, preferStorageTargets)) return false;
+            if (!resources.prepare(phase, tickDelta, rhi, preferStorageTargets, targetOverride)) return false;
 
             GpuTextureView mainColor = resources.mainColor();
             GpuTextureView source = resources.currentSource();

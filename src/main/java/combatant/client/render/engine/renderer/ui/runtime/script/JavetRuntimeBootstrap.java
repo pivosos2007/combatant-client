@@ -88,6 +88,10 @@ public final class JavetRuntimeBootstrap {
             shuttingDown = true;
         }
 
+        if (!UiScriptWorkerPool.shutdown()) {
+            DebugLog.warn("[Javet] UI workers did not terminate; skipping native unload to avoid an active-isolate crash");
+            return;
+        }
         closeRuntimeOwners();
         if (nativeUsed) {
             unloadNativeLibrary();

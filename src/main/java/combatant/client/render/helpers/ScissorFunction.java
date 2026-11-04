@@ -13,6 +13,7 @@ import combatant.client.mixininterface.IGpuDevice;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.clip.UiScissorSnapshot;
+import combatant.client.render.engine.rhi.scissor.GlobalScissorState;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -163,15 +164,20 @@ public enum ScissorFunction {
      */
     public static boolean suspendAppliedGpuScissor() {
         if (appliedScissor == null) return false;
-        ((IGpuDevice) RenderSystem.getDevice()).combatant$popScissor();
-        appliedScissor = null;
-        return true;
+        // Do not pop: an ordered replay might own another, nested GPU scope.
+        // Mask the entire stack for this offscreen target, then resume it intact.
+        return GlobalScissorState.suspend();
     }
 
     /** Restores the top logical scissor after {@link #suspendAppliedGpuScissor()}. */
     public static void restoreAppliedGpuScissor(boolean suspended) {
-        if (!suspended) return;
-        applyTop();
+        if (suspended) GlobalScissorState.resume();
+    }
+
+    /** Discard stale extraction scopes if the previous HUD renderer threw. */
+    public static void resetForNewFrame() {
+        STACK.clear();
+        appliedScissor = null;
     }
 
     public static void pop() {

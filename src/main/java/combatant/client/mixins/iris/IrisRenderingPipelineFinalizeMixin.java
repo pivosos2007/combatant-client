@@ -9,6 +9,7 @@ package combatant.client.mixins.iris;
 
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.targets.RenderTargets;
+import com.google.common.collect.ImmutableSet;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -29,6 +30,8 @@ public abstract class IrisRenderingPipelineFinalizeMixin {
     @Shadow
     @Final
     private RenderTargets renderTargets;
+
+    @Shadow @Final private ImmutableSet<Integer> flippedAfterTranslucent;
 
     @Inject(method = "beginLevelRendering", at = @At("HEAD"), remap = false)
     private void combatant$resetIrisSceneDepth(CallbackInfo ci) {
@@ -76,6 +79,8 @@ public abstract class IrisRenderingPipelineFinalizeMixin {
         IrisShaderpackMsaaIntegration.seedForward();
         IrisRuntime.renderImportedGeometryTranslucent();
         combatant.client.features.playermodel.PlayerModelGpuRenderer.renderIris(true);
+        // Deferred is complete; Iris has not yet drawn forward translucent entities.
+        combatant.client.render.iris.IrisEarlyWorldBridge.render(renderTargets, flippedAfterTranslucent);
     }
 
     @Inject(method = "finalizeLevelRendering", at = @At("HEAD"), remap = false)

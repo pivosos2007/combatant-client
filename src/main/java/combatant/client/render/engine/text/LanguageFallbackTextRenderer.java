@@ -230,6 +230,30 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
     }
 
     @Override
+    public double renderOutlined(String text, double x, double y, RenderColor color, float radius, float opacity) {
+        String displayText = NameProtect.applyDisplay(text);
+        if (displayText == null || displayText.isEmpty()) return x;
+        boolean implicitBegin = !building;
+        if (implicitBegin) begin();
+        try {
+            final double[] cursor = {x};
+            visitRuns(displayText, displayText.length(), (renderer, start, finish) -> {
+                String run = displayText.substring(start, finish);
+                withRenderer(renderer, () -> {
+                    double advance = renderer.getWidth(run, false);
+                    renderer.renderOutlined(run, cursor[0], y, color, radius, opacity);
+                    cursor[0] += advance;
+                    return 0.0;
+                });
+                return 0.0;
+            });
+            return cursor[0];
+        } finally {
+            if (implicitBegin) end();
+        }
+    }
+
+    @Override
     public double renderGradient(String text,
                                  double x,
                                  double y,
@@ -289,6 +313,42 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
                             (index, codePoint, x0, y0, x1, y1, out) ->
                                     gradient.colors(runGlyphBase + index, codePoint, x0, y0, x1, y1, out),
                             shadow
+                    );
+                    return 0.0;
+                });
+                glyphBase[0] += run.codePointCount(0, run.length());
+                return 0.0;
+            });
+            return cursor[0];
+        } finally {
+            if (implicitBegin) end();
+        }
+    }
+
+    @Override
+    public double renderOutlinedQuadGradient(String text,
+                                     double x,
+                                     double y,
+                                     Font.GlyphQuadGradient gradient,
+                                     float radius, float opacity) {
+        String displayText = NameProtect.applyDisplay(text);
+        if (displayText == null || displayText.isEmpty() || gradient == null) return x;
+        boolean implicitBegin = !building;
+        if (implicitBegin) begin();
+        try {
+            final double[] cursor = {x};
+            final int[] glyphBase = {0};
+            visitRuns(displayText, displayText.length(), (renderer, start, finish) -> {
+                String run = displayText.substring(start, finish);
+                int runGlyphBase = glyphBase[0];
+                withRenderer(renderer, () -> {
+                    cursor[0] = renderer.renderOutlinedQuadGradient(
+                            run,
+                            cursor[0],
+                            y,
+                            (index, codePoint, x0, y0, x1, y1, out) ->
+                                    gradient.colors(runGlyphBase + index, codePoint, x0, y0, x1, y1, out),
+                            radius, opacity
                     );
                     return 0.0;
                 });

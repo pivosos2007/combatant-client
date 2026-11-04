@@ -8,6 +8,7 @@
 package combatant.client.render.effects.shockwave;
 
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.textures.GpuSampler;
@@ -96,9 +97,11 @@ public final class WorldBlastShockwaves implements PostProcessPass {
         if (requests.isEmpty()) return false;
 
         GpuTextureView depth = execution.context().preTranslucentDepth();
-        boolean depthUsable = depth != null
-                && depth.getWidth(0) == execution.context().width()
-                && depth.getHeight(0) == execution.context().height();
+        boolean depthUsable = depthSampleable(depth, execution.context().width(), execution.context().height());
+        if (!depthUsable) {
+            depth = execution.context().mainDepth();
+            depthUsable = depthSampleable(depth, execution.context().width(), execution.context().height());
+        }
 
         List<Request> valid = new ArrayList<>(requests.size());
         for (Request request : requests) {
@@ -117,11 +120,14 @@ public final class WorldBlastShockwaves implements PostProcessPass {
         if (valid.size() > 1) {
             int width = execution.context().width();
             int height = execution.context().height();
+            GpuFormat format = execution.source().texture().getFormat();
             tempA = CombatantRenderSystem.resources().frameTransient(
-                    TransientTargetDescriptor.frame(TEMP_A, width, height, false, OWNER));
+                    new TransientTargetDescriptor(TEMP_A, width, height, false, format, 1,
+                            TransientTargetDescriptor.Lifetime.FRAME, OWNER));
             if (valid.size() > 2) {
                 tempB = CombatantRenderSystem.resources().frameTransient(
-                        TransientTargetDescriptor.frame(TEMP_B, width, height, false, OWNER));
+                        new TransientTargetDescriptor(TEMP_B, width, height, false, format, 1,
+                                TransientTargetDescriptor.Lifetime.FRAME, OWNER));
             }
             if (tempA == null || tempA.getColorTextureView() == null) return false;
             if (valid.size() > 2 && (tempB == null || tempB.getColorTextureView() == null)) return false;
@@ -156,7 +162,9 @@ public final class WorldBlastShockwaves implements PostProcessPass {
             execution.rhi().drawFullscreen(
                     FullscreenDrawCommand.builder("Combatant blast shockwave")
                             .colorAttachment(destination)
-                            .pipeline(PostProcessRenderPipelines.POSTPROCESS_BLAST_SHOCKWAVE)
+                            .pipeline(destination.texture().getFormat() == GpuFormat.RGBA16_FLOAT
+                                    ? PostProcessRenderPipelines.POSTPROCESS_BLAST_SHOCKWAVE_HDR
+                                    : PostProcessRenderPipelines.POSTPROCESS_BLAST_SHOCKWAVE)
                             .uniform("JumpShockwave", JumpShockwaveUniforms.get())
                             .sampler("u_Texture", source, linear)
                             .sampler("u_Depth", request.depthTest() ? depth : source, nearest)
@@ -165,6 +173,12 @@ public final class WorldBlastShockwaves implements PostProcessPass {
             source = destination;
         }
         return true;
+    }
+
+    private static boolean depthSampleable(GpuTextureView view, int width, int height) {
+        return view != null && view.getWidth(0) == width && view.getHeight(0) == height
+                && !(view.texture() instanceof combatant.client.mixininterface.IMsaaTexture msaa
+                    && msaa.combatant$isMsaa() && msaa.combatant$getSamples() > 1);
     }
 
     private synchronized List<Request> drain() {

@@ -8,6 +8,7 @@
 package combatant.client.render.engine.renderer;
 
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
@@ -32,6 +33,8 @@ import combatant.client.render.engine.world.WorldRenderStatsSnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
+import combatant.client.render.engine.world.WorldDrawCommand;
 
 /**
  *
@@ -307,7 +310,18 @@ public final class Renderer3D {
      */
     public void render(PoseStack matrices) {
         Minecraft mc = Minecraft.getInstance();
-        WORLD_COMPILER.submit(commands, mc != null ? mc.gameRenderer.mainRenderTarget() : null, matrices);
+        render(matrices, mc != null ? mc.gameRenderer.mainRenderTarget() : null);
+    }
+
+    /** Submit to the actual world frame-graph attachment when invoked inside a vanilla pass. */
+    public void render(PoseStack matrices, RenderTarget target) {
+        WORLD_COMPILER.submit(commands, target, matrices);
+    }
+
+    /** Submit selected world primitives now and preserve the rest for late overlays. */
+    public void renderMatching(PoseStack matrices, RenderTarget target,
+                               Predicate<WorldDrawCommand> selected) {
+        WORLD_COMPILER.submitMatching(commands, target, matrices, selected);
     }
 
     public enum DepthMode {

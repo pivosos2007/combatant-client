@@ -59,7 +59,7 @@ public final class FramebufferPool implements AutoCloseable {
         String key = descriptor.poolKey();
         TextureTarget fb = persistent.get(key);
         if (fb == null) {
-            fb = new TextureTarget(descriptor.name(), descriptor.width(), descriptor.height(), GpuFormat.RGBA8_UNORM, descriptor.depth() ? GpuFormat.D32_FLOAT : null);
+            fb = new TextureTarget(descriptor.name(), descriptor.width(), descriptor.height(), descriptor.colorFormat(), descriptor.depth() ? GpuFormat.D32_FLOAT : null);
             persistent.put(key, fb);
             leakTracker.register(fb);
             creates++;
@@ -81,7 +81,7 @@ public final class FramebufferPool implements AutoCloseable {
         Queue<TextureTarget> queue = temporary.computeIfAbsent(key, ignored -> new ArrayDeque<>());
         TextureTarget fb = queue.poll();
         if (fb == null) {
-            fb = new TextureTarget(descriptor.name(), descriptor.width(), descriptor.height(), GpuFormat.RGBA8_UNORM, descriptor.depth() ? GpuFormat.D32_FLOAT : null);
+            fb = new TextureTarget(descriptor.name(), descriptor.width(), descriptor.height(), descriptor.colorFormat(), descriptor.depth() ? GpuFormat.D32_FLOAT : null);
             leakTracker.register(fb);
             creates++;
         } else if (fb.width != descriptor.width() || fb.height != descriptor.height()) {

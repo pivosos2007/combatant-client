@@ -9,6 +9,7 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.subsystem;
 
 import combatant.client.config.SettingDef;
 import combatant.client.config.SettingOwner;
+import combatant.client.features.gui.clickgui.settings.Setting;
 
 import java.util.List;
 
@@ -32,6 +33,9 @@ public interface MainSettingsContributor {
     SettingOwner owner();
 
     List<SettingDef> settingDefs();
+
+    /** UI-only controls which do not belong in a persisted ConfigValue. */
+    default List<Setting> additionalSettings() { return List.of(); }
 
     default boolean available() {
         return true;

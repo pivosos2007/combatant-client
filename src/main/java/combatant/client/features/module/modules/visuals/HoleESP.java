@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.visuals;
 
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
@@ -68,6 +69,12 @@ public final class HoleESP extends Module {
             modeSetting("holeesp_style", "style", "Glow", "Flat", "Glow");
     private final BooleanValue scanBand =
             visibleWhen(bool("holeesp_scan_band", "scan_band", true), () -> "Glow".equals(style.get()));
+    private final EnumValue<GlowSurfaces.Animation> glowAnimation =
+            visibleWhen(enumSetting("holeesp_glow_animation", "glow_animation", GlowSurfaces.Animation.BREATHE),
+                    () -> "Glow".equals(style.get()));
+    private final NumberValue<Float> glowSpeed =
+            visibleWhen(num("holeesp_glow_speed", "glow_speed", 1.0f, 0.1f, 5.0f),
+                    () -> "Glow".equals(style.get()) && glowAnimation.get() != GlowSurfaces.Animation.STATIC);
     private final RGBAColorValue indestructibleColor =
             color("holeesp_indestructible_color", "indestructible_color", "#FF7A00FF");
     private final RGBAColorValue bedrockColor =
@@ -210,7 +217,9 @@ public final class HoleESP extends Module {
 
         if ("Glow".equals(style.get())) {
             float rimAlpha = ((line >>> 24) & 0xFF) / 255.0f;
-            GlowSurfaces.box(renderer, box, fillBottom, fillTop, rimAlpha, scanBand.get() ? 1.0f : 0.0f, true, false, false);
+            GlowSurfaces.box(renderer, box, fillBottom, fillTop, rimAlpha,
+                    glowAnimation.get(), glowSpeed.get(), scanBand.get() ? 1.0f : 0.0f,
+                    true, false, false);
         } else {
             addVerticalFadeBox(renderer, box, fillBottom, fillTop);
         }

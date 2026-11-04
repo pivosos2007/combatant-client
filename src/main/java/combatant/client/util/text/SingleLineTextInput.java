@@ -49,6 +49,11 @@ public final class SingleLineTextInput implements CombatantTextInputTarget {
     public int selectionStart() { return Math.min(anchor, cursor); }
     public int selectionEnd() { return Math.max(anchor, cursor); }
     public boolean hasSelection() { return anchor != cursor; }
+    /** Current horizontal text viewport displacement, in layout pixels. */
+    public float viewportOffset() { return offset; }
+    /** Current IME preedit string; it is not part of the committed text. */
+    public String compositionText() { return composition; }
+    public int compositionCaret() { return compositionCaret; }
 
     public void setText(String next) {
         value = filter(normalize(next));

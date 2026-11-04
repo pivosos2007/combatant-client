@@ -21,7 +21,8 @@ public record PatchDrawCommand(String label,
                                List<SampledTextureBinding> sampledTextures,
                                List<StorageImageBinding> storageImages,
                                List<SampledVolumeBinding> sampledVolumes,
-                               @Nullable RhiStorageBuffer indirectCommands, long indirectOffset) {
+                               @Nullable RhiStorageBuffer indirectCommands, long indirectOffset,
+                               int indirectDrawCount, int indirectStrideBytes) {
     public PatchDrawCommand {
         label = label == null || label.isBlank() ? "combatant-patches" : label;
         if (pipeline == null || colorAttachments == null || colorAttachments.isEmpty()
@@ -34,15 +35,28 @@ public record PatchDrawCommand(String label,
         storageImages = storageImages == null || storageImages.isEmpty() ? List.of() : List.copyOf(storageImages);
         sampledVolumes = sampledVolumes == null || sampledVolumes.isEmpty() ? List.of() : List.copyOf(sampledVolumes);
         if (indirectCommands != null && (!indirectCommands.descriptor().indirectSource()
-                || indirectOffset < 0 || (indirectOffset & 3) != 0 || indirectOffset > indirectCommands.descriptor().byteSize() - 20))
-            throw new IllegalArgumentException("Invalid indexed-indirect draw range");
+                || indirectOffset < 0 || (indirectOffset & 3) != 0
+                || indirectDrawCount < 1 || indirectStrideBytes < 20 || (indirectStrideBytes & 3) != 0
+                || (long) (indirectDrawCount - 1) * indirectStrideBytes > Long.MAX_VALUE - indirectOffset
+                || indirectOffset + (long) (indirectDrawCount - 1) * indirectStrideBytes
+                    > indirectCommands.descriptor().byteSize() - 20L))
+            throw new IllegalArgumentException("Invalid indexed-indirect draw range/count/stride");
+    }
+
+    public PatchDrawCommand(String label, RhiPatchPipeline pipeline, List<GpuTextureView> colors,
+                            @Nullable GpuTextureView depth, GpuMeshHandle mesh,
+                            List<StorageBinding> buffers, List<SampledTextureBinding> samplers,
+                            List<StorageImageBinding> images, List<SampledVolumeBinding> volumes,
+                            @Nullable RhiStorageBuffer indirectCommands, long indirectOffset) {
+        this(label, pipeline, colors, depth, mesh, buffers, samplers, images, volumes,
+                indirectCommands, indirectOffset, 1, 20);
     }
 
     public PatchDrawCommand(String label, RhiPatchPipeline pipeline, List<GpuTextureView> colors,
                             @Nullable GpuTextureView depth, GpuMeshHandle mesh,
                             List<StorageBinding> buffers, List<SampledTextureBinding> samplers,
                             List<StorageImageBinding> images, List<SampledVolumeBinding> volumes) {
-        this(label, pipeline, colors, depth, mesh, buffers, samplers, images, volumes, null, 0L);
+        this(label, pipeline, colors, depth, mesh, buffers, samplers, images, volumes, null, 0L, 1, 20);
     }
 
     public PatchDrawCommand(String label,

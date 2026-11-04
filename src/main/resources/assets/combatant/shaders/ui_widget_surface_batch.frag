@@ -22,7 +22,12 @@ layout(location = 0) out vec4 fragColor;
 
 layout (std140) uniform UIBatch {
     vec4 uScreen;
+    vec4 uLayer;
 };
+
+#ifdef COMBATANT_ANALYTIC_CLIP
+#include <combatant:ui_clip.glsl>
+#endif
 
 float saturate(float x) {
     return clamp(x, 0.0, 1.0);
@@ -33,7 +38,7 @@ vec2 warpedLocal(vec4 local) {
     return local.xy / invW;
 }
 
-float roundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
+float widgetRoundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
     float r = clamp(radius, 0.0, min(halfSize.x, halfSize.y));
     vec2 q = abs(p) - halfSize + r;
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
@@ -48,7 +53,7 @@ void main() {
     vec2 size = max(v_Rect.zw, vec2(0.001));
     vec2 uv = (frag - v_Rect.xy) / size;
     vec2 halfSize = size * 0.5;
-    float d = roundedBoxSdf(frag - (v_Rect.xy + halfSize), halfSize, v_CornerModes.x);
+    float d = widgetRoundedBoxSdf(frag - (v_Rect.xy + halfSize), halfSize, v_CornerModes.x);
 
     vec2 logicalScale = uScreen.zw / max(uScreen.xy, vec2(1.0));
     float aa = max(max(logicalScale.x, logicalScale.y), max(fwidth(d) * 0.75, 0.0001));
@@ -180,4 +185,9 @@ void main() {
 
     float alpha = v_Color.a * v_EdgeData.w * coverage;
     fragColor = vec4(clamp(col, 0.0, 1.0), alpha);
+#ifdef COMBATANT_ANALYTIC_CLIP
+    vec2 clipPixel = uScreen.zw / max(uScreen.xy, vec2(1.0));
+    fragColor.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), clipPixel);
+    if (fragColor.a <= 0.001) discard;
+#endif
 }

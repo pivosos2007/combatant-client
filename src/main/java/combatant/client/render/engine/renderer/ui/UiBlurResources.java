@@ -33,6 +33,7 @@ import java.util.EnumSet;
  * These are backend resources, not part of the shape drawing facade.
  */
 public final class UiBlurResources {
+    static final UiBlurPlan REPLAY_BLUR_PLAN = new UiBlurPlan();
     private static final FrameBlurCacheEntry SURFACE_FRAME_CACHE = new FrameBlurCacheEntry();
     private static final FrameBlurCacheEntry CAPTURED_WORLD_FRAME_CACHE = new FrameBlurCacheEntry();
     private static final FrameBlurCacheEntry UI_UNDERLAY_FRAME_CACHE = new FrameBlurCacheEntry();
@@ -65,6 +66,7 @@ public final class UiBlurResources {
     }
 
     public static void beginDeferredFrame() {
+        REPLAY_BLUR_PLAN.clear();
         deferredFrameSerial++;
         blurBeforeNextShapeClipRequested = false;
         pendingClipBlurFullFrame = false;

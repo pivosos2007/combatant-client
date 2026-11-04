@@ -13,6 +13,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.framegraph.FrameGraphBuilder;
 import com.mojang.blaze3d.framegraph.FramePass;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -52,6 +53,8 @@ import combatant.client.render.engine.depth.EntityDepthLayer;
 import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.depth.WorldSceneDepth;
+import combatant.client.render.engine.msaa.MsaaWorldTarget;
+import combatant.client.render.engine.world.VanillaBeforeTranslucentPass;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.sky.CustomSkyboxRenderer;
 
@@ -118,6 +121,24 @@ public abstract class LevelRendererMixin {
         }
         return cameraRenderState.entityRenderState != null
                 && cameraRenderState.entityRenderState.doesMobEffectBlockSky;
+    }
+
+    @Inject(method = "render", at = @At("HEAD"))
+    private void combatant$beginPlayerGpuFrame(GraphicsResourceAllocator allocator,
+            boolean renderBlockOutline,
+            net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
+            GpuBufferSlice fogBuffer, org.joml.Vector4f fogColor,
+            boolean renderSky, boolean renderTerrain, CallbackInfo ci) {
+        combatant.client.features.playermodel.PlayerModelGpuRenderer.beginWorldFrame();
+    }
+
+    @Inject(method = "render", at = @At("RETURN"))
+    private void combatant$endPlayerGpuFrame(GraphicsResourceAllocator allocator,
+            boolean renderBlockOutline,
+            net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
+            GpuBufferSlice fogBuffer, org.joml.Vector4f fogColor,
+            boolean renderSky, boolean renderTerrain, CallbackInfo ci) {
+        combatant.client.features.playermodel.PlayerModelGpuRenderer.endWorldFrame();
     }
 
     @Inject(method = "render", at = @At("HEAD"))
@@ -283,7 +304,11 @@ public abstract class LevelRendererMixin {
         }
 
         solidPass.close();
+        // Must draw on the SAME opaque color/depth attachments before they are copied
+        // for water and post-processing. GameRenderer's world hook is too late.
+        combatant.client.features.playermodel.PlayerModelGpuRenderer.renderBeforeTranslucency(framebuffer);
         PreTranslucentDepth.captureFrom(framebuffer);
+        VanillaBeforeTranslucentPass.render(framebuffer);
         try (RenderPass translucentPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "Minecraft translucent (pre-translucent depth snapshot)",
                 framebuffer.getColorTextureView(), Optional.empty(),
@@ -291,6 +316,7 @@ public abstract class LevelRendererMixin {
             RenderSystem.bindDefaultUniforms(translucentPass);
             original.call(renderer, sections, prepared, translucentPass);
         }
+        combatant.client.features.playermodel.PlayerModelGpuRenderer.renderAfterTranslucency(framebuffer);
     }
 
     /** In the OIT path executeOit starts AFTER the opaque RenderPass has closed. */
@@ -299,7 +325,47 @@ public abstract class LevelRendererMixin {
                                              FeatureRenderDispatcher.PreparedFrame prepared,
                                              CallbackInfo ci) {
         if (!IrisRuntime.isShaderpackRendererActive()) {
-            PreTranslucentDepth.captureFrom(combatant$getFramebuffer(targets.main));
+            RenderTarget mainFramebuffer = combatant$getFramebuffer(targets.main);
+            combatant.client.features.playermodel.PlayerModelGpuRenderer.renderBeforeTranslucency(mainFramebuffer);
+            PreTranslucentDepth.captureFrom(mainFramebuffer);
+            VanillaBeforeTranslucentPass.render(mainFramebuffer);
+        }
+    }
+
+    /**
+     * Minecraft 26.3's OIT targets are single-sampled, but executeOit and its
+     * depth-bounds cull take mainRenderTarget().getDepthTextureView() directly.
+     * When main is the MSAA world target that view is multisampled: binding it
+     * alongside an OIT color attachment creates a mixed-sample render pass and
+     * binding it as the OIT depth sampler is invalid as well.
+     *
+     * The opaque pass has already finished when executeOit starts, and our
+     * pre-translucent snapshot therefore contains exactly the depth OIT needs.
+     * Leave the actual multisampled main attachment untouched for later draws.
+     */
+    @WrapOperation(
+            method = {"executeOit", "executeDepthBoundsCull"},
+            at = @At(value = "INVOKE", target =
+                    "Lcom/mojang/blaze3d/pipeline/RenderTarget;getDepthTextureView()Lcom/mojang/renderpearl/api/textures/GpuTextureView;")
+    )
+    private GpuTextureView combatant$useResolvedOitDepth(RenderTarget framebuffer,
+                                                          Operation<GpuTextureView> original) {
+        if (MsaaWorldTarget.isActive() && framebuffer == MsaaWorldTarget.getMsaaFramebuffer()) {
+            GpuTextureView resolved = PreTranslucentDepth.getCapturedDepthView();
+            if (resolved != null) {
+                return resolved;
+            }
+        }
+        return original.call(framebuffer);
+    }
+
+    @Inject(method = "executeOit", at = @At("RETURN"))
+    private void combatant$finishPlayerGpuOit(ChunkSectionsToRender sections,
+                                              FeatureRenderDispatcher.PreparedFrame prepared,
+                                              CallbackInfo ci) {
+        if (!IrisRuntime.isShaderpackRendererActive()) {
+            combatant.client.features.playermodel.PlayerModelGpuRenderer.renderAfterTranslucency(
+                    combatant$getFramebuffer(targets.main));
         }
     }
 

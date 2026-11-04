@@ -180,6 +180,11 @@ public class BlockESP extends Module {
             bool("blockEspGlowFill", "glow_fill", true);
     private final NumberValue<Float> glowAlpha =
             visibleWhen(num("blockEspGlowAlpha", "glow_alpha", 0.16f, 0.0f, 1.0f), glowFill::get);
+    private final EnumValue<GlowSurfaces.Animation> glowAnimation =
+            visibleWhen(enumSetting("blockEspGlowAnimation", "glow_animation", GlowSurfaces.Animation.BREATHE), glowFill::get);
+    private final NumberValue<Float> glowSpeed =
+            visibleWhen(num("blockEspGlowSpeed", "glow_speed", 1.0f, 0.1f, 5.0f),
+                    () -> glowFill.get() && glowAnimation.get() != GlowSurfaces.Animation.STATIC);
     private final NumberValue<Float> lineWidth =
             numCommon(
                     "blockEspLineWidth",
@@ -737,7 +742,8 @@ public class BlockESP extends Module {
                 BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, shapeMode, color, shapeContext);
                 if (glow) {
                     int fill = ((int) (Math.min(1.0f, glowAlpha.get()) * 255.0f) << 24) | (color & 0x00FFFFFF);
-                    GlowSurfaces.box(renderer, new AABB(target.pos), fill, fill, 0.55f, 1.0f, false, true, false);
+                    GlowSurfaces.box(renderer, new AABB(target.pos), fill, fill, 0.55f,
+                            glowAnimation.get(), glowSpeed.get(), 1.0f, false, true, false);
                 }
             }
         } finally {

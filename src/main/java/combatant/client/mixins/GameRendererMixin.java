@@ -15,6 +15,7 @@ import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.gui.preview.VisualPreviewRuntime;
@@ -30,6 +31,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.ProjectionMatrixBuffer;
+import net.minecraft.client.renderer.Projection;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
@@ -89,6 +91,7 @@ import combatant.client.render.engine.renderer.ui.UiBlurResources;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
+import combatant.client.render.engine.world.VanillaBeforeTranslucentPass;
 import combatant.client.render.iris.IrisCombatantFrameHooks;
 import combatant.client.render.iris.IrisFinalizedSceneRenderer;
 import combatant.client.render.iris.IrisCompatibilityGuards;
@@ -148,6 +151,14 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
         IrisCombatantFrameHooks.renderAfterIrisFinalization();
     }
 
+    @Inject(method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",
+            at = @At("HEAD"))
+    private void combatant$beginGpuHands(CameraRenderState cameraRenderState,
+                                          PlayerRenderState playerRenderState,
+                                          GpuTextureView depthTextureView, CallbackInfo ci) {
+        combatant.client.features.playermodel.PlayerModelGpuRenderer.beginHands();
+    }
+
     @Inject(
             method = "renderItemInHand(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V",
             at = @At(
@@ -164,12 +175,19 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                                                    @Local(ordinal = 0) PoseStack handPoseStack) {
         SubmitNodeStorage chamsSnapshot = combatant$pendingChamsHandSnapshot;
         combatant$pendingChamsHandSnapshot = null;
-
+        // Vanilla render3dHud installs hudProjection before entering renderItemInHand.
+        // The world projection includes Zoom / FOV effects and is NOT the hand projection.
+        // Likewise depthTextureView can belong to the separate hud3DTarget when post FX
+        // require consistent depth; never substitute the main framebuffer's depth here.
         if (minecraft != null && minecraft.gameRenderer != null && cameraRenderState != null) {
-            ImportedAssetCompatibilityRenderer.renderHand(
-                    minecraft.gameRenderer.mainRenderTarget(),
-                    handPoseStack.last().pose(),
-                    cameraRenderState.projectionMatrix);
+            var color = minecraft.gameRenderer.mainRenderTarget().getColorTextureView();
+            if (color != null && depthTextureView != null) {
+                Matrix4f handProjection = hudProjection.getMatrix(new Matrix4f());
+                combatant.client.features.playermodel.PlayerModelGpuRenderer.renderHands(
+                        color, depthTextureView, RenderSystem.getModelViewMatrixCopy(), handProjection);
+                ImportedAssetCompatibilityRenderer.renderHand(
+                        color, depthTextureView, handPoseStack.last().pose(), handProjection);
+            }
         }
 
         Chams chams = Modules.get(Chams.class);
@@ -212,6 +230,9 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     @Shadow
     @Final
     private Camera mainCamera;
+    @Shadow
+    @Final
+    private Projection hudProjection;
     @Shadow
     @Final
     private GameRenderState gameRenderState;
@@ -262,6 +283,10 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
     @Unique
     private static boolean combatant$needsResolvedMainDepth() {
+        // World MSAA's main color gets resolved before post/late 3D rendering.
+        // The matching depth must be resolved too, or all later world-depth tests
+        // see the previous frame (or a cleared depth image) on the main target.
+        if (MainConfig.get().getMsaa3dSamples() > 1) return true;
         if (MotionBlur.isActiveStatic() || MainConfig.get().isTaaRuntimeActive()) return true;
         ReimaginedVisual module = Modules.get(ReimaginedVisual.class);
         if (module == null) return false;
@@ -450,6 +475,9 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     projection,
                     new Matrix4f(mv)
             );
+            RenderTarget worldTarget = minecraft != null && minecraft.gameRenderer != null
+                    ? minecraft.gameRenderer.mainRenderTarget()
+                    : null;
             try (RenderPhaseScope combatant$beforeTranslucentPhase = CombatantRenderSystem.phase(RenderPhase.WORLD_BEFORE_TRANSLUCENT)) {
                 RenderState.worldProjection.set(projection);
                 RenderState.frustum = new Frustum(position, projection);
@@ -460,11 +488,10 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
                     mv.mul(inverseBob);
                 }
 
-                RenderTarget worldTarget = minecraft != null && minecraft.gameRenderer != null
-                        ? minecraft.gameRenderer.mainRenderTarget()
-                        : null;
                 ImportedAssetCompatibilityRenderer.renderWorldEntities(worldTarget);
-                combatant.client.features.playermodel.PlayerModelGpuRenderer.render(worldTarget);
+                // PlayerModel is flushed at LevelRenderer's opaque/translucency boundary,
+                // before world depth is copied for water. Rendering it here was too late
+                // and would duplicate the same model with an unrelated world transform.
                 SeeInvisiblesVisualDepth.begin(worldTarget);
 
                 combatant$renderer.begin();
@@ -509,9 +536,15 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
 
                 try (ProfilerPhase.Scope phase = ProfilerPhase.scope("3d:modules_before_translucent");
                      RenderProfiler3D.Section ignored = RenderProfiler3D.section("modules_before_translucent")) {
-                    ModuleManager.renderWorldEngine(WorldPhase.BEFORE_TRANSLUCENT, combatant$renderer, combatant$depthRenderer, tickDelta);
-                    AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_BEFORE_TRANSLUCENT,
-                            WorldPhase.BEFORE_TRANSLUCENT, combatant$renderer, combatant$depthRenderer, combatant$matrices, tickDelta);
+                    if (VanillaBeforeTranslucentPass.rendered()) {
+                        // This contains only PRE_DEPTH, ENTITY_ONLY and depth-disabled
+                        // commands: the rest already participated in vanilla OIT.
+                        VanillaBeforeTranslucentPass.flushDeferredBefore(combatant$matrices, worldTarget);
+                    } else {
+                        ModuleManager.renderWorldEngine(WorldPhase.BEFORE_TRANSLUCENT, combatant$renderer, combatant$depthRenderer, tickDelta);
+                        AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_BEFORE_TRANSLUCENT,
+                                WorldPhase.BEFORE_TRANSLUCENT, combatant$renderer, combatant$depthRenderer, combatant$matrices, tickDelta);
+                    }
                 }
 
                 try (ProfilerPhase.Scope phase = ProfilerPhase.scope("3d:flush_before_translucent");
@@ -529,9 +562,13 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             try (RenderPhaseScope combatant$afterTranslucentPhase = CombatantRenderSystem.phase(RenderPhase.WORLD_AFTER_TRANSLUCENT)) {
                 try (ProfilerPhase.Scope phase = ProfilerPhase.scope("3d:modules_end_main");
                      RenderProfiler3D.Section ignored = RenderProfiler3D.section("modules_end_main")) {
-                    ModuleManager.renderWorldEngine(WorldPhase.END_MAIN, combatant$renderer, combatant$depthRenderer, tickDelta);
-                    AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_END_MAIN,
-                            WorldPhase.END_MAIN, combatant$renderer, combatant$depthRenderer, combatant$matrices, tickDelta);
+                    if (VanillaBeforeTranslucentPass.rendered()) {
+                        VanillaBeforeTranslucentPass.flushDeferredEnd(combatant$matrices, worldTarget);
+                    } else {
+                        ModuleManager.renderWorldEngine(WorldPhase.END_MAIN, combatant$renderer, combatant$depthRenderer, tickDelta);
+                        AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_END_MAIN,
+                                WorldPhase.END_MAIN, combatant$renderer, combatant$depthRenderer, combatant$matrices, tickDelta);
+                    }
 
                     // Keep world billboards in the same END_MAIN world stage, but record them
                     // after ordinary translucent effects/particles. Billboard primitives use
@@ -560,13 +597,22 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     private void combatant$beginWorldMsaa(CallbackInfo ci) {
         PreTranslucentDepth.reset();
         SeeInvisiblesVisualDepth.reset();
+        VanillaBeforeTranslucentPass.reset();
+        combatant.client.render.engine.world.EarlyShockwavePass.reset();
         CombatantWorldMatrices.reset();
-        if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) return;
+        if (ClickGuiRenderer.suppressesBackgroundRendering() || VisualPreviewRuntime.isActive()) {
+            // The preview renders to the main scene color. Do not keep the last
+            // world's MSAA override alive when world rendering is suppressed.
+            MsaaWorldTarget.shutdown(minecraft);
+            return;
+        }
         if (IrisRuntime.isModLoaded()) {
             IrisCombatantFrameHooks.beginRenderLevel(minecraft.getDeltaTracker());
         }
         int samples = MainConfig.get().getMsaa3dSamples();
-        MsaaWorldTarget.begin(minecraft, samples, combatant$needsResolvedMainDepth());
+        // Subsequent 3D/world overlays and depth-based post effects must see
+        // the depth that was rendered into MSAA, even without a capture module.
+        MsaaWorldTarget.begin(minecraft, samples, true);
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))

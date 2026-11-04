@@ -61,8 +61,7 @@ private final Minecraft mc = Minecraft.getInstance();
                 model.width(),
                 model.height(),
                 model::toTemplateProps,
-                model::runtimePatches,
-                model::runtimeBoundsPatches
+                model::writeDynamicPatches
         );
         if (runtime == null) return false;
         runtime.render(new UiRenderContext(renderer, resolvedText, ctx, tickDelta, UiProjectionMode.UNSCALED_LOGICAL));

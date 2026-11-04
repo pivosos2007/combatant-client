@@ -15,7 +15,6 @@ import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.GpuTexture;
-import net.minecraft.resources.Identifier;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
@@ -26,7 +25,6 @@ import combatant.client.mixininterface.IGlBackendInfo;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.mixins.accessors.GlTextureInvoker;
 import combatant.client.render.engine.msaa.MsaaTextureRegistry;
-import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.render.engine.rhi.backend.gl.GlBackendAccess;
 import combatant.client.render.engine.rhi.backend.gl.GlValidation;
 import combatant.client.render.engine.rhi.backend.gl.GlNativeStateTracker;
@@ -40,7 +38,6 @@ import java.util.Map;
 /** GL/Sodium implementation of {@link MsaaControl}; owns GL-specific MSAA resources and blits. */
 @SuppressWarnings("deprecation")
 public final class GlMsaaControl implements MsaaControl {
-    private static final Identifier ENTITY_SHADER_ID = Identifier.withDefaultNamespace("core/entity");
     private static final int GL_MAX_COLOR_TEXTURE_SAMPLES = 0x910E;
     private static final int GL_MAX_DEPTH_TEXTURE_SAMPLES = 0x910F;
     private static final int MAX_RESOLVE_FRAMEBUFFERS = 32;
@@ -106,25 +103,35 @@ public final class GlMsaaControl implements MsaaControl {
         int glId = GlStateManager._genTexture();
         if (label == null) label = String.valueOf(glId);
 
-        GL32.glBindTexture(GL32.GL_TEXTURE_2D_MULTISAMPLE, glId);
-        GL32.glTexImage2DMultisample(
-                GL32.GL_TEXTURE_2D_MULTISAMPLE,
-                samples,
-                GlConst.toGlInternalId(format),
-                width,
-                height,
-                true
-        );
-
-        int err = GlStateManager._getError();
+        int previousMultisampleTexture = GL11.glGetInteger(GL32.GL_TEXTURE_BINDING_2D_MULTISAMPLE);
+        int actualSamples;
+        int err;
+        try {
+            GL32.glBindTexture(GL32.GL_TEXTURE_2D_MULTISAMPLE, glId);
+            GL32.glTexImage2DMultisample(
+                    GL32.GL_TEXTURE_2D_MULTISAMPLE,
+                    samples,
+                    GlConst.toGlInternalId(format),
+                    width,
+                    height,
+                    true
+            );
+            err = GlStateManager._getError();
+            actualSamples = err == 0
+                    ? GL11.glGetTexLevelParameteri(GL32.GL_TEXTURE_2D_MULTISAMPLE, 0, GL32.GL_TEXTURE_SAMPLES)
+                    : 0;
+        } finally {
+            GL32.glBindTexture(GL32.GL_TEXTURE_2D_MULTISAMPLE, previousMultisampleTexture);
+        }
         if (err == 1285) {
+            GlStateManager._deleteTexture(glId);
             throw new GpuOutOfMemoryException("Could not allocate MSAA texture of " + width + "x" + height + " for " + label);
         }
         if (err != 0) {
+            GlStateManager._deleteTexture(glId);
             throw new IllegalStateException("OpenGL error " + err);
         }
 
-        int actualSamples = GL11.glGetTexLevelParameteri(GL32.GL_TEXTURE_2D_MULTISAMPLE, 0, GL32.GL_TEXTURE_SAMPLES);
         if (actualSamples < 2) {
             GlStateManager._deleteTexture(glId);
             throw new GpuOutOfMemoryException("Driver allocated non-MSAA texture for " + label
@@ -243,6 +250,15 @@ public final class GlMsaaControl implements MsaaControl {
         if (depth && (src.getDepthTexture() == null || dst.getDepthTexture() == null)) {
             return false;
         }
+
+        // GL can resolve multi -> single, but not populate a multi-sampled
+        // destination from a single-sampled source using framebuffer blit.
+        // Reject that path explicitly instead of relying on a debug-only glGetError.
+        int srcSamples = color ? samples(textureId(src.getColorTexture()))
+                : samples(textureId(src.getDepthTexture()));
+        int dstSamples = color ? samples(textureId(dst.getColorTexture()))
+                : samples(textureId(dst.getDepthTexture()));
+        if (srcSamples <= 1 && dstSamples > 1) return false;
 
         int mask = (color ? GL30.GL_COLOR_BUFFER_BIT : 0) | (depth ? GL30.GL_DEPTH_BUFFER_BIT : 0);
         IGlBackendInfo backend = GlBackendAccess.current();
@@ -416,11 +432,11 @@ public final class GlMsaaControl implements MsaaControl {
 
     @Override
     public void applyPipelineState(RenderPipeline pipeline) {
-        if (pipeline != null && MsaaWorldTarget.isActive() && ENTITY_SHADER_ID.equals(pipeline.getShaders().get(com.mojang.renderpearl.api.pipeline.ShaderType.FRAGMENT))) {
-            GlNativeStateTracker.sampleAlphaToCoverage(true);
-        } else {
-            GlNativeStateTracker.sampleAlphaToCoverage(false);
-        }
+        // 26.3 can switch from an entity pipeline to vanilla pipelines within the
+        // same pass. Those are not necessarily present in Combatant's registry;
+        // leaving SAMPLE_ALPHA_TO_COVERAGE enabled produces stippled world pixels.
+        // Keep the state off until a pass-local A2C contract is implemented.
+        GlNativeStateTracker.sampleAlphaToCoverage(false);
     }
 
     @Override

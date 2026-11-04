@@ -72,6 +72,12 @@ public final class SchematicsSection implements ClickGuiSection {
     }
 
     @Override
+    public boolean onCancel() { return panel.cancelCurrentAction(); }
+
+    @Override
+    public boolean blocksMovementInput() { return panel.isTextInputActive(); }
+
+    @Override
     public boolean charTyped(char chr, int modifiers) {
         return panel.charTyped(chr);
     }

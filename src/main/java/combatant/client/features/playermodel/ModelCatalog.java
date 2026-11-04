@@ -14,7 +14,14 @@ import java.util.*;
 public final class ModelCatalog {
     public static final String DIRECTORY = "combatant/player_models";
     public record Entry(String id, String name, String model, String texture, String icon,
-                        String atlas, String profile) {
+                        String atlas, String profile, String bodyMode,
+                        List<String> renderGroups, List<String> clothingSprites) {
+        public Entry(String id, String name, String model, String texture, String icon,
+                     String atlas, String profile) {
+            this(id, name, model, texture, icon, atlas, profile, "replace", List.of(), List.of());
+        }
+
+        public boolean usesPlayerSkin() { return "player_skin".equals(bodyMode); }
         public String geometryId() { return model; }
         public String label() { return name == null || name.isBlank() ? ModelCatalog.id(id).getPath().replace('_', ' ') : name; }
     }
@@ -46,13 +53,50 @@ public final class ModelCatalog {
                 if (!id(identifier).getNamespace().equals(catalog.getNamespace()) || !ids.add(identifier))
                     throw new IOException("Duplicate or foreign model identifier: " + identifier);
                 if (entry.name != null && entry.name.length() > 160) throw new IOException("Model name too long");
+                if (entry.clothingSprites != null && !entry.clothingSprites.isEmpty()
+                        && !"player_skin".equals(bodyMode(entry.bodyMode)))
+                    throw new IOException("Clothing sprites require player_skin body mode");
+                if ("replace".equals(bodyMode(entry.bodyMode))
+                        && entry.renderGroups != null && !entry.renderGroups.isEmpty())
+                    throw new IOException("Render groups require player_skin body mode");
                 result.add(new Entry(identifier, entry.name,
                         qualified(entry.model, catalog.getNamespace()), qualified(entry.texture, catalog.getNamespace()),
                         optional(entry.icon, catalog.getNamespace()), qualified(entry.atlas, catalog.getNamespace()),
-                        optional(entry.profile, catalog.getNamespace())));
+                        optional(entry.profile, catalog.getNamespace()),
+                        bodyMode(entry.bodyMode), groups(entry.renderGroups),
+                        sprites(entry.clothingSprites, catalog.getNamespace())));
             }
             return List.copyOf(result);
         } catch (RuntimeException failure) { throw new IOException("Invalid player model catalog: " + catalog, failure); }
+    }
+
+    private static String bodyMode(String mode) throws IOException {
+        if (mode == null || mode.isBlank() || mode.equals("replace")) return "replace";
+        if (mode.equals("player_skin")) return mode;
+        throw new IOException("Unknown model body mode: " + mode);
+    }
+
+    private static List<String> groups(List<String> names) throws IOException {
+        if (names == null || names.isEmpty()) return List.of();
+        if (names.size() > 64) throw new IOException("Too many render groups");
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        for (String name : names) {
+            if (name == null || !name.matches("[a-zA-Z0-9_.-]{1,128}") || !result.add(name))
+                throw new IOException("Invalid or repeated model render group: " + name);
+        }
+        return List.copyOf(result);
+    }
+
+    private static List<String> sprites(List<String> paths, String namespace) throws IOException {
+        if (paths == null || paths.isEmpty()) return List.of();
+        if (paths.size() > 4) throw new IOException("Too many clothing sprites");
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        for (String path : paths) {
+            String qualified = qualified(path, namespace);
+            if (!qualified.endsWith(".png") || !result.add(qualified))
+                throw new IOException("Invalid or repeated clothing sprite: " + path);
+        }
+        return List.copyOf(result);
     }
 
     private static String optional(String path, String namespace) throws IOException {

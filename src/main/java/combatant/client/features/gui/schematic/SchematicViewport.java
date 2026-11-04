@@ -523,9 +523,10 @@ final class SchematicViewport {
         return schematic.paletteIndex(px, py, pz) != 0 && ViewMode.pickable(mode.classOf(py, layer));
     }
 
-    void beginDrag(int button, float mx, float my) {
-        orbiting = button == 0;
-        panning = button != 0;
+    void beginDrag(int button, float mx, float my, boolean panModifier) {
+        // LMB rotates; Shift+LMB, MMB and RMB translate in the screen plane.
+        orbiting = button == 0 && !panModifier;
+        panning = !orbiting;
         lastX = mx;
         lastY = my;
         dragDistance = 0f;

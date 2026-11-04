@@ -13,6 +13,8 @@
 
 package combatant.client.render.engine.pipeline;
 
+import com.mojang.renderpearl.api.GpuFormat;
+
 import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.pipeline.UniformType;
@@ -88,6 +90,20 @@ public final class PostProcessRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
+
+    @PipelineRegister
+    public static final RenderPipeline POSTPROCESS_COPY_HDR = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/postprocess_copy_hdr"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("damage_tint.vert"))
+            .withFragmentShader(shader("postprocess_copy.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withoutBlend()
+            .withColorTarget(0, GpuFormat.RGBA16_FLOAT)
+            .withCull(false)
+            .build();
     /** Local screen refraction driven by the depth-tested world mask target. */
     @PipelineRegister
     public static final RenderPipeline POSTPROCESS_WORLD_MASK_DISTORTION = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
@@ -119,6 +135,23 @@ public final class PostProcessRenderPipelines {
             .withCull(false)
             .build();
 
+    /** Format-matched HDR variant for the Iris colortex0 pre-translucent integration. */
+    @PipelineRegister
+    public static final RenderPipeline POSTPROCESS_JUMP_SHOCKWAVE_HDR = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/postprocess_jump_shockwave_hdr"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("damage_tint.vert"))
+            .withFragmentShader(shader("jump_shockwave.frag"))
+            .withSampler("u_Texture")
+            .withSampler("u_Depth")
+            .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withoutBlend()
+            .withColorTarget(0, GpuFormat.RGBA16_FLOAT)
+            .withCull(false)
+            .build();
+
     @PipelineRegister
     public static final RenderPipeline POSTPROCESS_TARGET_LENS = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/postprocess_target_lens"))
@@ -146,6 +179,23 @@ public final class PostProcessRenderPipelines {
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withoutBlend()
+            .withCull(false)
+            .build();
+
+    /** Format-matched HDR variant for the Iris colortex0 pre-translucent integration. */
+    @PipelineRegister
+    public static final RenderPipeline POSTPROCESS_BLAST_SHOCKWAVE_HDR = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/postprocess_blast_shockwave_hdr"))
+            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("damage_tint.vert"))
+            .withFragmentShader(shader("blast_shockwave.frag"))
+            .withSampler("u_Texture")
+            .withSampler("u_Depth")
+            .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withoutBlend()
+            .withColorTarget(0, GpuFormat.RGBA16_FLOAT)
             .withCull(false)
             .build();
 

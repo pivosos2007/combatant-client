@@ -8,6 +8,9 @@
 package combatant.client.render.engine.renderer.ui.runtime.render;
 
 import combatant.client.render.engine.renderer.Renderer2D;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.ui.runtime.asset.UiAssetKind;
@@ -118,6 +121,21 @@ public final class UiImageRendererBridge {
                 );
             }
             return;
+        }
+        if ("linear".equalsIgnoreCase(node.props().string("filterMode", ""))) {
+            var mc = Minecraft.getInstance();
+            if (mc != null) {
+                var texture = mc.getTextureManager().getTexture(id);
+                if (texture != null && texture.getTextureView() != null) {
+                    Renderer2D.TEXTURE.roundedTexRect(
+                            bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                            context.renderLength(style.radius()), 0.0f,
+                            0.0, 0.0, 1.0, 1.0, tint,
+                            texture.getTextureView(),
+                            RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+                    return;
+                }
+            }
         }
         Renderer2D.TEXTURE.roundedTexRect(
                 bounds.x(),

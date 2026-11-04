@@ -5,9 +5,74 @@ import { SpectrumBreadcrumbs } from './breadcrumbs.js';
 import { SpectrumToast } from './toast.js';
 import { SpectrumTooltip } from './tooltip.js';
 import { SpectrumCalendar } from './calendar.js';
+import { SpectrumContextualHelp } from './contextual-help.js';
+import { SpectrumPopover } from './popover.js';
+import { SpectrumStandardDialog } from './standard-dialog.js';
 /* Spectrum 2 dev-only picker popover; independent of the Google kit. */
 const s2PopupAt=(node,x,y,w,h)=>({...node,style:ui.absolute(x,y,w,h)});
 function renderSpectrumModalOrPopup(data,viewport) {
+  if(data.overlay==='adobe-popover') {
+    const vw=viewport.vw,vh=viewport.vh,margin=12,w=Math.min(320,vw-2*margin),h=160;
+    const ax=ui.num(data.anchorX,24),ay=ui.num(data.anchorY,24);
+    const aw=ui.num(data.anchorWidth,116),ah=ui.num(data.anchorHeight,40),offset=8;
+    let placement=ui.str(data.adobePopoverPlacement,'bottom');
+    const available={bottom:vh-(ay+ah)-margin-offset,top:ay-margin-offset,
+      left:ax-margin-offset,right:vw-(ax+aw)-margin-offset};
+    if((placement==='bottom'||placement==='top')&&available[placement]<h){
+      const flipped=placement==='bottom'?'top':'bottom';
+      if(available[flipped]>available[placement])placement=flipped;
+    }
+    if((placement==='left'||placement==='right')&&available[placement]<w){
+      const flipped=placement==='left'?'right':'left';
+      if(available[flipped]>available[placement])placement=flipped;
+    }
+    const tx=(placement==='left'?ax-w-offset:placement==='right'?ax+aw+offset:ax+aw/2-w/2);
+    const ty=(placement==='top'?ay-h-offset:placement==='bottom'?ay+ah+offset:ay+ah/2-h/2);
+    const x=Math.max(margin,Math.min(vw-w-margin,tx));
+    const y=Math.max(margin,Math.min(vh-h-margin,ty));
+    return ui.stack({key:'s2:overlay:root',class:ui.abs(0,0,vw,vh),children:[
+      ui.button({key:'s2:popover:outside',class:ui.abs(0,0,vw,vh),
+        onClick:'lab:adobe:popover:close',children:[]}),
+      s2PopupAt(SpectrumPopover.render({key:'s2:popover:popup',width:w,height:h,
+        title:'File is too large',description:'Reduce the file size to less than 10 MB and try again.'}),
+        x,y,w,h)
+    ]});
+  }
+  if(data.overlay==='adobe-standard-dialog') {
+    const vw=viewport.vw,vh=viewport.vh,margin=18;
+    const size=ui.str(data.adobeStandardDialogSize,'M');
+    const desired={S:392,M:512,L:720}[size]||512;
+    const w=Math.min(desired,vw-margin*2),h=296;
+    return ui.stack({key:'s2:overlay:root',class:ui.abs(0,0,vw,vh),children:[
+      SpectrumFoundation.rect('s2:standard-dialog:shade',0,0,vw,vh,0,'#9A000000'),
+      ui.button({key:'s2:standard-dialog:block',class:ui.abs(0,0,vw,vh),children:[]}),
+      s2PopupAt(SpectrumStandardDialog.render({key:'s2:standard-dialog',width:w,height:h,
+        title:'Project settings',description:'Change how this document is stored and shared.',
+        contentTitle:'Cloud sync',content:'Settings will apply to all collaborators.',
+        onCancel:'lab:adobe:standard-dialog:cancel',
+        onConfirm:'lab:adobe:standard-dialog:confirm'}),(vw-w)/2,(vh-h)/2,w,h)
+    ]});
+  }
+  if(data.overlay==='adobe-context-help-help'||data.overlay==='adobe-context-help-info') {
+    const vw=viewport.vw,vh=viewport.vh;
+    const informative=data.overlay==='adobe-context-help-info';
+    const width=320,height=informative?128:158,margin=12;
+    const ax=ui.num(data.anchorX,24),ay=ui.num(data.anchorY,24);
+    const ah=ui.num(data.anchorHeight,26);
+    const x=Math.max(margin,Math.min(vw-width-margin,ax));
+    const below=ay+ah+7;
+    const y=Math.max(margin,Math.min(vh-height-margin,
+      below+height<=vh-margin?below:ay-height-7));
+    return ui.stack({key:'s2:overlay:root',class:ui.abs(0,0,vw,vh),children:[
+      ui.button({key:'s2:help:outside',class:ui.abs(0,0,vw,vh),
+        onClick:'lab:adobe:context-help:close',children:[]}),
+      s2PopupAt(SpectrumContextualHelp.popover({key:'s2:help:popover',width,
+        title:informative?'Sharing permissions':'Export settings',
+        content:informative?'People with access to a project can view its shared files. Editing requires a separate permission.':
+          'Export presets control file size and quality. Select a format that supports your target workflow.',
+        footer:informative?'':'More about export options'}),x,y,width,height)
+    ]});
+  }
   if(data.overlay==='adobe-combo') {
     const p=SpectrumFoundation.dark,vw=viewport.vw,vh=viewport.vh;
     const labels={photoshop:'Photoshop document',illustrator:'Illustrator artwork',

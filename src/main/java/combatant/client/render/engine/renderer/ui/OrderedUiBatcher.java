@@ -1742,6 +1742,9 @@ public final class OrderedUiBatcher {
         float passOffset = Float.isFinite(offsetPx) ? Math.max(0.0f, offsetPx) : Renderer2D.DEFAULT_KAWASE_OFFSET_PX;
         int fullWidth = Math.max(1, Math.round(screenW));
         int fullHeight = Math.max(1, Math.round(screenH));
+        if (UiBlurResources.isCapturedWorldSource(sourceView)) {
+            blurBounds = UiBlurResources.REPLAY_BLUR_PLAN.bounds(quality.id, passOffset, blurBounds);
+        }
         UiBlurRegion requestedRegion = UiBlurResources.blurRegion(
                 blurBounds, fullWidth, fullHeight, iterations, passOffset);
 
@@ -1770,6 +1773,13 @@ public final class OrderedUiBatcher {
             return 0;
         }
 
+        // The same target will be overwritten. Recompute the union, not just the new region,
+        // so previously valid pixels retain the complete Kawase kernel support.
+        if (UiBlurResources.isCapturedWorldSource(sourceView)) {
+            FrameBlurCacheEntry previous = UiBlurResources.findReusable(frameId, phase, sourceView, sourceSampler,
+                    screenW, screenH, uiScale, quality, passOffset, null);
+            if (previous != null) requestedRegion = requestedRegion.mergeNearby(previous.region);
+        }
         resetSharedBlur();
 
         int blurProfileSource = blurProfileSource(sourceView);
@@ -1852,6 +1862,18 @@ public final class OrderedUiBatcher {
         }
     }
 
+
+    void collectCapturedBlurDemand(UiBlurPlan plan) {
+        if (hudBackdropContribution) return;
+        for (Object entry : order) {
+            if (!(entry instanceof DrawBatch batch) || batch.backdropRequest == null) continue;
+            if (batch.backdropRequest.sceneSource() != UiBackdropRequest.SceneSource.CAPTURED_SCENE
+                    || !batch.backdropRequest.sceneBlur().enabled()) continue;
+            Renderer2D.BlurQuality quality = batch.blurQuality != null
+                    ? batch.blurQuality : Renderer2D.DEFAULT_BLUR_QUALITY;
+            plan.add(quality.id, batch.blurOffsetPx, batch.backdropRequest.captureBounds());
+        }
+    }
 
     private @Nullable UiRect blurBoundsFor(DrawBatch batch) {
         if (batch == null || batch.backdropRequest == null) return null;
@@ -2039,8 +2061,8 @@ public final class OrderedUiBatcher {
 
         for (int i = 0, size = textPool.size(); i < size; i++) {
             TextBatch batch = textPool.get(i);
-            if (batch != null && batch.mesh != null) {
-                batch.mesh.close();
+            if (batch != null) {
+                batch.closeRetainedMeshes();
             }
         }
 

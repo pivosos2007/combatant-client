@@ -49,9 +49,11 @@ float combatantClipPrimitiveDistance(int index, vec2 logicalPosition) {
 
 float combatantClipDistance(vec2 logicalPosition) {
     int count = clamp(int(uClipHeader.x + 0.5), 0, COMBATANT_MAX_ANALYTIC_CLIPS);
-    float distanceToIntersection = -1e20;
-    for (int i = 0; i < COMBATANT_MAX_ANALYTIC_CLIPS; i++) {
-        if (i >= count) break;
+    if (count == 0) return -1e20;
+    // Most controls have one active rounded/rect clip: no per-pixel loop.
+    float distanceToIntersection = combatantClipPrimitiveDistance(0, logicalPosition);
+    if (count == 1) return distanceToIntersection;
+    for (int i = 1; i < count; i++) {
         distanceToIntersection = max(distanceToIntersection,
                 combatantClipPrimitiveDistance(i, logicalPosition));
     }

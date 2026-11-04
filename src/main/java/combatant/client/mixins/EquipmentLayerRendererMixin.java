@@ -66,6 +66,11 @@ public abstract class EquipmentLayerRendererMixin {
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/rendertype/RenderTypes;armorCutoutNoCull(Lnet/minecraft/resources/Identifier;)Lnet/minecraft/client/renderer/rendertype/RenderType;")
     )
     private RenderType combatant$useTranslucentArmorWhenViewFaded(Identifier texture) {
+        // The private SeeInvisibles depth pass must include opaque armor, too.
+        // Do not inherit the visible player's translucent equipment pipeline.
+        if (combatant.client.render.engine.depth.SeeInvisiblesVisualDepth.isCapturing()) {
+            return RenderTypes.armorCutoutNoCull(texture);
+        }
         if (IrisRuntime.isRenderingShadowPass()) {
             return RenderTypes.armorCutoutNoCull(texture);
         }

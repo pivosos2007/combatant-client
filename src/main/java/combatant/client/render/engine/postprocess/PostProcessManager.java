@@ -43,7 +43,9 @@ public enum PostProcessManager {
     }
 
     public static void renderAll(PostProcessPass.Phase phase, float tickDelta) {
-        renderSelected(phase, tickDelta, pass -> true);
+        renderSelected(phase, tickDelta, pass -> phase != PostProcessPass.Phase.PRE_HAND
+                || !combatant.client.render.engine.world.EarlyShockwavePass.renderedThisFrame()
+                || !combatant.client.render.engine.world.EarlyShockwavePass.isShockwave(pass));
     }
 
     /**
@@ -53,10 +55,16 @@ public enum PostProcessManager {
     public static void renderSelected(PostProcessPass.Phase phase,
                                       float tickDelta,
                                       Predicate<? super PostProcessPass> selector) {
-        if (!RuntimeGate.canRunRender()) return;
-        if (selector == null) return;
+        renderSelectedOn(phase, tickDelta, selector, null);
+    }
+
+    public static boolean renderSelectedOn(PostProcessPass.Phase phase, float tickDelta,
+                                            Predicate<? super PostProcessPass> selector,
+                                            com.mojang.blaze3d.pipeline.RenderTarget targetOverride) {
+        if (!RuntimeGate.canRunRender() || selector == null) return false;
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.gameRenderer.mainRenderTarget() == null) return;
+        if (mc == null || mc.gameRenderer == null
+                || (targetOverride == null && mc.gameRenderer.mainRenderTarget() == null)) return false;
 
         FullScreenRenderer.ensureInit();
         ensureSampler();
@@ -72,12 +80,12 @@ public enum PostProcessManager {
         RenderState.rendering3D = false;
 
         try {
-            GRAPH.execute(
+            return GRAPH.execute(
                     phase,
                     tickDelta,
                     CombatantRenderSystem.rhi(),
                     PostProcessManager::copy,
-                    selector
+                    selector, targetOverride
             );
         } finally {
             MeshRenderer.setProjection(previousProjection);
@@ -117,7 +125,9 @@ public enum PostProcessManager {
             CombatantRenderSystem.rhi().drawFullscreen(
                     FullscreenDrawCommand.builder("Combatant PostProcess Copy")
                             .colorAttachment(dst)
-                            .pipeline(PostProcessRenderPipelines.POSTPROCESS_COPY)
+                            .pipeline(dst.texture().getFormat() == com.mojang.renderpearl.api.GpuFormat.RGBA16_FLOAT
+                                    ? PostProcessRenderPipelines.POSTPROCESS_COPY_HDR
+                                    : PostProcessRenderPipelines.POSTPROCESS_COPY)
                             .sampler("u_Texture", src, sampler)
                             .build()
             );

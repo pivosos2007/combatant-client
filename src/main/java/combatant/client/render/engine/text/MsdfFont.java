@@ -13,6 +13,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.AddressMode;
 import com.mojang.renderpearl.api.textures.FilterMode;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2FloatOpenHashMap;
@@ -219,8 +220,10 @@ public final class MsdfFont implements GlyphFont {
 
         int length = string.length();
         int previous = -1;
+        int glyphIndex = 0;
         for (int i = 0; i < length; ) {
             int cp = string.codePointAt(i);
+            int index = glyphIndex++;
             Glyph g = atlas.glyphForCodePoint(cp);
             int resolved = g != null ? cp : -1;
             if (g == null) g = atlas.fallback;
@@ -239,7 +242,7 @@ public final class MsdfFont implements GlyphFont {
                 double y0 = baseline + g.top * scalePx;
                 double y1 = baseline + g.bottom * scalePx;
 
-                consumer.accept(x0, y0, x1, y1, g.u0, g.v0, g.u1, g.v1);
+                consumer.accept(index, cp, x0, y0, x1, y1, g.u0, g.v0, g.u1, g.v1);
             }
 
             x += g.advance * pixelScale * scale;
@@ -258,7 +261,7 @@ public final class MsdfFont implements GlyphFont {
             if (g == null || !g.visible) continue;
             double gx = x + slot.x() * factor;
             double gy = baseline + slot.y() * factor;
-            consumer.accept(gx + g.left * factor, gy + g.top * factor,
+            consumer.accept(slot.codePointIndex(), slot.codePoint(), gx + g.left * factor, gy + g.top * factor,
                     gx + g.right * factor, gy + g.bottom * factor,
                     g.u0, g.v0, g.u1, g.v1);
         }
@@ -886,7 +889,10 @@ public final class MsdfFont implements GlyphFont {
                 buffer.position(0);
                 buffer.limit(buffer.capacity());
 
-                Texture texture = new Texture(w, h + extraRows, GpuFormat.RGBA8_UNORM, FilterMode.LINEAR, FilterMode.LINEAR);
+                // An atlas is not a tiled texture. CLAMP_TO_EDGE prevents bilinear
+                // samples at the last glyph row/column from wrapping into unrelated glyphs.
+                Texture texture = new Texture(w, h + extraRows, GpuFormat.RGBA8_UNORM,
+                        FilterMode.LINEAR, FilterMode.LINEAR, AddressMode.CLAMP_TO_EDGE);
                 texture.upload(buffer.duplicate());
                 // The initial atlas is already on the GPU. Only newly appended
                 // rows need CPU backing; keep no copy of the original PNG pixels.
