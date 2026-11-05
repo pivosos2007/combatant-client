@@ -16,6 +16,9 @@ export class SpectrumSwitch {
         SpectrumFoundation.rect(`${key}:track`,0,4,54,24,12,trackOff,disabled?p.disabled:p.controlMuted,2,{
           stateSource:'parent',fillReactive:{base:trackOff,mix:tone,mixTerms:{selected:1}},
           strokeReactive:{base:disabled?p.disabled:p.controlMuted,mix:tone,mixTerms:{selected:1}}}),
+        SpectrumFoundation.rect(`${key}:hover`,0,4,54,24,12,'#00000000',undefined,0,{
+          stateSource:'parent',fillReactive:{base:p.text,alphaBase:0,
+            alphaTerms:disabled?{}:{hover:.075,press:.13}}}),
         SpectrumFoundation.rect(`${key}:thumb`,6,8,16,16,8,disabled?p.disabled:p.control,undefined,0,{
           stateSource:'parent',translateXTo:26,translateXSignal:'selected',
           fillReactive:{base:disabled?p.disabled:p.control,

@@ -38,9 +38,9 @@ export_cache/
 /.tmp_photon/
 /.tmp_complementary/
 /!new_temp_assets/
-/src/main/resources/javet/natives/libjavet-v8-linux-x86_64.v.5.0.9.so
-/src/main/resources/javet/natives/libjavet-v8-macos-x86_64.v.5.0.9.dylib
-/src/main/resources/javet/natives/libjavet-v8-windows-x86_64.v.5.0.9.dll
+/src/main/resources/javet/natives/**/*.so
+/src/main/resources/javet/natives/**/*.dylib
+/src/main/resources/javet/natives/**/*.dll
 /RELEASE_CHECKLIST.md
 /.claude/
 /gradle/.idea/.gitignore

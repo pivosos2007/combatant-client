@@ -133,12 +133,10 @@ public final class ThemeEditorPreviewComponent {
         if (module == null) return;
 
         Map<String, Object> props = previewTemplateProps(entry, panelW, panelH, unit, alpha);
-        long treeSignature = CachedUiScriptRuntime.signature(props);
-        UiRuntime runtime = previewRuntime.updatePersistent(
+        UiRuntime runtime = previewRuntime.bakeTracked(
                 previewModuleHandle,
                 module,
                 "theme-preview",
-                treeSignature,
                 panelW,
                 panelH,
                 ClickGuiRenderer.getInterRegular(),
@@ -146,8 +144,7 @@ public final class ThemeEditorPreviewComponent {
                 panelY,
                 panelW,
                 panelH,
-                () -> props,
-                () -> Collections.<String, Map<String, ?>>emptyMap()
+                () -> props
         );
         if (runtime == null) return;
         ClickGuiRenderer.flushRenderer();

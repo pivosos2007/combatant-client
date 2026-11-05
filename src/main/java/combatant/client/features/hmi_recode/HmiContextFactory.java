@@ -9,6 +9,7 @@
 package combatant.client.features.hmi_recode;
 
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import combatant.client.features.hmi_recode.script.HmiInputBuffer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.component.DataComponents;
@@ -27,13 +28,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-final class HmiContextFactory {
+public final class HmiContextFactory {
     private static final Map<Item, StaticItemData> STATIC_ITEMS = new Reference2ObjectOpenHashMap<>();
 
     private HmiContextFactory() {
     }
 
-    static Object[] renderContext(HoldMyItems.RenderScope scope) {
+    public static Object[] renderContext(HoldMyItems.RenderScope scope) {
         LocalPlayer player = scope.player();
         ItemStack mainStack = player.getMainHandItem();
         ItemStack offStack = player.getOffhandItem();
@@ -71,6 +72,94 @@ final class HmiContextFactory {
                 minecraft.getWindow() != null && combatant.client.input.CombatantInput.state().isPressed(
                         combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.J)
         };
+    }
+
+    /** Fill the V8-owned native input directly. No Object[] or boxed numeric values are produced. */
+    public static void writeNative(HoldMyItems.RenderScope scope, HmiInputBuffer out) {
+        LocalPlayer player = scope.player();
+        var velocity = player.getDeltaMovement();
+        out.put(0, player.getHealth());
+        out.put(1, player.isShiftKeyDown());
+        out.put(2, player.onGround());
+        out.put(3, player.isVisuallySwimming());
+        out.put(4, player.onClimbable());
+        out.put(5, player.getPose() == Pose.SWIMMING && !player.isInWater());
+        out.put(6, player.isUnderWater());
+        out.put(7, player.isInWater());
+        out.put(8, player.isAutoSpinAttack());
+        out.put(9, player.isUsingItem());
+        out.meta(12, player.isUsingItem() ? handName(player.getUsedItemHand()) : "none");
+        out.put(10, 0);
+        out.put(11, player.getX());
+        out.put(12, player.getY());
+        out.put(13, player.getZ());
+        out.put(14, player.getYRot(scope.tickDelta()));
+        out.put(15, player.getXRot(scope.tickDelta()));
+        out.put(16, player.tickCount + scope.tickDelta());
+        out.put(17, scope.swingCount());
+        out.put(18, player.isPassenger());
+        out.put(19, velocity.x);
+        out.put(20, velocity.y);
+        out.put(21, velocity.z);
+
+        ItemStack main = player.getMainHandItem();
+        ItemStack off = player.getOffhandItem();
+        writeItem(out, 22, 0, main, player);
+        writeItem(out, 31, 4, off, player);
+        int selected = scope.item() == main ? 0 : scope.item() == off ? 1 : 2;
+        // The third item is only visible to JS for a replaced render item.
+        // Do not resolve the empty-item metadata on ordinary first-person frames.
+        if (selected == 2) writeItem(out, 40, 8, scope.item(), player);
+        out.put(49, selected);
+        out.put(50, scope.hand() == InteractionHand.MAIN_HAND);
+        out.put(51, scope.mainHand());
+        out.put(52, scope.rightArm());
+        out.put(53, scope.scriptSwingProgress());
+        out.put(54, scope.rawSwingProgress());
+        out.put(55, scope.mainHandSwingProgress());
+        out.put(56, scope.offHandSwingProgress());
+        out.put(57, scope.equipProgress());
+        out.put(58, scope.deltaSeconds());
+        out.put(59, scope.mainHand() && scope.swingProgress() > 0f);
+        out.put(60, !scope.mainHand() && scope.swingProgress() > 0f);
+        out.put(61, scope.mainHandSwitchEvent());
+        out.put(62, scope.offHandSwitchEvent());
+        out.put(63, scope.blockBreaking());
+
+        HoldMyItems.MotionSettings m = scope.motionSettings();
+        out.put(64, m.swingStrength());
+        out.put(65, m.swordSwingStrength());
+        out.put(66, m.offhandSwingStrength());
+        out.put(67, m.movementStrength());
+        out.put(68, m.lookStrength());
+        out.put(69, m.switchStrength());
+        out.put(70, m.useStrength());
+        out.put(71, m.impactStrength());
+        out.put(72, m.replaceSwing());
+        out.meta(13, m.swingStyle());
+        Minecraft minecraft = Minecraft.getInstance();
+        out.put(73, minecraft.getWindow() != null && combatant.client.input.CombatantInput.state().isPressed(
+                combatant.client.input.InputDevice.KEYBOARD, combatant.client.input.InputKeys.J));
+    }
+
+    private static void writeItem(HmiInputBuffer out, int base, int metaBase,
+                                  ItemStack stack, LocalPlayer player) {
+        ItemStack safe = stack != null ? stack : ItemStack.EMPTY;
+        StaticItemData data = STATIC_ITEMS.computeIfAbsent(safe.getItem(), HmiContextFactory::staticItem);
+        out.meta(metaBase, data.id());
+        out.meta(metaBase + 1, safe.getHoverName().getString());
+        out.meta(metaBase + 2, safe.getUseAnimation().getSerializedName().toLowerCase(Locale.ROOT));
+        out.meta(metaBase + 3, data.tags());
+        out.put(base, safe.isEmpty());
+        out.put(base + 1, data.block());
+        out.put(base + 2, data.lantern());
+        out.put(base + 3, data.throwableItem());
+        out.put(base + 4, !safe.getEnchantments().isEmpty());
+        var charged = safe.get(DataComponents.CHARGED_PROJECTILES);
+        out.put(base + 5, charged != null && !charged.isEmpty());
+        out.put(base + 6, player != null && player.getCooldowns().isOnCooldown(safe));
+        out.put(base + 7, false);
+        out.put(base + 8, false);
     }
 
     private static Object[] player(LocalPlayer player, float tickDelta, int swingCount) {

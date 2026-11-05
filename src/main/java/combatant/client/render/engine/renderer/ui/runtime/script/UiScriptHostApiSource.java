@@ -19,6 +19,7 @@ enum UiScriptHostApiSource {
     ;
 
     private static final String RESOURCE_PATH = "/assets/combatant/ui/api/ui.js";
+    private static final String TRACKING_PATH = "/assets/combatant/ui/api/dependency_tracking.js";
     private static final String MODULE_EXPORT = "export const ui =";
     private static final String GLOBAL_ASSIGNMENT = "globalThis.ui =";
 
@@ -33,6 +34,10 @@ enum UiScriptHostApiSource {
 
     static String contractBootstrapSource() {
         return ContractHolder.SOURCE;
+    }
+
+    static String dependencyTrackingSource() {
+        return TrackingHolder.SOURCE;
     }
 
     private static String loadCanonicalSource() {
@@ -77,6 +82,19 @@ enum UiScriptHostApiSource {
                   });
                 })();
                 """.formatted(UiAuthoringContract.rawJson(), UiRuntimeValidation.enabled());
+    }
+
+    private static final class TrackingHolder {
+        private static final String SOURCE = loadTrackingSource();
+    }
+
+    private static String loadTrackingSource() {
+        try (InputStream stream = UiScriptHostApiSource.class.getResourceAsStream(TRACKING_PATH)) {
+            if (stream == null) throw new IllegalStateException("Missing UI dependency tracker: " + TRACKING_PATH);
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read UI dependency tracker: " + TRACKING_PATH, e);
+        }
     }
 
     private static final class SourceHolder {

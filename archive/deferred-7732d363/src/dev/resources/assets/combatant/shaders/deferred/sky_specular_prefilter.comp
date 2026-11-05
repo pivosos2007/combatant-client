@@ -1,0 +1,79 @@
+#version 430 core
+
+/* Neutral GGX environment prefilter. Each dispatch writes one roughness mip. */
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_SkyRadiance;
+layout(binding = 1, rgba16f) writeonly uniform image2D u_PrefilteredSky;
+layout(std430, binding = 2) readonly buffer SkySpecularParams { vec4 params; } u_Params;
+
+const float PI = 3.14159265358979323846;
+const uint SAMPLE_COUNT = 64u;
+
+float radicalInverseVdc(uint bits) {
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10;
+}
+
+vec2 hammersley(uint i) {
+    return vec2(float(i) / float(SAMPLE_COUNT), radicalInverseVdc(i));
+}
+
+vec3 directionFromLatLong(vec2 uv) {
+    float phi = (uv.x * 2.0 - 1.0) * PI;
+    float theta = uv.y * PI;
+    float s = sin(theta);
+    return vec3(s * cos(phi), cos(theta), s * sin(phi));
+}
+
+vec2 latLongFromDirection(vec3 d) {
+    d = normalize(d);
+    float phi = atan(d.z, d.x);
+    float theta = acos(clamp(d.y, -1.0, 1.0));
+    return vec2(phi / (2.0 * PI) + 0.5, theta / PI);
+}
+
+vec3 importanceSampleGgx(vec2 xi, vec3 n, float roughness) {
+    float alpha = max(roughness * roughness, 1e-4);
+    float alpha2 = alpha * alpha;
+    float phi = 2.0 * PI * xi.x;
+    float cosTheta = sqrt((1.0 - xi.y) / max(1.0 + (alpha2 - 1.0) * xi.y, 1e-6));
+    float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+
+    vec3 hTangent = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+    vec3 up = abs(n.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = normalize(cross(up, n));
+    vec3 bitangent = cross(n, tangent);
+    return normalize(tangent * hTangent.x + bitangent * hTangent.y + n * hTangent.z);
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_PrefilteredSky);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(size);
+    vec3 n = directionFromLatLong(uv);
+    vec3 v = n;
+    float roughness = clamp(u_Params.params.x, 0.0, 1.0);
+
+    if (roughness <= 1e-5) {
+        imageStore(u_PrefilteredSky, pixel, vec4(max(textureLod(u_SkyRadiance, uv, 0.0).rgb, vec3(0.0)), 1.0));
+        return;
+    }
+
+    vec3 sum = vec3(0.0);
+    float weight = 0.0;
+    for (uint i = 0u; i < SAMPLE_COUNT; ++i) {
+        vec3 h = importanceSampleGgx(hammersley(i), n, roughness);
+        vec3 l = normalize(reflect(-v, h));
+        float ndotl = max(dot(n, l), 0.0);
+        if (ndotl <= 0.0) continue;
+        sum += max(textureLod(u_SkyRadiance, latLongFromDirection(l), 0.0).rgb, vec3(0.0)) * ndotl;
+        weight += ndotl;
+    }
+    imageStore(u_PrefilteredSky, pixel, vec4(sum / max(weight, 1e-6), 1.0));
+}

@@ -27,6 +27,10 @@ public final class IrisImportedGeometryPipelines {
             "iris_imported_translucent_blend_cull", true, true, false);
     public static final RenderPipeline TRANSLUCENT_BLEND_DOUBLE_SIDED = translucent(
             "iris_imported_translucent_blend_double_sided", false, true, false);
+    /** Fade of high-poly replacement players: depth writes avoid reblending the
+     * entire interior shell stack. Glass without a fade keeps the usual policy. */
+    public static final RenderPipeline PLAYER_FADE_DEPTH_WRITE_DOUBLE_SIDED = translucent(
+            "iris_player_fade_depth_write_double_sided", false, true, true);
     public static final RenderPipeline TRANSLUCENT_NO_DEPTH_CULL = translucent(
             "iris_imported_translucent_no_depth_cull", true, false, false);
     public static final RenderPipeline TRANSLUCENT_NO_DEPTH_DOUBLE_SIDED = translucent(
@@ -40,6 +44,7 @@ public final class IrisImportedGeometryPipelines {
                 || pipeline == SHADOW_CULL || pipeline == SHADOW_DOUBLE_SIDED
                 || pipeline == TRANSLUCENT_BLEND_CULL
                 || pipeline == TRANSLUCENT_BLEND_DOUBLE_SIDED
+                || pipeline == PLAYER_FADE_DEPTH_WRITE_DOUBLE_SIDED
                 || pipeline == TRANSLUCENT_NO_DEPTH_CULL
                 || pipeline == TRANSLUCENT_NO_DEPTH_DOUBLE_SIDED;
     }

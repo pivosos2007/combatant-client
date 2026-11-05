@@ -31,11 +31,7 @@ public final class GlowSurfaces {
         BREATHE("breathe", 2),
         FLOW("flow", 3),
         RIPPLE("ripple", 4),
-        SWEEP("sweep", 5),
-        CUSTOM_1("custom_1", 8),
-        CUSTOM_2("custom_2", 9),
-        CUSTOM_3("custom_3", 10),
-        CUSTOM_4("custom_4", 11);
+        SWEEP("sweep", 5);
 
         private final String id;
         private final int shaderId;
@@ -100,6 +96,12 @@ public final class GlowSurfaces {
         return Math.max(min, Math.min(max, v));
     }
 
+    /** Samples an animated or spatial palette at world-space vertex positions. */
+    @FunctionalInterface
+    public interface VertexColor {
+        int at(double x, double y, double z);
+    }
+
     public static final class Batch {
         private final MeshBuilder mesh;
         private final float seconds;
@@ -136,12 +138,89 @@ public final class GlowSurfaces {
             }
         }
 
+        /** All six faces receive independent vertex colors (rather than static top/bottom tints). */
+        public void boxColored(AABB box, VertexColor colorAt, float rimAlpha, boolean caps) {
+            boxColored(box, colorAt, rimAlpha, caps, phaseFor(box.minX, box.minY, box.minZ));
+        }
+
+        /** Caller-supplied stable phase: moving entities must not restart their glow on every block boundary. */
+        public void boxColored(AABB box, VertexColor colorAt, float rimAlpha, boolean caps, float phase) {
+            double x1 = box.minX, y1 = box.minY, z1 = box.minZ;
+            double x2 = box.maxX, y2 = box.maxY, z2 = box.maxZ;
+            int c000 = colorAt.at(x1, y1, z1), c001 = colorAt.at(x1, y1, z2);
+            int c010 = colorAt.at(x1, y2, z1), c011 = colorAt.at(x1, y2, z2);
+            int c100 = colorAt.at(x2, y1, z1), c101 = colorAt.at(x2, y1, z2);
+            int c110 = colorAt.at(x2, y2, z1), c111 = colorAt.at(x2, y2, z2);
+            coloredQuad(phase, rimAlpha, 0, 0, 1,
+                    x1,y1,z2,c001, x2,y1,z2,c101, x2,y2,z2,c111, x1,y2,z2,c011);
+            coloredQuad(phase, rimAlpha, 0, 0,-1,
+                    x2,y1,z1,c100, x1,y1,z1,c000, x1,y2,z1,c010, x2,y2,z1,c110);
+            coloredQuad(phase, rimAlpha, 1, 0, 0,
+                    x2,y1,z2,c101, x2,y1,z1,c100, x2,y2,z1,c110, x2,y2,z2,c111);
+            coloredQuad(phase, rimAlpha,-1, 0, 0,
+                    x1,y1,z1,c000, x1,y1,z2,c001, x1,y2,z2,c011, x1,y2,z1,c010);
+            if (caps) {
+                coloredQuad(phase, rimAlpha, 0,-1, 0,
+                        x1,y1,z1,c000, x2,y1,z1,c100, x2,y1,z2,c101, x1,y1,z2,c001);
+                coloredQuad(phase, rimAlpha, 0, 1, 0,
+                        x1,y2,z1,c010, x2,y2,z1,c110, x2,y2,z2,c111, x1,y2,z2,c011);
+            }
+        }
+
+        private void coloredQuad(float phase, float rim, float nx, float ny, float nz,
+                                 double x1,double y1,double z1,int c1,
+                                 double x2,double y2,double z2,int c2,
+                                 double x3,double y3,double z3,int c3,
+                                 double x4,double y4,double z4,int c4) {
+            mesh.ensureQuadCapacity();
+            int a = vertex(x1,y1,z1,0,0,nx,ny,nz,c1,1,phase,rim);
+            int b = vertex(x2,y2,z2,1,0,nx,ny,nz,c2,1,phase,rim);
+            int c = vertex(x3,y3,z3,1,1,nx,ny,nz,c3,1,phase,rim);
+            int d = vertex(x4,y4,z4,0,1,nx,ny,nz,c4,1,phase,rim);
+            mesh.quad(a,b,c,d);
+        }
+
+        /** Add all twelve bright, camera-facing edges to the same glow batch. */
+        public void edges(AABB box, VertexColor colorAt, float glow, float thickness) {
+            edges(box, colorAt, glow, thickness, phaseFor(box.minX, box.minY, box.minZ));
+        }
+
+        /** Match face and ribbon animation phases even while the source box translates. */
+        public void edges(AABB box, VertexColor colorAt, float glow, float thickness, float phase) {
+            double x1 = box.minX, y1 = box.minY, z1 = box.minZ;
+            double x2 = box.maxX, y2 = box.maxY, z2 = box.maxZ;
+            edgeColored(x1,y1,z1,x2,y1,z1,colorAt,glow,thickness,phase);
+            edgeColored(x2,y1,z1,x2,y1,z2,colorAt,glow,thickness,phase);
+            edgeColored(x2,y1,z2,x1,y1,z2,colorAt,glow,thickness,phase);
+            edgeColored(x1,y1,z2,x1,y1,z1,colorAt,glow,thickness,phase);
+            edgeColored(x1,y2,z1,x2,y2,z1,colorAt,glow,thickness,phase);
+            edgeColored(x2,y2,z1,x2,y2,z2,colorAt,glow,thickness,phase);
+            edgeColored(x2,y2,z2,x1,y2,z2,colorAt,glow,thickness,phase);
+            edgeColored(x1,y2,z2,x1,y2,z1,colorAt,glow,thickness,phase);
+            edgeColored(x1,y1,z1,x1,y2,z1,colorAt,glow,thickness,phase);
+            edgeColored(x2,y1,z1,x2,y2,z1,colorAt,glow,thickness,phase);
+            edgeColored(x2,y1,z2,x2,y2,z2,colorAt,glow,thickness,phase);
+            edgeColored(x1,y1,z2,x1,y2,z2,colorAt,glow,thickness,phase);
+        }
+
+        private void edgeColored(double x1,double y1,double z1,double x2,double y2,double z2,
+                                 VertexColor colorAt, float glow, float thickness, float phase) {
+            edge(x1,y1,z1,x2,y2,z2,
+                    colorAt.at(x1,y1,z1),colorAt.at(x2,y2,z2),glow,thickness,phase);
+        }
+
         /**
          * Camera-facing ribbon with an analytic, antialiased bright core and soft halo in GLSL.
          * Same shader, vertex format and batch as box(); no native line-state changes.
          */
         public void edge(double x1, double y1, double z1, double x2, double y2, double z2,
                          int startArgb, int endArgb, float glow, float thickness) {
+            edge(x1, y1, z1, x2, y2, z2, startArgb, endArgb, glow, thickness,
+                    phaseFor((x1 + x2) * 0.5, (y1 + y2) * 0.5, (z1 + z2) * 0.5));
+        }
+
+        private void edge(double x1, double y1, double z1, double x2, double y2, double z2,
+                          int startArgb, int endArgb, float glow, float thickness, float phase) {
             double mx = (x1 + x2) * 0.5;
             double my = (y1 + y2) * 0.5;
             double mz = (z1 + z2) * 0.5;
@@ -164,7 +243,6 @@ public final class GlowSurfaces {
             sx *= k; sy *= k; sz *= k;
             // Bias toward camera to prevent z fighting on coplanar faces.
             double bx = dx / dist * 0.0025, by = dy / dist * 0.0025, bz = dz / dist * 0.0025;
-            float phase = phaseFor(mx, my, mz);
             // Negative rim marks a ribbon. Encode line glow separately from the face rim strength.
             float ribbonMarker = -1.0f - clamp(glow, 0.0f, 4.0f);
             mesh.ensureQuadCapacity();

@@ -19,6 +19,7 @@ public abstract class LivingEntityRenderStateMixin implements ViewObstructionFad
         combatant.client.features.playermodel.PlayerModelRenderState {
     @Unique
     private combatant.client.features.playermodel.PlayerModels.Snapshot combatant$replacement;
+    @Unique private boolean combatant$replacementSubmitted;
 
     @Override
     public combatant.client.features.playermodel.PlayerModels.Snapshot combatant$getReplacement() {
@@ -28,6 +29,15 @@ public abstract class LivingEntityRenderStateMixin implements ViewObstructionFad
     @Override
     public void combatant$setReplacement(combatant.client.features.playermodel.PlayerModels.Snapshot replacement) {
         combatant$replacement = replacement;
+        combatant$replacementSubmitted = false;
+    }
+
+    @Override
+    public boolean combatant$isReplacementSubmitted() { return combatant$replacementSubmitted; }
+
+    @Override
+    public void combatant$setReplacementSubmitted(boolean submitted) {
+        combatant$replacementSubmitted = submitted;
     }
     @Unique
     private boolean combatant$viewObstructionFadeActive;

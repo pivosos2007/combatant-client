@@ -36,5 +36,8 @@ void main() {
     // Lighting.Light*_Direction lives in view space. Skinning alone leaves
     // normals in camera-relative model space, so rotating the view (or entering
     // a GUI that switches render paths) otherwise changes the apparent lighting.
-    v_Normal = normalize(mat3(u_ModelView) * (mat3(skin) * Normal));
+    // Non-uniform model fitting stretches triangle normals unless the inverse
+    // transpose is applied. The skeletal pose contributes primarily rotations.
+    mat3 normalView = transpose(inverse(mat3(u_ModelView)));
+    v_Normal = normalize(normalView * (mat3(skin) * Normal));
 }

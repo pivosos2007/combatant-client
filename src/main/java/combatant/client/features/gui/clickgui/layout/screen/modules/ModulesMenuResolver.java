@@ -108,6 +108,14 @@ enum ModulesMenuResolver {
         return VisualPreviewRegistry.open(moduleById(id));
     }
 
+    static List<VisualPreviewRegistry.PreviewAction> previewActions(String id) {
+        return VisualPreviewRegistry.actions(moduleById(id));
+    }
+
+    static boolean openPreview(String id, String actionId) {
+        return VisualPreviewRegistry.open(moduleById(id), actionId);
+    }
+
     record ResolvedSettings(String id, String title, List<Setting> settings) {
         public String getId() {
             return id;

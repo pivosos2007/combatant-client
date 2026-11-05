@@ -18,6 +18,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBAColorValue;
@@ -35,9 +36,8 @@ import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.math.RenderMath;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
-import combatant.client.render.effects.lens.WorldTargetLenses;
+import combatant.client.render.engine.renderer.WorldSpriteEffects;
 import combatant.client.render.effects.orbit.WorldOrbitGravity;
-import combatant.client.render.effects.mask.WorldPostProcessMasks;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.util.target.TargetingUtil;
 
@@ -65,14 +65,12 @@ public class TargetESP extends Module {
     private static final String SETTING_ESP_FACTOR = "esp_factor";
     private static final String SETTING_ESP_SHAKING = "esp_shaking";
     private static final String SETTING_ESP_AMPLITUDE = "esp_amplitude";
+    private static final String SETTING_CAPTURE_TEXTURE = "capture_texture";
     private static final String SETTING_CAPTURE_SPIN_SPEED = "capture_spin_speed";
     private static final String SETTING_CAPTURE_HALO = "capture_halo";
     private static final String SETTING_CAPTURE_HALO_INTENSITY = "capture_halo_intensity";
     private static final String SETTING_CAPTURE_PULSE = "capture_pulse";
     private static final String SETTING_CAPTURE_PULSE_SPEED = "capture_pulse_speed";
-    private static final String SETTING_CAPTURE_REFRACTION = "capture_refraction";
-    private static final String SETTING_CAPTURE_REFRACTION_STRENGTH = "capture_refraction_strength";
-    private static final String SETTING_CAPTURE_CHROMATIC = "capture_chromatic";
     private static final String SETTING_RING_THICKNESS = "ring_thickness";
     private static final String SETTING_RING_INTENSITY = "ring_intensity";
     private static final String SETTING_RING_SPEED = "ring_speed";
@@ -83,11 +81,12 @@ public class TargetESP extends Module {
     private static final String SETTING_CRYSTAL_COUNT = "crystal_count";
     private static final String SETTING_CRYSTAL_SIZE = "crystal_size";
     private static final String SETTING_CRYSTAL_ORBIT_RADIUS = "crystal_orbit_radius";
-    private static final String SETTING_DISTORTION = "distortion";
-    private static final String SETTING_DISTORTION_STRENGTH = "distortion_strength";
-    private static final String SETTING_DISTORTION_RADIUS = "distortion_radius";
-    private static final String SETTING_DISTORTION_LENGTH = "distortion_length";
-    private static final Identifier CAPTURE_MARK_TEXTURE = TextureStorage.CAPTURE;
+    private static final String SETTING_CRYSTAL_FINISH = "crystal_finish";
+    private static final String SETTING_CRYSTAL_FINISH_INTENSITY = "crystal_finish_intensity";
+    // Reused by the crystal bloom billboards: classic vertex format, no material vec4.
+    private static final WorldSpriteEffects.Parameters CLASSIC_SPRITE_PARAMS =
+            new WorldSpriteEffects.Parameters().configure(
+                    WorldSpriteEffects.Mode.CLASSIC, 0.0f, 0.0f, 0.0f, false);
     private static final float CRYSTAL_BASE_SIZE = 0.155f;
     private static final int CRYSTAL_SIDES = 8;
     private static final float ALPHA_TICK_DT = 1.0f / 20.0f;
@@ -139,6 +138,9 @@ public class TargetESP extends Module {
             visibleWhen(num("targetEspShaking", SETTING_ESP_SHAKING, 1.8f, 1.5f, 10f), this::isGhostMode);
     private final NumberValue<Float> espAmplitude =
             visibleWhen(num("targetEspAmplitude", SETTING_ESP_AMPLITUDE, 3f, 0.1f, 8f), this::isGhostOrCausticsMode);
+    private final ModeValue captureTexture = visibleWhen(modeSetting(
+            "targetEspCaptureTexture", SETTING_CAPTURE_TEXTURE, "capture1",
+            "capture1", "capture2", "capture3", "capture4"), this::isCaptureMarkMode);
     private final NumberValue<Float> captureSpinSpeed =
             visibleWhen(num("targetEspCaptureSpinSpeed", SETTING_CAPTURE_SPIN_SPEED, 1.0f, 0.2f, 4.0f), this::isCaptureMarkMode);
     private final BooleanValue captureHalo =
@@ -151,14 +153,13 @@ public class TargetESP extends Module {
     private final NumberValue<Float> capturePulseSpeed =
             visibleWhen(num("targetEspCapturePulseSpeed", SETTING_CAPTURE_PULSE_SPEED, 1.0f, 0.2f, 3.0f),
                     () -> isCaptureMarkMode() && capturePulse.get());
-    private final BooleanValue captureRefraction =
-            visibleWhen(bool("targetEspCaptureRefraction", SETTING_CAPTURE_REFRACTION, true), this::isCaptureMarkMode);
-    private final NumberValue<Float> captureRefractionStrength =
-            visibleWhen(num("targetEspCaptureRefractionStrength", SETTING_CAPTURE_REFRACTION_STRENGTH, 0.075f, 0.0f, 0.22f),
-                    () -> isCaptureMarkMode() && captureRefraction.get());
-    private final BooleanValue captureChromatic =
-            visibleWhen(bool("targetEspCaptureChromatic", SETTING_CAPTURE_CHROMATIC, true),
-                    () -> isCaptureMarkMode() && captureRefraction.get());
+    // Shared single-pass materials for both textured TargetESP variants.
+    private final EnumValue<WorldSpriteEffects.Mode> spriteEffect = visibleWhen(
+            enumSetting("targetEspSpriteEffect", "sprite_effect", WorldSpriteEffects.Mode.CLASSIC),
+            this::isSpriteMode);
+    private final NumberValue<Float> spriteIntensity = visibleWhen(
+            num("targetEspSpriteIntensity", "sprite_intensity", 0.85f, 0.0f, 2.0f),
+            () -> isSpriteMode() && spriteEffect.get().usesShader());
     private final NumberValue<Float> ringThickness =
             visibleWhen(num("targetEspRingThickness", SETTING_RING_THICKNESS, 0.052f, 0.025f, 0.14f), this::isRingMode);
     private final NumberValue<Float> ringIntensity =
@@ -179,19 +180,17 @@ public class TargetESP extends Module {
             visibleWhen(num("targetEspCrystalSize", SETTING_CRYSTAL_SIZE, 1.0f, 0.35f, 2.5f), this::isCrystalsMode);
     private final NumberValue<Float> crystalOrbitRadius =
             visibleWhen(num("targetEspCrystalOrbitRadius", SETTING_CRYSTAL_ORBIT_RADIUS, 1.0f, 0.45f, 2.4f), this::isCrystalsMode);
-    private final BooleanValue glowGhosts =
-            bool("targetEspGlowGhosts", "glow_ghosts", true);
-    private final BooleanValue distortion =
-            visibleWhen(bool("targetEspDistortion", SETTING_DISTORTION, true), this::isCrystalsMode);
-    private final NumberValue<Float> distortionStrength =
-            visibleWhen(num("targetEspDistortionStrength", SETTING_DISTORTION_STRENGTH, 0.145f, 0.01f, 0.36f),
-                    () -> isCrystalsMode() && distortion.get());
-    private final NumberValue<Float> distortionRadius =
-            visibleWhen(num("targetEspDistortionRadius", SETTING_DISTORTION_RADIUS, 1.0f, 0.35f, 2.8f),
-                    () -> isCrystalsMode() && distortion.get());
-    private final NumberValue<Float> distortionLength =
-            visibleWhen(num("targetEspDistortionLength", SETTING_DISTORTION_LENGTH, 1.0f, 0.35f, 2.8f),
-                    () -> isCrystalsMode() && distortion.get());
+    private final BooleanValue glowGhosts = visibleWhen(
+            bool("targetEspGlowGhosts", "glow_ghosts", true),
+            () -> isGhostMode() && !spriteEffect.get().usesShader());
+    // Crystal accents run inside the existing material pipeline, with no fullscreen pass.
+    // Each finish is exclusive: shader branching is uniform across every triangle in this batch.
+    private final EnumValue<CrystalFinish> crystalFinish = visibleWhen(
+            enumSetting("targetEspCrystalFinish", SETTING_CRYSTAL_FINISH, CrystalFinish.FACETED),
+            this::isCrystalsMode);
+    private final NumberValue<Float> crystalFinishIntensity = visibleWhen(
+            num("targetEspCrystalFinishIntensity", SETTING_CRYSTAL_FINISH_INTENSITY, 0.85f, 0.0f, 2.0f),
+            () -> isCrystalsMode() && crystalFinish.get() != CrystalFinish.FACETED);
     private final List<CrystalInstance> crystalList = new ArrayList<>();
     private LivingEntity target;
     private LivingEntity renderTarget;
@@ -360,19 +359,28 @@ public class TargetESP extends Module {
                                      IntFunction<Integer> palette) {
         if (renderer == null || target == null || palette == null) return;
         Renderer3D.DepthMode depthMode = Renderer3D.DepthMode.ENTITY_ONLY;
-        MeshBuilder mesh = glowGhosts.get()
+        WorldSpriteEffects.Mode material = spriteEffect.get();
+        MeshBuilder mesh = !material.usesShader() && glowGhosts.get()
                 ? renderer.batch(WorldRenderPipelines.WORLD_GLOW_SPRITE_DEPTH, depthMode)
-                : renderer.batchTextured(
-                        WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_DEPTH,
+                : renderer.batchTextured(WorldSpriteEffects.pipeline(
+                        material, WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_DEPTH, true),
                         TextureStorage.FIRE_FLY, depthMode);
         if (mesh == null) return;
 
         Vec3 base = RenderMath.getLerpedPos(target, tickDelta);
+        WorldSpriteEffects.Parameters spriteParams = new WorldSpriteEffects.Parameters();
+        Vector3f cameraRight = new Vector3f(1, 0, 0).rotate(RenderState.cameraRotation);
+        Vector3f cameraUp = new Vector3f(0, 1, 0).rotate(RenderState.cameraRotation);
+        Vector3f scaledRight = new Vector3f();
+        Vector3f scaledUp = new Vector3f();
         float age = target.tickCount - 1.0f + tickDelta;
         int length = espLength.get();
+        mesh.ensureCapacity(3 * (length + 1) * 4, 3 * (length + 1) * 6);
         int factor = espFactor.get();
         float shaking = Math.max(0.01f, espShaking.get());
         float amplitude = espAmplitude.get();
+        float effectIntensity = material.usesShader() ? spriteIntensity.get() : 0.0f;
+        float targetWidth = target.getBbWidth();
         for (int j = 0; j < 3; j++) {
             for (int i = 0; i <= length; i++) {
                 double radians = Math.toRadians((((float) i / 1.5f + age) * factor + j * 120.0f) % (factor * 360.0f));
@@ -380,10 +388,15 @@ public class TargetESP extends Module {
                 float offset = i / (float) length;
                 int tint = applyOpacity(palette.apply((int) (180.0f * offset)), offset);
                 float size = Math.max(0.24f * offset, 0.2f);
-                addBillboardQuad(mesh,
-                        base.x + Math.cos(radians) * target.getBbWidth(),
+                spriteParams.configure(material, age / 20.0f,
+                        j * 2.094f + i * 0.37f, effectIntensity, true);
+                scaledRight.set(cameraRight).mul(size);
+                scaledUp.set(cameraUp).mul(size);
+                addBillboardVertices(mesh,
+                        base.x + Math.cos(radians) * targetWidth,
                         base.y + 1.0 + wobble,
-                        base.z + Math.sin(radians) * target.getBbWidth(), size, tint);
+                        base.z + Math.sin(radians) * targetWidth,
+                        scaledRight, scaledUp, tint, tint, tint, tint, spriteParams);
             }
         }
     }
@@ -528,10 +541,22 @@ public class TargetESP extends Module {
         float alphaGain = capturePulse.get() ? 0.90f + pulse * 0.10f : 1.0f;
 
         Renderer3D.DepthMode depthMode = Renderer3D.DepthMode.NONE;
-        var capturePipeline = WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE;
+        WorldSpriteEffects.Mode material = spriteEffect.get();
+        var capturePipeline = WorldSpriteEffects.pipeline(
+                material, WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE, false);
 
-        MeshBuilder markMesh = renderer.batchTextured(capturePipeline, CAPTURE_MARK_TEXTURE, depthMode);
+        // A single selected texture enters the existing sprite batch. No additional
+        // draw/pass per variant; switching presets changes only the texture resource.
+        Identifier texture = switch (captureTexture.get()) {
+            case "capture2" -> TextureStorage.CAPTURE_MARKS[1];
+            case "capture3" -> TextureStorage.CAPTURE_MARKS[2];
+            case "capture4" -> TextureStorage.CAPTURE_MARKS[3];
+            default -> TextureStorage.CAPTURE_MARKS[0];
+        };
+        MeshBuilder markMesh = renderer.batchTextured(capturePipeline, texture, depthMode);
         if (markMesh != null) {
+            WorldSpriteEffects.Parameters spriteParams = new WorldSpriteEffects.Parameters()
+                    .configure(material, time, target.getId() * 0.13f, spriteIntensity.get(), true);
             final float lift = haloLift;
             final float gain = alphaGain;
             IntFunction<Integer> markPalette = index -> {
@@ -541,7 +566,8 @@ public class TargetESP extends Module {
                 }
                 return AnimatedRenderColors.scaleAlpha(c, gain);
             };
-            addRotatedBillboard(markMesh, cx, cy, cz, size, angle, markPalette);
+            addRotatedBillboard(markMesh, cx, cy, cz, size, angle, markPalette,
+                    spriteParams);
         }
     }
 
@@ -618,41 +644,50 @@ public class TargetESP extends Module {
                                                       float time,
                                                       int crystalIndex,
                                                       float hit,
-                                                      float visualScale) {
+                                                      float visualScale,
+                                                      CrystalFinish finish,
+                                                      float finishIntensity) {
         if (mesh == null || targetPos == null || crystal == null) return;
 
         float s = CRYSTAL_BASE_SIZE * crystal.sizeScale * visualScale;
         float hPrism = s * 0.92f;
         float hPyramid = s * 1.72f;
+        // Transform shared vertices only once per crystal (18 vs. 66 transforms).
         Vector3f[] top = new Vector3f[CRYSTAL_SIDES];
         Vector3f[] bottom = new Vector3f[CRYSTAL_SIDES];
         for (int i = 0; i < CRYSTAL_SIDES; i++) {
             float angle = (float) (Math.PI * 2.0 * i / CRYSTAL_SIDES);
             float localRadius = s * (0.94f + 0.08f * Mth.sin(angle * 3.0f + crystal.phase * 6.2831855f));
-            top[i] = new Vector3f(Mth.cos(angle) * localRadius, hPrism * 0.5f, Mth.sin(angle) * localRadius);
-            bottom[i] = new Vector3f(Mth.cos(angle) * localRadius, -hPrism * 0.5f, Mth.sin(angle) * localRadius);
+            top[i] = transformCrystalVertexAt(
+                    new Vector3f(Mth.cos(angle) * localRadius, hPrism * 0.5f, Mth.sin(angle) * localRadius),
+                    crystal, orbitYawRad, targetPos, time);
+            bottom[i] = transformCrystalVertexAt(
+                    new Vector3f(Mth.cos(angle) * localRadius, -hPrism * 0.5f, Mth.sin(angle) * localRadius),
+                    crystal, orbitYawRad, targetPos, time);
         }
-        Vector3f topPeak = new Vector3f(0.0f, hPrism * 0.5f + hPyramid, 0.0f);
-        Vector3f bottomPeak = new Vector3f(0.0f, -hPrism * 0.5f - hPyramid * 0.86f, 0.0f);
-        int facet = 0;
+        Vector3f topPeak = transformCrystalVertexAt(
+                new Vector3f(0.0f, hPrism * 0.5f + hPyramid, 0.0f),
+                crystal, orbitYawRad, targetPos, time);
+        Vector3f bottomPeak = transformCrystalVertexAt(
+                new Vector3f(0.0f, -hPrism * 0.5f - hPyramid * 0.86f, 0.0f),
+                crystal, orbitYawRad, targetPos, time);
 
+        // Store the finish ID and its strength in the existing Params vec4.
+        // Index contributes only to per-facet phase; no new vertex attribute is needed.
+        int facet = 0;
         for (int i = 0; i < CRYSTAL_SIDES; i++) {
-            Vector3f b0 = transformCrystalVertexAt(bottom[i], crystal, orbitYawRad, targetPos, time);
-            Vector3f b1 = transformCrystalVertexAt(bottom[(i + 1) % CRYSTAL_SIDES], crystal, orbitYawRad, targetPos, time);
-            Vector3f t1 = transformCrystalVertexAt(top[(i + 1) % CRYSTAL_SIDES], crystal, orbitYawRad, targetPos, time);
-            Vector3f t0 = transformCrystalVertexAt(top[i], crystal, orbitYawRad, targetPos, time);
-            appendCrystalMaterialTriangle(mesh, b0, b1, t1, argb, time, crystalIndex, hit, crystal.phase, facet++);
-            appendCrystalMaterialTriangle(mesh, b0, t1, t0, argb, time, crystalIndex, hit, crystal.phase, facet++);
+            int next = (i + 1) % CRYSTAL_SIDES;
+            appendCrystalMaterialTriangle(mesh, bottom[i], bottom[next], top[next], argb, time,
+                    crystalIndex, hit, crystal.phase, facet++, finish, finishIntensity);
+            appendCrystalMaterialTriangle(mesh, bottom[i], top[next], top[i], argb, time,
+                    crystalIndex, hit, crystal.phase, facet++, finish, finishIntensity);
         }
-        Vector3f topWorld = transformCrystalVertexAt(topPeak, crystal, orbitYawRad, targetPos, time);
-        Vector3f bottomWorld = transformCrystalVertexAt(bottomPeak, crystal, orbitYawRad, targetPos, time);
         for (int i = 0; i < CRYSTAL_SIDES; i++) {
-            Vector3f t0 = transformCrystalVertexAt(top[i], crystal, orbitYawRad, targetPos, time);
-            Vector3f t1 = transformCrystalVertexAt(top[(i + 1) % CRYSTAL_SIDES], crystal, orbitYawRad, targetPos, time);
-            Vector3f b0 = transformCrystalVertexAt(bottom[i], crystal, orbitYawRad, targetPos, time);
-            Vector3f b1 = transformCrystalVertexAt(bottom[(i + 1) % CRYSTAL_SIDES], crystal, orbitYawRad, targetPos, time);
-            appendCrystalMaterialTriangle(mesh, topWorld, t0, t1, argb, time, crystalIndex, hit, crystal.phase, facet++);
-            appendCrystalMaterialTriangle(mesh, bottomWorld, b1, b0, argb, time, crystalIndex, hit, crystal.phase, facet++);
+            int next = (i + 1) % CRYSTAL_SIDES;
+            appendCrystalMaterialTriangle(mesh, topPeak, top[i], top[next], argb, time,
+                    crystalIndex, hit, crystal.phase, facet++, finish, finishIntensity);
+            appendCrystalMaterialTriangle(mesh, bottomPeak, bottom[next], bottom[i], argb, time,
+                    crystalIndex, hit, crystal.phase, facet++, finish, finishIntensity);
         }
     }
 
@@ -665,15 +700,27 @@ public class TargetESP extends Module {
                                                        int crystalIndex,
                                                        float hit,
                                                        float phase,
-                                                       int facetIndex) {
-        Vector3f normal = new Vector3f(b).sub(a).cross(new Vector3f(c).sub(a));
-        if (normal.lengthSquared() <= 1.0e-8f) return;
-        normal.normalize();
-        float facetPhase = Mth.frac(phase + facetIndex * 0.071f);
+                                                       int facetIndex,
+                                                       CrystalFinish finish,
+                                                       float finishIntensity) {
+        // Use scalar differences instead of allocating two temporary vectors for each triangle.
+        float abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
+        float acx = c.x - a.x, acy = c.y - a.y, acz = c.z - a.z;
+        float nx = aby * acz - abz * acy;
+        float ny = abz * acx - abx * acz;
+        float nz = abx * acy - aby * acx;
+        float n2 = nx * nx + ny * ny + nz * nz;
+        if (n2 <= 1.0e-8f) return;
+        float invLen = (float) (1.0 / Math.sqrt(n2));
+        nx *= invLen; ny *= invLen; nz *= invLen;
+        float facetPhase = Mth.frac(phase + crystalIndex * 0.173f + facetIndex * 0.071f);
         mesh.ensureTriCapacity();
-        int ia = addCrystalMaterialVertex(mesh, a, 0.0f, 0.0f, argb, time, crystalIndex, hit, normal, facetPhase);
-        int ib = addCrystalMaterialVertex(mesh, b, 1.0f, 0.0f, argb, time, crystalIndex, hit, normal, facetPhase);
-        int ic = addCrystalMaterialVertex(mesh, c, 0.5f, 1.0f, argb, time, crystalIndex, hit, normal, facetPhase);
+        int ia = addCrystalMaterialVertex(mesh, a, 0.0f, 0.0f, argb, time,
+                hit, nx, ny, nz, facetPhase, finish, finishIntensity);
+        int ib = addCrystalMaterialVertex(mesh, b, 1.0f, 0.0f, argb, time,
+                hit, nx, ny, nz, facetPhase, finish, finishIntensity);
+        int ic = addCrystalMaterialVertex(mesh, c, 0.5f, 1.0f, argb, time,
+                hit, nx, ny, nz, facetPhase, finish, finishIntensity);
         mesh.triangle(ia, ib, ic);
     }
 
@@ -683,15 +730,16 @@ public class TargetESP extends Module {
                                                 float v,
                                                 int argb,
                                                 float time,
-                                                int crystalIndex,
                                                 float hit,
-                                                Vector3f normal,
-                                                float facetPhase) {
+                                                float nx, float ny, float nz,
+                                                float facetPhase,
+                                                CrystalFinish finish,
+                                                float finishIntensity) {
         mesh.vec3(position.x, position.y, position.z)
                 .vec2(u, v)
                 .colorArgb(argb)
-                .vec4(time, crystalIndex, hit, 1.0f)
-                .vec4(normal.x, normal.y, normal.z, facetPhase);
+                .vec4(time, finish.id, hit, finishIntensity)
+                .vec4(nx, ny, nz, facetPhase);
         return mesh.next();
     }
 
@@ -767,7 +815,7 @@ public class TargetESP extends Module {
                                              float size, Quaternionf rotation, int argb) {
         Vector3f right = new Vector3f(1.0f, 0.0f, 0.0f).rotate(rotation).mul(size * 0.5f);
         Vector3f up = new Vector3f(0.0f, 1.0f, 0.0f).rotate(rotation).mul(size * 0.5f);
-        addBillboardVertices(mesh, cx, cy, cz, right, up, argb, argb, argb, argb);
+        addBillboardVertices(mesh, cx, cy, cz, right, up, argb, argb, argb, argb, CLASSIC_SPRITE_PARAMS);
     }
 
     private static void addTriangle(MeshBuilder mesh, Vector3f v1, Vector3f v2, Vector3f v3, int argb) {
@@ -786,7 +834,8 @@ public class TargetESP extends Module {
     }
 
     private static void addRotatedBillboard(MeshBuilder mesh, double cx, double cy, double cz,
-                                            float size, float angle, IntFunction<Integer> palette) {
+                                            float size, float angle, IntFunction<Integer> palette,
+                                            WorldSpriteEffects.Parameters spriteParams) {
         Quaternionf camRot = RenderState.cameraRotation;
         Vector3f right = new Vector3f(1, 0, 0).rotate(camRot);
         Vector3f up = new Vector3f(0, 1, 0).rotate(camRot);
@@ -804,21 +853,14 @@ public class TargetESP extends Module {
                 palette.apply(90),
                 palette.apply(0),
                 palette.apply(180),
-                palette.apply(270));
-    }
-
-    private static void addBillboardQuad(MeshBuilder mesh,
-                                         double cx, double cy, double cz,
-                                         float size, int argb) {
-        Quaternionf camRot = RenderState.cameraRotation;
-        Vector3f right = new Vector3f(1, 0, 0).rotate(camRot).mul(size);
-        Vector3f up = new Vector3f(0, 1, 0).rotate(camRot).mul(size);
-        addBillboardVertices(mesh, cx, cy, cz, right, up, argb, argb, argb, argb);
+                palette.apply(270),
+                spriteParams);
     }
 
     private static void addBillboardVertices(MeshBuilder mesh, double cx, double cy, double cz,
                                              Vector3f right, Vector3f up,
-                                             int c1, int c2, int c3, int c4) {
+                                             int c1, int c2, int c3, int c4,
+                                             WorldSpriteEffects.Parameters spriteParams) {
         double p1x = cx - right.x() - up.x();
         double p1y = cy - right.y() - up.y();
         double p1z = cz - right.z() - up.z();
@@ -833,10 +875,14 @@ public class TargetESP extends Module {
         double p4z = cz - right.z() + up.z();
 
         mesh.ensureQuadCapacity();
-        int i1 = addVertex(mesh, p1x, p1y, p1z, 0, 1, c1);
-        int i2 = addVertex(mesh, p2x, p2y, p2z, 1, 1, c2);
-        int i3 = addVertex(mesh, p3x, p3y, p3z, 1, 0, c3);
-        int i4 = addVertex(mesh, p4x, p4y, p4z, 0, 0, c4);
+        int i1 = WorldSpriteEffects.vertex(mesh, p1x, p1y, p1z, 0, 1, c1,
+                spriteParams);
+        int i2 = WorldSpriteEffects.vertex(mesh, p2x, p2y, p2z, 1, 1, c2,
+                spriteParams);
+        int i3 = WorldSpriteEffects.vertex(mesh, p3x, p3y, p3z, 1, 0, c3,
+                spriteParams);
+        int i4 = WorldSpriteEffects.vertex(mesh, p4x, p4y, p4z, 0, 0, c4,
+                spriteParams);
         mesh.quad(i1, i2, i3, i4);
     }
 
@@ -893,7 +939,6 @@ public class TargetESP extends Module {
         targetAlpha = 0.0f;
         crystalList.clear();
         lastCrystalTarget = null;
-        WorldTargetLenses.clear();
         WorldOrbitGravity.clear();
     }
 
@@ -931,81 +976,10 @@ public class TargetESP extends Module {
         Renderer3D.CullOptions cull = resolveCullOptions(renderTarget);
         if (!Renderer3D.Culling.shouldRender(renderTarget, tickDelta, cull)) return;
 
-        String mode = espMode.get();
-        if ("capture_mark".equals(mode) && captureRefraction.get()) {
-            prepareCaptureOptics(tickDelta);
-        } else if ("crystals".equals(mode) && distortion.get()) {
-            prepareCrystalPrism(tickDelta);
-        } else if ("orbit".equals(mode)) {
+        if ("orbit".equals(espMode.get())) {
             prepareOrbitGravity(tickDelta);
         }
     }
-
-    private void prepareCaptureOptics(float tickDelta) {
-        float strength = captureRefractionStrength.get() * targetAlpha;
-        if (strength <= 0.0005f || renderTarget == null) return;
-
-        Vec3 base = RenderMath.getLerpedPos(renderTarget, tickDelta);
-        Vec3 center = base.add(0.0, renderTarget.getEyeHeight(renderTarget.getPose()) / 2.0, 0.0);
-        float time = (renderTarget.tickCount - 1 + tickDelta) / 20.0f;
-        float pulse = capturePulse.get()
-                ? 0.5f + 0.5f * Mth.sin(time * Math.max(0.05f, capturePulseSpeed.get()) * 3.64f)
-                : 0.0f;
-        float size = 0.75f * (capturePulse.get() ? 0.985f + pulse * 0.030f : 1.0f);
-        float angleDeg = interpolateFloat((float) prevCaptureValue, (float) captureValue, tickDelta);
-        float roll = (float) Math.toRadians(angleDeg);
-        float opacity = Mth.clamp(0.54f + strength * 2.2f, 0.54f, 0.92f);
-
-        WorldPostProcessMasks.distortionBillboard(
-                CAPTURE_MARK_TEXTURE,
-                center,
-                size * 1.02f,
-                roll,
-                Mth.clamp(strength * 2.35f, 0.0f, 0.52f),
-                0.10f,
-                opacity,
-                false
-        );
-    }
-
-    private void prepareCrystalPrism(float tickDelta) {
-        float strength = distortionStrength.get() * targetAlpha;
-        if (strength <= 0.001f) return;
-        if (crystalLayoutChanged(renderTarget)) {
-            createCrystals(renderTarget);
-            lastCrystalTarget = renderTarget;
-        }
-        if (crystalList.isEmpty()) return;
-
-        float renderTime = (renderTarget.tickCount - 1 + tickDelta) / 20.0f;
-        Vec3 center = obtainEntityLerpedPos(renderTarget, tickDelta);
-        float orbitYawRad = (float) Math.toRadians(((renderTarget.tickCount - 1 + tickDelta) * 2.5f) % 360.0f);
-        float red = crystalHitRed.get()
-                ? Mth.clamp((renderTarget.hurtTime - tickDelta) / 20.0f, 0.0f, 1.0f)
-                : 0.0f;
-
-        for (int i = 0; i < crystalList.size(); i++) {
-            CrystalInstance crystal = crystalList.get(i);
-            Vec3 crystalCenter = crystal.worldCenter(center, orbitYawRad);
-            Vec3 crystalAxis = crystal.worldAxis(center, orbitYawRad, renderTime);
-            int tint = getCrystalColor(i * 8, red);
-            float visualScale = crystalSize.get();
-            float radius = CRYSTAL_BASE_SIZE * crystal.sizeScale * visualScale * 1.62f * distortionRadius.get();
-            float axialLength = CRYSTAL_BASE_SIZE * crystal.sizeScale * visualScale * 3.55f * distortionLength.get();
-            float lensStrength = strength * (1.72f + 0.44f * crystal.pulsation(renderTime));
-            WorldTargetLenses.submit(
-                    crystalCenter,
-                    crystalAxis,
-                    radius,
-                    axialLength,
-                    lensStrength,
-                    Renderer3D.DepthMode.ENTITY_ONLY,
-                    tint,
-                    crystal.phase
-            );
-        }
-    }
-
 
     private void prepareOrbitGravity(float tickDelta) {
         float time = (renderTarget.tickCount - 1 + tickDelta) / 20.0f;
@@ -1312,11 +1286,16 @@ public class TargetESP extends Module {
         if (crystalMesh == null) return;
 
         Vec3 targetPos = obtainEntityLerpedPos(target, tickDelta);
+        CrystalFinish finish = crystalFinish.get();
+        float intensity = finish == CrystalFinish.FACETED ? 0.0f : crystalFinishIntensity.get();
+        float scale = crystalSize.get();
+        crystalMesh.ensureCapacity(crystalList.size() * CRYSTAL_SIDES * 12,
+                crystalList.size() * CRYSTAL_SIDES * 12);
         for (int i = 0; i < crystalList.size(); i++) {
             CrystalInstance crystal = crystalList.get(i);
             int baseColor = getCrystalColor(i * 8, red);
             appendCrystalMaterialGeometry(crystalMesh, targetPos, crystal, orbitYawRad, baseColor, time, i, red,
-                    crystalSize.get());
+                    scale, finish, intensity);
         }
     }
 
@@ -1370,6 +1349,10 @@ public class TargetESP extends Module {
 
     private boolean isGhostMode() {
         return "ghosts".equals(espMode.get());
+    }
+
+    private boolean isSpriteMode() {
+        return isGhostMode() || isCaptureMarkMode();
     }
 
     private boolean isGhostOrCausticsMode() {
@@ -1445,6 +1428,18 @@ public class TargetESP extends Module {
             case "Theme" -> AnimatedRenderColors.Mode.THEME;
             default -> AnimatedRenderColors.Mode.STATIC;
         };
+    }
+
+    private enum CrystalFinish {
+        FACETED(0.0f),
+        FRESNEL(1.0f),
+        EMISSIVE(2.0f);
+
+        private final float id;
+
+        CrystalFinish(float id) {
+            this.id = id;
+        }
     }
 
     private static final class CrystalInstance {

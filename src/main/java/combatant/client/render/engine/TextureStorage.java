@@ -47,8 +47,13 @@ public enum TextureStorage {
             Identifier.fromNamespaceAndPath("combatant", "textures/particles/p11.png"),
             Identifier.fromNamespaceAndPath("combatant", "textures/particles/p12.png")
     };
-    public static final Identifier CAPTURE =
-            Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/capture.png");
+    /** TargetESP capture-mark variants. Keep these static for asset preloading and batching. */
+    public static final Identifier[] CAPTURE_MARKS = new Identifier[]{
+            Identifier.fromNamespaceAndPath("combatant", "textures/particles/capture/capture1.png"),
+            Identifier.fromNamespaceAndPath("combatant", "textures/particles/capture/capture2.png"),
+            Identifier.fromNamespaceAndPath("combatant", "textures/particles/capture/capture3.png"),
+            Identifier.fromNamespaceAndPath("combatant", "textures/particles/capture/capture4.png")
+    };
 
     @AssetLoad(order = 200)
     public static void preload() {

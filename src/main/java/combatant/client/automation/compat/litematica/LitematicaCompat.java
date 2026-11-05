@@ -43,6 +43,22 @@ public final class LitematicaCompat {
         }
     }
 
+    /** Separate optional bridge for placement editing and genuine Litematica settings. */
+    public static LitematicaWorkspace workspace() {
+        if (!isAvailable()) return null;
+        try {
+            return WorkspaceHolder.INSTANCE;
+        } catch (LinkageError | RuntimeException error) {
+            failed = true;
+            return null;
+        }
+    }
+
+    private static final class WorkspaceHolder {
+        static final LitematicaWorkspace INSTANCE =
+                new combatant.client.automation.compat.litematica.impl.LitematicaWorkspaceImpl();
+    }
+
     /** Loads the adapter lazily; only ever initialised after the mod was seen loaded. */
     private static final class Holder {
         static final SchematicSource SOURCE = new LitematicaSource();

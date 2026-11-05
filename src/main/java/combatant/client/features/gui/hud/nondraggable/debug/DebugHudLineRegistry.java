@@ -95,7 +95,10 @@ public final class DebugHudLineRegistry {
      * executions and insertions are suppressed centrally while Panic is active.
      */
     public static List<String> decorateVanillaRight(List<String> vanilla) {
-        if (vanilla == null || RuntimeGate.isPanic() || !RuntimeGate.canRunHud() || VANILLA_ENTRIES.isEmpty()) {
+        // extractRenderState may request the right column with no F3/debug lines.
+        // Do not let our producer turn an empty column into a visible overlay.
+        if (vanilla == null || vanilla.isEmpty() || RuntimeGate.isPanic()
+                || !RuntimeGate.canRunHud() || VANILLA_ENTRIES.isEmpty()) {
             return vanilla;
         }
         ArrayList<Insertion> insertions = new ArrayList<>(2);

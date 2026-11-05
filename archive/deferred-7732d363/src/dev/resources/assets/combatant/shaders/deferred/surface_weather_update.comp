@@ -1,0 +1,88 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D u_Seed;
+layout(binding = 1) uniform sampler2D u_PreviousLoad;
+layout(binding = 2, rgba16f) writeonly uniform image2D u_CurrentLoad;
+
+layout(std430, binding = 3) readonly buffer SurfaceWeatherUpdateData {
+    vec4 currentPreviousOrigin;
+    vec4 gridTime;
+    vec4 accumulationRates;
+    vec4 decayRates;
+} u_Data;
+
+float decodeIntensity(float encoded, out int semantic) {
+    semantic = int(floor(max(encoded, 0.0) + 1e-4));
+    return clamp((encoded - float(semantic)) / max(u_Data.accumulationRates.w, 1e-4), 0.0, 1.0);
+}
+
+float encodeParticulate(int kind, float coverage) {
+    if (kind <= 0 || coverage <= 1e-5) return 0.0;
+    return float(kind) + clamp(coverage, 0.0, 1.0) * u_Data.accumulationRates.w;
+}
+
+void main() {
+    ivec2 cell = ivec2(gl_GlobalInvocationID.xy);
+    int gridSize = int(u_Data.gridTime.x + 0.5);
+    if (cell.x >= gridSize || cell.y >= gridSize) return;
+
+    vec4 seed = texelFetch(u_Seed, cell, 0);
+    if (seed.x < -60000.0) {
+        imageStore(u_CurrentLoad, cell, vec4(0.0));
+        return;
+    }
+
+    float spacing = max(u_Data.gridTime.y, 1.0);
+    vec2 worldXZ = u_Data.currentPreviousOrigin.xy + vec2(cell) * spacing;
+    vec2 previousCellF = (worldXZ - u_Data.currentPreviousOrigin.zw) / spacing;
+    ivec2 previousCell = ivec2(round(previousCellF));
+    bool previousInside = u_Data.gridTime.w > 0.5
+            && all(greaterThanEqual(previousCell, ivec2(0)))
+            && all(lessThan(previousCell, ivec2(gridSize)));
+    vec4 previous = previousInside ? texelFetch(u_PreviousLoad, previousCell, 0) : vec4(0.0);
+
+    int precipitationKind;
+    float precipitation = decodeIntensity(seed.z, precipitationKind);
+    int depositionKind;
+    float deposition = decodeIntensity(seed.w, depositionKind);
+    float dt = clamp(u_Data.gridTime.z, 0.0, 0.25);
+
+    float liquid = clamp(previous.r, 0.0, 1.0);
+    float dryAge = max(previous.g, 0.0);
+    float snow = clamp(previous.b, 0.0, 1.0);
+    int oldParticulateKind;
+    float particulate = decodeIntensity(previous.a, oldParticulateKind);
+
+    if (precipitationKind == 1 && precipitation > 0.0) {
+        liquid = min(1.0, liquid + precipitation * dt * u_Data.accumulationRates.x);
+        dryAge = 0.0;
+        snow = max(0.0, snow - precipitation * dt * u_Data.decayRates.x);
+    } else {
+        dryAge = min(3600.0, dryAge + dt);
+    }
+
+    if (precipitationKind == 2 && precipitation > 0.0) {
+        snow = min(1.0, snow + precipitation * dt * u_Data.accumulationRates.y);
+    } else if (seed.y > u_Data.decayRates.w) {
+        float warm = clamp((seed.y - u_Data.decayRates.w) * 2.0, 0.0, 1.0);
+        snow = max(0.0, snow - warm * dt * u_Data.decayRates.z);
+    }
+
+    if (depositionKind > 0 && deposition > 0.0) {
+        if (oldParticulateKind == 0 || oldParticulateKind == depositionKind || particulate < 0.02) {
+            oldParticulateKind = depositionKind;
+        } else if (deposition > particulate) {
+            oldParticulateKind = depositionKind;
+            particulate *= 0.5;
+        }
+        particulate = min(1.0, particulate + deposition * dt * u_Data.accumulationRates.z);
+    }
+    if (precipitationKind == 1 && precipitation > 0.0) {
+        particulate = max(0.0, particulate - precipitation * dt * u_Data.decayRates.y);
+    }
+    if (particulate <= 1e-5) oldParticulateKind = 0;
+
+    imageStore(u_CurrentLoad, cell, vec4(liquid, dryAge, snow, encodeParticulate(oldParticulateKind, particulate)));
+}

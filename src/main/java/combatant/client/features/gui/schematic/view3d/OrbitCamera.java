@@ -28,6 +28,9 @@ public final class OrbitCamera {
     private float centreX, centreY, centreZ, radius = 1f;
     private float targetCentreX, targetCentreY, targetCentreZ;
     private boolean framed;
+    private boolean freeFly;
+    private float flyX, flyY, flyZ, flyTargetX, flyTargetY, flyTargetZ;
+    private float flySpeed = 10f;
 
     private float eyeX, eyeY, eyeZ;
     private float rightX, rightY, rightZ;
@@ -66,6 +69,7 @@ public final class OrbitCamera {
     }
 
     public void reset() {
+        freeFly = false;
         targetYaw = nearestEquivalent(DEFAULT_YAW, yaw);
         targetPitch = DEFAULT_PITCH;
         targetDistance = fitDistance();
@@ -82,6 +86,45 @@ public final class OrbitCamera {
         distance = targetDistance;
         panX = targetPanX;
         panY = targetPanY;
+        flyX = flyTargetX;
+        flyY = flyTargetY;
+        flyZ = flyTargetZ;
+    }
+
+    public boolean freeFly() {
+        return freeFly;
+    }
+
+    /** Enter at the current eye, keeping the orientation and without recentering the schematic. */
+    public void toggleFreeFly() {
+        if (freeFly) {
+            freeFly = false;
+            reset();
+            return;
+        }
+        freeFly = true;
+        flyX = flyTargetX = eyeX;
+        flyY = flyTargetY = eyeY;
+        flyZ = flyTargetZ = eyeZ;
+        targetPanX = panX = 0f;
+        targetPanY = panY = 0f;
+    }
+
+    /** Camera-space movement in blocks per second; diagonals are normalized. */
+    public void fly(float sideways, float vertically, float forwards, float dt, boolean fast) {
+        if (!freeFly) return;
+        float length = (float) Math.sqrt(sideways * sideways + vertically * vertically + forwards * forwards);
+        if (length < 1.0e-5f) return;
+        float scale = flySpeed * (fast ? 3f : 1f) * Math.min(dt, 0.05f) / length;
+        float cp = (float) Math.cos(targetPitch), sp = (float) Math.sin(targetPitch);
+        float sy = (float) Math.sin(targetYaw), cy = (float) Math.cos(targetYaw);
+        flyTargetX += (cy * sideways - cp * sy * forwards) * scale;
+        flyTargetY += (vertically - sp * forwards) * scale;
+        flyTargetZ += (-sy * sideways - cp * cy * forwards) * scale;
+    }
+
+    public float flySpeed() {
+        return flySpeed;
     }
 
     public void orbit(float dxPixels, float dyPixels) {
@@ -95,6 +138,10 @@ public final class OrbitCamera {
     }
 
     public void zoom(float steps) {
+        if (freeFly) {
+            flySpeed = clamp(flySpeed * (float) Math.pow(1.16, steps), 0.5f, 200f);
+            return;
+        }
         targetDistance = clamp(targetDistance * (float) Math.pow(0.87, steps), radius * 0.35f, radius * 10f);
     }
 
@@ -109,6 +156,9 @@ public final class OrbitCamera {
         centreX += (targetCentreX - centreX) * k;
         centreY += (targetCentreY - centreY) * k;
         centreZ += (targetCentreZ - centreZ) * k;
+        flyX += (flyTargetX - flyX) * k;
+        flyY += (flyTargetY - flyY) * k;
+        flyZ += (flyTargetZ - flyZ) * k;
         // Keep the angles small so endless auto-rotation never costs float precision.
         if (Math.abs(yaw) > TWO_PI * 4f) {
             float wrap = (float) Math.floor(yaw / TWO_PI) * TWO_PI;
@@ -129,12 +179,18 @@ public final class OrbitCamera {
      */
     public void computeView(float viewX, float viewY, float viewW, float viewH) {
         float pEyeX = eyeX, pEyeY = eyeY, pEyeZ = eyeZ, pFocal = focal, pOriginX = originX, pOriginY = originY;
+        float pForwardX = forwardX, pForwardY = forwardY, pForwardZ = forwardZ;
         float cp = (float) Math.cos(pitch), sp = (float) Math.sin(pitch);
         float cy = (float) Math.cos(yaw), sy = (float) Math.sin(yaw);
         float ox = cp * sy, oy = sp, oz = cp * cy;
         eyeX = centreX + ox * distance;
         eyeY = centreY + oy * distance;
         eyeZ = centreZ + oz * distance;
+        if (freeFly) {
+            eyeX = flyX;
+            eyeY = flyY;
+            eyeZ = flyZ;
+        }
         forwardX = -ox;
         forwardY = -oy;
         forwardZ = -oz;
@@ -149,7 +205,8 @@ public final class OrbitCamera {
         focal = Math.min(viewW, viewH) * 0.5f / (float) Math.tan(FOV * 0.5f);
         originX = viewX + viewW * 0.5f + panX;
         originY = viewY + viewH * 0.5f + panY;
-        if (eyeX != pEyeX || eyeY != pEyeY || eyeZ != pEyeZ || focal != pFocal || originX != pOriginX || originY != pOriginY) {
+        if (eyeX != pEyeX || eyeY != pEyeY || eyeZ != pEyeZ || focal != pFocal || originX != pOriginX || originY != pOriginY
+                || forwardX != pForwardX || forwardY != pForwardY || forwardZ != pForwardZ) {
             revision++;
         }
     }
@@ -168,6 +225,55 @@ public final class OrbitCamera {
         out[off] = originX + (dx * rightX + dy * rightY + dz * rightZ) * inv;
         out[off + 1] = originY - (dx * upX + dy * upY + dz * upZ) * inv;
         return true;
+    }
+
+    /** Projects a vertex on a clipped near-plane polygon; tolerates floating-point intersection rounding. */
+    public boolean projectClipped(float x, float y, float z, float[] out, int off) {
+        float dx = x - eyeX, dy = y - eyeY, dz = z - eyeZ;
+        float depth = dx * forwardX + dy * forwardY + dz * forwardZ;
+        // The near-plane intersection may round slightly behind the plane for
+        // large world coordinates. Clamp it instead of discarding the entire face.
+        if (!Float.isFinite(depth)) return false;
+        float inv = focal / Math.max(NEAR, depth);
+        out[off] = originX + (dx * rightX + dy * rightY + dz * rightZ) * inv;
+        out[off + 1] = originY - (dx * upX + dy * upY + dz * upZ) * inv;
+        return true;
+    }
+
+    /** Signed eye-space distance along the view direction, used to clip quads against the near plane. */
+    public float viewDepth(float x, float y, float z) {
+        return (x - eyeX) * forwardX + (y - eyeY) * forwardY + (z - eyeZ) * forwardZ;
+    }
+
+    /** View-frustum test for a world AABB. Conservative even when the eye is inside the box. */
+    public boolean intersectsBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ,
+                                 float clipX, float clipY, float clipW, float clipH) {
+        float lx = (originX - clipX) / focal;
+        float rx = (clipX + clipW - originX) / focal;
+        float ty = (originY - clipY) / focal;
+        float by = (clipY + clipH - originY) / focal;
+        if (outsidePlane(minX, minY, minZ, maxX, maxY, maxZ,
+                forwardX, forwardY, forwardZ, -(eyeX * forwardX + eyeY * forwardY + eyeZ * forwardZ) - NEAR)) return false;
+        if (outsidePlane(minX, minY, minZ, maxX, maxY, maxZ,
+                rightX + lx * forwardX, rightY + lx * forwardY, rightZ + lx * forwardZ,
+                -(eyeX * (rightX + lx * forwardX) + eyeY * (rightY + lx * forwardY) + eyeZ * (rightZ + lx * forwardZ)))) return false;
+        if (outsidePlane(minX, minY, minZ, maxX, maxY, maxZ,
+                -rightX + rx * forwardX, -rightY + rx * forwardY, -rightZ + rx * forwardZ,
+                -(eyeX * (-rightX + rx * forwardX) + eyeY * (-rightY + rx * forwardY) + eyeZ * (-rightZ + rx * forwardZ)))) return false;
+        if (outsidePlane(minX, minY, minZ, maxX, maxY, maxZ,
+                -upX + ty * forwardX, -upY + ty * forwardY, -upZ + ty * forwardZ,
+                -(eyeX * (-upX + ty * forwardX) + eyeY * (-upY + ty * forwardY) + eyeZ * (-upZ + ty * forwardZ)))) return false;
+        return !outsidePlane(minX, minY, minZ, maxX, maxY, maxZ,
+                upX + by * forwardX, upY + by * forwardY, upZ + by * forwardZ,
+                -(eyeX * (upX + by * forwardX) + eyeY * (upY + by * forwardY) + eyeZ * (upZ + by * forwardZ)));
+    }
+
+    private static boolean outsidePlane(float minX, float minY, float minZ, float maxX, float maxY, float maxZ,
+                                        float nx, float ny, float nz, float offset) {
+        float x = nx >= 0f ? maxX : minX;
+        float y = ny >= 0f ? maxY : minY;
+        float z = nz >= 0f ? maxZ : minZ;
+        return x * nx + y * ny + z * nz + offset < 0f;
     }
 
     /** Ray through a screen point as {originX, originY, originZ, dirX, dirY, dirZ} with a unit direction. */
@@ -207,6 +313,18 @@ public final class OrbitCamera {
         out[13] = -(upX * eyeX + upY * eyeY + upZ * eyeZ);
         out[14] = -(forwardX * eyeX + forwardY * eyeY + forwardZ * eyeZ);
         out[15] = 1f;
+    }
+
+    /** Projection coefficients for a positive-eye-Z native GPU viewport. Filled after computeView().
+     * The centre offset accounts for the current orbit-camera pan without moving the eye.
+     */
+    public void gpuProjection(float x, float y, float w, float h, float[] out) {
+        if (out == null || out.length < 4 || w <= 0 || h <= 0)
+            throw new IllegalArgumentException("Invalid GPU projection output/viewport");
+        out[0] = 2.0f * focal / w;
+        out[1] = 2.0f * focal / h;
+        out[2] = 2.0f * (originX - x - 0.5f * w) / w;
+        out[3] = -2.0f * (originY - y - 0.5f * h) / h;
     }
 
     public float eyeX() {

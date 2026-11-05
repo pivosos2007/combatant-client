@@ -1,0 +1,21 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_CurrentColor;
+layout(binding = 1) uniform sampler2D u_CurrentConfidence;
+layout(binding = 2) uniform sampler2D u_Reprojection;
+layout(binding = 3, rgba16f) writeonly uniform image2D u_OutputColor;
+layout(binding = 4, r8) writeonly uniform image2D u_OutputConfidence;
+layout(binding = 5, r8) writeonly uniform image2D u_Rejection;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_OutputColor);
+    if (any(greaterThanEqual(pixel, size))) return;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    vec4 reprojection = textureLod(u_Reprojection, uv, 0.0);
+    imageStore(u_OutputColor, pixel, textureLod(u_CurrentColor, uv, 0.0));
+    imageStore(u_OutputConfidence, pixel, vec4(textureLod(u_CurrentConfidence, uv, 0.0).r, 0.0, 0.0, 0.0));
+    // 1.0 means subsystem/global history was unavailable this frame. Pixels without water stay zero.
+    imageStore(u_Rejection, pixel, vec4(reprojection.w > 0.5 ? 1.0 : 0.0, 0.0, 0.0, 0.0));
+}

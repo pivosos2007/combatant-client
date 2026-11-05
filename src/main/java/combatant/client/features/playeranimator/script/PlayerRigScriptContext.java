@@ -28,7 +28,43 @@ public final class PlayerRigScriptContext {
      * Indices 0..33 intentionally retain the original bridge layout for resource-pack addons.
      * New interpolated vanilla render-state values are appended from index 34 onward.
      */
+    interface Sink {
+        void set(int index, double value);
+        void set(int index, float value);
+        void set(int index, int value);
+        void set(int index, boolean value);
+        void set(int index, String value);
+    }
+
+    private static final class ArraySink implements Sink {
+        final Object[] values = new Object[PlayerRigInputBuffer.VALUE_COUNT];
+        public void set(int i, double v) { values[i] = v; }
+        public void set(int i, float v) { values[i] = v; }
+        public void set(int i, int v) { values[i] = v; }
+        public void set(int i, boolean v) { values[i] = v; }
+        public void set(int i, String v) { values[i] = v; }
+    }
+
     public static Object[] pack(AbstractClientPlayer player, AvatarRenderState state,
+                                float tickDelta, float deltaSeconds,
+                                String style, float strength, int swingIndex,
+                                float attackProgress, float attackTimeSeconds,
+                                float attackDurationSeconds, boolean attackActive) {
+        ArraySink sink = new ArraySink();
+        fill(sink, player, state, tickDelta, deltaSeconds, style, strength, swingIndex, attackProgress, attackTimeSeconds, attackDurationSeconds, attackActive);
+        return sink.values;
+    }
+
+    /** Writes all fields directly into the existing V8 input buffer without boxing. */
+    public static void writeNative(PlayerRigInputBuffer input, AbstractClientPlayer player, AvatarRenderState state,
+                                float tickDelta, float deltaSeconds,
+                                String style, float strength, int swingIndex,
+                                float attackProgress, float attackTimeSeconds,
+                                float attackDurationSeconds, boolean attackActive) {
+        fill(input, player, state, tickDelta, deltaSeconds, style, strength, swingIndex, attackProgress, attackTimeSeconds, attackDurationSeconds, attackActive);
+    }
+
+    private static void fill(Sink sink, AbstractClientPlayer player, AvatarRenderState state,
                                 float tickDelta, float deltaSeconds,
                                 String style, float strength, int swingIndex,
                                 float attackProgress, float attackTimeSeconds,
@@ -61,85 +97,80 @@ public final class PlayerRigScriptContext {
                 : "none";
 
         double horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-        return new Object[]{
-                // Original bridge (0..33).
-                player.getUUID().toString(),                       // 0
-                player.tickCount + tickDelta,                      // 1
-                tickDelta,                                        // 2
-                deltaSeconds,                                     // 3
-                player.getYRot(tickDelta),                         // 4
-                player.getXRot(tickDelta),                         // 5
-                attackProgress,                                   // 6
-                velocity.x,                                       // 7
-                velocity.y,                                       // 8
-                velocity.z,                                       // 9
-                player.onGround(),                                // 10
-                player.isShiftKeyDown(),                           // 11
-                player.isSprinting(),                              // 12
-                player.isVisuallySwimming(),                       // 13
-                player.isFallFlying(),                             // 14
-                player.isPassenger(),                              // 15
-                player.isUsingItem(),                              // 16
-                player.getPose().name().toLowerCase(Locale.ROOT), // 17
-                player.getMainArm().getSerializedName(),           // 18
-                BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).toString(), // 19
-                BuiltInRegistries.ITEM.getKey(player.getOffhandItem().getItem()).toString(),  // 20
-                style != null ? style : "Hybrid",                 // 21
-                Math.max(0f, Math.min(2f, strength)),              // 22
-                player.onClimbable(),                              // 23
-                player.isInWater(),                               // 24
-                player.isUnderWater(),                            // 25
-                player.getPose() == Pose.SWIMMING && !player.isInWater(), // 26
-                player.fallDistance,                              // 27
-                player.getY(),                                    // 28
-                useItem.getUseAnimation().getSerializedName().toLowerCase(Locale.ROOT), // 29
-                BuiltInRegistries.ITEM.getKey(useItem.getItem()).toString(), // 30
-                useArm,                                            // 31
-                player.isUsingItem() ? player.getTicksUsingItem() : 0, // 32
-                swingIndex,                                        // 33
-
-                // Render-time extensions (34+). These are populated by AvatarRenderer before JS.
-                attackTimeSeconds,                                 // 34
-                attackActive,                                      // 35
-                state.bodyRot,                                     // 36 world body yaw, degrees
-                state.yRot,                                        // 37 relative head yaw, degrees
-                state.xRot,                                        // 38 head pitch, degrees
-                state.walkAnimationPos,                            // 39 interpolated limb phase
-                state.walkAnimationSpeed,                          // 40 interpolated limb amplitude
-                state.speedValue,                                  // 41 vanilla speed normalization
-                state.swimAmount,                                  // 42 vanilla swim blend
-                state.fallFlyingTimeInTicks,                       // 43 interpolated flight time
-                state.shouldApplyFlyingYRot,                       // 44
-                state.flyingYRot,                                  // 45
-                state.isCrouching,                                 // 46
-                state.isFallFlying,                                // 47
-                state.isVisuallySwimming,                          // 48
-                state.isPassenger,                                 // 49
-                state.isUsingItem,                                 // 50
-                state.isInWater,                                   // 51
-                boatLeft,                                          // 52
-                boatRight,                                         // 53
-                boatLeftTime,                                      // 54 radians/continuous rowing phase from vanilla boat
-                boatRightTime,                                     // 55
-                vehicleType,                                       // 56
-                horizontalSpeed,                                   // 57
-                state.ageInTicks / 20.0,                             // 58 interpolated render clock, seconds
-                state.ticksUsingItem,                               // 59 interpolated vanilla use ticks
-                state.currentSwing != null
+        sink.set(0, player.getUUID().toString());
+        sink.set(1, player.tickCount + tickDelta);
+        sink.set(2, tickDelta);
+        sink.set(3, deltaSeconds);
+        sink.set(4, player.getYRot(tickDelta));
+        sink.set(5, player.getXRot(tickDelta));
+        sink.set(6, attackProgress);
+        sink.set(7, velocity.x);
+        sink.set(8, velocity.y);
+        sink.set(9, velocity.z);
+        sink.set(10, player.onGround());
+        sink.set(11, player.isShiftKeyDown());
+        sink.set(12, player.isSprinting());
+        sink.set(13, player.isVisuallySwimming());
+        sink.set(14, player.isFallFlying());
+        sink.set(15, player.isPassenger());
+        sink.set(16, player.isUsingItem());
+        sink.set(17, player.getPose().name().toLowerCase(Locale.ROOT));
+        sink.set(18, player.getMainArm().getSerializedName());
+        sink.set(19, BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).toString());
+        sink.set(20, BuiltInRegistries.ITEM.getKey(player.getOffhandItem().getItem()).toString());
+        sink.set(21, style != null ? style : "Hybrid");
+        sink.set(22, Math.max(0f, Math.min(2f, strength)));
+        sink.set(23, player.onClimbable());
+        sink.set(24, player.isInWater());
+        sink.set(25, player.isUnderWater());
+        sink.set(26, player.getPose() == Pose.SWIMMING && !player.isInWater());
+        sink.set(27, player.fallDistance);
+        sink.set(28, player.getY());
+        sink.set(29, useItem.getUseAnimation().getSerializedName().toLowerCase(Locale.ROOT));
+        sink.set(30, BuiltInRegistries.ITEM.getKey(useItem.getItem()).toString());
+        sink.set(31, useArm);
+        sink.set(32, player.isUsingItem() ? player.getTicksUsingItem() : 0);
+        sink.set(33, swingIndex);
+        sink.set(34, attackTimeSeconds);
+        sink.set(35, attackActive);
+        sink.set(36, state.bodyRot);
+        sink.set(37, state.yRot);
+        sink.set(38, state.xRot);
+        sink.set(39, state.walkAnimationPos);
+        sink.set(40, state.walkAnimationSpeed);
+        sink.set(41, state.speedValue);
+        sink.set(42, state.swimAmount);
+        sink.set(43, state.fallFlyingTimeInTicks);
+        sink.set(44, state.shouldApplyFlyingYRot);
+        sink.set(45, state.flyingYRot);
+        sink.set(46, state.isCrouching);
+        sink.set(47, state.isFallFlying);
+        sink.set(48, state.isVisuallySwimming);
+        sink.set(49, state.isPassenger);
+        sink.set(50, state.isUsingItem);
+        sink.set(51, state.isInWater);
+        sink.set(52, boatLeft);
+        sink.set(53, boatRight);
+        sink.set(54, boatLeftTime);
+        sink.set(55, boatRightTime);
+        sink.set(56, vehicleType);
+        sink.set(57, horizontalSpeed);
+        sink.set(58, state.ageInTicks / 20.0);
+        sink.set(59, state.ticksUsingItem);
+        sink.set(60, state.currentSwing != null
                         ? (state.currentSwing.hand() == InteractionHand.MAIN_HAND
                             ? player.getMainArm() : player.getMainArm().getOpposite()).getSerializedName()
-                        : player.getMainArm().getSerializedName(), // 60
-                state.currentSwing != null ? state.currentSwing.animation().type().getSerializedName() : "none", // 61
-                state.swingAnimation,                              // 62 vanilla interpolated swing progress
-                state.x,                                            // 63 interpolated render X
-                state.y,                                            // 64 interpolated render Y
-                state.z,                                            // 65 interpolated render Z
-                state.leftArmPose != null ? state.leftArmPose.name().toLowerCase(Locale.ROOT) : "empty",  // 66
-                state.rightArmPose != null ? state.rightArmPose.name().toLowerCase(Locale.ROOT) : "empty",// 67
-                state.maxCrossbowChargeDuration,                    // 68
-                player.getAbilities().flying,                        // 69 creative flight, distinct from elytra
-                player.getAttackStrengthScale(tickDelta),            // 70 current vanilla melee recharge
-                attackDurationSeconds                                // 71 duration captured at swing start
-        };
+                        : player.getMainArm().getSerializedName());
+        sink.set(61, state.currentSwing != null ? state.currentSwing.animation().type().getSerializedName() : "none");
+        sink.set(62, state.swingAnimation);
+        sink.set(63, state.x);
+        sink.set(64, state.y);
+        sink.set(65, state.z);
+        sink.set(66, state.leftArmPose != null ? state.leftArmPose.name().toLowerCase(Locale.ROOT) : "empty");
+        sink.set(67, state.rightArmPose != null ? state.rightArmPose.name().toLowerCase(Locale.ROOT) : "empty");
+        sink.set(68, state.maxCrossbowChargeDuration);
+        sink.set(69, player.getAbilities().flying);
+        sink.set(70, player.getAttackStrengthScale(tickDelta));
+        sink.set(71, attackDurationSeconds);
     }
 }

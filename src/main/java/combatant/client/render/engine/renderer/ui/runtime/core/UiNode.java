@@ -211,11 +211,45 @@ public final class UiNode {
         return changed;
     }
 
+    /** Bind a program property once per tree revision; render-thread-only. */
+    int bindDynamicProperty(String property) {
+        if (!runtimePropsPrepared) {
+            props = props.runtimeCopy(4);
+            runtimePropsPrepared = true;
+        }
+        return props.bindRuntimeSlot(property);
+    }
+
+    /** Typed program writes bypass String lookup and Map mutation entirely. */
+    boolean patchIndexedProp(int slot, Object value) {
+        boolean changed = props.updateRuntime(slot, value);
+        if (changed && props.slotAffectsDisabled(slot)) syncDisabledState();
+        return changed;
+    }
+
+    boolean patchIndexedFloat(int slot, float value) {
+        boolean changed = props.updateRuntimeFloat(slot, value);
+        if (changed && props.slotAffectsDisabled(slot)) syncDisabledState();
+        return changed;
+    }
+
+    boolean patchIndexedInt(int slot, int value) {
+        boolean changed = props.updateRuntimeInt(slot, value);
+        if (changed && props.slotAffectsDisabled(slot)) syncDisabledState();
+        return changed;
+    }
+
+    boolean patchIndexedBoolean(int slot, boolean value) {
+        boolean changed = props.updateRuntimeBoolean(slot, value);
+        if (changed && props.slotAffectsDisabled(slot)) syncDisabledState();
+        return changed;
+    }
+
     /** Patch one prebound object slot without building a temporary Map. */
     public boolean patchProp(String key, Object value) {
         if (key == null) return false;
         if (!runtimePropsPrepared) {
-            if (java.util.Objects.equals(props.get(key), value) && props.values().containsKey(key)) return false;
+            if (java.util.Objects.equals(props.get(key), value) && props.containsKey(key)) return false;
             props = props.runtimeCopy(1);
             runtimePropsPrepared = true;
         }

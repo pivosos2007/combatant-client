@@ -26,7 +26,7 @@ import combatant.client.render.engine.RenderState;
 import net.irisshaders.iris.vertices.ImmediateState;
 import net.irisshaders.iris.vertices.IrisVertexFormats;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.lwjgl.opengl.GL11C;
@@ -60,6 +60,8 @@ public final class IrisPlayerRigGpu {
     private static boolean disabled;
     private static int lightLocation = -1;
     private static int overlayLocation = -1;
+    private static int effectsLocation = -1;
+    private static int hitLocation = -1;
     private static final ByteBuffer PALETTE_SCRATCH = ByteBuffer.allocateDirect(
             RigShaderLimits.MAX_BONES * 64).order(ByteOrder.nativeOrder());
 
@@ -114,15 +116,18 @@ public final class IrisPlayerRigGpu {
                 var texture = mc.getTextureManager().getTexture(draw.snapshot().asset().texture());
                 if (texture == null || texture.getTextureView() == null || texture.getSampler() == null) continue;
                 for (var surface : draw.snapshot().asset().surfaces()) {
-                    if (surface.translucent() != translucent) continue;
+                    if ((surface.translucent() || draw.snapshot().faded()) != translucent
+                            || draw.snapshot().opacity() <= 0.001f) continue;
                     Mesh mesh = MESHES.get(surface.mesh());
                     if (mesh == null) continue;
                     // Flush each dispatch before its draw; a second actor may share this mesh.
                     long started = PlayerModelRenderDiagnostics.enabled() ? System.nanoTime() : 0L;
-                    skin(mesh, draw.snapshot(), draw.light(), draw.overlay());
+                    skin(mesh, draw.snapshot(), draw.light(), OverlayTexture.NO_OVERLAY, draw.tint());
                     RhiDrawCommand command = RhiDrawCommand.builder("Iris indexed skinned player rig")
                             .pipeline(translucent
-                                    ? IrisImportedGeometryPipelines.TRANSLUCENT_BLEND_DOUBLE_SIDED
+                                    ? draw.snapshot().faded()
+                                        ? IrisImportedGeometryPipelines.PLAYER_FADE_DEPTH_WRITE_DOUBLE_SIDED
+                                        : IrisImportedGeometryPipelines.TRANSLUCENT_BLEND_DOUBLE_SIDED
                                     : IrisImportedGeometryPipelines.GBUFFER_DOUBLE_SIDED)
                             .colorAttachment(color).depthAttachment(depth)
                             .mesh(mesh.allocation.handle()).transform(draw.model())
@@ -196,7 +201,8 @@ public final class IrisPlayerRigGpu {
         }
     }
 
-    private static void skin(Mesh mesh, PlayerModels.Snapshot instance, int light, int overlay) {
+    private static void skin(Mesh mesh, PlayerModels.Snapshot instance,
+                             int light, int overlay, int tint) {
         instance.rig().solve();
         int bones = instance.rig().pose().boneCount();
         if (bones <= 0 || bones > RigShaderLimits.MAX_BONES) throw new IllegalArgumentException("Invalid GPU rig bone count");
@@ -223,6 +229,11 @@ public final class IrisPlayerRigGpu {
             GL20C.glUseProgram(shader);
             GL30C.glUniform1ui(lightLocation, light);
             GL30C.glUniform1ui(overlayLocation, overlay);
+            GL20C.glUniform4f(effectsLocation,
+                    ((tint >>> 16) & 255) / 255.0f,
+                    ((tint >>> 8) & 255) / 255.0f,
+                    (tint & 255) / 255.0f, instance.opacity());
+            GL20C.glUniform1f(hitLocation, instance.hit());
             GL30C.glBindBufferBase(GL43C.GL_SHADER_STORAGE_BUFFER, 0, mesh.input);
             GL30C.glBindBufferBase(GL43C.GL_SHADER_STORAGE_BUFFER, 1,
                     ((GlBuffer) mesh.allocation.handle().vertexBuffer()).handle());
@@ -250,6 +261,8 @@ public final class IrisPlayerRigGpu {
                 throw new IllegalStateException("Iris rig compute link: " + GL20C.glGetProgramInfoLog(shader));
             lightLocation = GL20C.glGetUniformLocation(shader, "packedLight");
             overlayLocation = GL20C.glGetUniformLocation(shader, "packedOverlay");
+            effectsLocation = GL20C.glGetUniformLocation(shader, "entityEffects");
+            hitLocation = GL20C.glGetUniformLocation(shader, "hitStrength");
             paletteBuffer = GL15C.glGenBuffers();
             int previous = GL11C.glGetInteger(GL43C.GL_SHADER_STORAGE_BUFFER_BINDING);
             GL15C.glBindBuffer(GL43C.GL_SHADER_STORAGE_BUFFER, paletteBuffer);
@@ -281,15 +294,12 @@ public final class IrisPlayerRigGpu {
         MESHES.clear();
         if (paletteBuffer != 0) { GL15C.glDeleteBuffers(paletteBuffer); paletteBuffer = 0; }
         if (shader != 0) { GL20C.glDeleteProgram(shader); shader = 0; }
-        lightLocation = overlayLocation = -1;
+        lightLocation = overlayLocation = effectsLocation = hitLocation = -1;
         owner = null;
     }
 
     private static void disable(Throwable failure) {
         disabled = true;
-        combatant.client.util.logging.DebugLog.warnOnce("playermodel.iris.gpu.fallback",
-                "[IrisRig] indexed compute unavailable, ordered collector fallback next frame: %s: %s",
-                failure.getClass().getSimpleName(), failure.getMessage());
     }
 
     private record Mesh(PersistentGpuMesh allocation, int input, int vertices) {}
@@ -357,6 +367,8 @@ public final class IrisPlayerRigGpu {
             layout(std430,binding=2) readonly buffer Palette { mat4 joints[]; };
             uniform uint packedLight;
             uniform uint packedOverlay;
+            uniform vec4 entityEffects; // tint RGB and final opacity
+            uniform float hitStrength;
             uint sn(float x) { return uint(int(round(clamp(x,-1.0,1.0)*127.0))) & 255u; }
             uint n4(vec3 n) { return sn(n.x) | (sn(n.y)<<8u) | (sn(n.z)<<16u); }
             void main() {
@@ -383,7 +395,18 @@ public final class IrisPlayerRigGpu {
                 outputWords[o]=floatBitsToUint(skp.x);
                 outputWords[o+1u]=floatBitsToUint(skp.y);
                 outputWords[o+2u]=floatBitsToUint(skp.z);
-                outputWords[o+3u]=v[b+8u]; // RGBA8 (uint avoids NaN canonicalization)
+                // Preserve the imported texture's vertex alpha while fading the
+                // complete replacement in Iris' own translucent entity pass.
+                uint packed = v[b+8u];
+                vec4 sourceColor = vec4(
+                    float(packed & 255u), float((packed >> 8u) & 255u),
+                    float((packed >> 16u) & 255u), float((packed >> 24u) & 255u)) / 255.0;
+                vec3 rgb = sourceColor.rgb * entityEffects.rgb;
+                vec3 red = clamp(rgb * vec3(1.2, 0.35, 0.35) + vec3(0.08, 0.0, 0.0), 0.0, 1.0);
+                vec4 tinted = vec4(mix(rgb, red, clamp(hitStrength, 0.0, 1.0)),
+                                   sourceColor.a * clamp(entityEffects.a, 0.0, 1.0));
+                uvec4 rgba = uvec4(round(tinted * 255.0));
+                outputWords[o+3u] = rgba.r | (rgba.g << 8u) | (rgba.b << 16u) | (rgba.a << 24u);
                 outputWords[o+4u]=v[b+3u];
                 outputWords[o+5u]=v[b+4u];
                 outputWords[o+6u]=packedOverlay;

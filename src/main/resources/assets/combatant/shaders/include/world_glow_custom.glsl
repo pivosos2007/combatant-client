@@ -1,19 +1,10 @@
 /*
- * User-defined world glow effects. Overridable through resource packs:
- *   assets/combatant/shaders/include/world_glow_custom.glsl
- * Do not add #version, uniforms or varyings. All slots must retain these signatures.
- * This include is expanded by CombatantShaderSources and compiled for both GL and Vulkan.
- * See docs/world-glow-customization.md for the contract and an example.
+ * Optional world glow shader customization hook.
+ * Override this file through a resource pack to add your own visual effect to ANY preset.
+ * Called for every face and ribbon fragment; no extra render pass or preset slot is needed.
+ * Keep the function signature. See docs/world-glow-customization.md.
  */
-CombatantGlowVisual combatantGlowCustom1(vec2 uv, vec3 viewPosition, float t, float phase) {
-    return combatantGlowVisual(vec3(1.0), 1.0, 0.0);
-}
-CombatantGlowVisual combatantGlowCustom2(vec2 uv, vec3 viewPosition, float t, float phase) {
-    return combatantGlowVisual(vec3(1.0), 1.0, 0.0);
-}
-CombatantGlowVisual combatantGlowCustom3(vec2 uv, vec3 viewPosition, float t, float phase) {
-    return combatantGlowVisual(vec3(1.0), 1.0, 0.0);
-}
-CombatantGlowVisual combatantGlowCustom4(vec2 uv, vec3 viewPosition, float t, float phase) {
-    return combatantGlowVisual(vec3(1.0), 1.0, 0.0);
+CombatantGlowVisual combatantGlowCustomize(int preset, vec2 uv, vec3 viewPosition,
+                                            float t, float phase, CombatantGlowVisual visual) {
+    return visual;
 }

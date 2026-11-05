@@ -11,7 +11,8 @@ import combatant.client.features.gui.schematic.SchematicPanel;
 import combatant.client.input.InputKeys;
 
 /** ClickGUI tab hosting the schematic menu: the same {@link SchematicPanel} the {@code @schematic} command opens. */
-@ClickGuiSectionInfo(id = "combatant:schematics", label = "Schematics", order = 300)
+@ClickGuiSectionInfo(id = "combatant:schematics", label = "Schematics", order = 300,
+        requiredMods = "litematica")
 public final class SchematicsSection implements ClickGuiSection {
     private static final long DOUBLE_CLICK_NANOS = 350_000_000L;
     private static final float DOUBLE_CLICK_SLOP = 6f;

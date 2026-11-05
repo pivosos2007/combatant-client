@@ -75,6 +75,7 @@ public final class UiDynamicPatchBuffer implements UiPatchWriter {
     public void invalidateBindings() {
         for (Slot slot : slots) {
             slot.nodes = List.of();
+            slot.localSlots = new int[0];
             slot.boundRuntime = null;
             slot.boundRevision = Long.MIN_VALUE;
             slot.applied = false;
@@ -207,12 +208,14 @@ public final class UiDynamicPatchBuffer implements UiPatchWriter {
             Slot slot = activeProps[i];
             boolean rebound = slot.bind(runtime, false);
             if (!rebound && slot.valueUnchanged(runtime.legacyPropRevision())) continue;
-            for (UiNode node : slot.nodes) {
+            for (int target = 0; target < slot.nodes.size(); target++) {
+                UiNode node = slot.nodes.get(target);
+                int localSlot = slot.localSlots[target];
                 boolean changed = switch (slot.kind) {
-                    case FLOAT -> node.patchFloatProp(slot.property, slot.number);
-                    case INT -> node.patchIntProp(slot.property, slot.integer);
-                    case BOOLEAN -> node.patchBooleanProp(slot.property, slot.bool);
-                    default -> node.patchProp(slot.property, slot.value);
+                    case FLOAT -> node.patchIndexedFloat(localSlot, slot.number);
+                    case INT -> node.patchIndexedInt(localSlot, slot.integer);
+                    case BOOLEAN -> node.patchIndexedBoolean(localSlot, slot.bool);
+                    default -> node.patchIndexedProp(localSlot, slot.value);
                 };
                 if (changed) {
                     propChanges++;
@@ -327,6 +330,7 @@ public final class UiDynamicPatchBuffer implements UiPatchWriter {
         final String nodeKey;
         final String property;
         List<UiNode> nodes = List.of();
+        int[] localSlots = new int[0];
         UiRuntime boundRuntime;
         long boundRevision = Long.MIN_VALUE;
         long appliedLegacyRevision = Long.MIN_VALUE;
@@ -354,6 +358,16 @@ public final class UiDynamicPatchBuffer implements UiPatchWriter {
             long revision = runtime.treeRevision();
             if (runtime == boundRuntime && revision == boundRevision) return false;
             nodes = runtime.nodesForDynamicPatch(nodeKey, bounds ? "bounds" : "props");
+            if (!bounds) {
+                // The global writer handle is not a node-local property index.
+                // Resolve each node's slot exactly once after reconciliation.
+                localSlots = new int[nodes.size()];
+                for (int i = 0; i < nodes.size(); i++) {
+                    localSlots[i] = nodes.get(i).bindDynamicProperty(property);
+                }
+            } else {
+                localSlots = new int[0];
+            }
             boundRevision = revision;
             boundRuntime = runtime;
             applied = false;

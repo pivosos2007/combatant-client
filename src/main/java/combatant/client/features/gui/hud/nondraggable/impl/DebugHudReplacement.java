@@ -61,9 +61,11 @@ public enum DebugHudReplacement {
     }
 
     public static void renderTopLayer(GuiGraphicsExtractor ctx) {
-        if (ctx == null || !RuntimeGate.canRunHud() || RuntimeGate.isPanic()) return;
-
+        // Consume exactly one frame of debug lines, even when rendering is suppressed.
+        // In particular, never replay an old F3 snapshot after it has been closed.
         Snapshot captured = snapshot;
+        snapshot = Snapshot.EMPTY;
+        if (ctx == null || !RuntimeGate.canRunHud() || RuntimeGate.isPanic()) return;
         if (captured.isEmpty()) return;
 
         CombatantRenderSystem.ensureFrameContext();

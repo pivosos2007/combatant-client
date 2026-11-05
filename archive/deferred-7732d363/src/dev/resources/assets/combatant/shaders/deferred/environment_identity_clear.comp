@@ -1,0 +1,11 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0, rgba16f) writeonly uniform image2D u_Target;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_Target);
+    if (any(greaterThanEqual(pixel, size))) return;
+    imageStore(u_Target, pixel, vec4(1.0));
+}

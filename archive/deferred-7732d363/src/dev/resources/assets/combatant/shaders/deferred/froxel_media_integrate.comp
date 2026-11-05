@@ -1,0 +1,43 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+#moj_import <combatant:deferred_froxel_media_data.glsl>
+layout(binding = 1, rgba16f) readonly uniform image3D u_SegmentRadiance;
+layout(binding = 2, rgba16f) readonly uniform image3D u_SegmentTransmittance;
+layout(binding = 3, rgba16f) writeonly uniform image3D u_IntegratedRadiance;
+layout(binding = 4, rgba16f) writeonly uniform image3D u_IntegratedTransmittance;
+
+#moj_import <combatant:deferred_froxel_transport.glsl>
+
+void main() {
+    ivec2 column = ivec2(gl_GlobalInvocationID.xy);
+    ivec3 dimensions = imageSize(u_SegmentRadiance);
+    if (any(greaterThanEqual(column, dimensions.xy))) return;
+
+    vec3 accumulatedRadiance = vec3(0.0);
+    vec3 accumulatedTransmittance = vec3(1.0);
+    float cloudOpticalDepth = 0.0;
+    float cloudScatteringDepth = 0.0;
+
+    for (int z = 0; z < dimensions.z; ++z) {
+        ivec3 coord = ivec3(column, z);
+        vec4 segmentRadianceData = imageLoad(u_SegmentRadiance, coord);
+        vec4 segmentTransmittanceData = imageLoad(u_SegmentTransmittance, coord);
+
+        float nearDistance = combatant_froxel_boundary_distance(
+                z, dimensions.z, u_Data.froxel.w, u_Data.policy.x);
+        float farDistance = combatant_froxel_boundary_distance(
+                z + 1, dimensions.z, u_Data.froxel.w, u_Data.policy.x);
+        float segmentLength = max(farDistance - nearDistance, 0.0);
+
+        vec3 segmentRadiance = max(segmentRadianceData.rgb, vec3(0.0));
+        vec3 segmentTransmittance = clamp(segmentTransmittanceData.rgb, vec3(0.0), vec3(1.0));
+        accumulatedRadiance += accumulatedTransmittance * segmentRadiance;
+        accumulatedTransmittance *= segmentTransmittance;
+        cloudOpticalDepth += max(segmentRadianceData.a, 0.0) * segmentLength;
+        cloudScatteringDepth += max(segmentTransmittanceData.a, 0.0) * segmentLength;
+
+        imageStore(u_IntegratedRadiance, coord, vec4(accumulatedRadiance, cloudOpticalDepth));
+        imageStore(u_IntegratedTransmittance, coord, vec4(accumulatedTransmittance, cloudScatteringDepth));
+    }
+}

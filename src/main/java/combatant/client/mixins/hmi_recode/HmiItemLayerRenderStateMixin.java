@@ -9,7 +9,6 @@
 package combatant.client.mixins.hmi_recode;
 
 import combatant.client.features.hmi_recode.HoldMyItems;
-import combatant.client.features.hmi_recode.render.HmiModelCommand;
 import combatant.client.features.hmi_recode.render.HmiModelQuadList;
 import net.minecraft.client.resources.model.geometry.ItemQuads;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
@@ -17,7 +16,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-import java.util.List;
 
 @Mixin(ItemStackRenderState.LayerRenderState.class)
 public abstract class HmiItemLayerRenderStateMixin {
@@ -40,8 +38,8 @@ public abstract class HmiItemLayerRenderStateMixin {
     private ItemQuads combatant$hmi$attachModelPose(ItemQuads quads) {
         if (quads.isEmpty()) return quads;
 
-        List<HmiModelCommand> commands = HoldMyItems.snapshotModelCommands();
-        if (commands.isEmpty()) return quads;
+        var commands = HoldMyItems.snapshotModelProgram();
+        if (!commands.hasModelCommands()) return quads;
 
         return HmiModelQuadList.wrap(quads, commands);
     }

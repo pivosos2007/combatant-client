@@ -1,0 +1,69 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_Transmittance;
+layout(binding = 1, rgba16f) writeonly uniform image2D u_MultiScattering;
+layout(std430, binding = 2) readonly buffer AtmosphereParams {
+    vec4 radii;
+    vec4 rayleigh;
+    vec4 mieScattering;
+    vec4 mieExtinction;
+    vec4 ozone;
+    vec4 ozoneShapeGroundR;
+    vec4 groundGB;
+    vec4 sunDirection;
+    vec4 sunRadiance;
+    vec4 moonDirection;
+    vec4 moonRadiance;
+    vec4 aerial;
+} u_Atm;
+
+const float PI = 3.14159265358979323846;
+
+vec2 transUv(float r, float mu) {
+    return vec2(clamp(mu * 0.5 + 0.5, 0.0, 1.0),
+                clamp((r - u_Atm.radii.x) / max(u_Atm.radii.y - u_Atm.radii.x, 1e-3), 0.0, 1.0));
+}
+
+vec3 localScattering(float h) {
+    float rd = exp(-max(h, 0.0) / max(u_Atm.rayleigh.w, 1e-3));
+    float md = exp(-max(h, 0.0) / max(u_Atm.mieScattering.w, 1e-3));
+    return u_Atm.rayleigh.rgb * rd + u_Atm.mieScattering.rgb * md;
+}
+
+vec3 localExtinction(float h) {
+    float rd = exp(-max(h, 0.0) / max(u_Atm.rayleigh.w, 1e-3));
+    float md = exp(-max(h, 0.0) / max(u_Atm.mieScattering.w, 1e-3));
+    float od = max(0.0, 1.0 - abs(h - u_Atm.ozone.w) / max(u_Atm.ozoneShapeGroundR.x, 1e-3));
+    return u_Atm.rayleigh.rgb * rd + u_Atm.mieExtinction.rgb * md + u_Atm.ozone.rgb * od;
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_MultiScattering);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float r = mix(u_Atm.radii.x + 1e-3, u_Atm.radii.y - 1e-3, uv.y);
+    float h = r - u_Atm.radii.x;
+    float sunMu = uv.x * 2.0 - 1.0;
+
+    // Directional-average escape probability. This compact LUT stores an isotropic energy
+    // compensation factor, not an artistic ambient term.
+    vec3 escape = vec3(0.0);
+    const int N = 16;
+    for (int i = 0; i < N; ++i) {
+        float xi = (float(i) + 0.5) / float(N);
+        float mu = xi * 2.0 - 1.0;
+        escape += textureLod(u_Transmittance, transUv(r, mu), 0.0).rgb;
+    }
+    escape /= float(N);
+
+    vec3 scattering = localScattering(h);
+    vec3 extinction = max(localExtinction(h), vec3(1e-6));
+    vec3 albedo = clamp(scattering / extinction, vec3(0.0), vec3(0.999));
+    vec3 returnProbability = clamp(albedo * (vec3(1.0) - escape) * 0.5, vec3(0.0), vec3(0.95));
+    vec3 incident = textureLod(u_Transmittance, transUv(r, sunMu), 0.0).rgb;
+    vec3 compensation = incident * returnProbability / max(vec3(1.0) - returnProbability, vec3(1e-4));
+    imageStore(u_MultiScattering, pixel, vec4(compensation, 1.0));
+}

@@ -19,24 +19,25 @@ void main() {
     float fresnel = pow(1.0 - ndv, 2.35);
 
     float time = v_Params.x;
-    float index = v_Params.y;
+    // 0 = faceted, 1 = fresnel, 2 = emissive. One mode for the entire batch.
+    float finish = v_Params.y;
+    float strength = clamp(v_Params.w, 0.0, 2.0);
+    float rimStrength = finish > 0.5 && finish < 1.5 ? strength : 0.0;
+    float emitStrength = finish > 1.5 ? strength : 0.0;
     float hit = sat(v_Params.z);
     float facet = fract(v_Params2.w);
     vec2 uv = v_TexCoord;
 
-    // Facet planes are the material language. Keep them broad and coherent so the shard reads as a
-    // solid prism rather than a transparent polygon with random sparkles.
-    float facetPhase = facet * TAU * 2.0 + index * 0.47;
+    // The material remains facet-based even without an optional accent.
+    float facetPhase = facet * TAU * 2.0;
     float faceLight = 0.5 + 0.5 * dot(normal, normalize(vec3(0.37, 0.78, 0.50)));
     float facetTone = 0.5 + 0.5 * sin(facetPhase + normal.x * 2.1 - normal.z * 1.7 + time * 0.32);
 
     float diag0 = 1.0 - smoothstep(0.025, 0.135, abs(uv.y - uv.x));
     float diag1 = 1.0 - smoothstep(0.025, 0.135, abs(uv.y - (1.0 - uv.x)));
     float spine = max(diag0, diag1);
-    float edgeCarrier = smoothstep(0.28, 0.92, fresnel);
-    float internalFacet = spine * (0.24 + edgeCarrier * 0.76);
+    float internalFacet = spine * (0.24 + smoothstep(0.28, 0.92, fresnel) * 0.76);
 
-    // Slow moving internal planes create thickness without turning the surface into noisy glass.
     float internalA = 0.5 + 0.5 * sin(uv.x * 8.0 + uv.y * 3.0 + facetPhase - time * 0.74);
     float internalB = 0.5 + 0.5 * sin(uv.x * -4.0 + uv.y * 9.0 - facetPhase * 0.7 + time * 0.53);
     float internalBand = smoothstep(0.66, 0.94, internalA * 0.58 + internalB * 0.42);
@@ -53,22 +54,32 @@ void main() {
     );
     spectral = mix(cold, spectral, 0.18 + fresnel * 0.22);
 
+    // The existing crystal has restrained edge reflectance; Fresnel explicitly amplifies it.
+    float rim = smoothstep(0.15, 0.96, fresnel);
     vec3 outColor = body * (0.68 + ndv * 0.22);
-    outColor += spectral * fresnel * 0.46;
+    outColor += spectral * fresnel * (0.34 + rimStrength * 0.67);
     outColor += hot * internalFacet * 0.24;
     outColor += cold * internalBand * (0.10 + fresnel * 0.12);
-    outColor += hot * pow(fresnel, 5.0) * 0.42;
+    outColor += hot * pow(fresnel, 5.0) * (0.28 + rimStrength * 0.54);
+
+    // Single-pass emissive faceting: brighten the actual crystal silhouette and its
+    // triangle edges; no scene texture, extra shell, billboard or framebuffer pass.
+    // UVs are a fixed triangle (0,0), (1,0), (.5,1) on every facet.
+    if (emitStrength > 0.001) {
+        float edgeDistance = min(uv.y, min(2.0 * uv.x - uv.y, 2.0 - 2.0 * uv.x - uv.y));
+        float edge = 1.0 - smoothstep(0.018, 0.14, edgeDistance);
+        float emission = edge * 0.65 + rim * 0.58 + internalBand * 0.29 + spine * 0.2;
+        vec3 emissionTint = mix(base, vec3(0.94, 0.98, 1.0), 0.5);
+        outColor += emissionTint * emission * emitStrength * 1.32;
+    }
+
     outColor = mix(outColor, vec3(1.0, 0.075, 0.055) * (0.48 + outColor * 0.52), hit * 0.52);
     outColor = outColor / (1.0 + outColor * 0.08);
 
-    // Dense enough to read as a physical shard while still leaving room for the dedicated scene
-    // refraction pass to sell transmission through the body.
     float alpha = v_Color.a * (
-        0.36
-        + ndv * 0.12
-        + fresnel * 0.34
-        + internalFacet * 0.10
-        + internalBand * 0.055
+        0.36 + ndv * 0.12 + fresnel * (0.34 + rimStrength * 0.16)
+        + internalFacet * 0.10 + internalBand * 0.055
+        + emitStrength * (0.05 + rim * 0.08)
     );
     if (alpha <= 0.003) discard;
     color = vec4(outColor, sat(alpha));

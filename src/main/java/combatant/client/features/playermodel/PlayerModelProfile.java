@@ -17,7 +17,8 @@ import combatant.client.render.engine.asset.model.io.ModelResourceResolver;
 
 /** Optional source-space fitting data; original OBJ geometry is never rewritten. */
 public record PlayerModelProfile(Map<String, String> bones, List<Blend> blends,
-                                 List<Link> links, List<Attachment> attachments) {
+                                 List<Link> links, List<Attachment> attachments,
+                                 Map<String, PartFit> partFits, SkinFit skinFit) {
     private static final Map<String, String> DEFAULTS = Map.of(
             "headModel", "HEAD", "bodyModel", "CHEST",
             "leftArmModel", "LEFT_UPPER_ARM", "rightArmModel", "RIGHT_UPPER_ARM",
@@ -25,11 +26,16 @@ public record PlayerModelProfile(Map<String, String> bones, List<Blend> blends,
 
     // Older resource addons and callers use the original two-field fitting format.
     public PlayerModelProfile(Map<String, String> bones, List<Blend> blends) {
-        this(bones, blends, List.of(), List.of());
+        this(bones, blends, List.of(), List.of(), Map.of(), null);
     }
 
     public PlayerModelProfile(Map<String, String> bones, List<Blend> blends, List<Link> links) {
-        this(bones, blends, links, List.of());
+        this(bones, blends, links, List.of(), Map.of(), null);
+    }
+
+    public PlayerModelProfile(Map<String, String> bones, List<Blend> blends,
+                              List<Link> links, List<Attachment> attachments) {
+        this(bones, blends, links, attachments, Map.of(), null);
     }
 
     public PlayerModelProfile {
@@ -37,6 +43,15 @@ public record PlayerModelProfile(Map<String, String> bones, List<Blend> blends,
         blends = blends == null ? List.of() : List.copyOf(blends);
         links = links == null ? List.of() : List.copyOf(links);
         attachments = attachments == null ? List.of() : List.copyOf(attachments);
+        partFits = partFits == null ? Map.of() : Map.copyOf(partFits);
+        skinFit = skinFit == null ? SkinFit.DEFAULT : skinFit;
+        if (partFits.size() > 64) throw new IllegalArgumentException("Too many fitted parts");
+        partFits.forEach((group, fit) -> {
+            if (group == null || !group.matches("[a-zA-Z0-9_.-]{1,128}"))
+                throw new IllegalArgumentException("Invalid fitted group: " + group);
+            fit.validate();
+        });
+        skinFit.validate();
         if (bones.size() > 256 || blends.size() > 64 || links.size() > 64 || attachments.size() > 128) throw new IllegalArgumentException("Fitting profile is too large");
         bones.values().forEach(PlayerRigBone::valueOf);
         blends.forEach(Blend::validate);
@@ -60,6 +75,46 @@ public record PlayerModelProfile(Map<String, String> bones, List<Blend> blends,
         String name = bones.getOrDefault(group, DEFAULTS.get(group));
         if (name == null) throw new IllegalArgumentException("Unmapped model group: " + group);
         return PlayerRigBone.valueOf(name);
+    }
+
+    /** Independent source-space transform of an imported rigid group. The pivot,
+     *  offset and scale use OBJ model pixels; the player's actual skeleton is unchanged. */
+    public record PartFit(float[] pivot, float[] offset, float[] scale) {
+        private void validate() {
+            for (float[] v : java.util.Arrays.asList(pivot, offset, scale)) {
+                if (v == null || v.length != 3) throw new IllegalArgumentException("Part fitting requires vec3");
+                for (float n : v) if (!Float.isFinite(n)) throw new IllegalArgumentException("Nonfinite part fit");
+            }
+            for (float value : scale)
+                if (value < 0.25f || value > 4f) throw new IllegalArgumentException("Part scale outside [0.25,4]");
+        }
+
+        public org.joml.Matrix4f matrix() {
+            return new org.joml.Matrix4f().translation(offset[0], offset[1], offset[2])
+                    .translate(pivot[0], pivot[1], pivot[2])
+                    .scale(scale[0], scale[1], scale[2])
+                    .translate(-pivot[0], -pivot[1], -pivot[2]);
+        }
+    }
+
+    /** Fit the native skin INSIDE an imported helmet, without shrinking the torso.
+     *  Head scale is measured about the HEAD pivot (0,0,0). */
+    public record SkinFit(float headScale, boolean hideHat, float[] headOffset) {
+        public static final SkinFit DEFAULT = new SkinFit(1f, false);
+        public SkinFit(float headScale, boolean hideHat) {
+            this(headScale, hideHat, new float[3]);
+        }
+        public SkinFit {
+            headOffset = headOffset == null ? new float[3] : headOffset.clone();
+        }
+        private void validate() {
+            if (!Float.isFinite(headScale) || headScale < 0.5f || headScale > 1.5f)
+                throw new IllegalArgumentException("Skin head scale outside [0.5,1.5]");
+            if (headOffset.length != 3) throw new IllegalArgumentException("Head offset requires vec3");
+            for (float n : headOffset)
+                if (!Float.isFinite(n) || Math.abs(n) > 16f)
+                    throw new IllegalArgumentException("Head offset outside [-16,16] model pixels");
+        }
     }
 
     /**

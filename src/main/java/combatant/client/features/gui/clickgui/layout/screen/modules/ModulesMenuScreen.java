@@ -1372,17 +1372,19 @@ public final class ModulesMenuScreen {
         float y = clipY - panel.settingsSmoothScroll;
         float total = 0.0f;
 
-        panel.previewX = panel.previewY = panel.previewW = panel.previewH = 0.0f;
-        if (ModulesMenuResolver.supportsPreview(panel.selected)) {
+        panel.previewHits.clear();
+        for (var previewAction : ModulesMenuResolver.previewActions(panel.selected)) {
             float actionH = 20.0f * scale;
             float actionGap = 5.0f * scale;
-            panel.previewX = settingsX;
-            panel.previewY = y;
-            panel.previewW = settingsW;
-            panel.previewH = actionH;
+            float hitTop = Math.max(y, clipY);
+            float hitBottom = Math.min(y + actionH, clipY + clipH);
+            if (hitBottom > hitTop) {
+                panel.previewHits.add(new ModulesMenuPanel.PreviewHit(
+                        previewAction.id(), settingsX, hitTop, settingsW, hitBottom - hitTop));
+            }
             if (y + actionH >= clipY && y <= clipY + clipH) {
                 boolean hovered = inside(mouseX, mouseY, settingsX, y, settingsW, actionH);
-                float previewHover = panel.hoverAnim(PREVIEW_ACTION_HOVER_KEY, hovered);
+                float previewHover = panel.hoverAnim(PREVIEW_ACTION_HOVER_KEY + ":" + previewAction.id(), hovered);
                 int left = withAlpha(mix(ModulesMenuStyle.panelBgGlassDark(), ModulesMenuStyle.rowHover(), previewHover),
                         alpha * (0.72f + 0.20f * previewHover));
                 int right = withAlpha(mix(ModulesMenuStyle.panelStroke(), ModulesMenuStyle.categoryFxPrimary(panel.category, 1.0f), previewHover),
@@ -1400,7 +1402,8 @@ public final class ModulesMenuScreen {
                         SvgRenderOptions.overrideColor(withAlpha(ModulesMenuStyle.text(), alpha)));
                 ClickGuiRenderer.drawText(
                         medium,
-                        ClickGuiI18n.tr("clickgui.modules.visual_preview", "Tune visually"),
+                        ClickGuiRenderer.fitText(medium, previewAction.label(),
+                                7.2f * scale, Math.max(1.0f, settingsW - 28.0f * scale)),
                         settingsX + 19.0f * scale,
                         y + middle(textHeight(medium, 7.2f * scale), actionH),
                         7.2f * scale,

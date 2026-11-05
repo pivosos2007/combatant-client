@@ -33,8 +33,10 @@ import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.math.ColorMath;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.engine.renderer.WorldSpriteEffects;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.effects.shockwave.WorldJumpShockwaves;
+import combatant.client.render.effects.mask.WorldPostProcessMasks;
 import combatant.client.util.time.Timer;
 
 import java.util.*;
@@ -46,9 +48,17 @@ import java.util.List;
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.COSMETIC,
         description = "module.jumpcircles.description")
 public class JumpCircles extends Module {
+    private static final int MAX_CIRCLES = 64;
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<CircleMode> mode =
             enumSetting("jumpCirclesMode", "mode", CircleMode.SHOCKWAVE);
+    // Exactly one visual treatment is active at a time. Only REFRACTION needs a scene post-pass.
+    private final EnumValue<TextureEffect> textureEffect = visibleWhen(
+            enumSetting("jumpCirclesTextureEffect", "texture_effect", TextureEffect.CLASSIC),
+            () -> !isShockwaveMode());
+    private final NumberValue<Float> textureIntensity = visibleWhen(
+            num("jumpCirclesTextureIntensity", "texture_intensity", 0.85f, 0.0f, 2.0f),
+            () -> !isShockwaveMode() && textureEffect.get() != TextureEffect.CLASSIC);
     private final BooleanValue easeOut = visibleWhen(
             bool("jumpCirclesEaseOut", "ease_out", true), this::isLegacyMode);
     private final NumberValue<Float> rotateSpeed = visibleWhen(
@@ -64,8 +74,6 @@ public class JumpCircles extends Module {
             "jumpCirclesPulseLifetime", "pulse_lifetime", 1000, 500, 5000
     ), this::isPulseMode);
     private final BooleanValue onlySelf = bool("jumpCirclesOnlySelf", "only_self", false);
-    private final BooleanValue glowRing = visibleWhen(
-            bool("jumpCirclesGlowRing", "glow_ring", true), () -> !isShockwaveMode());
     private final BooleanValue depthTest = common(
             bool("jumpCirclesDepthTest", "depth_test", true),
             CommonSettingSchemas.RENDER_DEPTH_TEST.commonI18nKey()
@@ -101,7 +109,10 @@ public class JumpCircles extends Module {
 
     @Override
     public WorldPhase getWorldPhase() {
-        return WorldPhase.END_MAIN;
+        // The refractive mask runs during PRE_HAND post-process. Draw the texture afterwards,
+        // so only the scene is refracted and the original artwork remains sharp on top.
+        // The phase is cached by ModuleManager, so it must not depend on the selected mode.
+        return WorldPhase.AFTER_POST_PROCESS;
     }
 
     @Override
@@ -139,6 +150,9 @@ public class JumpCircles extends Module {
         groundState.keySet().removeIf(id -> !active.contains(id));
         groundedPosition.keySet().removeIf(id -> !active.contains(id));
         circles.removeIf(c -> c.timer.passedMs(lifetimeMs()));
+        if (circles.size() > MAX_CIRCLES) {
+            circles.subList(0, circles.size() - MAX_CIRCLES).clear();
+        }
     }
 
     private double resolveSurfaceY(double x, double y, double z) {
@@ -175,7 +189,12 @@ public class JumpCircles extends Module {
 
     @Override
     public void onPrepareWorldPostProcess(float tickDelta) {
-        if (!isEnabled() || !isShockwaveMode() || mc.level == null || mc.player == null || circles.isEmpty()) return;
+        if (!isEnabled() || mc.level == null || mc.player == null || circles.isEmpty()) return;
+        if (textureEffect.get() == TextureEffect.REFRACTION && !isShockwaveMode()) {
+            submitTextureRefraction();
+            return;
+        }
+        if (!isShockwaveMode()) return;
 
         int submitted = 0;
         long expand = shockExpandMs.get();
@@ -218,55 +237,106 @@ public class JumpCircles extends Module {
         }
     }
 
+    /**
+     * Submit a distortion mask in addition to the original artwork. The mask is
+     * collected by the shared world post-process batch; the visible sprite is
+     * still submitted once through the normal textured pipeline.
+     */
+    private void submitTextureRefraction() {
+        boolean pulse = isPulseMode();
+        boolean useDepth = depthTest.get();
+        float intensity = textureIntensity.get();
+        if (intensity <= 0.001f) return;
+        // Strength is linear in the premultiplied mask and decoded in the compositor.
+        // The old 0.27 multiplier combined with double alpha weighting made rings imperceptible.
+        float strength = Mth.clamp(intensity * 0.70f, 0.0f, 1.0f);
+        Identifier texture = resolveTexture();
+
+        for (int i = circles.size() - 1; i >= 0; i--) {
+            Circle circle = circles.get(i);
+            long age = circle.timer.getPassedTimeMs();
+            float half = pulse ? pulseHalfSize(age) : legacyHalfSize(age);
+            float opacity = pulse ? pulseAlpha(Mth.clamp(age / (float) pulseLifetime.get(), 0f, 1f))
+                    : 1.0f - age / 6000.0f;
+            if (half <= 0.001f || opacity <= 0.003f || !circleVisible(circle.pos, half)) continue;
+            float angle = pulse ? 0.0f : legacyAngle(half);
+            submitRefractionQuad(texture, circle.pos, half, angle, strength,
+                    Mth.clamp(opacity, 0.0f, 1.0f), useDepth);
+        }
+    }
+
+    private static void submitRefractionQuad(Identifier texture, Vec3 center, float half,
+                                             float angleDeg, float strength, float opacity, boolean useDepth) {
+        double radians = Math.toRadians(angleDeg);
+        double rx = Math.cos(radians) * half;
+        double rz = -Math.sin(radians) * half;
+        double fx = Math.sin(radians) * half;
+        double fz = Math.cos(radians) * half;
+        WorldPostProcessMasks.distortionQuad(texture,
+                new Vec3(center.x - rx + fx, center.y, center.z - rz + fz),
+                new Vec3(center.x + rx + fx, center.y, center.z + rz + fz),
+                new Vec3(center.x + rx - fx, center.y, center.z + rz - fz),
+                new Vec3(center.x - rx - fx, center.y, center.z - rz - fz),
+                strength, 0.18f, opacity, useDepth);
+    }
+
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
         if (!isEnabled() || mc.level == null || mc.player == null || circles.isEmpty() || isShockwaveMode()) return;
 
+        TextureEffect effect = textureEffect.get();
+        // Refraction distorts the scene behind this artwork, but never replaces
+        // the artwork itself. Use the classic sprite batch for the visible quad.
+
         boolean useDepth = depthTest.get();
-        boolean glow = glowRing.get();
-        RenderPipeline pipeline = glow
-                ? (useDepth ? WorldRenderPipelines.WORLD_GLOW_RING_DEPTH : WorldRenderPipelines.WORLD_GLOW_RING)
-                : (useDepth
-                        ? WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_LIQUID_IGNORE
-                        : WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE);
+        RenderPipeline classic = useDepth ? WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE_LIQUID_IGNORE
+                : WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE;
+        RenderPipeline pipeline = WorldSpriteEffects.pipeline(effect.shaderMode, classic, useDepth);
         Renderer3D.DepthMode depthMode = useDepth ? Renderer3D.DepthMode.PRE_DEPTH : Renderer3D.DepthMode.NONE;
-        MeshBuilder mesh = glow
-                ? renderer.batch(pipeline, depthMode)
-                : renderer.batchTextured(pipeline, resolveTexture(), depthMode);
+        MeshBuilder mesh = renderer.batchTextured(pipeline, resolveTexture(), depthMode);
         if (mesh == null) return;
 
+        mesh.ensureCapacity(circles.size() * 4, circles.size() * 6);
+        float intensity = effect.shaderMode.usesShader() ? textureIntensity.get() : 0.0f;
+        WorldSpriteEffects.Parameters spriteParams = new WorldSpriteEffects.Parameters();
+        boolean pulse = isPulseMode();
         for (int i = circles.size() - 1; i >= 0; i--) {
-            Circle c = circles.get(i);
-            if (isPulseMode()) {
-                renderPulseCircle(mesh, c);
-            } else {
-                renderLegacyCircle(mesh, c);
-            }
+            Circle circle = circles.get(i);
+            long age = circle.timer.getPassedTimeMs();
+            float half = pulse ? pulseHalfSize(age) : legacyHalfSize(age);
+            if (half <= 0.001f || !circleVisible(circle.pos, half)) continue;
+            float opacity = pulse ? pulseAlpha(Mth.clamp(age / (float) pulseLifetime.get(), 0f, 1f))
+                    : 1f - age / 6000.0f;
+            if (opacity <= 0.003f) continue;
+            float angle = pulse ? 0.0f : legacyAngle(half);
+            emitCircleQuad(mesh, circle.pos, half, angle, opacity, age * 0.001f, effect, intensity, spriteParams);
         }
     }
 
-    private void renderLegacyCircle(MeshBuilder mesh, Circle c) {
-        float colorAnim = c.timer.getPassedTimeMs() / 6000f;
-        float t = (c.timer.getPassedTimeMs() * (easeOut.get() ? 2f : 1f)) / 5000f;
-        float sizeAnim = circleScale.get() - (float) Math.pow(1f - t, 4f);
-        if (sizeAnim <= 0f) return;
-
-        float angleDeg = sizeAnim * rotateSpeed.get() * 1000f;
-        emitCircleQuad(mesh, c.pos, sizeAnim, angleDeg, 1f - colorAnim);
+    private float legacyHalfSize(long age) {
+        float t = (age * (easeOut.get() ? 2f : 1f)) / 5000f;
+        return circleScale.get() - (float) Math.pow(1f - t, 4f);
     }
 
-    private void renderPulseCircle(MeshBuilder mesh, Circle c) {
-        float progress = Math.min(c.timer.getPassedTimeMs() / (float) pulseLifetime.get(), 1f);
-        if (progress >= 1f) return;
-
-        float scale = bounceOut(progress) * pulseMaxSize.get() * circleScale.get();
-        if (scale <= 0f) return;
-
-        float alpha = pulseAlpha(progress);
-        emitCircleQuad(mesh, c.pos, scale * 0.5f, 0f, alpha);
+    private float legacyAngle(float half) {
+        return half * rotateSpeed.get() * 1000f;
     }
 
-    private void emitCircleQuad(MeshBuilder mesh, Vec3 center, float half, float angleDeg, float alpha) {
+    private float pulseHalfSize(long age) {
+        float progress = Math.min(age / (float) pulseLifetime.get(), 1f);
+        return progress >= 1f ? 0f : bounceOut(progress) * pulseMaxSize.get() * circleScale.get() * 0.5f;
+    }
+
+    private static boolean circleVisible(Vec3 center, float half) {
+        double extent = half * 1.415 + 0.025;
+        AABB bounds = new AABB(center.x - extent, center.y - 0.04, center.z - extent,
+                center.x + extent, center.y + 0.04, center.z + extent);
+        return Renderer3D.Culling.isInFrustum(bounds) && Renderer3D.Culling.isSectionVisible(bounds);
+    }
+
+    private void emitCircleQuad(MeshBuilder mesh, Vec3 center, float half, float angleDeg,
+                                float alpha, float ageSeconds, TextureEffect effect, float intensity,
+                                WorldSpriteEffects.Parameters spriteParams) {
         double radians = Math.toRadians(angleDeg);
         float cos = (float) Math.cos(radians);
         float sin = (float) Math.sin(radians);
@@ -276,17 +346,22 @@ public class JumpCircles extends Module {
         int c3 = ColorMath.scaleAlpha(getColorArgb(180), alpha);
         int c4 = ColorMath.scaleAlpha(getColorArgb(90), alpha);
 
-        // right = (cos, 0, -sin), forward = (sin, 0, cos); corners are expanded by hand so a frame with
-        // many circles allocates no Vec3/RenderColor temporaries.
+        // One quad per circle; the shared sprite material handles shader parameter packing.
         double rx = cos * half, rz = -sin * half;
         double fx = sin * half, fz = cos * half;
         double cx = center.x, cy = center.y, cz = center.z;
 
+        float phase = (float) (cx * 0.193 + cz * 0.367);
+        spriteParams.configure(effect.shaderMode, ageSeconds, phase, intensity, false);
         mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(cx - rx + fx, cy, cz - rz + fz).vec2(0, 1).colorArgb(c1).next();
-        int i2 = mesh.vec3(cx + rx + fx, cy, cz + rz + fz).vec2(1, 1).colorArgb(c2).next();
-        int i3 = mesh.vec3(cx + rx - fx, cy, cz + rz - fz).vec2(1, 0).colorArgb(c3).next();
-        int i4 = mesh.vec3(cx - rx - fx, cy, cz - rz - fz).vec2(0, 0).colorArgb(c4).next();
+        int i1 = WorldSpriteEffects.vertex(mesh, cx - rx + fx, cy, cz - rz + fz,
+                0, 1, c1, spriteParams);
+        int i2 = WorldSpriteEffects.vertex(mesh, cx + rx + fx, cy, cz + rz + fz,
+                1, 1, c2, spriteParams);
+        int i3 = WorldSpriteEffects.vertex(mesh, cx + rx - fx, cy, cz + rz - fz,
+                1, 0, c3, spriteParams);
+        int i4 = WorldSpriteEffects.vertex(mesh, cx - rx - fx, cy, cz - rz - fz,
+                0, 0, c4, spriteParams);
         mesh.quad(i1, i2, i3, i4);
     }
 
@@ -383,6 +458,21 @@ public class JumpCircles extends Module {
         } else {
             value -= 2.625f / d1;
             return n1 * value * value + 0.984375f;
+        }
+    }
+
+    private enum TextureEffect {
+        CLASSIC(WorldSpriteEffects.Mode.CLASSIC),
+        FRESNEL(WorldSpriteEffects.Mode.FRESNEL),
+        ENERGY_SWEEP(WorldSpriteEffects.Mode.ENERGY_SWEEP),
+        CHROMATIC(WorldSpriteEffects.Mode.CHROMATIC),
+        // Only the actual scene distortion still uses WorldPostProcessMasks.
+        REFRACTION(WorldSpriteEffects.Mode.CLASSIC);
+
+        private final WorldSpriteEffects.Mode shaderMode;
+
+        TextureEffect(WorldSpriteEffects.Mode shaderMode) {
+            this.shaderMode = shaderMode;
         }
     }
 

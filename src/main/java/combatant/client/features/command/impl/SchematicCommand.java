@@ -12,6 +12,8 @@ import combatant.client.features.command.CommandContext;
 import combatant.client.features.command.CommandInfo;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.features.gui.schematic.SchematicActions;
+import combatant.client.automation.compat.litematica.LitematicaCompat;
+import combatant.client.automation.compat.litematica.LitematicaWorkspace;
 import combatant.client.util.schematic.LayerStats;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicLibrary;
@@ -39,6 +41,10 @@ public final class SchematicCommand implements ClientCommand {
 
     @Override
     public boolean execute(CommandContext ctx) {
+        if (!combatant.client.automation.compat.litematica.LitematicaCompat.isAvailable()) {
+            CommandOutput.warning("Schematics requires the optional Litematica mod");
+            return true;
+        }
         String sub = ctx.arg(0) == null ? "menu" : ctx.arg(0).toLowerCase(Locale.ROOT);
         switch (sub) {
             case "menu", "gui", "open" -> SchematicActions.openMenu();
@@ -72,8 +78,9 @@ public final class SchematicCommand implements ClientCommand {
     }
 
     private void origin(String mode) {
-        if (!SchematicState.INSTANCE.hasSchematic()) {
-            CommandOutput.error("Load a schematic first");
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        if (bridge == null || bridge.placements().stream().noneMatch(LitematicaWorkspace.Placement::selected)) {
+            CommandOutput.error("Select a Litematica placement first");
             return;
         }
         boolean looked = mode != null && (mode.equalsIgnoreCase("look") || mode.equalsIgnoreCase("looked"));
@@ -82,8 +89,8 @@ public final class SchematicCommand implements ClientCommand {
             CommandOutput.error(looked ? "Look at a block first" : "Not in a world");
             return;
         }
-        SchematicPlacement placement = SchematicState.INSTANCE.placement();
-        BlockPos origin = placement.origin();
+        BlockPos origin = bridge.placements().stream().filter(LitematicaWorkspace.Placement::selected)
+                .findFirst().orElseThrow().origin();
         CommandOutput.success("Origin set to " + origin.getX() + " " + origin.getY() + " " + origin.getZ());
     }
 

@@ -53,7 +53,9 @@ final class JavetUiEngine implements UiScriptEngine {
             """;
 
     private final UiScriptObjectConverter converter = new UiScriptObjectConverter();
+    private final Map<String, Object> reusableContext = new LinkedHashMap<>(6);
     private V8Runtime runtime;
+    private boolean renderReady;
     private UiScriptModule loadedModule;
     private String loadedSource = "";
 
@@ -65,7 +67,7 @@ final class JavetUiEngine implements UiScriptEngine {
 
         try {
             prepare(module);
-            if (!runtime.getGlobalObject().getBoolean("__combatant_render_ready")) {
+            if (!renderReady) {
                 return UiScriptRenderResult.failed(new UiScriptRuntimeError(module.getId(), "render", "Script module does not export render(ctx).", null));
             }
 
@@ -74,6 +76,32 @@ final class JavetUiEngine implements UiScriptEngine {
             return UiScriptRenderResult.ok(root);
         } catch (Throwable t) {
             return UiScriptRenderResult.failed(new UiScriptRuntimeError(module.getId(), "render", message(t), t));
+        } finally {
+            reusableContext.clear(); // Release the potentially large detached props snapshot.
+        }
+    }
+
+    @Override
+    public UiScriptRenderResult renderTracked(UiScriptModule module, UiScriptRenderContext context) {
+        if (module == null) {
+            return UiScriptRenderResult.failed(new UiScriptRuntimeError(null, "load", "Script module is null.", null));
+        }
+        try {
+            prepare(module);
+            if (!renderReady) {
+                return UiScriptRenderResult.failed(new UiScriptRuntimeError(module.getId(), "render",
+                        "Script module does not export render(ctx).", null));
+            }
+            Object raw = runtime.getGlobalObject().invokeObject("__combatant_render_tracked", contextMap(context));
+            if (!(raw instanceof Map<?, ?> wrapped)) {
+                throw new IllegalStateException("Tracked JS render returned an invalid envelope.");
+            }
+            UiNodeSpec root = converter.convert(wrapped.get("tree"));
+            return UiScriptRenderResult.tracked(root, UiScriptDependencies.parse(wrapped.get("dependencies")));
+        } catch (Throwable error) {
+            return UiScriptRenderResult.failed(new UiScriptRuntimeError(module.getId(), "render", message(error), error));
+        } finally {
+            reusableContext.clear();
         }
     }
 
@@ -87,21 +115,28 @@ final class JavetUiEngine implements UiScriptEngine {
         closeRuntime();
 
         JavetNativeResourceLoader.install();
-        runtime = JavetRuntimeBootstrap.createRuntime(this);
+        UiV8StartupSnapshot.PreparedRuntime prepared = UiV8StartupSnapshot.createRuntime(this);
+        runtime = prepared.runtime();
         runtime.setConverter(new JavetObjectConverter());
         runtime.setMemorySaverModeEnabled(false);
         runtime.setBatterySaverModeEnabled(false);
-        runtime.getExecutor(BOOTSTRAP_SOURCE).executeVoid();
-        runtime.getExecutor(UiScriptHostApiSource.contractBootstrapSource())
-                .setResourceName("combatant:ui/api/ui.contract.json")
-                .executeVoid();
-        runtime.getExecutor(UiScriptHostApiSource.executableSource())
-                .setResourceName("combatant:ui/api/ui.js")
-                .executeVoid();
+        if (!prepared.hasUiCore()) installCore(runtime);
         runtime.getExecutor(executableSource(module)).setResourceName(module.getId().toString()).executeVoid();
         runtime.getExecutor(RESOLVE_RENDER_SOURCE).executeVoid();
+        renderReady = Boolean.TRUE.equals(runtime.getGlobalObject().getBoolean("__combatant_render_ready"));
         loadedModule = module;
         loadedSource = module.source();
+    }
+
+    /** Shared pure-JavaScript core, safe to embed in a V8 startup snapshot. */
+    static void installCore(V8Runtime runtime) throws JavetException {
+        runtime.getExecutor(BOOTSTRAP_SOURCE).executeVoid();
+        runtime.getExecutor(UiScriptHostApiSource.contractBootstrapSource())
+                .setResourceName("combatant:ui/api/ui.contract.json").executeVoid();
+        runtime.getExecutor(UiScriptHostApiSource.executableSource())
+                .setResourceName("combatant:ui/api/ui.js").executeVoid();
+        runtime.getExecutor(UiScriptHostApiSource.dependencyTrackingSource())
+                .setResourceName("combatant:ui/api/dependency_tracking.js").executeVoid();
     }
 
     private boolean isLoaded(UiScriptModule module) {
@@ -117,11 +152,11 @@ final class JavetUiEngine implements UiScriptEngine {
         return UiScriptPreparedSource.prepare(module);
     }
 
-    private static Map<String, Object> contextMap(UiScriptRenderContext context) {
+    private Map<String, Object> contextMap(UiScriptRenderContext context) {
         UiScriptRenderContext ctx = context != null
                 ? context
                 : new UiScriptRenderContext(0L, 0.0, 0.0, 0.0f, 0.0f, null);
-        Map<String, Object> map = new LinkedHashMap<>(6);
+        Map<String, Object> map = reusableContext;
         map.put("frame", jsNumber(ctx.frame()));
         map.put("time", ctx.time());
         map.put("delta", ctx.delta());
@@ -175,6 +210,8 @@ final class JavetUiEngine implements UiScriptEngine {
     }
 
     private void closeRuntime() {
+        reusableContext.clear();
+        renderReady = false;
         loadedModule = null;
         loadedSource = "";
         if (runtime == null) return;

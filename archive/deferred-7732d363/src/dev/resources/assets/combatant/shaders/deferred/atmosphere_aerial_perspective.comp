@@ -1,0 +1,102 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_Transmittance;
+layout(binding = 1) uniform sampler2D u_MultiScattering;
+layout(binding = 2, rgba16f) writeonly uniform image2D u_AerialRadiance;
+layout(std430, binding = 3) readonly buffer AtmosphereParams {
+    vec4 radii;
+    vec4 rayleigh;
+    vec4 mieScattering;
+    vec4 mieExtinction;
+    vec4 ozone;
+    vec4 ozoneShapeGroundR;
+    vec4 groundGB;
+    vec4 sunDirection;
+    vec4 sunRadiance;
+    vec4 moonDirection;
+    vec4 moonRadiance;
+    vec4 aerial;
+} u_Atm;
+layout(binding = 4, rgba16f) writeonly uniform image2D u_AerialTransmittance;
+
+const float PI = 3.14159265358979323846;
+
+vec2 transUv(float r, float mu) {
+    return vec2(clamp(mu * 0.5 + 0.5, 0.0, 1.0),
+                clamp((r - u_Atm.radii.x) / max(u_Atm.radii.y - u_Atm.radii.x, 1e-3), 0.0, 1.0));
+}
+
+void mediumAt(float h, out vec3 betaR, out vec3 betaMs, out vec3 betaE) {
+    float rd = exp(-max(h, 0.0) / max(u_Atm.rayleigh.w, 1e-3));
+    float md = exp(-max(h, 0.0) / max(u_Atm.mieScattering.w, 1e-3));
+    float od = max(0.0, 1.0 - abs(h - u_Atm.ozone.w) / max(u_Atm.ozoneShapeGroundR.x, 1e-3));
+    betaR = u_Atm.rayleigh.rgb * rd;
+    betaMs = u_Atm.mieScattering.rgb * md;
+    betaE = betaR + u_Atm.mieExtinction.rgb * md + u_Atm.ozone.rgb * od;
+}
+
+float rayleighPhase(float c) { return 3.0 * (1.0 + c * c) / (16.0 * PI); }
+float miePhase(float c, float g) {
+    float g2 = g * g;
+    float d = max(1.0 + g2 - 2.0 * g * c, 1e-4);
+    return (1.0 - g2) / (4.0 * PI * d * sqrt(d));
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_AerialRadiance);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    int zenithCount = max(1, int(u_Atm.aerial.y));
+    int azimuthCount = max(1, int(u_Atm.aerial.z));
+    int zenithIndex = pixel.x % zenithCount;
+    int azimuthIndex = min(pixel.x / zenithCount, azimuthCount - 1);
+    float mu = mix(-1.0, 1.0, (float(zenithIndex) + 0.5) / float(zenithCount));
+    float azimuth = 2.0 * PI * (float(azimuthIndex) + 0.5) / float(azimuthCount);
+    float s = sqrt(max(0.0, 1.0 - mu * mu));
+    vec3 viewDir = normalize(vec3(cos(azimuth) * s, mu, sin(azimuth) * s));
+
+    float distanceFraction = (float(pixel.y) + 0.5) / float(max(size.y, 1));
+    float distanceKm = u_Atm.aerial.x * distanceFraction * distanceFraction;
+    const int STEPS = 24;
+    float ds = distanceKm / float(STEPS);
+    vec3 p0 = vec3(0.0, u_Atm.radii.z, 0.0);
+    vec3 throughput = vec3(1.0);
+    vec3 radiance = vec3(0.0);
+
+    for (int i = 0; i < STEPS; ++i) {
+        float t = (float(i) + 0.5) * ds;
+        vec3 p = p0 + viewDir * t;
+        float r = length(p);
+        vec3 up = p / max(r, 1e-5);
+        vec3 betaR, betaMs, betaE;
+        mediumAt(max(r - u_Atm.radii.x, 0.0), betaR, betaMs, betaE);
+
+        vec3 source = vec3(0.0);
+        if (u_Atm.sunRadiance.a > 0.5) {
+            vec3 ld = normalize(u_Atm.sunDirection.xyz);
+            float sunMu = dot(up, ld);
+            vec3 lt = textureLod(u_Transmittance, transUv(r, sunMu), 0.0).rgb;
+            float c = dot(viewDir, ld);
+            vec3 multi = textureLod(u_MultiScattering, transUv(r, sunMu), 0.0).rgb;
+            source += u_Atm.sunRadiance.rgb * lt * (betaR * rayleighPhase(c) + betaMs * miePhase(c, u_Atm.mieExtinction.w));
+            source += u_Atm.sunRadiance.rgb * lt * multi * (betaR + betaMs) / (4.0 * PI);
+        }
+        if (u_Atm.moonRadiance.a > 0.5) {
+            vec3 ld = normalize(u_Atm.moonDirection.xyz);
+            float moonMu = dot(up, ld);
+            vec3 lt = textureLod(u_Transmittance, transUv(r, moonMu), 0.0).rgb;
+            float c = dot(viewDir, ld);
+            source += u_Atm.moonRadiance.rgb * lt * (betaR * rayleighPhase(c) + betaMs * miePhase(c, u_Atm.mieExtinction.w));
+        }
+
+        vec3 segmentT = exp(-betaE * ds);
+        vec3 integral = (vec3(1.0) - segmentT) / max(betaE, vec3(1e-6));
+        radiance += throughput * source * integral;
+        throughput *= segmentT;
+    }
+
+    imageStore(u_AerialRadiance, pixel, vec4(max(radiance, vec3(0.0)), 1.0));
+    imageStore(u_AerialTransmittance, pixel, vec4(clamp(throughput, vec3(0.0), vec3(1.0)), 1.0));
+}

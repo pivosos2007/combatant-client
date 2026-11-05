@@ -1,0 +1,21 @@
+#version 430 core
+
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0, rgba16f) writeonly uniform image2D u_SkyDiffuseIrradiance;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_SkyDiffuseIrradiance);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    // Unknown environment is represented explicitly as zero incoming irradiance. Do not infer
+    // sky/block light from vanilla lightmap data or from rendered color.
+    imageStore(u_SkyDiffuseIrradiance, pixel, vec4(0.0, 0.0, 0.0, 1.0));
+}

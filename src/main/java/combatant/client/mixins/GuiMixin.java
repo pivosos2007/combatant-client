@@ -105,6 +105,12 @@ public abstract class GuiMixin {
         }
     }
 
+    @Inject(method = "extractRenderState", at = @At("HEAD"))
+    private void combatant$beginDebugHudFrame(DeltaTracker tickCounter, boolean renderLevel,
+                                             boolean renderScreens, CallbackInfo ci) {
+        DebugHudReplacement.beginExtractFrame();
+    }
+
     @Inject(
             method = "extractRenderState",
             at = @At(

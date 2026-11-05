@@ -28,13 +28,18 @@ import java.util.*;
 @UiScriptAsset("combatant:modules/preview/player_models")
 public final class PlayerModelSelector {
     private final PlayerModel module;
+    private final PlayerModel.Target target;
     private final UiScriptModuleHandle handle = HudScriptLayouts.handle(PlayerModelSelector.class);
     private final CachedUiScriptRuntime scripts = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
     private UiRuntime runtime;
     private boolean variants;
     private float x, y, width, height;
 
-    public PlayerModelSelector(PlayerModel module) { this.module = module; }
+    public PlayerModelSelector(PlayerModel module) { this(module, PlayerModel.Target.SELF); }
+    public PlayerModelSelector(PlayerModel module, PlayerModel.Target target) {
+        this.module = module;
+        this.target = target;
+    }
 
     public void render(VisualPreviewSceneContext scene) {
         x = 12f; y = scene.subjectY(); width = scene.screen().provider().leftPanelWidth(scene.width()) - 12;
@@ -56,7 +61,7 @@ public final class PlayerModelSelector {
         palette.put("selected", hex(theme.accentSoft())); palette.put("disabled", hex(theme.textMuted()));
         palette.put("disabledSurface", hex(theme.surface())); palette.put("onAccent", contrast(theme.accent()));
         props.put("palette", palette);
-        var selected = catalog.stream().filter(e -> e.id().equals(module.model.get())).findFirst().orElse(null);
+        var selected = catalog.stream().filter(e -> e.id().equals(module.model(target).get())).findFirst().orElse(null);
         List<ModelCatalog.Entry> choices;
         if (variants) choices = selected == null ? List.of() : catalog.stream().filter(e -> e.model().equals(selected.model())).toList();
         else {
@@ -78,28 +83,29 @@ public final class PlayerModelSelector {
         props.put("selection", selected == null ? "" : selected.label()); props.put("variants", variants);
         props.put("geometry", selected == null ? "" : selected.model());
         props.put("hasSelection", selected != null);
-        props.put("enabled", module.isEnabled() && module.replacement.get());
+        props.put("enabled", module.isEnabled() && module.replacement(target).get());
         for (String key : List.of("title", "modelsLabel", "variantsLabel", "applyLabel", "restoreLabel", "reloadLabel", "reloadShortLabel", "emptyLabel", "emptyVariantsLabel", "subtitle", "currentLabel", "noSelectionLabel")) {
             props.put(key, I18n.get("playermodel.selector." + key));
         }
-        runtime = scripts.updatePersistent(handle, handle.module(), "player-model-selector",
-                CachedUiScriptRuntime.signature(props), width, height, ClickGuiRenderer.getOnestMedium(),
-                x, y, width, height, () -> props, Collections::emptyMap);
+        runtime = scripts.bakeTracked(handle, handle.module(), "player-model-selector",
+                width, height, ClickGuiRenderer.getOnestMedium(),
+                x, y, width, height, () -> props);
         if (runtime == null) return;
         runtime.actions().register("models:tab:models", action -> { variants = false; return true; });
         runtime.actions().register("models:tab:variants", action -> { variants = true; return true; });
         runtime.actions().register("models:reload", action -> { ModelCatalog.invalidate(); PlayerModels.invalidate(); return true; });
         runtime.actions().register("models:apply", action -> {
-            boolean enable = !(module.isEnabled() && module.replacement.get());
-            module.replacement.set(enable);
-            module.setEnabledManual(enable);
+            boolean enable = !(module.isEnabled() && module.replacement(target).get());
+            module.replacement(target).set(enable);
+            if (enable && !module.isEnabled()) module.setEnabledManual(true);
             ConfigSerializer.requestSave(module);
             return true;
         });
         for (var choice : choices) runtime.actions().register("models:select:" + choice.id(), action -> {
-            module.model.addOption(choice.id());
-            module.model.set(choice.id());
-            module.replacement.set(true);
+            module.model(target).addOption(choice.id());
+            module.model(target).set(choice.id());
+            module.replacement(target).set(true);
+            if (!module.isEnabled()) module.setEnabledManual(true);
             ConfigSerializer.requestSave(module);
             return true;
         });

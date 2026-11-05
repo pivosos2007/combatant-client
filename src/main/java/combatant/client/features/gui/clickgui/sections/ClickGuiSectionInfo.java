@@ -7,12 +7,15 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import combatant.client.events.UsedImplicitly;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /** Declares a built-in ClickGUI section discovered automatically at runtime. */
+@UsedImplicitly
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface ClickGuiSectionInfo {

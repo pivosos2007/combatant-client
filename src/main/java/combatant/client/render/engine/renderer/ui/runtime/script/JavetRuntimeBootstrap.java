@@ -9,6 +9,7 @@ package combatant.client.render.engine.renderer.ui.runtime.script;
 import com.caoccao.javet.exceptions.JavetException;
 import com.caoccao.javet.interop.V8Host;
 import com.caoccao.javet.interop.V8Runtime;
+import com.caoccao.javet.interop.options.V8RuntimeOptions;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.runtime.distribution.DistributionCapabilities;
 import combatant.client.runtime.distribution.AndroidRuntime;
@@ -33,6 +34,11 @@ public final class JavetRuntimeBootstrap {
     }
 
     public static synchronized V8Runtime createRuntime(AutoCloseable owner) throws JavetException {
+        return createRuntime(owner, null);
+    }
+
+    /** Create an owned isolate, optionally restoring a V8 startup snapshot. */
+    public static synchronized V8Runtime createRuntime(AutoCloseable owner, V8RuntimeOptions options) throws JavetException {
         if (owner == null) throw new IllegalArgumentException("Javet runtime owner must not be null");
         if (shuttingDown) throw new IllegalStateException("Javet runtime is shutting down");
         if (!isJavetRuntimeAvailable()) {
@@ -52,7 +58,9 @@ public final class JavetRuntimeBootstrap {
             }
         }
 
-        V8Runtime runtime = V8Host.getV8Instance().createV8Runtime();
+        V8Runtime runtime = options == null
+                ? V8Host.getV8Instance().createV8Runtime()
+                : V8Host.getV8Instance().createV8Runtime(options);
         nativeUsed = true;
         RUNTIMES.put(owner, runtime);
         return runtime;

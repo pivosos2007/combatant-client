@@ -9,8 +9,9 @@ package combatant.client.features.gui.schematic;
 
 import com.mojang.blaze3d.Blaze3D;
 import combatant.client.features.module.ModuleManager;
-import combatant.client.features.module.modules.player.schematic.SchematicBuilder;
-import combatant.client.features.module.modules.visuals.schematic.SchematicProjection;
+import combatant.client.features.module.modules.player.Printer;
+import combatant.client.automation.compat.litematica.LitematicaCompat;
+import combatant.client.automation.compat.litematica.LitematicaWorkspace;
 import combatant.client.util.schematic.SchematicFormats;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicLibrary;
@@ -65,22 +66,42 @@ public final class SchematicActions {
     }
 
     public static void openMenu() {
+        if (!combatant.client.automation.compat.litematica.LitematicaCompat.isAvailable()) return;
         Minecraft mc = Minecraft.getInstance();
         // Deferred one frame: the chat screen that ran the command closes itself after the command returns.
         mc.schedule(() -> ClientScreen.show(mc, new SchematicScreen(ClientScreen.current(mc))));
     }
 
+    /** Import into Litematica FIRST. The old parser is used only for the
+     * optional in-menu mesh preview, never as the world placement authority. */
     public static void load(Path path) {
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        if (path == null || loadingPath != null || bridge == null) return;
+        lastError = "";
+        LitematicaWorkspace.ImportResult nativeResult = bridge.importFile(path);
+        if (!nativeResult.success()) {
+            lastError = nativeResult.message();
+            feedback("Litematica: " + nativeResult.message(), "negative");
+            return;
+        }
+        feedback("Litematica: " + path.getFileName() + " placed in the world", "positive");
+        SchematicState.INSTANCE.clear();
+        preview(path);
+    }
+
+    /** Preview never inserts another placement. Used for adopting an existing native placement. */
+    public static void preview(Path path) {
         if (path == null || loadingPath != null) return;
         loadingPath = path;
         lastError = "";
+        SchematicState.INSTANCE.clear();
         Minecraft mc = Minecraft.getInstance();
         SchematicLibrary.INSTANCE.load(path).whenComplete((loaded, error) -> mc.execute(() -> {
             loadingPath = null;
             if (error != null) {
-                Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
-                lastError = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
-                feedback(I18n.get("screen.combatant.schematic.status.load_failed", SchematicFormats.baseName(path), lastError), "negative");
+                SchematicState.INSTANCE.clear();
+                // Native placement remains valid; this is a preview-only failure.
+                feedback("Litematica placement active; preview unavailable for " + path.getFileName(), "informative");
                 return;
             }
             applyLoaded(mc, loaded);
@@ -90,9 +111,12 @@ public final class SchematicActions {
     private static void applyLoaded(Minecraft mc, SchematicLibrary.Loaded loaded) {
         SchematicState state = SchematicState.INSTANCE;
         state.setSchematic(loaded.schematic(), loaded.stats());
-        if (state.placement() == null && mc.player != null) {
-            state.setOrigin(mc.player.blockPosition());
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        boolean matched = false;
+        if (bridge != null) for (LitematicaWorkspace.Placement placement : bridge.placements()) {
+            if (placement.selected()) { state.setOrigin(placement.origin()); matched = true; break; }
         }
+        if (!matched && mc.player != null) state.setOrigin(mc.player.blockPosition());
         Schematic schematic = loaded.schematic();
         feedback(I18n.get("screen.combatant.schematic.status.loaded", schematic.name(),
                 schematic.sizeX() + "x" + schematic.sizeY() + "x" + schematic.sizeZ(), schematic.totalBlocks()), "positive");
@@ -132,57 +156,65 @@ public final class SchematicActions {
     }
 
     public static void unload() {
-        SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
-        if (builder != null && builder.isEnabled()) builder.setEnabled(false);
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        if (bridge != null) bridge.removeSelected();
         SchematicState.INSTANCE.clear();
+    }
+
+    private static LitematicaWorkspace.Placement activePlacement() {
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        if (bridge != null) for (LitematicaWorkspace.Placement placement : bridge.placements())
+            if (placement.selected()) return placement;
+        return null;
     }
 
     public static boolean setOriginHere() {
         LocalPlayer player = Minecraft.getInstance().player;
-        if (player == null || !SchematicState.INSTANCE.hasSchematic()) return false;
-        SchematicState.INSTANCE.setOrigin(player.blockPosition());
-        return true;
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        LitematicaWorkspace.Placement placement = activePlacement();
+        if (player == null || bridge == null || placement == null) return false;
+        boolean accepted = bridge.setOrigin(placement.index(), player.blockPosition());
+        if (accepted && SchematicState.INSTANCE.hasSchematic()) SchematicState.INSTANCE.setOrigin(player.blockPosition());
+        return accepted;
     }
 
-    /** Origin on the face of the block under the crosshair, so the build starts on top of what you look at. */
     public static boolean setOriginLooked() {
         Minecraft mc = Minecraft.getInstance();
-        if (!SchematicState.INSTANCE.hasSchematic()) return false;
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        LitematicaWorkspace.Placement placement = activePlacement();
         HitResult hit = mc.hitResult;
-        if (!(hit instanceof BlockHitResult blockHit) || hit.getType() != HitResult.Type.BLOCK) return false;
-        BlockPos origin = blockHit.getBlockPos().relative(blockHit.getDirection());
-        SchematicState.INSTANCE.setOrigin(origin);
-        return true;
+        if (bridge == null || placement == null || !(hit instanceof BlockHitResult blockHit)
+                || hit.getType() != HitResult.Type.BLOCK) return false;
+        BlockPos target = blockHit.getBlockPos().relative(blockHit.getDirection());
+        boolean accepted = bridge.setOrigin(placement.index(), target);
+        if (accepted && SchematicState.INSTANCE.hasSchematic()) SchematicState.INSTANCE.setOrigin(target);
+        return accepted;
     }
 
+    /** Printer reads only Litematica's transformed schematic world. */
     public static void toggleBuilder() {
-        SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
-        if (builder != null) builder.toggle();
+        Printer printer = ModuleManager.get(Printer.class);
+        if (printer != null) printer.toggle();
     }
 
     public static boolean builderEnabled() {
-        SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
-        return builder != null && builder.isEnabled();
+        Printer printer = ModuleManager.get(Printer.class);
+        return printer != null && printer.isEnabled();
     }
 
+    /** Litematica owns all world rendering and the renderer's enabled setting. */
     public static void toggleProjection() {
-        SchematicProjection projection = ModuleManager.get(SchematicProjection.class);
-        if (projection != null) projection.toggle();
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        if (bridge != null) bridge.toggleRendering();
     }
 
     public static boolean projectionEnabled() {
-        SchematicProjection projection = ModuleManager.get(SchematicProjection.class);
-        return projection != null && projection.isEnabled();
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        return bridge != null && bridge.renderingEnabled();
     }
 
     public static void cycleLayerMode() {
-        SchematicState.LayerMode[] modes = SchematicState.LayerMode.values();
-        SchematicState.LayerMode next = modes[(SchematicState.INSTANCE.layerMode().ordinal() + 1) % modes.length];
-        SchematicProjection projection = ModuleManager.get(SchematicProjection.class);
-        if (projection != null) {
-            projection.setLayerMode(next);
-        } else {
-            SchematicState.INSTANCE.setLayerMode(next);
-        }
+        LitematicaWorkspace bridge = LitematicaCompat.workspace();
+        if (bridge != null) bridge.clipCycle();
     }
 }

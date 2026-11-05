@@ -538,12 +538,10 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         boolean enabledHover = hudContext && inside(mouseX, mouseY, pillX, pillY, segmentW, pillH);
         boolean onlyHover = hudContext && inside(mouseX, mouseY, pillX + segmentW, pillY, segmentW, pillH);
         Map<String, Object> props = panelTemplateProps(scale, alpha, enabledHover, onlyHover, palette);
-        long treeSignature = CachedUiScriptRuntime.signature(props);
-        UiRuntime runtime = panelRuntime.updatePersistent(
+        UiRuntime runtime = panelRuntime.bakeTracked(
                 panelModuleHandle,
                 module,
                 "settings-panel",
-                treeSignature,
                 panelW,
                 panelH,
                 ClickGuiRenderer.getInterRegular(),
@@ -551,8 +549,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
                 panelY,
                 panelW,
                 panelH,
-                () -> props,
-                () -> Collections.<String, Map<String, ?>>emptyMap()
+                () -> props
         );
         if (runtime == null) return;
 

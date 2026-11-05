@@ -1,0 +1,68 @@
+#version 430 core
+layout(local_size_x = 64) in;
+layout(std430, binding = 2) readonly buffer SchematicCamera {
+    mat4 u_View;
+    vec4 u_Projection; // x,y scale; z,w pan
+    vec4 u_Depth;      // clip depth a,b; near,far
+    vec4 u_Eye;        // xyz eye; w section count
+    vec4 u_Lod;        // near tier, medium tier, draw distance, quality
+};
+struct Section { vec4 minimum; vec4 maximum; vec4 tileCentre; uvec4 range; };
+layout(std430, binding = 4) readonly buffer SchematicSections { Section sections[]; };
+layout(std430, binding = 5) buffer SchematicIndirect {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    uint vertexOffset;
+    uint firstInstance;
+} drawCommand;
+layout(std430, binding = 6) writeonly buffer SchematicVisible { uint visible[]; };
+
+vec4 projected(vec3 point) {
+    vec4 v = u_View * vec4(point, 1.0);
+    return vec4(v.x * u_Projection.x + v.z * u_Projection.z,
+                v.y * u_Projection.y + v.z * u_Projection.w,
+                v.z * u_Depth.x + u_Depth.y, v.z);
+}
+
+bool intersectsFrustum(Section section) {
+    // Reject only if ALL eight AABB corners lie outside the SAME clip plane.
+    // This remains conservative when the eye is inside a section or intersects the near plane.
+    uint mask = 63u;
+    for (int c = 0; c < 8; c++) {
+        vec3 p = mix(section.minimum.xyz, section.maximum.xyz,
+                     vec3(float(c & 1), float((c >> 1) & 1), float((c >> 2) & 1)));
+        vec4 v = projected(p);
+        uint outside = 0u;
+        if (v.x < -v.w) outside |= 1u;
+        if (v.x >  v.w) outside |= 2u;
+        if (v.y < -v.w) outside |= 4u;
+        if (v.y >  v.w) outside |= 8u;
+        // Native GPU projection uses a positive forward-Z; both backends agree on depth limits.
+        if (v.w < u_Depth.z) outside |= 16u;
+        if (v.w > u_Depth.w) outside |= 32u;
+        mask &= outside;
+        if (mask == 0u) return true;
+    }
+    return false;
+}
+void main() {
+    uint sectionId = gl_GlobalInvocationID.x;
+    if (sectionId >= uint(u_Eye.w)) return;
+    Section section = sections[sectionId];
+    // All three LODs of a tile share one distance origin, so they cannot select
+    // different tiers because of slight differences in simplified mesh bounds.
+    float distance = max(0.0, length(u_Eye.xyz - section.tileCentre.xyz) - 110.9);
+    if (distance > u_Lod.z || !intersectsFrustum(section)) return;
+    uint tier = distance <= u_Lod.x ? 0u : distance <= u_Lod.y ? 1u : 2u;
+    // A coarse mesh may omit thin features. Fall back to the finest available
+    // mesh instead of leaving a hole where that tile would have been.
+    uint available = section.range.w;
+    while (tier > 0u && (available & (1u << tier)) == 0u) tier--;
+    if ((available & (1u << tier)) == 0u || tier != section.range.z) return;
+    uint count = section.range.y;
+    uint start = atomicAdd(drawCommand.instanceCount, count);
+    // The only dynamically generated data is one uint per visible face.
+    // Each section reserves a disjoint range; there is no CPU readback or per-face draw.
+    for (uint i = 0u; i < count; i++) visible[start + i] = section.range.x + i;
+}

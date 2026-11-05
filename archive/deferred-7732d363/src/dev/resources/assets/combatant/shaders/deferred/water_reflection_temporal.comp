@@ -1,0 +1,154 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D u_CurrentColor;
+layout(binding = 1) uniform sampler2D u_CurrentConfidence;
+layout(binding = 2) uniform sampler2D u_Reprojection;
+layout(binding = 3) uniform sampler2D u_Geometry;
+layout(binding = 4) uniform sampler2D u_Depths;
+layout(binding = 5) uniform sampler2D u_HistoryColor;
+layout(binding = 6) uniform sampler2D u_HistoryConfidence;
+layout(binding = 7) uniform sampler2D u_HistorySourceDepth;
+layout(binding = 8) uniform sampler2D u_HistoryHitDepth;
+layout(binding = 9, rgba16f) writeonly uniform image2D u_OutputColor;
+layout(binding = 10, r8) writeonly uniform image2D u_OutputConfidence;
+layout(binding = 11, r8) writeonly uniform image2D u_Rejection;
+layout(std430, binding = 12) readonly buffer WaterReflectionTemporalParams { vec4 params; } u_Temporal;
+
+bool insideUv(vec2 uv) {
+    return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+}
+
+float relativeDelta(float a, float b) {
+    return abs(a - b) / max(max(abs(a), abs(b)), 1.0e-3);
+}
+
+vec3 clampHistoryNeighborhood(vec2 uv, vec3 history, float roughness) {
+    ivec2 size = textureSize(u_CurrentColor, 0);
+    vec2 texel = 1.0 / vec2(max(size, ivec2(1)));
+    vec3 lo = vec3(1.0e20);
+    vec3 hi = vec3(-1.0e20);
+    bool found = false;
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            vec2 sampleUv = uv + vec2(x, y) * texel;
+            if (!insideUv(sampleUv)) continue;
+            float confidence = textureLod(u_CurrentConfidence, sampleUv, 0.0).r;
+            if (confidence <= 1.0e-4) continue;
+            vec3 value = textureLod(u_CurrentColor, sampleUv, 0.0).rgb;
+            lo = min(lo, value);
+            hi = max(hi, value);
+            found = true;
+        }
+    }
+    if (!found) return history;
+    vec3 span = max(hi - lo, vec3(1.0e-4));
+    float expansion = mix(0.03, 0.18, roughness);
+    return clamp(history, lo - span * expansion, hi + span * expansion);
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_OutputColor);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    vec4 current = textureLod(u_CurrentColor, uv, 0.0);
+    float currentConfidence = clamp(textureLod(u_CurrentConfidence, uv, 0.0).r, 0.0, 1.0);
+    vec4 reprojection = textureLod(u_Reprojection, uv, 0.0);
+    vec4 geometry = textureLod(u_Geometry, uv, 0.0);
+    vec4 depths = textureLod(u_Depths, uv, 0.0);
+    vec2 previousUv = reprojection.xy;
+    float motionValid = reprojection.z;
+    float waterCoverage = reprojection.w;
+    float roughness = clamp(geometry.z, 0.0, 1.0);
+    float sourceDepth = depths.x;
+    float expectedPreviousSourceDepth = depths.y;
+    float currentHitDepth = depths.z;
+    float expectedPreviousHitDepth = depths.w;
+    float confidenceFloor = max(u_Temporal.params.z, 1.0e-4);
+    float hierarchyThreshold = max(u_Temporal.params.w, confidenceFloor);
+
+    float rejection = 0.0;
+    float historyWeight = 0.0;
+    vec4 history = current;
+    float historyConfidence = 0.0;
+    float missBridgeConfidence = 0.0;
+
+    bool currentWater = waterCoverage > 0.5 && sourceDepth > 1.0e-5;
+    bool currentHit = currentConfidence > confidenceFloor && currentHitDepth > 1.0e-5;
+    if (!currentWater) {
+        rejection = 0.0;
+    } else if (motionValid <= 0.5 || !insideUv(previousUv)) {
+        rejection = 0.2;
+    } else if (!currentHit) {
+        // Current SSR miss invalidates the hit semantically. Rough surfaces may retain a single
+        // low-confidence transition sample when the water surface itself reprojects cleanly; the
+        // history store writes current hitDepth=0 below, so this bridge cannot survive another miss.
+        rejection = 0.6;
+        historyConfidence = clamp(textureLod(u_HistoryConfidence, previousUv, 0.0).r, 0.0, 1.0);
+        float historySourceDepth = textureLod(u_HistorySourceDepth, previousUv, 0.0).r;
+        float historyHitDepth = textureLod(u_HistoryHitDepth, previousUv, 0.0).r;
+        float sourceThreshold = max(u_Temporal.params.y, 1.0e-5) * mix(0.55, 1.8, roughness);
+        bool sourceContinuous = historyConfidence > confidenceFloor
+                && historySourceDepth > 1.0e-5
+                && historyHitDepth > 1.0e-5
+                && expectedPreviousSourceDepth > 1.0e-5
+                && relativeDelta(expectedPreviousSourceDepth, historySourceDepth) <= sourceThreshold;
+        if (sourceContinuous && roughness > 0.25) {
+            history = textureLod(u_HistoryColor, previousUv, 0.0);
+            history.rgb = clampHistoryNeighborhood(uv, history.rgb, roughness);
+            historyWeight = 1.0;
+            missBridgeConfidence = min(historyConfidence * mix(0.18, 0.42, roughness),
+                    hierarchyThreshold * mix(0.42, 0.78, roughness));
+        }
+    } else {
+        historyConfidence = clamp(textureLod(u_HistoryConfidence, previousUv, 0.0).r, 0.0, 1.0);
+        float historySourceDepth = textureLod(u_HistorySourceDepth, previousUv, 0.0).r;
+        float historyHitDepth = textureLod(u_HistoryHitDepth, previousUv, 0.0).r;
+        if (historyConfidence <= confidenceFloor || historyHitDepth <= 1.0e-5 || historySourceDepth <= 1.0e-5) {
+            rejection = 0.6;
+        } else {
+            float sourceThreshold = max(u_Temporal.params.y, 1.0e-5) * mix(0.55, 1.8, roughness);
+            float hitThreshold = max(u_Temporal.params.y, 1.0e-5) * mix(0.75, 2.5, roughness);
+            // Compare history against the depth this same current deformed surface/hit should have
+            // had in the previous camera. This avoids camera translation being mistaken for a
+            // source/hit discontinuity.
+            if (expectedPreviousSourceDepth <= 1.0e-5
+                    || relativeDelta(expectedPreviousSourceDepth, historySourceDepth) > sourceThreshold) {
+                rejection = 0.4;
+            } else if (expectedPreviousHitDepth <= 1.0e-5
+                    || relativeDelta(expectedPreviousHitDepth, historyHitDepth) > hitThreshold) {
+                rejection = 0.8;
+            } else {
+                // A sudden confidence collapse is a semantic hierarchy transition, not stable SSR.
+                float collapseFloor = historyConfidence * mix(0.50, 0.22, roughness);
+                if (currentConfidence < collapseFloor) {
+                    rejection = 0.6;
+                } else {
+                    history = textureLod(u_HistoryColor, previousUv, 0.0);
+                    history.rgb = clampHistoryNeighborhood(uv, history.rgb, roughness);
+                    float continuity = clamp(currentConfidence / max(historyConfidence, confidenceFloor), 0.0, 1.0);
+                    float roughAccumulation = mix(0.68, 1.0, roughness);
+                    historyWeight = clamp(u_Temporal.params.x * historyConfidence
+                                          * mix(0.55, 1.0, continuity) * roughAccumulation,
+                                          0.0, 0.98);
+                }
+            }
+        }
+    }
+
+    vec4 resolved = mix(current, history, historyWeight);
+    // Do not let old confidence survive a new weak hit indefinitely. Rough water may borrow more
+    // confidence because its cone footprint is intentionally broader; smooth water stays strict.
+    float confidenceLift = historyConfidence * historyWeight * mix(0.35, 0.65, roughness);
+    float resolvedConfidence = currentHit ? max(currentConfidence, confidenceLift)
+                                          : max(currentConfidence, missBridgeConfidence);
+    float confidenceCap = currentConfidence + (1.0 - currentConfidence) * mix(0.10, 0.35, roughness);
+    resolvedConfidence = min(resolvedConfidence, confidenceCap);
+
+    imageStore(u_OutputColor, pixel, resolved);
+    imageStore(u_OutputConfidence, pixel, vec4(clamp(resolvedConfidence, 0.0, 1.0), 0.0, 0.0, 0.0));
+    imageStore(u_Rejection, pixel, vec4(rejection, 0.0, 0.0, 0.0));
+}

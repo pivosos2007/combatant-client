@@ -105,9 +105,9 @@ public final class ConfigurationDirectorySetting extends Setting {
         }
         if (pending) props.put("hint", I18n.get("config.directory.pendingHint"));
         float height = getHeight();
-        runtime = scripts.updatePersistent(moduleHandle, moduleHandle.module(), "configuration-directory",
-                CachedUiScriptRuntime.signature(props), width, height, ClickGuiRenderer.getOnestMedium(),
-                x, y, width, height, () -> props, Collections::emptyMap);
+        runtime = scripts.bakeTracked(moduleHandle, moduleHandle.module(), "configuration-directory",
+                width, height, ClickGuiRenderer.getOnestMedium(),
+                x, y, width, height, () -> props);
         if (runtime == null) return;
         runtime.actions().register("configdir:change", action -> { chooseDirectory(); return true; });
         runtime.actions().register("configdir:restore", action -> { proposeDefault(); return true; });

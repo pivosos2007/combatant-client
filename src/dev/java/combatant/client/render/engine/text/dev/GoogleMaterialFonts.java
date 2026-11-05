@@ -5,7 +5,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.util.resources.asset.FontAsset;
 import combatant.client.util.resources.asset.FontCatalog;
 
-@FontCatalog(namespace = "combatant", root = "assets/combatant/font")
+@FontCatalog(namespace = "combatant", root = "font")
 public enum GoogleMaterialFonts {
     @FontAsset(value = "roboto_regular.ttf", family = "Roboto", type = FontInfo.Type.Regular, order = 300)
     ROBOTO_REGULAR,

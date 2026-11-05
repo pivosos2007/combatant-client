@@ -73,7 +73,7 @@ import java.util.Map;
         aliases = {"LitematicaPrinter", "SchematicPrinter"},
         category = ModuleCategory.PLAYER,
         subcategory = ModuleSubcategory.AUTOMATION,
-        description = "module.printer.description")
+        description = "module.printer.description", requiredMods = {"litematica"})
 public final class Printer extends Module {
 
     private static final int PLANS_PER_SCAN = 10;

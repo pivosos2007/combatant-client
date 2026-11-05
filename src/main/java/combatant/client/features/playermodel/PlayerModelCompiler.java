@@ -46,10 +46,19 @@ public final class PlayerModelCompiler {
             if (primitive.skinned()) throw new IllegalArgumentException("Player model profile requires rigid source groups");
             totalVertices = Math.addExact(totalVertices, primitive.vertexCount());
             if (totalVertices > 500_000) throw new IllegalArgumentException("Player model exceeds 500000 vertices");
-            float[] positions = primitive.positions(), normals = primitive.normals(), uv = primitive.texCoords0();
+            float[] positions = primitive.positions(), uv = primitive.texCoords0();
+            // Repair inconsistent OBJ normals using connected triangle geometry.
+            // Adjacent coplanar triangles must not acquire mismatched lighting.
+            float[] normals = PlayerModelNormalRepair.repair(
+                    positions, primitive.normals(), primitive.indices());
             if (uv == null) throw new IllegalArgumentException("Missing model UVs: " + name);
             Matrix4f transform = placement.localToAsset();
             Matrix3f normalTransform = transform.normal(new Matrix3f());
+            // Part-local fit is baked into the immutable GPU mesh. Unlike the module's
+            // global fitting matrix, it never scales the player's whole body.
+            PlayerModelProfile.PartFit partFit = profile.partFits().get(group);
+            Matrix4f partMatrix = partFit == null ? null : partFit.matrix();
+            Matrix3f partNormal = partMatrix == null ? null : partMatrix.normal(new Matrix3f());
             boolean explicitBone = profile.bones().containsKey(group);
             Articulation articulation = explicitBone ? null : Articulation.forGroup(group);
             boolean torso = !explicitBone && group.equals("bodyModel");
@@ -62,6 +71,9 @@ public final class PlayerModelCompiler {
                 Vector3f p = transform.transformPosition(new Vector3f(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]));
                 Vector3f n = normalTransform.transform(new Vector3f(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2])).normalize();
                 if (!p.isFinite() || !n.isFinite()) throw new IllegalArgumentException("Nonfinite model geometry");
+                // Bone weights and island selection must use the original OBJ position.
+                // Applying a visual part fit before those tests would invalidate profiles.
+                Vector3f sourcePoint = new Vector3f(p);
                 int first = bone.ordinal(), second = -1;
                 float weight = 0;
                 if (torso) {
@@ -127,7 +139,7 @@ public final class PlayerModelCompiler {
                         if (!link.matches(group, low, high)) continue;
                         first = PlayerRigBone.valueOf(link.fromBone()).ordinal();
                         second = PlayerRigBone.valueOf(link.toBone()).ordinal();
-                        weight = link.weight(p);
+                        weight = link.weight(sourcePoint);
                         break;
                     }
                 }
@@ -135,12 +147,16 @@ public final class PlayerModelCompiler {
                 // override an explicitly rigid plate/pouch matched by source island.
                 if (!rigidAttachment) {
                     for (PlayerModelProfile.Blend blend : profile.blends()) {
-                        if (!blend.contains(group, p)) continue;
+                        if (!blend.contains(group, sourcePoint)) continue;
                         first = PlayerRigBone.valueOf(blend.fromBone()).ordinal();
                         second = PlayerRigBone.valueOf(blend.toBone()).ordinal();
-                        weight = blend.weight(p);
+                        weight = blend.weight(sourcePoint);
                         break;
                     }
+                }
+                if (partMatrix != null) {
+                    partMatrix.transformPosition(p);
+                    partNormal.transform(n).normalize();
                 }
                 vertices[i] = new RigVertex(p.x / 16f, p.y / 16f, p.z / 16f,
                         uv[i * 2], uv[i * 2 + 1], n.x, n.y, n.z,

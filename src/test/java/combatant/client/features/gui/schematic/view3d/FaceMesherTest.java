@@ -94,6 +94,18 @@ class FaceMesherTest {
     }
 
     @Test
+    void greedyFacesKeepSpriteTileSizeInsteadOfMakingHugeStretchedQuads() {
+        FaceList faces = FaceMesher.build(solid(40, 1, 40), null, COLORS, ViewMode.ALL, 0, 0f,
+                10_000, index -> 0);
+        assertEquals(1, faces.lodStep());
+        assertTrue(faces.count() < 100, "coplanar faces still benefit from greedy merging");
+        for (int i = 0; i < faces.count(); i++) {
+            assertTrue(faces.textureSpan(i, 0) <= 16f);
+            assertTrue(faces.textureSpan(i, 1) <= 16f);
+        }
+    }
+
+    @Test
     void hopelessBudgetTruncatesAtTheCap() {
         FaceList faces = FaceMesher.build(solid(16, 16, 16), COLORS, ViewMode.ALL, 8, 0f, 10);
         assertTrue(faces.truncated());

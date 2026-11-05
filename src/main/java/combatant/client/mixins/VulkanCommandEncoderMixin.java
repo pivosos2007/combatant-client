@@ -11,6 +11,7 @@ import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.renderpearl.backend.api.RenderPassBackend;
 import com.mojang.renderpearl.api.commands.RenderPassDescriptor;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.backend.vulkan.VulkanCommandEncoder;
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -27,12 +28,14 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.rhi.backend.vulkan.clip.VulkanShapeClipBridge;
 import combatant.client.render.engine.rhi.backend.vulkan.msaa.VulkanMsaaResolveBridge;
 import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanRenderStateBridge;
+import combatant.client.render.engine.rhi.backend.vulkan.util.VulkanUploadAlignment;
 
 import static org.lwjgl.vulkan.VK12.*;
 
@@ -40,6 +43,15 @@ import static org.lwjgl.vulkan.VK12.*;
 public abstract class VulkanCommandEncoderMixin implements IVulkanCommandEncoderAccess {
     @Unique
     private boolean combatant$renderPassActive;
+
+    @ModifyArg(
+            method = "writeToTexture",
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/backend/vulkan/VulkanTransientMemory;uploadStaging(Ljava/nio/ByteBuffer;JI)Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;"),
+            index = 1
+    )
+    private long combatant$alignTextureUpload(long alignment, @Local(argsOnly = true) GpuTexture destination) {
+        return VulkanUploadAlignment.staging(destination.getFormat().blockSize());
+    }
 
     @Override
     @Invoker("commandBuffer")

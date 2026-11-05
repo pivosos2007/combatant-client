@@ -112,17 +112,23 @@ public final class HoleESP extends Module {
             return;
         }
 
+        boolean glowStyle = "Glow".equals(style.get());
+        // One shader batch for the entire HoleESP pass, including the bottom outlines.
+        GlowSurfaces.Batch glow = glowStyle
+                ? GlowSurfaces.begin(renderer, false, glowAnimation.get(), glowSpeed.get(),
+                        scanBand.get() ? 1.0f : 0.0f)
+                : null;
+        if (glowStyle && glow == null) return;
+
         float previousLineWidth = RenderState.lineWidth;
-        RenderState.lineWidth = Math.max(0.01f, lineWidth.get());
+        if (!glowStyle) RenderState.lineWidth = Math.max(0.01f, lineWidth.get());
         try {
             for (Hole hole : holes) {
-                if (culling.get() && !shouldRender(hole.box())) {
-                    continue;
-                }
-                renderFade(renderer, hole);
+                if (culling.get() && !shouldRender(hole.box())) continue;
+                renderFade(renderer, glow, hole);
             }
         } finally {
-            RenderState.lineWidth = previousLineWidth;
+            if (!glowStyle) RenderState.lineWidth = previousLineWidth;
         }
     }
 
@@ -209,21 +215,24 @@ public final class HoleESP extends Module {
         return null;
     }
 
-    private void renderFade(Renderer3D renderer, Hole hole) {
+    private void renderFade(Renderer3D renderer, GlowSurfaces.Batch glow, Hole hole) {
         AABB box = hole.box();
         int fillBottom = colorForDistance(box, hole.argb(), BASE_FILL_ALPHA);
         int fillTop = colorForDistance(box, hole.argb(), 0);
         int line = colorForDistance(box, hole.argb(), (hole.argb() >>> 24) & 0xFF);
 
-        if ("Glow".equals(style.get())) {
-            float rimAlpha = ((line >>> 24) & 0xFF) / 255.0f;
-            GlowSurfaces.box(renderer, box, fillBottom, fillTop, rimAlpha,
-                    glowAnimation.get(), glowSpeed.get(), scanBand.get() ? 1.0f : 0.0f,
-                    true, false, false);
-        } else {
+        if (glow == null) {
             addVerticalFadeBox(renderer, box, fillBottom, fillTop);
+            addBottomOutline(renderer, box, line);
+            return;
         }
-        addBottomOutline(renderer, box, line);
+        float rimAlpha = ((line >>> 24) & 0xFF) / 255.0f;
+        glow.box(box, fillBottom, fillTop, rimAlpha, true, false);
+        float width = lineWidth.get();
+        glow.edge(box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ, line, line, 1.35f, width);
+        glow.edge(box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ, line, line, 1.35f, width);
+        glow.edge(box.maxX, box.minY, box.maxZ, box.minX, box.minY, box.maxZ, line, line, 1.35f, width);
+        glow.edge(box.minX, box.minY, box.maxZ, box.minX, box.minY, box.minZ, line, line, 1.35f, width);
     }
 
     private int colorForDistance(AABB box, int argb, int alpha) {

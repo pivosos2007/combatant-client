@@ -23,6 +23,7 @@ export class SpectrumCardView {
       const x=(i%cols)*(cw+gap),y=Math.floor(i/cols)*(cardH+gap);
       const fg=disabled?p.disabled:p.text;
       const format=ui.str(item.format,'').replace(/^\./,'').toUpperCase();
+      const formatTint=ui.str(item.formatColor,p.accent);
       const formatW=Math.min(cw-26,Math.max(46,format.length*7+20));
       const cardChildren=[
         SpectrumFoundation.rect(`${key}:card:${id}:surface`,0,0,cw,cardH,12,p.raised,
@@ -42,17 +43,17 @@ export class SpectrumCardView {
           // Optional file-type token is displayed inside the preview, not
           // over the marquee region containing the name.
           SpectrumFoundation.rect(`${key}:card:${id}:format:bg`,cw-formatW-14,14,
-            formatW,24,5,SpectrumFoundation.withOpacity(p.accent,.14),
-            SpectrumFoundation.withOpacity(p.accent,.55),1),
+            formatW,24,5,SpectrumFoundation.withOpacity(formatTint,.14),
+            SpectrumFoundation.withOpacity(formatTint,.55),1),
           ui.text({key:`${key}:card:${id}:format`,text:format,
-            color:disabled?p.disabled:p.text,interactive:false,verticalAlign:'center',
+            color:disabled?p.disabled:formatTint,interactive:false,verticalAlign:'center',
             class:ui.abs(cw-formatW-9,15,formatW-10,22,
-              'font-Iosevka-Regular font-size-11 text-align-center')})
+              'font-Iosevka-Regular font-size-13 text-align-center')})
         ]:[]),
         ...(props.marqueeOnHover?[ui.text({key:`${key}:card:${id}:name`,
           text:ui.str(item.label,id),color:fg,interactive:false,stateSource:'parent',
           runtimeMarquee:true,marqueeSpeed:38,marqueeHoldMs:650,marqueeFadeWidth:10,
-          class:ui.abs(13,visualH,cw-26,28,'font-SourceSans3Semibold font-size-16 clip')})]:[
+          class:ui.abs(13,visualH,cw-26,28,'font-SourceSans3Semibold font-size-18 clip')})]:[
           SpectrumFoundation.text(`${key}:card:${id}:name`,ui.str(item.label,id),13,visualH,
             cw-26,28,{size:16,strong:true,color:fg})]),
         ui.text({key:`${key}:card:${id}:detail`,text:ui.str(item.description,''),

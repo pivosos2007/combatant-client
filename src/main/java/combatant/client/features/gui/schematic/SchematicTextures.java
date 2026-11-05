@@ -84,7 +84,7 @@ final class SchematicTextures {
     private static final Identifier PLANKS_SPRITE = Identifier.withDefaultNamespace("block/oak_planks");
     private static final Identifier OBSIDIAN_SPRITE = Identifier.withDefaultNamespace("block/obsidian");
     private static final Identifier CONCRETE_SPRITE = Identifier.withDefaultNamespace("block/white_concrete");
-    private static final int MAX_MODEL_QUADS = 10;
+    private static final int MAX_MODEL_QUADS = 64;
     private static final Map<BlockState, Entry> CACHE = new HashMap<>();
     private static final Map<Identifier, Integer> AVERAGES = new HashMap<>();
     private static final List<BlockStateModelPart> PARTS = new ArrayList<>();
@@ -290,8 +290,8 @@ final class SchematicTextures {
         SchematicGhostModel ghost = SchematicGhostModel.bake(state, SchematicTextures::tintOf);
         boolean occludes = ghost.fullCube && state.canOcclude();
         if (ghost.fullCube && occludes) return BlockShape.CUBE;
-        // Detailed models (hoppers, cauldrons...) turn into sub-pixel noise in the overview and models drawn from
-        // another atlas cannot share the block-atlas batch: both fall back to a see-through cube of the entry sprites.
+        // Extremely complex models and quads from other atlases cannot share this preview's atlas batch.
+        // Ordinary stairs, fences and slabs must retain their model geometry rather than appearing as solid cubes.
         if (ghost.fullCube || ghost.quadCount == 0 || ghost.quadCount > MAX_MODEL_QUADS || offBlockAtlas(ghost)) {
             return new BlockShape(true, occludes, 0, new float[0], new float[0], new float[0], new int[0], new byte[0]);
         }

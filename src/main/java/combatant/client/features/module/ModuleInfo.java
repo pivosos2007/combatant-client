@@ -44,6 +44,9 @@ public @interface ModuleInfo {
      */
     String description() default "";
 
+    /** Module is registered only when every listed Fabric mod is installed. */
+    String[] requiredMods() default {};
+
     boolean enabledByDefault() default false;
 
     /**

@@ -40,6 +40,7 @@ import java.util.function.Predicate;
  * geometry node, so skin, armor layers, trims, glint, outlines and renderer ordering remain intact.
  */
 public final class PlayerRigCpuRenderer {
+    private static final float[] NO_HEAD_OFFSET = {0f, 0f, 0f};
     private static final Map<HumanoidModel<?>, RigMeshData> PLAYER_MESHES = new WeakHashMap<>();
     private static final Map<HumanoidModel<?>, RigMeshData> ARMOR_MESHES = new WeakHashMap<>();
 
@@ -51,16 +52,33 @@ public final class PlayerRigCpuRenderer {
                                        RenderType renderType, int light, int overlay, int tint,
                                        UvMapping sprite, int outlineColor,
                                        ModelFeatureRenderer.CrumblingOverlay crumbling) {
+        return submitPlayer(collector, model, state, rig, matrices, renderType, light, overlay, tint,
+                sprite, outlineColor, crumbling, 1f, false, java.util.Set.of(), NO_HEAD_OFFSET);
+    }
+
+    /** Render selected skin parts into the EXISTING player collector node, not another entity.
+     *  An empty onlyParts set means the ordinary complete skin pass. For clothing, callers
+     *  must supply an explicit nonempty whitelist to avoid a full-avatar overlay. */
+    public static boolean submitPlayer(SubmitNodeCollector collector, HumanoidModel<?> model,
+                                       AvatarRenderState state, PlayerRigInstance rig, PoseStack matrices,
+                                       RenderType renderType, int light, int overlay, int tint,
+                                       UvMapping sprite, int outlineColor,
+                                       ModelFeatureRenderer.CrumblingOverlay crumbling,
+                                       float headScale, boolean hideHat, java.util.Set<String> onlyParts,
+                                       float[] headOffset) {
         if (collector == null || model == null || state == null || rig == null || renderType == null) return false;
-        if (crumbling != null) return false;
+        if (crumbling != null || !Float.isFinite(headScale) || headScale < 0.5f || headScale > 1.5f
+                || headOffset == null || headOffset.length != 3) return false;
         RigMeshData mesh;
         synchronized (PLAYER_MESHES) {
             mesh = PLAYER_MESHES.computeIfAbsent(model, key -> PlayerRigModelCompiler.compile(key, true));
         }
-        Predicate<String> visible = name -> playerPartVisible(state, name);
+        Predicate<String> visible = name -> playerPartVisible(state, name)
+                && (!hideHat || !"hat".equals(name))
+                && (onlyParts == null || onlyParts.isEmpty() || onlyParts.contains(name));
         int effectiveTint = ViewObstructionFadeContext.applyToArgb(tint, MsaaWorldTarget.isActive());
         submitWithOutline(collector, mesh, rig, matrices, renderType, light, overlay, effectiveTint,
-                sprite, outlineColor, visible);
+                sprite, outlineColor, visible, headScale, headOffset);
         return true;
     }
 
@@ -211,39 +229,53 @@ public final class PlayerRigCpuRenderer {
 
     private static void submit(OrderedSubmitNodeCollector collector, RigMeshData mesh, PlayerRigInstance rig,
                                PoseStack matrices, RenderType renderType, int light, int overlay, int tint,
-                               UvMapping sprite, Predicate<String> visiblePart) {
+                               UvMapping sprite, Predicate<String> visiblePart, float headScale,
+                               float[] headOffset) {
         collector.submitCustomGeometry(matrices, renderType,
                 (pose, consumer) -> render(mesh, rig, pose, consumer, light, overlay, tint, sprite,
-                        visiblePart, renderType.primitiveTopology()));
+                        visiblePart, renderType.primitiveTopology(), headScale, headOffset));
     }
 
     private static void submitWithOutline(OrderedSubmitNodeCollector collector, RigMeshData mesh,
                                           PlayerRigInstance rig, PoseStack matrices, RenderType renderType,
                                           int light, int overlay, int tint, UvMapping sprite,
                                           int outlineColor, Predicate<String> visiblePart) {
+        submitWithOutline(collector, mesh, rig, matrices, renderType, light, overlay, tint, sprite,
+                outlineColor, visiblePart, 1f, NO_HEAD_OFFSET);
+    }
+
+    private static void submitWithOutline(OrderedSubmitNodeCollector collector, RigMeshData mesh,
+                                          PlayerRigInstance rig, PoseStack matrices, RenderType renderType,
+                                          int light, int overlay, int tint, UvMapping sprite,
+                                          int outlineColor, Predicate<String> visiblePart, float headScale,
+                                          float[] headOffset) {
         if (renderType.isOutline()) {
             submit(collector, mesh, rig, matrices, renderType, 15728880, OverlayTexture.NO_OVERLAY,
-                    outlineColor != 0 ? outlineColor : tint, sprite, visiblePart);
+                    outlineColor != 0 ? outlineColor : tint, sprite, visiblePart, headScale, headOffset);
             return;
         }
 
-        submit(collector, mesh, rig, matrices, renderType, light, overlay, tint, sprite, visiblePart);
+        submit(collector, mesh, rig, matrices, renderType, light, overlay, tint, sprite, visiblePart,
+                headScale, headOffset);
         if (outlineColor == 0) return;
         renderType.outline().ifPresent(outline -> submit(
                 collector, mesh, rig, matrices, outline, 15728880, OverlayTexture.NO_OVERLAY,
-                outlineColor, sprite, visiblePart
+                outlineColor, sprite, visiblePart, headScale, headOffset
         ));
     }
 
     private static void render(RigMeshData mesh, PlayerRigInstance rig, PoseStack.Pose pose,
                                VertexConsumer rawConsumer, int light, int overlay, int tint,
                                UvMapping sprite, Predicate<String> visiblePart,
-                               PrimitiveTopology topology) {
+                               PrimitiveTopology topology, float headScale, float[] headOffset) {
         VertexConsumer consumer = sprite != null ? sprite.wrap(rawConsumer) : rawConsumer;
         SkinScratch scratch = new SkinScratch();
         RigDeformState deform = rig.rig().deform();
         for (RigMeshPart part : mesh.parts()) {
-            if (!visiblePart.test(baseName(part.name()))) continue;
+            String partName = baseName(part.name());
+            if (!visiblePart.test(partName)) continue;
+            boolean headPart = "head".equals(partName) || "hat".equals(partName);
+            float partScale = headPart ? headScale : 1f;
             if (part.indexCount() % 3 != 0) {
                 throw new IllegalStateException("Rig mesh part must contain triangle indices: " + part.name());
             }
@@ -251,13 +283,17 @@ public final class PlayerRigCpuRenderer {
                 RigVertex a = part.vertex(part.index(i));
                 RigVertex b = part.vertex(part.index(i + 1));
                 RigVertex c = part.vertex(part.index(i + 2));
-                emit(a, deform, rig, scratch, pose, consumer, light, overlay, tint);
-                emit(b, deform, rig, scratch, pose, consumer, light, overlay, tint);
-                emit(c, deform, rig, scratch, pose, consumer, light, overlay, tint);
+                emit(a, deform, rig, scratch, pose, consumer, light, overlay, tint, partScale,
+                        headPart ? headOffset : NO_HEAD_OFFSET);
+                emit(b, deform, rig, scratch, pose, consumer, light, overlay, tint, partScale,
+                        headPart ? headOffset : NO_HEAD_OFFSET);
+                emit(c, deform, rig, scratch, pose, consumer, light, overlay, tint, partScale,
+                        headPart ? headOffset : NO_HEAD_OFFSET);
                 if (topology == PrimitiveTopology.QUADS) {
                     // A triangle represented as (a,b,c,c) makes the quad's second generated
                     // triangle degenerate instead of joining unrelated mesh faces.
-                    emit(c, deform, rig, scratch, pose, consumer, light, overlay, tint);
+                    emit(c, deform, rig, scratch, pose, consumer, light, overlay, tint, partScale,
+                        headPart ? headOffset : NO_HEAD_OFFSET);
                 } else if (topology != PrimitiveTopology.TRIANGLES) {
                     throw new IllegalStateException("Unsupported rig render topology: " + topology);
                 }
@@ -267,8 +303,13 @@ public final class PlayerRigCpuRenderer {
 
     private static void emit(RigVertex vertex, RigDeformState deform, PlayerRigInstance rig,
                              SkinScratch scratch, PoseStack.Pose pose, VertexConsumer consumer,
-                             int light, int overlay, int tint) {
+                             int light, int overlay, int tint, float partScale, float[] headOffset) {
         deform(vertex, deform, scratch);
+        // Model's head bind pivot is the origin. Scale only head/hat vertices before
+        // skinning, so their rotation center stays aligned with the imported helmet.
+        if (partScale != 1f) scratch.localPosition.mul(partScale);
+        if (headOffset != NO_HEAD_OFFSET) scratch.localPosition.add(
+                headOffset[0] / 16f, headOffset[1] / 16f, headOffset[2] / 16f);
         skin(vertex, rig, scratch);
         int color = ARGB.multiply(tint, vertex.colorArgb());
         // Do not use a fluent chain here. UvMapping.wrap(...) may return a

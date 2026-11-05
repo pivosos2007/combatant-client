@@ -476,12 +476,10 @@ final class XaeroMapSettingsPanel {
                 "combatant.client.features.gui.clickgui.sections.dev.UiComponentLabSection");
         props.put("devUiKits", devUiKits);
 
-        long signature = CachedUiScriptRuntime.signature(props);
-        UiRuntime runtime = scriptRuntime.bake(
+        UiRuntime runtime = scriptRuntime.bakeTracked(
                 moduleHandle,
                 module,
                 "map-settings",
-                signature,
                 width,
                 height,
                 ClickGuiRenderer.getOnestMedium(),

@@ -64,7 +64,8 @@ import java.util.Set;
         displayName = "SchematicProjection",
         aliases = {"Litematica", "SchematicRender", "BuildGhost"},
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
-        description = "module.schematicprojection.description", listed = false)
+        description = "module.schematicprojection.description", listed = false,
+        requiredMods = {"litematica"})
 public final class SchematicProjection extends Module {
 
     private static final String ACTION_LAYER_UP = "layer_up";

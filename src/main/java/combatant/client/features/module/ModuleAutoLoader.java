@@ -94,6 +94,16 @@ public enum ModuleAutoLoader {
             }
 
             ModuleInfo info = cls.getAnnotation(ModuleInfo.class);
+            if (info != null) {
+                boolean dependenciesPresent = true;
+                for (String mod : info.requiredMods()) {
+                    if (!net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(mod)) {
+                        dependenciesPresent = false;
+                        break;
+                    }
+                }
+                if (!dependenciesPresent) return;
+            }
             Set<String> disabledBy = findDisableOwners(cls, info);
             if (!disabledBy.isEmpty()) {
                 DebugLog.config(

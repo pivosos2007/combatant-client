@@ -30,12 +30,9 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.WorldPhase;
 import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
-import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.animation.AnimatedRenderColors;
-import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.renderer.GlowSurfaces;
 import combatant.client.render.engine.renderer.Renderer3D;
-import combatant.client.render.engine.uniform.MeshBuilder;
 
 
 @ModuleInfo(
@@ -48,47 +45,37 @@ public class BlockHighlight extends Module {
     private static final double RAINBOW_SPATIAL_SCALE = 12.0;
     private static final double GEOMETRY_EXPAND = 0.0025;
     private final Minecraft mc = Minecraft.getInstance();
-    private final EnumValue<RenderStyle> renderStyle =
-            enumMode("render_style", RenderStyle.NORMAL);
     private final BooleanValue outlineEnabled =
             bool(
                     "outline_enabled",
                     true
             );
     private final BooleanValue surfaceEnabled =
-            visibleWhen(bool("surface_enabled", true), this::isGlowStyle);
+            bool("surface_enabled", true);
     private final RGBAColorValue surfaceColor =
-            visibleWhen(color("surface_color", "#1F66DDFF"), () -> isGlowStyle() && surfaceEnabled.get());
+            visibleWhen(color("surface_color", "#1F66DDFF"), surfaceEnabled::get);
     private final BooleanValue surfaceGradient =
-            visibleWhen(bool("surface_gradient", false), () -> isGlowStyle() && surfaceEnabled.get());
+            visibleWhen(bool("surface_gradient", false), surfaceEnabled::get);
     private final RGBAColorValue surfaceColor2 =
             visibleWhen(color("surface_color2", "#6066AFFF"),
-                    () -> isGlowStyle() && surfaceEnabled.get() && surfaceGradient.get());
+                    () -> surfaceEnabled.get() && surfaceGradient.get());
     private final NumberValue<Float> surfaceGlow =
-            visibleWhen(num("surface_glow", 0.65f, 0.0f, 2.0f), () -> isGlowStyle() && surfaceEnabled.get());
+            visibleWhen(num("surface_glow", 0.65f, 0.0f, 2.0f), surfaceEnabled::get);
     private final NumberValue<Float> lineGlow =
-            visibleWhen(num("line_glow", 1.35f, 0.0f, 4.0f), () -> isGlowStyle() && outlineEnabled.get());
+            visibleWhen(num("line_glow", 1.35f, 0.0f, 4.0f), outlineEnabled::get);
     private final EnumValue<GlowSurfaces.Animation> glowAnimation =
-            visibleWhen(enumMode("glow_animation", GlowSurfaces.Animation.BREATHE), this::isGlowStyle);
+            enumMode("glow_animation", GlowSurfaces.Animation.BREATHE);
     private final NumberValue<Float> glowSpeed =
             visibleWhen(num("glow_speed", 1.0f, 0.1f, 5.0f),
-                    () -> isGlowStyle() && glowAnimation.get() != GlowSurfaces.Animation.STATIC);
+                    () -> glowAnimation.get() != GlowSurfaces.Animation.STATIC);
     private final NumberValue<Float> glowAccent =
-            visibleWhen(num("glow_accent", 0.75f, 0.0f, 1.0f), this::isGlowStyle);
+            num("glow_accent", 0.75f, 0.0f, 1.0f);
 
-    private boolean isGlowStyle() { return renderStyle.get() == RenderStyle.GLOW; }
-
-    private final EnumValue<OutlineMode> outlineMode =
-            visibleWhen(enumMode(
-                    "outline_mode",
-                    OutlineMode.LINES,
-                    OutlineMode.values()
-            ), () -> outlineEnabled.get() && !isGlowStyle());
     private final RGBAColorValue outlineColor =
             visibleWhen(color(
                     "outline_color",
                     "#66FFFFFF"
-            ), outlineEnabled::get);
+            ), this::hasTargetGlow);
     private final EnumValue<ColorMode> outlineColorMode =
             visibleWhen(enumCommon(
                     "outline_color_mode",
@@ -96,7 +83,7 @@ public class BlockHighlight extends Module {
                     CommonSettingSchemas.RENDER_COLOR_MODE,
                     ColorMode.STATIC,
                     ColorMode.values()
-            ), outlineEnabled::get);
+            ), this::hasTargetGlow);
     private final RGBAColorValue outlineColor2 =
             visibleWhen(color(
                     "outline_color2",
@@ -108,7 +95,7 @@ public class BlockHighlight extends Module {
                     18,
                     2,
                     54
-            ), outlineEnabled::get);
+            ), this::hasTargetGlow);
     private final NumberValue<Float> outlineThickness =
             visibleWhen(num(
                     "outline_thickness",
@@ -120,7 +107,7 @@ public class BlockHighlight extends Module {
             visibleWhen(bool(
                     "outline_depth_test",
                     false
-            ), () -> outlineEnabled.get() || (isGlowStyle() && surfaceEnabled.get()));
+            ), this::hasTargetGlow);
     private final BooleanValue breakingEnabled =
             bool(
                     "breaking_enabled",
@@ -147,79 +134,11 @@ public class BlockHighlight extends Module {
                     "breaking_color",
                     "#66FFFFFF"
             ), breakingEnabled::get);
-    private final BooleanValue breakingGlow =
-            visibleWhen(bool(
-                    "breaking_glow",
-                    true
-            ), breakingEnabled::get);
     private final RGBAColorValue breakingColor2 =
             visibleWhen(color(
                     "breaking_color2",
                     "#22FFAA00"
             ), breakingEnabled::get);
-
-    private static void addGradientLine(MeshBuilder mesh,
-                                        double x1, double y1, double z1,
-                                        double x2, double y2, double z2,
-                                        int argb1,
-                                        int argb2) {
-        mesh.ensureLineCapacity();
-
-        putColorVertex(mesh, x1, y1, z1, argb1);
-        int i1 = mesh.next();
-
-        putColorVertex(mesh, x2, y2, z2, argb2);
-        int i2 = mesh.next();
-
-        mesh.line(i1, i2);
-    }
-
-    private static void addGradientQuad(MeshBuilder mesh,
-                                        double x1, double y1, double z1, int c1,
-                                        double x2, double y2, double z2, int c2,
-                                        double x3, double y3, double z3, int c3,
-                                        double x4, double y4, double z4, int c4) {
-        mesh.ensureQuadCapacity();
-
-        putColorVertex(mesh, x1, y1, z1, c1);
-        int i1 = mesh.next();
-
-        putColorVertex(mesh, x2, y2, z2, c2);
-        int i2 = mesh.next();
-
-        putColorVertex(mesh, x3, y3, z3, c3);
-        int i3 = mesh.next();
-
-        putColorVertex(mesh, x4, y4, z4, c4);
-        int i4 = mesh.next();
-
-        mesh.quad(i1, i2, i3, i4);
-    }
-
-    private static void putColorVertex(MeshBuilder mesh, double x, double y, double z, int argb) {
-        mesh.vec3(x, y, z).color(red(argb), green(argb), blue(argb), alpha(argb));
-    }
-
-    private static void addFilledBox(Renderer3D renderer, AABB box, int argb) {
-        int a = alpha(argb);
-        int r = red(argb);
-        int g = green(argb);
-        int b = blue(argb);
-
-        double minX = box.minX;
-        double minY = box.minY;
-        double minZ = box.minZ;
-        double maxX = box.maxX;
-        double maxY = box.maxY;
-        double maxZ = box.maxZ;
-
-        renderer.quad(minX, minY, minZ, maxX, minY, minZ, maxX, minY, maxZ, minX, minY, maxZ, r, g, b, a);
-        renderer.quad(minX, maxY, minZ, minX, maxY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ, r, g, b, a);
-        renderer.quad(minX, minY, maxZ, maxX, minY, maxZ, maxX, maxY, maxZ, minX, maxY, maxZ, r, g, b, a);
-        renderer.quad(minX, minY, minZ, minX, maxY, minZ, maxX, maxY, minZ, maxX, minY, minZ, r, g, b, a);
-        renderer.quad(maxX, minY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, maxX, minY, maxZ, r, g, b, a);
-        renderer.quad(minX, minY, minZ, minX, minY, maxZ, minX, maxY, maxZ, minX, maxY, minZ, r, g, b, a);
-    }
 
     private static float stageToProgress(int stage) {
         if (stage < 0) return 0.0f;
@@ -262,7 +181,11 @@ public class BlockHighlight extends Module {
     }
 
     public boolean isOutlineActive() {
-        return isEnabled() && outlineEnabled.get();
+        return isEnabled() && hasTargetGlow();
+    }
+
+    private boolean hasTargetGlow() {
+        return outlineEnabled.get() || surfaceEnabled.get();
     }
 
     @Override
@@ -274,7 +197,7 @@ public class BlockHighlight extends Module {
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
         if (!isEnabled() || mc.level == null || mc.player == null) return;
 
-        if (outlineEnabled.get() || (isGlowStyle() && surfaceEnabled.get())) {
+        if (hasTargetGlow()) {
             renderTargetOutline(renderer);
         }
 
@@ -298,19 +221,7 @@ public class BlockHighlight extends Module {
         if (shape.isEmpty()) return;
 
         VoxelShape worldShape = shape.move(pos.getX(), pos.getY(), pos.getZ());
-        if (isGlowStyle()) {
-            renderGlowShape(renderer, worldShape);
-            return;
-        }
-        OutlineMode mode = outlineMode.get();
-
-        if (mode == OutlineMode.BOX || mode == OutlineMode.BOTH) {
-            renderShapeBoxes(renderer, worldShape);
-        }
-
-        if (mode == OutlineMode.LINES || mode == OutlineMode.BOTH) {
-            renderShapeLines(renderer, worldShape);
-        }
+        renderGlowShape(renderer, worldShape);
     }
 
     /** Surface and luminous edge ribbons share a single world_glow_surface GPU mesh batch. */
@@ -323,11 +234,18 @@ public class BlockHighlight extends Module {
             int bottom = surfaceColor.getArgb();
             int top = surfaceGradient.get() ? surfaceColor2.getArgb() : bottom;
             float rim = surfaceGlow.get();
-            worldShape.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) ->
-                    batch.box(new AABB(minX - GEOMETRY_EXPAND, minY - GEOMETRY_EXPAND,
-                                    minZ - GEOMETRY_EXPAND, maxX + GEOMETRY_EXPAND,
-                                    maxY + GEOMETRY_EXPAND, maxZ + GEOMETRY_EXPAND),
-                            bottom, top, rim, false, true));
+            boolean animatedPalette = outlineColorMode.get() != ColorMode.STATIC;
+            worldShape.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) -> {
+                AABB box = new AABB(minX - GEOMETRY_EXPAND, minY - GEOMETRY_EXPAND,
+                        minZ - GEOMETRY_EXPAND, maxX + GEOMETRY_EXPAND,
+                        maxY + GEOMETRY_EXPAND, maxZ + GEOMETRY_EXPAND);
+                if (animatedPalette) {
+                    // AnimatedRenderColors must reach every face vertex, including both caps.
+                    batch.boxColored(box, (x, y, z) -> surfaceAnimatedColor(box, x, y, z), rim, true);
+                } else {
+                    batch.box(box, bottom, top, rim, false, true);
+                }
+            });
         }
         if (outlineEnabled.get()) {
             float glow = lineGlow.get();
@@ -338,143 +256,12 @@ public class BlockHighlight extends Module {
         }
     }
 
-    private void renderShapeLines(Renderer3D renderer, VoxelShape worldShape) {
-        MeshBuilder mesh = renderer.batch(
-                outlineDepthTest.get()
-                        ? WorldRenderPipelines.WORLD_COLORED_COPLANAR_DEPTH
-                        : WorldRenderPipelines.WORLD_COLORED,
-                outlineDepthTest.get()
-                        ? Renderer3D.DepthMode.PRE_DEPTH
-                        : Renderer3D.DepthMode.NONE
-        );
-
-        if (mesh == null) return;
-
-        double overlap = outlineDepthTest.get()
-                ? Math.max(0.0015, outlineThickness.get() * 0.003)
-                : 0.0008;
-
-        worldShape.forAllEdges((x1, y1, z1, x2, y2, z2) -> {
-            int c1 = getOutlineColor(x1, y1, z1);
-            int c2 = getOutlineColor(x2, y2, z2);
-
-            addEdgeRibbon(
-                    mesh,
-                    x1, y1, z1,
-                    x2, y2, z2,
-                    overlap,
-                    c1,
-                    c2
-            );
-        });
-    }
-
-    private void addEdgeRibbon(MeshBuilder mesh,
-                               double x1, double y1, double z1,
-                               double x2, double y2, double z2,
-                               double overlap,
-                               int argb1,
-                               int argb2) {
-        double mx = (x1 + x2) * 0.5;
-        double my = (y1 + y2) * 0.5;
-        double mz = (z1 + z2) * 0.5;
-
-        double ex = x2 - x1;
-        double ey = y2 - y1;
-        double ez = z2 - z1;
-        double edgeLenSq = ex * ex + ey * ey + ez * ez;
-        if (edgeLenSq <= 1.0e-10) {
-            return;
-        }
-
-        double toCamX = RenderState.cameraPos.x - mx;
-        double toCamY = RenderState.cameraPos.y - my;
-        double toCamZ = RenderState.cameraPos.z - mz;
-        double toCamLenSq = toCamX * toCamX + toCamY * toCamY + toCamZ * toCamZ;
-        if (toCamLenSq <= 1.0e-10) {
-            return;
-        }
-
-        double sideX = ey * toCamZ - ez * toCamY;
-        double sideY = ez * toCamX - ex * toCamZ;
-        double sideZ = ex * toCamY - ey * toCamX;
-        double sideLenSq = sideX * sideX + sideY * sideY + sideZ * sideZ;
-        if (sideLenSq <= 1.0e-10) {
-            return;
-        }
-
-        double sideInv = 1.0 / Math.sqrt(sideLenSq);
-        double halfWidth = computeRibbonHalfWidth(mx, my, mz);
-
-        sideX *= sideInv * halfWidth;
-        sideY *= sideInv * halfWidth;
-        sideZ *= sideInv * halfWidth;
-
-        double camInv = 1.0 / Math.sqrt(toCamLenSq);
-        double biasX = toCamX * camInv * overlap;
-        double biasY = toCamY * camInv * overlap;
-        double biasZ = toCamZ * camInv * overlap;
-
-        addGradientQuad(
-                mesh,
-                x1 - sideX + biasX, y1 - sideY + biasY, z1 - sideZ + biasZ, argb1,
-                x1 + sideX + biasX, y1 + sideY + biasY, z1 + sideZ + biasZ, argb1,
-                x2 + sideX + biasX, y2 + sideY + biasY, z2 + sideZ + biasZ, argb2,
-                x2 - sideX + biasX, y2 - sideY + biasY, z2 - sideZ + biasZ, argb2
-        );
-    }
-
-    private double computeRibbonHalfWidth(double x, double y, double z) {
-        double dx = RenderState.cameraPos.x - x;
-        double dy = RenderState.cameraPos.y - y;
-        double dz = RenderState.cameraPos.z - z;
-        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-        return 0.003 + outlineThickness.get() * (0.0025 + dist * 0.00018);
-    }
-
-    private void renderShapeBoxes(Renderer3D renderer, VoxelShape worldShape) {
-        MeshBuilder mesh = renderer.batch(
-                outlineDepthTest.get()
-                        ? WorldRenderPipelines.WORLD_COLORED_COPLANAR_DEPTH
-                        : WorldRenderPipelines.WORLD_COLORED,
-                outlineDepthTest.get()
-                        ? Renderer3D.DepthMode.PRE_DEPTH
-                        : Renderer3D.DepthMode.NONE
-        );
-
-        if (mesh == null) return;
-
-        worldShape.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) -> {
-            double x1 = minX - GEOMETRY_EXPAND;
-            double y1 = minY - GEOMETRY_EXPAND;
-            double z1 = minZ - GEOMETRY_EXPAND;
-            double x2 = maxX + GEOMETRY_EXPAND;
-            double y2 = maxY + GEOMETRY_EXPAND;
-            double z2 = maxZ + GEOMETRY_EXPAND;
-
-            addGradientBox(mesh, x1, y1, z1, x2, y2, z2);
-        });
-    }
-
-    private void addGradientBox(MeshBuilder mesh,
-                                double x1, double y1, double z1,
-                                double x2, double y2, double z2) {
-        int c000 = getOutlineColor(x1, y1, z1);
-        int c001 = getOutlineColor(x1, y1, z2);
-        int c010 = getOutlineColor(x1, y2, z1);
-        int c011 = getOutlineColor(x1, y2, z2);
-        int c100 = getOutlineColor(x2, y1, z1);
-        int c101 = getOutlineColor(x2, y1, z2);
-        int c110 = getOutlineColor(x2, y2, z1);
-        int c111 = getOutlineColor(x2, y2, z2);
-
-        addGradientQuad(mesh, x1, y1, z1, c000, x2, y1, z1, c100, x2, y2, z1, c110, x1, y2, z1, c010);
-        addGradientQuad(mesh, x2, y1, z2, c101, x1, y1, z2, c001, x1, y2, z2, c011, x2, y2, z2, c111);
-        addGradientQuad(mesh, x1, y1, z2, c001, x1, y1, z1, c000, x1, y2, z1, c010, x1, y2, z2, c011);
-        addGradientQuad(mesh, x2, y1, z1, c100, x2, y1, z2, c101, x2, y2, z2, c111, x2, y2, z1, c110);
-        addGradientQuad(mesh, x1, y2, z1, c010, x2, y2, z1, c110, x2, y2, z2, c111, x1, y2, z2, c011);
-        addGradientQuad(mesh, x1, y1, z2, c001, x2, y1, z2, c101, x2, y1, z1, c100, x1, y1, z1, c000);
+    private int surfaceAnimatedColor(AABB box, double x, double y, double z) {
+        int palette = getOutlineColor(x, y, z);
+        int bottomAlpha = alpha(surfaceColor.getArgb());
+        int topAlpha = surfaceGradient.get() ? alpha(surfaceColor2.getArgb()) : bottomAlpha;
+        float t = (float) ((y - box.minY) / Math.max(1.0e-6, box.maxY - box.minY));
+        return withAlpha(palette, interpolateChannel(bottomAlpha, topAlpha, Mth.clamp(t, 0.0f, 1.0f)));
     }
 
     private void renderBreakingHighlight(Renderer3D renderer) {
@@ -528,13 +315,9 @@ public class BlockHighlight extends Module {
         shape.move(pos.getX(), pos.getY(), pos.getZ()).forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) -> {
             AABB box = animateBox(new AABB(minX, minY, minZ, maxX, maxY, maxZ), clamped);
             if (isRenderable(box)) {
-                if (breakingGlow.get()) {
-                    float rim = Mth.clamp(alpha(argb) / 255.0f * 2.0f, 0.25f, 1.0f);
-                    GlowSurfaces.box(renderer, box, argb, argb, rim,
-                            glowAnimation.get(), glowSpeed.get(), glowAccent.get(), false, true, false);
-                } else {
-                    addFilledBox(renderer, box, argb);
-                }
+                float rim = Mth.clamp(alpha(argb) / 255.0f * 2.0f, 0.25f, 1.0f);
+                GlowSurfaces.box(renderer, box, argb, argb, rim,
+                        glowAnimation.get(), glowSpeed.get(), glowAccent.get(), false, true, false);
             }
         });
     }
@@ -587,7 +370,7 @@ public class BlockHighlight extends Module {
     }
 
     private boolean usesSecondaryOutlineColor() {
-        if (!outlineEnabled.get()) return false;
+        if (!hasTargetGlow()) return false;
         return AnimatedRenderColors.usesSecondary(animatedOutlineColorMode());
     }
 
@@ -604,13 +387,6 @@ public class BlockHighlight extends Module {
         };
     }
 
-    public enum RenderStyle implements EnumValue.IdProvider {
-        NORMAL("normal"), GLOW("glow");
-        private final String id;
-        RenderStyle(String id) { this.id = id; }
-        @Override public String id() { return id; }
-    }
-
     public enum ColorMode implements EnumValue.IdProvider {
         STATIC("static"),
         RAINBOW("rainbow"),
@@ -624,23 +400,6 @@ public class BlockHighlight extends Module {
         private final String id;
 
         ColorMode(String id) {
-            this.id = id;
-        }
-
-        @Override
-        public String id() {
-            return id;
-        }
-    }
-
-    public enum OutlineMode implements EnumValue.IdProvider {
-        LINES("lines"),
-        BOX("box"),
-        BOTH("both");
-
-        private final String id;
-
-        OutlineMode(String id) {
             this.id = id;
         }
 

@@ -648,7 +648,9 @@ final class ScriptedListHudPanel {
                 }
                 case "header:separator" -> {
                     node.setBounds(new UiBounds(6, 16.9f, Math.max(1, w - 12), 1));
-                    node.setProps(node.props().withPatch(Map.of("x2", Math.max(1, w - 12))));
+                    // Mutate the retained prop in-place: replacing UiProps here
+                    // invalidates prebound dynamic slots without a tree revision.
+                    node.patchFloatProp("x2", Math.max(1, w - 12));
                 }
                 case "plate", "blur:plate" -> node.setBounds(new UiBounds(0, 0, w, h));
                 case "body", "blur:body", "rows:clip" -> node.setBounds(new UiBounds(0, 18.5f, w, bodyHeight));

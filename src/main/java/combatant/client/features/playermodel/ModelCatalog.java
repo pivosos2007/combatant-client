@@ -15,10 +15,11 @@ public final class ModelCatalog {
     public static final String DIRECTORY = "combatant/player_models";
     public record Entry(String id, String name, String model, String texture, String icon,
                         String atlas, String profile, String bodyMode,
-                        List<String> renderGroups, List<String> clothingSprites) {
+                        List<String> renderGroups, List<String> clothingSprites, List<String> clothingParts,
+                        List<String> skinParts) {
         public Entry(String id, String name, String model, String texture, String icon,
                      String atlas, String profile) {
-            this(id, name, model, texture, icon, atlas, profile, "replace", List.of(), List.of());
+            this(id, name, model, texture, icon, atlas, profile, "replace", List.of(), List.of(), List.of(), List.of());
         }
 
         public boolean usesPlayerSkin() { return "player_skin".equals(bodyMode); }
@@ -56,6 +57,14 @@ public final class ModelCatalog {
                 if (entry.clothingSprites != null && !entry.clothingSprites.isEmpty()
                         && !"player_skin".equals(bodyMode(entry.bodyMode)))
                     throw new IOException("Clothing sprites require player_skin body mode");
+                if (entry.clothingSprites != null && !entry.clothingSprites.isEmpty()
+                        && (entry.clothingParts == null || entry.clothingParts.isEmpty()))
+                    throw new IOException("Clothing sprites require explicit clothingParts");
+                if (entry.clothingParts != null && !entry.clothingParts.isEmpty()
+                        && (entry.clothingSprites == null || entry.clothingSprites.isEmpty()))
+                    throw new IOException("clothingParts require clothingSprites");
+                if ("replace".equals(bodyMode(entry.bodyMode)) && entry.skinParts != null && !entry.skinParts.isEmpty())
+                    throw new IOException("Skin render parts require player_skin body mode");
                 if ("replace".equals(bodyMode(entry.bodyMode))
                         && entry.renderGroups != null && !entry.renderGroups.isEmpty())
                     throw new IOException("Render groups require player_skin body mode");
@@ -64,7 +73,8 @@ public final class ModelCatalog {
                         optional(entry.icon, catalog.getNamespace()), qualified(entry.atlas, catalog.getNamespace()),
                         optional(entry.profile, catalog.getNamespace()),
                         bodyMode(entry.bodyMode), groups(entry.renderGroups),
-                        sprites(entry.clothingSprites, catalog.getNamespace())));
+                        sprites(entry.clothingSprites, catalog.getNamespace()), skinParts(entry.clothingParts),
+                        skinParts(entry.skinParts)));
             }
             return List.copyOf(result);
         } catch (RuntimeException failure) { throw new IOException("Invalid player model catalog: " + catalog, failure); }
@@ -85,6 +95,16 @@ public final class ModelCatalog {
                 throw new IOException("Invalid or repeated model render group: " + name);
         }
         return List.copyOf(result);
+    }
+
+    private static List<String> skinParts(List<String> parts) throws IOException {
+        if (parts == null || parts.isEmpty()) return List.of();
+        Set<String> allowed = Set.of("head", "hat", "body", "jacket", "left_arm", "right_arm",
+                "left_sleeve", "right_sleeve", "left_leg", "right_leg", "left_pants", "right_pants");
+        if (parts.size() > allowed.size() || !allowed.containsAll(parts)
+                || new HashSet<>(parts).size() != parts.size())
+            throw new IOException("Invalid clothing render part list");
+        return List.copyOf(parts);
     }
 
     private static List<String> sprites(List<String> paths, String namespace) throws IOException {
@@ -124,8 +144,6 @@ public final class ModelCatalog {
                 for (Entry entry : loaded) entries.put(entry.id, entry);
             } catch (IOException failure) {
                 errors.add(failure.getMessage());
-                combatant.client.util.logging.DebugLog.warnOnChange("player-catalog:" + catalog,
-                        failure.getMessage(), "[PlayerModel] %s", failure.getMessage());
             }
         }
         cachedResources = resources;

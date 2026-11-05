@@ -1,0 +1,35 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_SsrColor;
+layout(binding = 1) uniform sampler2D u_SsrConfidence;
+layout(binding = 2) uniform sampler2D u_CascadeColor;
+layout(binding = 3) uniform sampler2D u_CascadeConfidence;
+layout(binding = 4, rgba16f) writeonly uniform image2D u_OutputColor;
+layout(binding = 5, r8) writeonly uniform image2D u_OutputConfidence;
+layout(std430, binding = 6) readonly buffer WaterReflectionResolveParams { vec4 params; } u_Resolve;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_OutputColor);
+    if (any(greaterThanEqual(pixel, size))) return;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    vec3 ssr = max(textureLod(u_SsrColor, uv, 0.0).rgb, vec3(0.0));
+    float ssrConfidence = clamp(textureLod(u_SsrConfidence, uv, 0.0).r, 0.0, 1.0);
+    vec3 cascade = max(textureLod(u_CascadeColor, uv, 0.0).rgb, vec3(0.0));
+    float cascadeConfidence = clamp(textureLod(u_CascadeConfidence, uv, 0.0).r, 0.0, 1.0);
+
+    float threshold = max(u_Resolve.params.x, 1.0e-4);
+    vec3 resolved = ssr;
+    float confidence = ssrConfidence;
+    if (cascadeConfidence > 0.0 && ssrConfidence < threshold) {
+        float ssrWeight = smoothstep(threshold * 0.65, threshold, ssrConfidence);
+        resolved = mix(cascade, ssr, ssrWeight);
+        confidence = mix(cascadeConfidence, ssrConfidence, ssrWeight);
+    }
+
+    // If neither SSR nor cascade is valid confidence stays zero. The forward water shader then
+    // selects prefiltered sky/material fallback instead of temporal-accumulating a black miss.
+    imageStore(u_OutputColor, pixel, vec4(resolved, 1.0));
+    imageStore(u_OutputConfidence, pixel, vec4(clamp(confidence, 0.0, 1.0), 0.0, 0.0, 0.0));
+}

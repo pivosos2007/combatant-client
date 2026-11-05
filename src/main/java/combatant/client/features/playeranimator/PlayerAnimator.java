@@ -8,7 +8,6 @@
 package combatant.client.features.playeranimator;
 
 import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
-import combatant.client.features.playeranimator.script.PlayerRigScriptCommand;
 import combatant.client.features.playeranimator.script.PlayerRigScriptContext;
 import combatant.client.features.playeranimator.script.PlayerRigScriptRuntime;
 import combatant.client.util.resources.asset.AssetLoad;
@@ -61,22 +60,10 @@ public enum PlayerAnimator {
                 .acquire().resetFrame();
         applyVanillaLook(instance, state);
 
-        Object[] context = PlayerRigScriptContext.pack(
-                player,
-                state,
-                tickDelta,
-                frameSeconds,
-                style,
-                strength,
-                motion.swingIndex,
-                attack,
-                motion.attackTimeSeconds,
-                motion.attackDurationSeconds,
-                motion.attackActive
-        );
-        for (PlayerRigScriptCommand command : SCRIPTS.execute(context)) {
-            command.apply(instance);
-        }
+        SCRIPTS.executeFrameInto(
+                player, state, tickDelta, frameSeconds, style, strength,
+                motion.swingIndex, attack, motion.attackTimeSeconds,
+                motion.attackDurationSeconds, motion.attackActive, instance);
         instance.solve();
         return instance;
     }

@@ -151,10 +151,8 @@ public final class SpawnerTracker {
                 BlockPos p = spawner.pos;
                 boolean active = player.distanceToSqr(Vec3.atCenterOf(p)) <= activeSq;
                 int box = active ? settings.activeColor().getArgb() : settings.boxColor().getArgb();
-                if (!style.drawShaderBox(renderer, new AABB(p), box)) {
-                    int fill = (box & 0x00FFFFFF) | 0x30000000;
-                    draw.blockBox(p.getX(), p.getY(), p.getZ(), fill, box);
-                }
+                int fill = (box & 0x00FFFFFF) | 0x30000000;
+                draw.blockBox(p.getX(), p.getY(), p.getZ(), fill, box);
                 if (settings.activationRing().get()) {
                     draw.ring(Vec3.atCenterOf(p), ACTIVATION_RANGE, settings.ringColor().getArgb());
                 }

@@ -28,7 +28,6 @@ import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.module.*;
 import combatant.client.render.engine.RenderState;
-import combatant.client.render.engine.renderer.GlowSurfaces;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.util.block.*;
 import combatant.client.util.logging.DebugLog;
@@ -176,15 +175,6 @@ public class BlockESP extends Module {
                     BlockOutlineShapeMode.values()
             );
 
-    private final BooleanValue glowFill =
-            bool("blockEspGlowFill", "glow_fill", true);
-    private final NumberValue<Float> glowAlpha =
-            visibleWhen(num("blockEspGlowAlpha", "glow_alpha", 0.16f, 0.0f, 1.0f), glowFill::get);
-    private final EnumValue<GlowSurfaces.Animation> glowAnimation =
-            visibleWhen(enumSetting("blockEspGlowAnimation", "glow_animation", GlowSurfaces.Animation.BREATHE), glowFill::get);
-    private final NumberValue<Float> glowSpeed =
-            visibleWhen(num("blockEspGlowSpeed", "glow_speed", 1.0f, 0.1f, 5.0f),
-                    () -> glowFill.get() && glowAnimation.get() != GlowSurfaces.Animation.STATIC);
     private final NumberValue<Float> lineWidth =
             numCommon(
                     "blockEspLineWidth",
@@ -701,7 +691,6 @@ public class BlockESP extends Module {
             long tick = mc.level.getGameTime();
             CollisionContext shapeContext = shapeMode == BlockOutlineShapeMode.VOXEL_SHAPE
                     ? BlockOutlineRenderer.shapeContext() : null;
-            boolean glow = glowFill.get();
 
             for (Target target : renderTargets.values()) {
                 // Margin keeps wide-line fringes of blocks just outside the frustum.
@@ -740,11 +729,6 @@ public class BlockESP extends Module {
 
                 int color = 0xFF000000 | targetRgb(state, target.visible);
                 BlockOutlineRenderer.render(renderer, mc.level, target.pos, state, shapeMode, color, shapeContext);
-                if (glow) {
-                    int fill = ((int) (Math.min(1.0f, glowAlpha.get()) * 255.0f) << 24) | (color & 0x00FFFFFF);
-                    GlowSurfaces.box(renderer, new AABB(target.pos), fill, fill, 0.55f,
-                            glowAnimation.get(), glowSpeed.get(), 1.0f, false, true, false);
-                }
             }
         } finally {
             RenderState.lineWidth = previousLineWidth;

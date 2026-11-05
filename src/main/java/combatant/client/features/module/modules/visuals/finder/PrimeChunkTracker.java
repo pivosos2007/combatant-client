@@ -387,16 +387,13 @@ public final class PrimeChunkTracker {
         double y = settings.markerY().get();
         int fill = settings.fillColor().getArgb();
         int line = settings.lineColor().getArgb();
-        // Shader modes take their alpha from the module's shader settings, so tint with an opaque colour.
-        int shaderColor = line | 0xFF000000;
         for (long key : flagged) {
             int cx = ChunkPos.getX(key);
             int cz = ChunkPos.getZ(key);
             if (level.getChunkSource().getChunk(cx, cz, false) == null) continue;
             double minX = cx << 4;
             double minZ = cz << 4;
-            AABB slab = new AABB(minX, y, minZ, minX + 16.0, y + ChunkMarkers.SHADER_SLAB_HEIGHT, minZ + 16.0);
-            if (!style.drawShaderBox(renderer, slab, shaderColor)) draw.chunkPlate(cx, cz, y, fill, line);
+            draw.chunkPlate(cx, cz, y, fill, line);
             if (settings.tracers().get()) draw.tracer(new Vec3(minX + 8.0, y, minZ + 8.0), line);
         }
     }

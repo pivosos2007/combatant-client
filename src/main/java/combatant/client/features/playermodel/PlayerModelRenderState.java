@@ -8,4 +8,6 @@ package combatant.client.features.playermodel;
 public interface PlayerModelRenderState {
     PlayerModels.Snapshot combatant$getReplacement();
     void combatant$setReplacement(PlayerModels.Snapshot replacement);
+    boolean combatant$isReplacementSubmitted();
+    void combatant$setReplacementSubmitted(boolean submitted);
 }

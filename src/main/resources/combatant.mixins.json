@@ -49,7 +49,6 @@
   "client": [
     "AbstractClientPlayerMixin",
     "AbstractContainerScreenMixin",
-
     "AbstractSelectionListMixin",
     "AbstractSliderButtonMixin",
     "AbstractWidgetSoundMixin",
@@ -158,6 +157,7 @@
     "VulkanGpuTextureViewMixin",
     "VulkanRenderPassMixin",
     "VulkanRenderPipelineMixin",
+    "VulkanTransientMemoryMixin",
     "WaterFogEnvironmentMixin",
     "WeatherEffectRendererMixin",
     "accessors.AbstractContainerScreenAccessor",
@@ -257,7 +257,8 @@
     "sodium.gui.SodiumVideoSettingsScreenMixin",
     "xaero.minimap.AbstractWaypointRenderProviderMixin",
     "xaero.minimap.MinimapRendererMixin",
-    "xaero.worldmap.WaypointRenderProviderMixin"
+    "xaero.worldmap.WaypointRenderProviderMixin",
+    "litematica.GuiConfigsMixin"
   ],
   "injectors": {
     "defaultRequire": 1

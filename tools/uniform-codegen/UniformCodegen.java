@@ -34,7 +34,12 @@ public final class UniformCodegen {
     private static final String PACKAGE = "combatant.client.render.engine.uniform.generated";
     private static final Pattern BLOCK = Pattern.compile("\\blayout\\s*\\(([^)]*)\\)\\s*(?:(?:readonly|writeonly|coherent|restrict|volatile)\\s+)*(uniform|buffer)\\s+(\\w+)\\s*\\{");
     private static final Pattern STRUCT = Pattern.compile("\\bstruct\\s+(\\w+)\\s*\\{([^{}]*)}\\s*;", Pattern.DOTALL);
-    private static final Pattern MEMBER = Pattern.compile("^(\\w+)\\s+(\\w+)\\s*(?:\\[\\s*([^]]*)\\s*])?$");
+    // A GLSL member declaration has one type and potentially multiple declarators:
+    // vec4 p0, p1; float weights[4], bias;  The members must be laid out in order.
+    private static final Pattern MEMBER_DECLARATION = Pattern.compile(
+            "^(?:(?:highp|mediump|lowp|precise)\\s+)*([A-Za-z_]\\w*)\\s+(.+)$", Pattern.DOTALL);
+    private static final Pattern MEMBER_DECLARATOR = Pattern.compile(
+            "^([A-Za-z_]\\w*)\\s*(?:\\[\\s*([^\\[\\]]*)\\s*])?$");
     private static final Pattern DEFINE = Pattern.compile("(?m)^\\s*#define\\s+(\\w+)\\s+([^\\r\\n]+)");
     private static final Pattern INTEGER_CONSTANT = Pattern.compile("\\bconst\\s+int\\s+(\\w+)\\s*=\\s*([^;]+);");
     private static final Pattern LOCAL_IMPORT = Pattern.compile("(?m)^\\s*#include\\s+<combatant:([A-Za-z0-9_./-]+)>[ \t]*$");
@@ -433,8 +438,22 @@ public final class UniformCodegen {
                     + (requestedBlock == null ? " found" : " named " + requestedBlock));
         }
         if (candidates.size() > 1) {
-            throw new IllegalArgumentException(file + ": multiple std140/std430 blocks "
-                    + candidates.stream().map(Binding::blockName).toList() + "; select one with shader/path#BlockName");
+            Binding first = candidates.getFirst();
+            for (int i = 1; i < candidates.size(); i++) {
+                Binding other = candidates.get(i);
+                if (!first.blockName.equals(other.blockName)) {
+                    throw new IllegalArgumentException(file + ": multiple std140/std430 blocks "
+                            + candidates.stream().map(Binding::blockName).toList()
+                            + "; select one with shader/path#BlockName");
+                }
+                // Both sides of an #if/#else may declare the same block with different
+                // readonly/writeonly qualifiers. These do not affect std140/std430 layout.
+                // Do not silently accept conditional declarations with incompatible layouts.
+                if (!signature(first).equals(signature(other))) {
+                    throw new IllegalArgumentException(file + ": incompatible conditional layouts for block "
+                            + first.blockName);
+                }
+            }
         }
         return candidates.getFirst();
     }
@@ -445,21 +464,66 @@ public final class UniformCodegen {
 
     private static List<Member> parseMembers(String body, Map<String, String> defines, String context) {
         List<Member> members = new ArrayList<>();
+        Set<String> names = new HashSet<>();
         for (String raw : body.split(";", -1)) {
-            String s = raw.trim();
-            if (s.isEmpty()) continue;
-            Matcher m = MEMBER.matcher(s);
-            if (!m.matches()) throw new IllegalArgumentException(context + ": unsupported GLSL declaration '" + s + "'");
-            String type = m.group(1), name = m.group(2);
-            if (members.stream().anyMatch(member -> member.name.equals(name)))
-                throw new IllegalArgumentException(context + ": duplicate member " + name);
-            boolean array = m.group(3) != null;
-            boolean runtimeArray = array && m.group(3).isBlank();
-            int count = runtimeArray ? 0 : array ? evaluate(m.group(3), defines, new HashSet<>()) : 1;
-            if (!runtimeArray && count <= 0) throw new IllegalArgumentException(context + ": array must have positive fixed length: " + name);
-            members.add(new Member(type, name, array, count));
+            String declaration = raw.trim();
+            if (declaration.isEmpty()) continue;
+            Matcher parsed = MEMBER_DECLARATION.matcher(declaration);
+            if (!parsed.matches()) {
+                throw new IllegalArgumentException(context + ": unsupported GLSL declaration '" + declaration + "'");
+            }
+            String type = parsed.group(1);
+            for (String part : splitDeclarators(parsed.group(2), context, declaration)) {
+                Matcher member = MEMBER_DECLARATOR.matcher(part.trim());
+                if (!member.matches()) {
+                    throw new IllegalArgumentException(context + ": unsupported GLSL declarator '" + part.trim()
+                            + "' in '" + declaration + "'");
+                }
+                String name = member.group(1);
+                if (!names.add(name)) throw new IllegalArgumentException(context + ": duplicate member " + name);
+                boolean array = member.group(2) != null;
+                boolean runtimeArray = array && member.group(2).isBlank();
+                int count = runtimeArray ? 0 : array ? evaluate(member.group(2), defines, new HashSet<>()) : 1;
+                if (!runtimeArray && count <= 0) {
+                    throw new IllegalArgumentException(context + ": array must have positive fixed length: " + name);
+                }
+                members.add(new Member(type, name, array, count));
+            }
         }
         return members;
+    }
+
+    /** Commas inside GLSL array-size expressions are not declaration separators. */
+    private static List<String> splitDeclarators(String source, String context, String declaration) {
+        List<String> parts = new ArrayList<>();
+        int brackets = 0, parentheses = 0, start = 0;
+        for (int i = 0; i < source.length(); i++) {
+            char c = source.charAt(i);
+            switch (c) {
+                case '[' -> brackets++;
+                case ']' -> brackets--;
+                case '(' -> parentheses++;
+                case ')' -> parentheses--;
+                case ',' -> {
+                    if (brackets == 0 && parentheses == 0) {
+                        String part = source.substring(start, i).trim();
+                        if (part.isEmpty()) throw new IllegalArgumentException(context
+                                + ": empty GLSL declarator in '" + declaration + "'");
+                        parts.add(part);
+                        start = i + 1;
+                    }
+                }
+                default -> { }
+            }
+            if (brackets < 0 || parentheses < 0) {
+                throw new IllegalArgumentException(context + ": unbalanced GLSL declaration '" + declaration + "'");
+            }
+        }
+        if (brackets != 0 || parentheses != 0 || source.substring(start).isBlank()) {
+            throw new IllegalArgumentException(context + ": malformed GLSL declaration '" + declaration + "'");
+        }
+        parts.add(source.substring(start).trim());
+        return parts;
     }
 
     private static void validateRuntimeArrays(List<Member> members, boolean storage, String context) {
@@ -780,6 +844,15 @@ public final class UniformCodegen {
     private static void line(StringBuilder out, String s) { out.append(s).append('\n'); }
 
     private static void selfTest() {
+        // GLSL allows several variables of one type, including independently sized arrays.
+        testLayout("vec4 p0, p1, p2, p3; uvec4 style;", Standard.STD430, 80,
+                new int[]{0, 16, 32, 48, 64}, new int[]{0, 0, 0, 0, 0});
+        testLayout("vec4 a, b[2]; vec2 c, d; float e;", Standard.STD140, 80,
+                new int[]{0, 16, 48, 56, 64}, new int[]{0, 16, 0, 0, 0});
+        testLayout("vec4 a, b[2]; vec2 c, d; float e;", Standard.STD430, 80,
+                new int[]{0, 16, 48, 56, 64}, new int[]{0, 16, 0, 0, 0});
+        testLayout("highp vec4 a, b; mediump vec2 uv; precise float tint;", Standard.STD430, 48,
+                new int[]{0, 16, 32, 40}, new int[]{0, 0, 0, 0});
         testLayout("float a; vec3 b; float c; vec2 d;", Standard.STD140, 48,
                 new int[]{0, 16, 28, 32}, new int[]{0,0,0,0});
         testLayout("float a; vec3 b; float c; vec2 d;", Standard.STD430, 48,
@@ -788,6 +861,18 @@ public final class UniformCodegen {
                 new int[]{0,48,80,112}, new int[]{16,16,0,0});
         testLayout("float a[3]; vec2 b[2]; mat2 c; mat3 d;", Standard.STD430, 96,
                 new int[]{0,16,32,48}, new int[]{4,8,0,0});
+        String commaStruct = "#define N (2 + 1)\nstruct Face { vec4 p0, p1, p2, p3; vec2 uv[N], extra; }; "
+                + "layout(std430) readonly buffer Faces { Face faces[]; };";
+        Binding faces = parse(commaStruct, "schematic.vert", null);
+        assertEq(96, faces.layout.members.getFirst().stride, "combined struct layout stride");
+        if (!emit(faces).contains("OFFSET_FACES_P3 = 48")) throw new AssertionError("missing member offset");
+        if (!emit(faces).contains("setFacesUv(int index0, int index1, float v0, float v1)"))
+            throw new AssertionError("combined declaration array setter missing");
+        mustFail("layout(std430) buffer Bad { vec4 a, a; };", null, "duplicate member a");
+        mustFail("layout(std430) buffer Bad { vec4 a,, b; };", null, "empty GLSL declarator");
+        mustFail("layout(std430) buffer Bad { vec4 a,; };", null, "malformed GLSL declaration");
+        mustFail("layout(std430) buffer Bad { float a[], b; };", null, "last member of a storage block");
+        mustFail("layout(std430) buffer Bad { vec4 a[3], b[0]; };", null, "positive fixed length");
         String nested = "struct Child { float x; vec2 uv; };\n" +
                 "layout(std430, binding = 1) buffer Node { Child child[2]; float end; };";
         Binding b = parse(nested, "test.comp", null);
@@ -800,6 +885,11 @@ public final class UniformCodegen {
         Binding selected = parse("layout(std140) uniform First { float a; };\n"
                 + "layout(std430) buffer Second { float b; };", "multi.glsl", "Second");
         if (!selected.className.equals("SecondBinding")) throw new AssertionError("automatic class name");
+        Binding conditional = parse("layout(std430) readonly buffer Shared { uint flags[]; }; "
+                + "layout(std430) writeonly buffer Shared { uint flags[]; };", "conditional.glsl", null);
+        assertEq(0, conditional.layout.size, "duplicate conditional block");
+        mustFail("layout(std430) buffer Shared { vec4 a; }; layout(std430) buffer Shared { vec2 a; };",
+                "Shared", "incompatible conditional layouts");
         mustFail("layout(std140) uniform First { float a; }; layout(std430) buffer Second { float b; };",
                 null, "multiple std140/std430 blocks");
         Binding rain = parse("struct Drop { vec4 center; vec4 motion; }; layout(std430) buffer RainVisible { Drop visible[]; };", "rain.comp", null);

@@ -67,7 +67,7 @@ export class SpectrumActionGroup {
           :ui.corner.mixed(first?round:square,last?round:square,
             last?round:square,first?round:square);
         const node=SpectrumActionButton.render({key:`${key}:item:${item.id}`,
-          width:item.width,size,quiet,connected,emphasized,
+          width:item.width,size,quiet,connected,emphasized,colors:p,
           icon:item.icon,label:item.label,
           corners:connected?corners:undefined,
           selected:selectable&&selected.includes(item.id),

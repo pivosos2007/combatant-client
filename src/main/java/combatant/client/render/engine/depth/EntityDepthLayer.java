@@ -17,6 +17,7 @@ import combatant.client.mixins.accessors.LevelRendererAccessor;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
+import combatant.client.features.playermodel.PlayerModelGpuRenderer;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
@@ -121,14 +122,14 @@ public final class EntityDepthLayer {
         modelView.pushMatrix();
         modelView.identity();
         Matrix4f position = CombatantWorldMatrices.positionMatrix();
-        if (position != null) {
-            modelView.mul(position);
-        } else if (minecraft.gameRenderer.mainCamera() != null) {
-            modelView.mul(new Matrix4f().rotation(
-                    minecraft.gameRenderer.mainCamera().rotation().conjugate(new Quaternionf())));
+        Matrix4f captureView = position != null ? new Matrix4f(position) : new Matrix4f();
+        if (position == null && minecraft.gameRenderer.mainCamera() != null) {
+            captureView.rotation(minecraft.gameRenderer.mainCamera().rotation().conjugate(new Quaternionf()));
         }
+        modelView.mul(captureView);
 
         COMMANDS.getSubmitsPerOrder().clear();
+        PlayerModelGpuRenderer.beginEntityDepthCapture(target);
         try {
             LevelRendererAccessor accessor = (LevelRendererAccessor) levelRenderer;
             state.entityRenderStates.addAll(capturedEntities);
@@ -146,6 +147,7 @@ public final class EntityDepthLayer {
             } finally {
                 renderBuffers.endFrame();
             }
+            PlayerModelGpuRenderer.finishEntityDepthCapture(target, captureView, projection);
             valid = true;
             return true;
         } catch (Throwable failure) {
@@ -155,6 +157,7 @@ public final class EntityDepthLayer {
                     failure.getClass().getSimpleName(), failure.getMessage());
             return false;
         } finally {
+            PlayerModelGpuRenderer.abortEntityDepthCapture();
             COMMANDS.getSubmitsPerOrder().clear();
             modelView.popMatrix();
             MeshRenderer.setProjection(previousMeshProjection);

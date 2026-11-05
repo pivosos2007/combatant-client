@@ -71,6 +71,28 @@ public record HmiTransformCommand(String op, double[] args) {
         }
     }
 
+    /** Apply an already-decoded binary opcode with no temporary command or arguments array. */
+    public static void applyOpcode(PoseStack stack, int opcode, int count,
+                                   double a, double b, double c, double d) {
+        if (stack == null) return;
+        switch (opcode) {
+            case 1 -> stack.translate(a, 0.0, 0.0);
+            case 2 -> stack.translate(0.0, a, 0.0);
+            case 3 -> stack.translate(0.0, 0.0, a);
+            case 4 -> stack.translate(a, b, c);
+            case 5 -> stack.scale((float) a, (float) b, (float) c);
+            case 6, 7, 8 -> {
+                Axis axis = opcode == 6 ? Axis.XP : opcode == 7 ? Axis.YP : Axis.ZP;
+                if (count >= 4) stack.rotateAround(axis.rotationDegrees((float) a), (float) b, (float) c, (float) d);
+                else if (count >= 1) stack.rotateDegrees(axis, (float) a);
+            }
+            case 9 -> shear(stack, a, b, c);
+            case 10 -> stack.pushPose();
+            case 11 -> { if (!stack.isEmpty()) stack.popPose(); }
+            default -> { }
+        }
+    }
+
     private static void rotate(PoseStack stack, Axis axis, double[] args) {
         if (args.length >= 4) {
             stack.rotateAround(axis.rotationDegrees((float) args[0]), (float) args[1], (float) args[2], (float) args[3]);

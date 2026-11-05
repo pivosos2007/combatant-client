@@ -122,6 +122,7 @@ public class InventoryMove extends Module {
         choices.put("Settings", true);
         choices.put("Map", false);
         choices.put("Schematics", false);
+        choices.put("Litematica", false);
         return choices;
     }
 

@@ -21,6 +21,14 @@ public enum CombatantVertexFormats {
             .addAttribute("Position", CombatantVertexFormatElements.POS2)
             .build();
 
+    /** Position/UV/tint plus one per-instance shader-effects vec4; no uniform churn per sprite. */
+    public static final VertexFormat POS3_TEXTURE_COLOR_PARAMS = VertexFormat.builder(0)
+            .addAttribute("Position", CombatantVertexFormatElements.POS3)
+            .addAttribute("UV0", CombatantVertexFormatElements.TEXTURE)
+            .addAttribute("Color", CombatantVertexFormatElements.COLOR)
+            .addAttribute("Params", CombatantVertexFormatElements.PARAMS)
+            .build();
+
     public static final VertexFormat POS3_TEXTURE_COLOR_PARAMS2 = VertexFormat.builder(0)
             .addAttribute("Position", CombatantVertexFormatElements.POS3)
             .addAttribute("UV0", CombatantVertexFormatElements.TEXTURE)

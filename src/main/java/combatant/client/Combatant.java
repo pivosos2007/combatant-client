@@ -59,7 +59,6 @@ import combatant.client.mixininterface.IGuiGraphics;
 import combatant.client.render.effects.NetherPortalRiftPass;
 import combatant.client.render.effects.SleepOverlayPass;
 import combatant.client.render.effects.mask.WorldPostProcessMasks;
-import combatant.client.render.effects.lens.WorldTargetLenses;
 import combatant.client.render.effects.orbit.WorldOrbitGravity;
 import combatant.client.render.effects.shockwave.WorldJumpShockwaves;
 import combatant.client.render.effects.shockwave.WorldBlastShockwaves;
@@ -553,7 +552,6 @@ public class Combatant implements ClientModInitializer {
         PostProcessManager.register(WorldPostProcessMasks.INSTANCE);
         PostProcessManager.register(WorldJumpShockwaves.INSTANCE);
         PostProcessManager.register(WorldBlastShockwaves.INSTANCE);
-        PostProcessManager.register(WorldTargetLenses.INSTANCE);
         PostProcessManager.register(WorldOrbitGravity.INSTANCE);
         MainConfig.get(); // Load global settings (debug flag)
         AccountConfig.get();

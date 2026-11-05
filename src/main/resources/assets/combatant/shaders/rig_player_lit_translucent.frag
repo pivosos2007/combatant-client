@@ -4,7 +4,10 @@
 layout(location = 0) out vec4 color;
 uniform sampler2D u_Texture;
 uniform sampler2D u_Lightmap;
-layout(std140) uniform RigPlayerLighting { vec4 u_LightCoord; };
+layout(std140) uniform RigPlayerLighting {
+    vec4 u_LightCoord; // xy: lightmap, z: opacity, w: damage intensity
+    vec4 u_EntityTint; // rgb: vanilla/model tint
+};
 layout(std140) uniform Lighting {
     vec3 Light0_Direction;
     vec3 Light1_Direction;
@@ -25,5 +28,10 @@ void main() {
     float directional = min(1.0, 0.4 + 0.6 *
             (max(0.0, dot(normal, Light0_Direction)) +
              max(0.0, dot(normal, Light1_Direction))));
-    color = vec4(albedo.rgb * worldLight * directional, albedo.a);
+    vec3 lit = albedo.rgb * worldLight * directional * u_EntityTint.rgb;
+    // Smooth damage coloration without switching to vanilla's flashing overlay.
+    vec3 hurt = min(vec3(1.0), lit * vec3(1.2, 0.35, 0.35)
+            + worldLight * vec3(0.08, 0.0, 0.0));
+    color = vec4(mix(lit, hurt, clamp(u_LightCoord.w, 0.0, 1.0)),
+            albedo.a * clamp(u_LightCoord.z, 0.0, 1.0));
 }

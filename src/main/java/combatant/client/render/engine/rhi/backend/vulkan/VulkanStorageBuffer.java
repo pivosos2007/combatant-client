@@ -21,6 +21,9 @@ import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.util.vma.VmaAllocationCreateInfo;
 import org.lwjgl.util.vma.VmaAllocationInfo;
 import org.lwjgl.vulkan.VkBufferCreateInfo;
+import org.lwjgl.vulkan.VkBufferCopy;
+import org.lwjgl.vulkan.VkBufferMemoryBarrier;
+import org.lwjgl.vulkan.VkCommandBuffer;
 
 import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
@@ -40,22 +43,21 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
     // Match Mojang's own in-flight submission limit. The extra slot means a submit-local
     // snapshot is never reused until the encoder reports its previous owner as completed.
     private static final int SUBMIT_RING_SIZE = VulkanCommandEncoder.MAX_SUBMITS_IN_FLIGHT + 1;
-    private static final int MAX_UPLOADS_PER_SUBMIT = 64;
+    private static final int INITIAL_UPLOADS_PER_SUBMIT = 64;
     private final StorageBufferDescriptor descriptor;
     private final RhiStats stats;
     private final VulkanDevice ownerDevice;
     private final long allocator;
-    private final long buffer;
-    private final long allocation;
-    private final long mappedAddress;
+    private NativeAllocation storage;
     private final long logicalSize;
     private final long uploadStride;
     private long activeSubmitIndex = Long.MIN_VALUE;
-    private int activeSubmitSlot = -1;
     private final long[] submitRingOwners = new long[SUBMIT_RING_SIZE];
-    private int uploadCursor;
+    private final VulkanStorageUploadRing uploads =
+            new VulkanStorageUploadRing(SUBMIT_RING_SIZE, INITIAL_UPLOADS_PER_SUBMIT);
     private long currentUploadBase;
     private final AtomicBoolean closed = new AtomicBoolean();
+    private boolean staticUploaded;
 
     VulkanStorageBuffer(IVulkanBackendInfo backend,
                         StorageBufferDescriptor descriptor,
@@ -77,10 +79,13 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
         if (logicalSize <= 0L) throw new IllegalArgumentException("Storage buffer size must be positive");
         long alignment = Math.max(1L, backend.combatant$minStorageBufferOffsetAlignment());
         this.uploadStride = align(logicalSize, alignment);
-        long ringSlots = descriptor.gpuOwned() ? SUBMIT_RING_SIZE
-                : Math.multiplyExact((long) SUBMIT_RING_SIZE, MAX_UPLOADS_PER_SUBMIT);
+        long ringSlots = descriptor.staticUpload() ? 1L : descriptor.gpuOwned() ? SUBMIT_RING_SIZE
+                : Math.multiplyExact((long) SUBMIT_RING_SIZE, INITIAL_UPLOADS_PER_SUBMIT);
         long physicalSize = Math.multiplyExact(uploadStride, ringSlots);
+        this.storage = allocate(physicalSize);
+    }
 
+    private NativeAllocation allocate(long physicalSize) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             int usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
                     | VK_BUFFER_USAGE_TRANSFER_SRC_BIT
@@ -93,10 +98,9 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
                     .usage(usage)
                     .sharingMode(VK_SHARING_MODE_EXCLUSIVE);
 
-            // Compute outputs never receive CPU snapshots: keep these SSBOs in device-local VRAM.
-            // Params still use the old host-visible upload ring.
+            // Compute outputs never receive CPU snapshots and stay in device-local VRAM.
             VmaAllocationCreateInfo allocationInfo = VmaAllocationCreateInfo.calloc(stack);
-            if (descriptor.gpuOwned()) {
+            if (descriptor.gpuOwned() || descriptor.staticUpload()) {
                 allocationInfo.usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
             } else {
                 allocationInfo.usage(VMA_MEMORY_USAGE_AUTO)
@@ -121,28 +125,27 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
                         + " label=" + descriptor.label());
             }
 
-            this.buffer = pBuffer.get(0);
-            this.allocation = pAllocation.get(0);
-            this.mappedAddress = info.pMappedData();
-        }
-
-        if (buffer == 0L || allocation == 0L || (mappedAddress == 0L && !descriptor.gpuOwned())) {
-            if (buffer != 0L && allocation != 0L) {
-                vmaDestroyBuffer(allocator, buffer, allocation);
+            NativeAllocation created = new NativeAllocation(pBuffer.get(0), pAllocation.get(0), info.pMappedData());
+            if (created.buffer() == 0L || created.allocation() == 0L
+                    || (created.mappedAddress() == 0L && !descriptor.gpuOwned() && !descriptor.staticUpload())) {
+                if (created.buffer() != 0L && created.allocation() != 0L) {
+                    vmaDestroyBuffer(allocator, created.buffer(), created.allocation());
+                }
+                throw new IllegalStateException("Vulkan storage allocation is not persistently mapped: "
+                        + descriptor.label());
             }
-            throw new IllegalStateException("Vulkan storage allocation is not persistently mapped: "
-                    + descriptor.label());
+            return created;
         }
     }
 
     long vkBuffer() {
         ensureOpen();
-        return buffer;
+        return storage.buffer();
     }
 
     long allocation() {
         ensureOpen();
-        return allocation;
+        return storage.allocation();
     }
 
     long bindingOffset(long logicalOffset) {
@@ -174,18 +177,84 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
             throw new IndexOutOfBoundsException("Storage upload exceeds buffer: end=" + end
                     + " capacity=" + logicalSize + " label=" + descriptor.label());
         }
+        if (descriptor.staticUpload()) {
+            uploadStaticOnce(src, destinationOffset, bytes);
+            return;
+        }
 
         // offset==0 starts a new logical snapshot. This is the normal Combatant compute path and
         // guarantees that descriptors recorded earlier in the same Vulkan submission keep seeing
         // the bytes that belonged to their dispatch instead of a later CPU overwrite.
-        if (destinationOffset == 0L || activeSubmitIndex == Long.MIN_VALUE) {
+        if (destinationOffset == 0L || !uploads.hasSnapshot()) {
             beginUploadSnapshot();
         }
         long physicalOffset = Math.addExact(currentUploadBase, destinationOffset);
-        ByteBuffer destination = MemoryUtil.memByteBuffer(mappedAddress + physicalOffset, (int) bytes);
+        ByteBuffer destination = MemoryUtil.memByteBuffer(storage.mappedAddress() + physicalOffset, (int) bytes);
         destination.put(src);
-        vmaFlushAllocation(allocator, allocation, physicalOffset, bytes);
+        vmaFlushAllocation(allocator, storage.allocation(), physicalOffset, bytes);
         if (stats != null) stats.storageBufferUpload(bytes);
+    }
+
+    /** A single transfer into device-local storage, independent of per-submission snapshot capacity. */
+    private void uploadStaticOnce(ByteBuffer source, long offset, long bytes) {
+        if (staticUploaded) throw new IllegalStateException("Static SSBO is immutable after initial upload: " + descriptor.label());
+        if (offset != 0 || bytes != logicalSize)
+            throw new IllegalArgumentException("Static SSBO requires one complete upload: " + descriptor.label());
+        VulkanCommandEncoder encoder = ownerDevice.createCommandEncoder();
+        if (!(encoder instanceof IVulkanCommandEncoderAccess access) || access.combatant$renderPassActive())
+            throw new IllegalStateException("Static SSBO copy must be recorded outside an active Vulkan render pass");
+        NativeAllocation staging = allocateUploadStaging(bytes);
+        try {
+            ByteBuffer mapped = MemoryUtil.memByteBuffer(staging.mappedAddress(), (int) bytes);
+            mapped.put(source);
+            vmaFlushAllocation(allocator, staging.allocation(), 0L, bytes);
+            VkCommandBuffer commandBuffer = access.combatant$commandBuffer();
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                VkBufferCopy.Buffer copy = VkBufferCopy.calloc(1, stack);
+                copy.get(0).srcOffset(0L).dstOffset(0L).size(bytes);
+                vkCmdCopyBuffer(commandBuffer, staging.buffer(), storage.buffer(), copy);
+                VkBufferMemoryBarrier.Buffer memory = VkBufferMemoryBarrier.calloc(1, stack);
+                memory.get(0).sType$Default()
+                        .srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT)
+                        .dstAccessMask(VK_ACCESS_SHADER_READ_BIT)
+                        .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                        .dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                        .buffer(storage.buffer()).offset(0L).size(bytes);
+                vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                        0, null, memory, null);
+            }
+            staticUploaded = true;
+            if (stats != null) stats.storageBufferUpload(bytes);
+        } finally {
+            // Staging stays alive until the encoder's transfer has actually completed.
+            encoder.queueForDestroy((Destroyable) () -> vmaDestroyBuffer(allocator,
+                    staging.buffer(), staging.allocation()));
+        }
+    }
+
+    private NativeAllocation allocateUploadStaging(long bytes) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkBufferCreateInfo bufferInfo = VkBufferCreateInfo.calloc(stack)
+                    .sType$Default().size(bytes)
+                    .usage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+                    .sharingMode(VK_SHARING_MODE_EXCLUSIVE);
+            VmaAllocationCreateInfo allocationInfo = VmaAllocationCreateInfo.calloc(stack)
+                    .usage(VMA_MEMORY_USAGE_AUTO)
+                    .flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                            | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+            LongBuffer pBuffer = stack.mallocLong(1);
+            PointerBuffer pAllocation = stack.mallocPointer(1);
+            VmaAllocationInfo info = VmaAllocationInfo.calloc(stack);
+            int result = vmaCreateBuffer(allocator, bufferInfo, allocationInfo, pBuffer, pAllocation, info);
+            if (result != VK_SUCCESS) throw new IllegalStateException("Static SSBO staging allocation failed: " + result);
+            NativeAllocation output = new NativeAllocation(pBuffer.get(0), pAllocation.get(0), info.pMappedData());
+            if (output.mappedAddress() == 0L) {
+                vmaDestroyBuffer(allocator, output.buffer(), output.allocation());
+                throw new IllegalStateException("Static SSBO staging buffer is not mapped");
+            }
+            return output;
+        }
     }
 
     private void selectGpuOwnedSubmitSlot() {
@@ -200,7 +269,6 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
             throw new IllegalStateException("GPU-owned SSBO submit slot is still in flight: " + descriptor.label());
         submitRingOwners[slot] = submitIndex;
         activeSubmitIndex = submitIndex;
-        activeSubmitSlot = slot;
         currentUploadBase = Math.multiplyExact((long) slot, uploadStride);
     }
 
@@ -209,30 +277,23 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
         if (!(encoder instanceof IVulkanCommandEncoderAccess access)) {
             throw new IllegalStateException("Vulkan command encoder bridge is unavailable for storage upload");
         }
-        long submitIndex = access.combatant$currentSubmitIndex();
-        if (submitIndex != activeSubmitIndex) {
-            int submitSlot = Math.floorMod(submitIndex, SUBMIT_RING_SIZE);
-            long previousOwner = submitRingOwners[submitSlot];
-            long completedSubmitIndex = access.combatant$completedSubmitIndex();
-            if (previousOwner != Long.MIN_VALUE && previousOwner > completedSubmitIndex) {
-                throw new IllegalStateException("Storage buffer submit ring would overwrite in-flight data: label="
-                        + descriptor.label() + " slot=" + submitSlot + " owner=" + previousOwner
-                        + " completed=" + completedSubmitIndex + " current=" + submitIndex);
-            }
-            submitRingOwners[submitSlot] = submitIndex;
-            activeSubmitIndex = submitIndex;
-            activeSubmitSlot = submitSlot;
-            uploadCursor = 0;
-        }
-        if (uploadCursor >= MAX_UPLOADS_PER_SUBMIT) {
-            throw new IllegalStateException("Storage buffer upload ring exhausted in one submission: label="
-                    + descriptor.label() + " max=" + MAX_UPLOADS_PER_SUBMIT);
-        }
-        if (activeSubmitSlot < 0) {
-            throw new IllegalStateException("Storage buffer submit slot is unavailable: " + descriptor.label());
-        }
-        long slot = (long) activeSubmitSlot * MAX_UPLOADS_PER_SUBMIT + uploadCursor++;
+        long slot = uploads.beginSnapshot(access.combatant$currentSubmitIndex(),
+                access.combatant$completedSubmitIndex(), this::growUploadStorage);
         currentUploadBase = Math.multiplyExact(slot, uploadStride);
+    }
+
+    private void growUploadStorage(int uploadsPerSubmit) {
+        long slots = Math.multiplyExact((long) SUBMIT_RING_SIZE, uploadsPerSubmit);
+        NativeAllocation replacement = allocate(Math.multiplyExact(uploadStride, slots));
+        NativeAllocation previous = storage;
+        storage = replacement;
+        // Recorded descriptors retain the old VkBuffer. Retire it only after its submission completes.
+        retire(previous);
+    }
+
+    private void retire(NativeAllocation retired) {
+        ownerDevice.createCommandEncoder().queueForDestroy(
+                (Destroyable) () -> vmaDestroyBuffer(allocator, retired.buffer(), retired.allocation()));
     }
 
     private static long align(long value, long alignment) {
@@ -248,8 +309,8 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
-        ownerDevice.createCommandEncoder().queueForDestroy(
-                (Destroyable) () -> vmaDestroyBuffer(allocator, buffer, allocation)
-        );
+        retire(storage);
     }
+
+    private record NativeAllocation(long buffer, long allocation, long mappedAddress) { }
 }

@@ -1,0 +1,134 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D u_BaseRadiance;
+layout(binding = 1) uniform sampler2D u_Depth;
+layout(binding = 2) uniform sampler2D u_CloudRadiance;
+layout(binding = 3) uniform sampler2D u_CloudDepth;
+layout(binding = 4) uniform sampler2D u_HighCloudRadiance;
+layout(binding = 5) uniform sampler2D u_HighCloudDepth;
+layout(binding = 6) uniform sampler2D u_ConvectiveCloudRadiance;
+layout(binding = 7) uniform sampler2D u_ConvectiveCloudDepth;
+layout(rgba16f, binding = 8) uniform writeonly image2D u_Output;
+
+layout(std430, binding = 9) readonly buffer CompositeData {
+    mat4 inverseProjection;
+    vec4 policy; // x = zero-to-one depth, y = cloud layer bit mask
+} u_Data;
+
+struct CloudSegment {
+    vec4 cloud;
+    float depth;
+};
+
+vec3 viewPosition(vec2 uv, float depth) {
+    float ndcZ = u_Data.policy.x > 0.5 ? depth : depth * 2.0 - 1.0;
+    vec4 view = u_Data.inverseProjection * vec4(uv * 2.0 - 1.0, ndcZ, 1.0);
+    return view.xyz / max(abs(view.w), 1e-7) * sign(view.w);
+}
+
+CloudSegment sampleCloudDepthAware(sampler2D radianceTexture, sampler2D depthTexture,
+                                   vec2 uv, float sceneDistance) {
+    ivec2 size = textureSize(radianceTexture, 0);
+    vec2 position = uv * vec2(size) - 0.5;
+    ivec2 base = ivec2(floor(position));
+    vec2 f = fract(position);
+    ivec2 coords[4] = ivec2[4](base, base + ivec2(1, 0), base + ivec2(0, 1), base + ivec2(1, 1));
+    float bilinear[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y),
+                                 (1.0 - f.x) * f.y, f.x * f.y);
+
+    float referenceDepth = 1e30;
+    bool hasVisible = false;
+    for (int i = 0; i < 4; ++i) {
+        ivec2 sampleCoord = clamp(coords[i], ivec2(0), size - ivec2(1));
+        float d = texelFetch(depthTexture, sampleCoord, 0).r;
+        bool visible = d >= 0.0 && (sceneDistance < 0.0 || d < sceneDistance);
+        if (visible) {
+            hasVisible = true;
+            referenceDepth = min(referenceDepth, d);
+        }
+    }
+
+    CloudSegment result;
+    result.cloud = vec4(0.0, 0.0, 0.0, 1.0);
+    result.depth = -1.0;
+    if (!hasVisible) return result;
+
+    vec4 accumulated = vec4(0.0);
+    float accumulatedDepth = 0.0;
+    float weightSum = 0.0;
+    float depthScale = max(12.0, referenceDepth * 0.06);
+    for (int i = 0; i < 4; ++i) {
+        ivec2 sampleCoord = clamp(coords[i], ivec2(0), size - ivec2(1));
+        float d = texelFetch(depthTexture, sampleCoord, 0).r;
+        bool visible = d >= 0.0 && (sceneDistance < 0.0 || d < sceneDistance);
+        if (!visible) continue;
+        float weight = bilinear[i] * exp(-abs(d - referenceDepth) / depthScale);
+        accumulated += texelFetch(radianceTexture, sampleCoord, 0) * weight;
+        accumulatedDepth += d * weight;
+        weightSum += weight;
+    }
+    if (weightSum > 1e-6) {
+        result.cloud = accumulated / weightSum;
+        result.depth = accumulatedDepth / weightSum;
+    }
+    return result;
+}
+
+void sortSegments(inout CloudSegment segments[3], out int count) {
+    count = 0;
+    CloudSegment compact[3];
+    for (int i = 0; i < 3; ++i) {
+        if (segments[i].depth < 0.0) continue;
+        compact[count++] = segments[i];
+    }
+    for (int i = 1; i < 3; ++i) {
+        if (i >= count) break;
+        CloudSegment key = compact[i];
+        int j = i - 1;
+        for (int k = 0; k < 3; ++k) {
+            if (j < 0 || compact[j].depth <= key.depth) break;
+            compact[j + 1] = compact[j];
+            j--;
+        }
+        compact[j + 1] = key;
+    }
+    for (int i = 0; i < 3; ++i) {
+        if (i < count) segments[i] = compact[i];
+    }
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_Output);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    vec3 result = max(textureLod(u_BaseRadiance, uv, 0.0).rgb, vec3(0.0));
+    float depth = textureLod(u_Depth, uv, 0.0).r;
+    float sceneDistance = depth > 0.0 ? length(viewPosition(uv, depth)) : -1.0;
+
+    CloudSegment segments[3];
+    for (int i = 0; i < 3; ++i) {
+        segments[i].cloud = vec4(0.0, 0.0, 0.0, 1.0);
+        segments[i].depth = -1.0;
+    }
+    int cloudMask = int(u_Data.policy.y + 0.5);
+    if ((cloudMask & 1) != 0)
+        segments[0] = sampleCloudDepthAware(u_CloudRadiance, u_CloudDepth, uv, sceneDistance);
+    if ((cloudMask & 2) != 0)
+        segments[1] = sampleCloudDepthAware(u_HighCloudRadiance, u_HighCloudDepth, uv, sceneDistance);
+    if ((cloudMask & 4) != 0)
+        segments[2] = sampleCloudDepthAware(u_ConvectiveCloudRadiance, u_ConvectiveCloudDepth, uv, sceneDistance);
+
+    int count;
+    sortSegments(segments, count);
+    for (int reverseIndex = 0; reverseIndex < 3; ++reverseIndex) {
+        int i = count - 1 - reverseIndex;
+        if (i < 0) break;
+        float cloudT = clamp(segments[i].cloud.a, 0.0, 1.0);
+        result = max(segments[i].cloud.rgb, vec3(0.0)) + cloudT * result;
+    }
+    imageStore(u_Output, pixel, vec4(max(result, vec3(0.0)), 1.0));
+}

@@ -1,0 +1,69 @@
+#version 430 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+layout(binding = 0, r32f) writeonly uniform image3D u_Occupancy;
+
+layout(std430, binding = 1) readonly buffer CloudOccupancyData {
+    vec4 grid;
+    vec4 macroGrid;
+    vec4 macroOrigin;
+    vec4 counts;
+    vec4 cameraTime;
+    vec4 noiseDomain;
+    vec4 occupancyDomain;
+    vec4 occupancyExtent;
+} u_Data;
+
+#define COMBATANT_CLOUD_WEATHER_BINDING 2
+#define COMBATANT_CLOUD_DOMAIN_BINDING 3
+#define COMBATANT_CLOUD_MACRO_WEATHER_BINDING 4
+#moj_import <combatant:deferred_cloud_density.glsl>
+
+bool overlapsDomainAtXZ(CloudDomain domain, vec2 localXZ, float cellMinY, float cellMaxY, float safetyPad) {
+    WeatherCell macroWeather = combatant_cloud_sample_macro_weather(localXZ);
+    float baseY;
+    float topY;
+    combatant_cloud_domain_altitudes(domain, vec3(localXZ.x, 0.5 * (cellMinY + cellMaxY), localXZ.y),
+            macroWeather, baseY, topY);
+    return cellMaxY >= baseY - safetyPad && cellMinY <= topY + safetyPad;
+}
+
+void main() {
+    ivec3 cell = ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 size = imageSize(u_Occupancy);
+    if (any(greaterThanEqual(cell, size))) return;
+    if (u_Data.counts.y <= 0.5 || u_Data.counts.x < 0.5) {
+        imageStore(u_Occupancy, cell, vec4(0.0));
+        return;
+    }
+
+    float spanXZ = max(u_Data.occupancyExtent.x, 1.0);
+    float spanY = max(u_Data.occupancyExtent.y, 1.0);
+    vec3 cellSize = vec3(spanXZ / float(size.x), spanY / float(size.y), spanXZ / float(size.z));
+    vec3 cellMin = vec3(u_Data.occupancyDomain.x, u_Data.occupancyDomain.z, u_Data.occupancyDomain.y)
+            + vec3(cell) * cellSize;
+    vec3 cellMax = cellMin + cellSize;
+    float safetyPad = max(2.0, max(cellSize.x, cellSize.z) * 0.35);
+
+    vec2 sampleXZ[5] = vec2[5](
+        0.5 * (cellMin.xz + cellMax.xz),
+        cellMin.xz,
+        vec2(cellMax.x, cellMin.z),
+        vec2(cellMin.x, cellMax.z),
+        cellMax.xz
+    );
+
+    float occupied = 0.0;
+    int domainCount = clamp(int(u_Data.counts.x), 0, COMBATANT_CLOUD_MAX_DOMAINS);
+    for (int i = 0; i < COMBATANT_CLOUD_MAX_DOMAINS; ++i) {
+        if (i >= domainCount || occupied > 0.5) break;
+        CloudDomain domain = u_Domains.domains[i];
+        for (int s = 0; s < 5; ++s) {
+            if (overlapsDomainAtXZ(domain, sampleXZ[s], cellMin.y, cellMax.y, safetyPad)) {
+                occupied = 1.0;
+                break;
+            }
+        }
+    }
+    imageStore(u_Occupancy, cell, vec4(occupied, 0.0, 0.0, 0.0));
+}

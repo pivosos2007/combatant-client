@@ -140,7 +140,7 @@ public final class ChunkFinder extends ShaderBoxModule {
     private boolean spawnerActive;
 
     public ChunkFinder() {
-        super(RenderMode.BOX, RenderMode.BOX, RenderMode.GLOW, RenderMode.SHADER);
+        super(RenderMode.BOX, RenderMode.BOX);
     }
 
     private ChunkMarkers.Settings markerSettings(NumberValue<Integer> minMarkerDistance,

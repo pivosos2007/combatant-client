@@ -27,17 +27,15 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /**
- * The schematic as an orbitable block model, drawn on the CPU: faces come from {@link FaceMesher} (rebuilt only
+ * The schematic as an orbitable block model. Faces come from {@link FaceMesher} (rebuilt only
  * when the schematic, selected layer, view mode or gap change; off-thread for big builds), and every frame
- * {@link FaceFrame} culls, projects and depth-sorts them into one batch of 2D quads. Main thread only.
+ * and are uploaded once to the native indirect-instanced pipeline. {@link FaceFrame} remains as a CPU-only fallback. Main thread only.
  */
 final class SchematicViewport {
 
     static final float MAX_GAP = 4f;
-    private static final int MAX_FACES = 80_000;
-    /** Most sprite repeats drawn on one coarse face before the sprite is stretched over it instead. */
-    private static final int MAX_TILES = 16;
-    private static final int SYNC_VOLUME = 125_000;
+    private static final int MAX_FACES = 500_000;
+    private static final int SYNC_VOLUME = 32_768;
     private static final float CLICK_SLOP = 4f;
     private static final long TINT_REFRESH_NANOS = 250_000_000L;
     private static final ExecutorService MESHER = Executors.newSingleThreadExecutor(runnable -> {
@@ -49,6 +47,10 @@ final class SchematicViewport {
 
     private final OrbitCamera camera = new OrbitCamera();
     private final FaceFrame frame = new FaceFrame();
+    private final SchematicGpuRenderer gpu = new SchematicGpuRenderer();
+    private FaceList mediumFaces, distantFaces;
+    private final SchematicAdaptiveQuality adaptiveQuality = new SchematicAdaptiveQuality();
+    private float renderDistanceScale = 1f;
     private final float[] ray = new float[6];
     private final float[] point = new float[16];
     private final VoxelPicker.Solid pickTest = this::pickable;
@@ -56,6 +58,8 @@ final class SchematicViewport {
     private final Consumer<Renderer2D.QuadBatch> hoverBatch = this::drawHover;
     private final Consumer<Renderer2D.QuadBatch> flatRun = this::drawFlatRun;
     private final Consumer<Renderer2D.TexturedQuadBatch> texturedRun = this::drawTexturedRun;
+    private int runStart, runEnd;
+    private boolean[] texturedFaces = new boolean[0];
 
     private ViewMode mode = ViewMode.SOLID_BELOW;
     private float gap = 1f;
@@ -71,9 +75,11 @@ final class SchematicViewport {
     private GpuTextureView atlasView;
     private GpuSampler atlasSampler;
     private boolean faceTinted;
-    private final float[] cornerX = new float[4], cornerY = new float[4];
+    private final float[] cornerX = new float[4], cornerY = new float[4], cornerD = new float[4];
     private final float[] tileX = new float[4], tileY = new float[4], tileU = new float[4], tileV = new float[4];
     private final int[] tileC = new int[4];
+    /** Reused convex polygons (x, y, normalized u, normalized v) for near-plane-clipped tiles. */
+    private final float[] clipA = new float[12 * 5], clipB = new float[12 * 5];
     private int layer;
 
     private FaceList faces;
@@ -83,7 +89,8 @@ final class SchematicViewport {
     private SchematicDiff facesDiff;
     private int facesRevision = -1;
     private long facesNanos;
-    private CompletableFuture<FaceList> pending;
+    private CompletableFuture<FaceBundle> pending;
+    private record FaceBundle(FaceList near, FaceList medium, FaceList far) { }
     private ViewMode pendingMode;
     private int pendingLayer;
     private float pendingGap;
@@ -131,8 +138,41 @@ final class SchematicViewport {
         autoRotate = !autoRotate;
     }
 
+    void dispose() {
+        gpu.close();
+        pending = null;
+        mediumFaces = distantFaces = null;
+    }
+
     void resetCamera() {
         camera.reset();
+    }
+
+    boolean freeFly() {
+        return camera.freeFly();
+    }
+
+    float flySpeed() {
+        return camera.flySpeed();
+    }
+
+    int targetFps() { return adaptiveQuality.targetFps(); }
+
+    void setTargetFps(int fps) { adaptiveQuality.setTargetFps(fps); }
+
+    float renderDistanceScale() { return renderDistanceScale; }
+
+    void setRenderDistanceScale(float scale) {
+        renderDistanceScale = Math.max(0.5f, Math.min(3f, Math.round(scale * 4f) / 4f));
+    }
+
+    void toggleFreeFly() {
+        camera.toggleFreeFly();
+        autoRotate = false;
+    }
+
+    void fly(float sideways, float vertically, float forwards, float dt, boolean fast) {
+        camera.fly(sideways, vertically, forwards, dt, fast);
     }
 
     int hovered() {
@@ -169,10 +209,22 @@ final class SchematicViewport {
         frameCamera();
         camera.update(dt, autoRotate && !orbiting);
         camera.computeView(x, y, w, h);
+        adaptiveQuality.update(dt, combatant.client.util.FastFps.getFps());
         hovered = mouseInside && !dragging() ? cachedPick(mouseX, mouseY) : -1;
         if (faces == null) return;
         refreshStatus();
+        // GPU path does not project/sort/subdivide any face on the CPU. The depth-tested
+        // indirect draw renders to a private viewport texture, then joins the ordered UI stream.
+        if (gpu.draw(faces, mediumFaces, distantFaces, volume, textures,
+                statusFaces == faces ? faceStatus : null, diff,
+                statusFaces == faces ? statusRevision : -1, camera, adaptiveQuality,
+                renderDistanceScale, atlasView, atlasSampler, x, y, w, h, alpha,
+                () -> Renderer2D.COLOR.quadBatch(footprintBatch))) {
+            if (hovered >= 0) Renderer2D.COLOR.quadBatch(hoverBatch);
+            return;
+        }
         frame.build(faces, camera, x, y, w, h);
+        allocateTextureBudget();
         boolean clipped = ScissorFunction.pushRaw(x + 1f, y + 1f, w - 2f, h - 2f);
         try {
             drawScene();
@@ -187,6 +239,7 @@ final class SchematicViewport {
         schematic = next;
         volume = new SchematicVolume(next);
         faces = null;
+        mediumFaces = distantFaces = null;
         facesLayer = -1;
         pending = null;
         hovered = -1;
@@ -203,6 +256,7 @@ final class SchematicViewport {
             texturesGeneration = generation;
             shapes = SchematicTextures.shapesOf(textures);
             faces = null;
+            mediumFaces = distantFaces = null;
         }
         atlasView = SchematicTextures.view();
         atlasSampler = SchematicTextures.sampler();
@@ -223,7 +277,7 @@ final class SchematicViewport {
         SchematicDiff meshDiff = diff;
         int meshRevision = meshDiff == null ? -1 : meshDiff.revision();
         if (pending != null && pending.isDone()) {
-            FaceList built = pending.getNow(null);
+            FaceBundle built = pending.getNow(null);
             if (built != null) adopt(built, pendingMode, pendingLayer, pendingGap, pendingDiff, pendingRevision);
             pending = null;
         }
@@ -233,7 +287,7 @@ final class SchematicViewport {
         // Merged faces share one diff group; a changed diff only re-meshes at the tint refresh rate.
         if (sameShape && facesDiff == meshDiff && now - facesNanos < TINT_REFRESH_NANOS) return;
         if (schematic.volume() <= SYNC_VOLUME) {
-            adopt(FaceMesher.build(volume, shapes, paletteColors, mode, layer, meshGap, MAX_FACES, mergeGroups(meshDiff)),
+            adopt(buildBundle(volume, shapes, paletteColors, mode, layer, meshGap, mergeGroups(meshDiff)),
                     mode, layer, meshGap, meshDiff, meshRevision);
             return;
         }
@@ -249,7 +303,25 @@ final class SchematicViewport {
         ViewMode jobMode = mode;
         int jobLayer = layer;
         java.util.function.IntUnaryOperator groups = mergeGroups(meshDiff);
-        pending = CompletableFuture.supplyAsync(() -> FaceMesher.build(source, jobShapes, colors, jobMode, jobLayer, meshGap, MAX_FACES, groups), MESHER);
+        pending = CompletableFuture.supplyAsync(() -> buildBundle(source, jobShapes, colors,
+                jobMode, jobLayer, meshGap, groups), MESHER);
+    }
+
+    private static FaceBundle buildBundle(VoxelVolume volume,
+                                          combatant.client.features.gui.schematic.view3d.BlockShape[] shapes,
+                                          int[] colors, ViewMode mode, int layer, float gap,
+                                          java.util.function.IntUnaryOperator groups) {
+        FaceList near = FaceMesher.build(volume, shapes, colors, mode, layer, gap, MAX_FACES, groups);
+        // Build coarser substitutes once on the mesher thread. GPU selects among them per spatial tile.
+        int mediumStep = Math.min(64, Math.max(4, near.lodStep() * 4));
+        int farStep = Math.min(64, Math.max(16, mediumStep * 4));
+        FaceList medium = mediumStep == near.lodStep() ? near :
+                FaceMesher.buildAtLeastStep(volume, shapes, colors, mode, layer,
+                        gap, MAX_FACES, groups, mediumStep);
+        FaceList far = farStep == medium.lodStep() ? medium :
+                FaceMesher.buildAtLeastStep(volume, shapes, colors, mode, layer,
+                        gap, MAX_FACES, groups, farStep);
+        return new FaceBundle(near, medium, far);
     }
 
     /** Cube faces merge across blocks that tint alike: correct, wrong, and everything else are three groups. */
@@ -262,8 +334,10 @@ final class SchematicViewport {
         };
     }
 
-    private void adopt(FaceList built, ViewMode builtMode, int builtLayer, float builtGap, SchematicDiff builtDiff, int builtRevision) {
-        faces = built;
+    private void adopt(FaceBundle built, ViewMode builtMode, int builtLayer, float builtGap, SchematicDiff builtDiff, int builtRevision) {
+        faces = built.near();
+        mediumFaces = built.medium();
+        distantFaces = built.far();
         facesMode = builtMode;
         facesLayer = builtLayer;
         facesGap = builtGap;
@@ -308,17 +382,32 @@ final class SchematicViewport {
 
     // ---------------------------------------------------------------- drawing
 
+    /** Native GPU instancing is preferred; the CPU fallback must not silently drop textures or faces. */
+    private void allocateTextureBudget() {
+        if (faces == null) return;
+        if (texturedFaces.length < faces.count()) texturedFaces = new boolean[faces.count()];
+        for (int i = 0; i < frame.visible(); i++) {
+            int face = frame.face(i);
+            texturedFaces[face] = textured(face);
+        }
+    }
+
     private void drawScene() {
         Renderer2D.COLOR.quadBatch(footprintBatch);
         faceTinted = statusFaces == faces && statusFaces != null;
-        // At most one flat batch and one textured batch per frame; faces keep back-to-front order inside each.
+        // Keep painter order across flat and atlas geometry. Rendering all flat faces ahead of every textured
+        // face made cutouts, glass and block silhouettes appear through objects in front of them.
         int n = frame.visible();
-        boolean anyFlat = false, anyTextured = false;
-        for (int i = 0; i < n && !(anyFlat && anyTextured); i++) {
-            if (textured(frame.face(i))) anyTextured = true; else anyFlat = true;
+        for (int first = 0; first < n;) {
+            boolean atlas = texturedFaces[frame.face(first)];
+            int end = first + 1;
+            while (end < n && texturedFaces[frame.face(end)] == atlas) end++;
+            runStart = first;
+            runEnd = end;
+            if (atlas) Renderer2D.COLOR.texturedQuadBatch(atlasView, atlasSampler, texturedRun);
+            else Renderer2D.COLOR.quadBatch(flatRun);
+            first = end;
         }
-        if (anyFlat) Renderer2D.COLOR.quadBatch(flatRun);
-        if (anyTextured) Renderer2D.COLOR.texturedQuadBatch(atlasView, atlasSampler, texturedRun);
         if (hovered >= 0) Renderer2D.COLOR.quadBatch(hoverBatch);
     }
 
@@ -327,16 +416,16 @@ final class SchematicViewport {
     }
 
     private void drawFlatRun(Renderer2D.QuadBatch batch) {
-        for (int i = 0, n = frame.visible(); i < n; i++) {
+        for (int i = runStart; i < runEnd; i++) {
             int f = frame.face(i);
-            if (!textured(f)) drawFace(batch, f, faceColor(f, faces.color(f)));
+            drawFace(batch, f, faceColor(f, faces.color(f)));
         }
     }
 
     private void drawTexturedRun(Renderer2D.TexturedQuadBatch batch) {
-        for (int i = 0, n = frame.visible(); i < n; i++) {
+        for (int i = runStart; i < runEnd; i++) {
             int f = frame.face(i);
-            if (textured(f)) drawTexturedFace(batch, f, faceColor(f, faces.light(f)));
+            drawTexturedFace(batch, f, faceColor(f, faces.light(f)));
         }
     }
 
@@ -352,38 +441,50 @@ final class SchematicViewport {
     private boolean textured(int f) {
         if (textures == null || atlasView == null) return false;
         if (faces.isQuad(f)) return true;
-        return textures[volume.cell(faces.voxel(f))].has[faces.direction(f) * SchematicTextures.LAYERS];
+        SchematicTextures.Entry entry = textures[volume.cell(faces.voxel(f))];
+        int offset = faces.direction(f) * SchematicTextures.LAYERS;
+        for (int layer = 0; layer < SchematicTextures.LAYERS; layer++)
+            if (entry.has[offset + layer]) return true;
+        return false;
     }
 
     /**
-     * One face from the block atlas, the sprite repeated once per block it spans (coarse level-of-detail blocks
-     * span several; past {@link #MAX_TILES} tiles each axis is capped at 8 repeats and the sprite stretched). {@code color}
-     * multiplies the sprite, so the diff and hover tints sit on top of the texture rather than replacing it.
+     * One face from the block atlas. Repeats are NEVER capped: each block gets the actual sprite UV range,
+     * even for coarse LOD faces. Near-plane-clipped faces are additionally clipped per tile in screen space.
      */
     private void drawTexturedFace(Renderer2D.TexturedQuadBatch batch, int f, int color) {
         if (faces.isQuad(f)) {
             int lit = SchematicTextures.multiply(color, faces.quadTint(f));
-            batch.quad(
-                    frame.screen(f, 0, 0), frame.screen(f, 0, 1), faces.quadUv(f, 0, 0), faces.quadUv(f, 0, 1), lit,
-                    frame.screen(f, 1, 0), frame.screen(f, 1, 1), faces.quadUv(f, 1, 0), faces.quadUv(f, 1, 1), lit,
-                    frame.screen(f, 2, 0), frame.screen(f, 2, 1), faces.quadUv(f, 2, 0), faces.quadUv(f, 2, 1), lit,
-                    frame.screen(f, 3, 0), frame.screen(f, 3, 1), faces.quadUv(f, 3, 0), faces.quadUv(f, 3, 1), lit);
+            if (frame.clipped(f)) {
+                // A clipped quad can have three, four or five vertices. The fan does not discard the whole face.
+                for (int c = 1, n = frame.vertices(f); c + 1 < n; c++) {
+                    batch.quad(frame.screen(f, 0, 0), frame.screen(f, 0, 1), frame.uv(f, 0, 0), frame.uv(f, 0, 1), lit,
+                            frame.screen(f, c, 0), frame.screen(f, c, 1), frame.uv(f, c, 0), frame.uv(f, c, 1), lit,
+                            frame.screen(f, c + 1, 0), frame.screen(f, c + 1, 1), frame.uv(f, c + 1, 0), frame.uv(f, c + 1, 1), lit,
+                            frame.screen(f, c + 1, 0), frame.screen(f, c + 1, 1), frame.uv(f, c + 1, 0), frame.uv(f, c + 1, 1), lit);
+                }
+            } else {
+                batch.quad(
+                        frame.screen(f, 0, 0), frame.screen(f, 0, 1), faces.quadUv(f, 0, 0), faces.quadUv(f, 0, 1), lit,
+                        frame.screen(f, 1, 0), frame.screen(f, 1, 1), faces.quadUv(f, 1, 0), faces.quadUv(f, 1, 1), lit,
+                        frame.screen(f, 2, 0), frame.screen(f, 2, 1), faces.quadUv(f, 2, 0), faces.quadUv(f, 2, 1), lit,
+                        frame.screen(f, 3, 0), frame.screen(f, 3, 1), faces.quadUv(f, 3, 0), faces.quadUv(f, 3, 1), lit);
+            }
             return;
         }
         int d = faces.direction(f);
         SchematicTextures.Entry entry = textures[volume.cell(faces.voxel(f))];
         boolean side = d >= FaceList.EAST;
-        for (int c = 0; c < 4; c++) {
-            int slot = FaceList.textureUv(d, c, 0) + 2 * FaceList.textureUv(d, c, 1);
-            cornerX[slot] = frame.screen(f, c, 0);
-            cornerY[slot] = frame.screen(f, c, 1);
+        if (!frame.clipped(f)) {
+            for (int c = 0; c < 4; c++) {
+                int slot = FaceList.textureUv(d, c, 0) + 2 * FaceList.textureUv(d, c, 1);
+                cornerX[slot] = frame.screen(f, c, 0);
+                cornerY[slot] = frame.screen(f, c, 1);
+                cornerD[slot] = frame.viewDepth(f, c);
+            }
         }
         int nu = Math.max(1, (int) Math.ceil(faces.textureSpan(f, 0) - 1.0e-3f));
         int nv = Math.max(1, (int) Math.ceil(faces.textureSpan(f, 1) - 1.0e-3f));
-        if (nu * nv > MAX_TILES) {
-            nu = Math.min(nu, 8);
-            nv = Math.min(nv, 8);
-        }
         for (int layer = 0; layer < SchematicTextures.LAYERS; layer++) {
             int slot = d * SchematicTextures.LAYERS + layer;
             if (!entry.has[slot]) continue;
@@ -398,15 +499,24 @@ final class SchematicViewport {
                 int bottom = side ? FaceMesher.mix(upper, lower, b1) : lower;
                 for (int ti = 0; ti < nu; ti++) {
                     float a0 = ti / (float) nu, a1 = (ti + 1) / (float) nu;
+                    if (frame.clipped(f)) {
+                        drawClippedTile(batch, f, a0, a1, b0, b1, u0, v0, u1, v1, upper, lower, side);
+                        continue;
+                    }
+                    float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY;
+                    float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
                     for (int c = 0; c < 4; c++) {
                         int bu = FaceList.textureUv(d, c, 0), bv = FaceList.textureUv(d, c, 1);
                         float a = bu == 0 ? a0 : a1, b = bv == 0 ? b0 : b1;
-                        tileX[c] = lerp(lerp(cornerX[0], cornerX[1], a), lerp(cornerX[2], cornerX[3], a), b);
-                        tileY[c] = lerp(lerp(cornerY[0], cornerY[1], a), lerp(cornerY[2], cornerY[3], a), b);
+                        tileX[c] = perspectiveBilinear(cornerX, cornerD, a, b);
+                        tileY[c] = perspectiveBilinear(cornerY, cornerD, a, b);
                         tileU[c] = bu == 0 ? u0 : u1;
                         tileV[c] = bv == 0 ? v0 : v1;
                         tileC[c] = bv == 0 ? top : bottom;
+                        minX = Math.min(minX, tileX[c]); maxX = Math.max(maxX, tileX[c]);
+                        minY = Math.min(minY, tileY[c]); maxY = Math.max(maxY, tileY[c]);
                     }
+                    if (maxX < x || maxY < y || minX > x + w || minY > y + h) continue;
                     batch.quad(tileX[0], tileY[0], tileU[0], tileV[0], tileC[0],
                             tileX[1], tileY[1], tileU[1], tileV[1], tileC[1],
                             tileX[2], tileY[2], tileU[2], tileV[2], tileC[2],
@@ -416,11 +526,101 @@ final class SchematicViewport {
         }
     }
 
+    /** Clip the near-plane polygon to a tile's UV bounds; preserve a complete sprite for every block. */
+    private void drawClippedTile(Renderer2D.TexturedQuadBatch batch, int face,
+                                 float minU, float maxU, float minV, float maxV,
+                                 float atlasU0, float atlasV0, float atlasU1, float atlasV1,
+                                 int upper, int lower, boolean side) {
+        int n = frame.vertices(face);
+        for (int c = 0; c < n; c++) {
+            int off = c * 5;
+            clipA[off] = frame.screen(face, c, 0);
+            clipA[off + 1] = frame.screen(face, c, 1);
+            clipA[off + 2] = frame.uv(face, c, 0);
+            clipA[off + 3] = frame.uv(face, c, 1);
+            clipA[off + 4] = frame.viewDepth(face, c);
+        }
+        n = clipTileEdge(clipA, n, clipB, 2, minU, true);
+        if (n < 3) return;
+        n = clipTileEdge(clipB, n, clipA, 2, maxU, false);
+        if (n < 3) return;
+        n = clipTileEdge(clipA, n, clipB, 3, minV, true);
+        if (n < 3) return;
+        n = clipTileEdge(clipB, n, clipA, 3, maxV, false);
+        if (n < 3) return;
+        float invU = 1f / (maxU - minU), invV = 1f / (maxV - minV);
+        for (int c = 1; c + 1 < n; c++) {
+            submitClipVertex(batch, 0, c, c + 1, atlasU0, atlasV0, atlasU1, atlasV1,
+                    minU, minV, invU, invV, upper, lower, side);
+        }
+    }
+
+    private static int clipTileEdge(float[] in, int count, float[] out, int component, float limit, boolean minimum) {
+        int total = 0, previous = (count - 1) * 5;
+        boolean previousInside = minimum ? in[previous + component] >= limit : in[previous + component] <= limit;
+        for (int c = 0; c < count; c++) {
+            int current = c * 5;
+            boolean inside = minimum ? in[current + component] >= limit : in[current + component] <= limit;
+            if (inside != previousInside) {
+                float t = (limit - in[previous + component]) / (in[current + component] - in[previous + component]);
+                int off = total * 5;
+                float dp = in[previous + 4], dc = in[current + 4];
+                float depth = lerp(dp, dc, t);
+                out[off] = (in[previous] * dp * (1f - t) + in[current] * dc * t) / depth;
+                out[off + 1] = (in[previous + 1] * dp * (1f - t) + in[current + 1] * dc * t) / depth;
+                out[off + 2] = lerp(in[previous + 2], in[current + 2], t);
+                out[off + 3] = lerp(in[previous + 3], in[current + 3], t);
+                out[off + 4] = depth;
+                total++;
+            }
+            if (inside) {
+                System.arraycopy(in, current, out, total * 5, 5);
+                total++;
+            }
+            previous = current;
+            previousInside = inside;
+        }
+        return total;
+    }
+
+    private void submitClipVertex(Renderer2D.TexturedQuadBatch batch, int a, int b, int c,
+                                  float u0, float v0, float u1, float v1, float minU, float minV,
+                                  float invU, float invV, int upper, int lower, boolean side) {
+        int pa = a * 5, pb = b * 5, pc = c * 5;
+        float au = lerp(u0, u1, (clipA[pa + 2] - minU) * invU), av = lerp(v0, v1, (clipA[pa + 3] - minV) * invV);
+        float bu = lerp(u0, u1, (clipA[pb + 2] - minU) * invU), bv = lerp(v0, v1, (clipA[pb + 3] - minV) * invV);
+        float cu = lerp(u0, u1, (clipA[pc + 2] - minU) * invU), cv = lerp(v0, v1, (clipA[pc + 3] - minV) * invV);
+        int ac = side ? FaceMesher.mix(upper, lower, clipA[pa + 3]) : upper;
+        int bc = side ? FaceMesher.mix(upper, lower, clipA[pb + 3]) : upper;
+        int cc = side ? FaceMesher.mix(upper, lower, clipA[pc + 3]) : upper;
+        batch.quad(clipA[pa], clipA[pa + 1], au, av, ac,
+                clipA[pb], clipA[pb + 1], bu, bv, bc,
+                clipA[pc], clipA[pc + 1], cu, cv, cc,
+                clipA[pc], clipA[pc + 1], cu, cv, cc);
+    }
+
+    /** Project one corner of a tiled rectangle without affine screen-space distortion. */
+    private static float perspectiveBilinear(float[] projected, float[] depths, float u, float v) {
+        float a = (1f - u) * (1f - v), b = u * (1f - v), c = (1f - u) * v, d = u * v;
+        float za = a * depths[0], zb = b * depths[1], zc = c * depths[2], zd = d * depths[3];
+        return (za * projected[0] + zb * projected[1] + zc * projected[2] + zd * projected[3])
+                / (za + zb + zc + zd);
+    }
+
     private static float lerp(float a, float b, float t) {
         return a + (b - a) * t;
     }
 
     private void drawFace(Renderer2D.QuadBatch batch, int f, int color) {
+        if (frame.clipped(f)) {
+            for (int c = 1, n = frame.vertices(f); c + 1 < n; c++) {
+                batch.quad(frame.screen(f, 0, 0), frame.screen(f, 0, 1), color,
+                        frame.screen(f, c, 0), frame.screen(f, c, 1), color,
+                        frame.screen(f, c + 1, 0), frame.screen(f, c + 1, 1), color,
+                        frame.screen(f, c + 1, 0), frame.screen(f, c + 1, 1), color);
+            }
+            return;
+        }
         float x0 = frame.screen(f, 0, 0), y0 = frame.screen(f, 0, 1);
         float x1 = frame.screen(f, 1, 0), y1 = frame.screen(f, 1, 1);
         float x2 = frame.screen(f, 2, 0), y2 = frame.screen(f, 2, 1);
@@ -525,7 +725,7 @@ final class SchematicViewport {
 
     void beginDrag(int button, float mx, float my, boolean panModifier) {
         // LMB rotates; Shift+LMB, MMB and RMB translate in the screen plane.
-        orbiting = button == 0 && !panModifier;
+        orbiting = camera.freeFly() || button == 0 && !panModifier;
         panning = !orbiting;
         lastX = mx;
         lastY = my;
@@ -543,7 +743,7 @@ final class SchematicViewport {
 
     /** Ends a drag; returns the layer to select when it was a plain left click on a block, else -1. */
     int endDrag(float mx, float my) {
-        boolean click = orbiting && dragDistance < CLICK_SLOP;
+        boolean click = orbiting && !camera.freeFly() && dragDistance < CLICK_SLOP;
         orbiting = false;
         panning = false;
         if (!click || schematic == null) return -1;

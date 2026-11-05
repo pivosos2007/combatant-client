@@ -162,38 +162,50 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             Operation<Void> original
     ) {
         PlayerPoseCapture.capture(model, modelState, matrices);
-        if (model instanceof PlayerModel && combatant.client.features.playermodel.PlayerModels.submit(
-                modelState, collector, matrices, renderType, light, overlay, tint, outlineColor)) {
-            // Skin-backed pieces (helmets, face masks, pauldrons) are additive, not a
-            // replacement for the player. Reuse the actual vanilla AvatarRenderState:
-            // skin, pose, slim geometry and second skin layer stay under Minecraft's control.
-            var skinBacked = combatant.client.features.playermodel.PlayerModels.skinBacked(modelState);
-            if (skinBacked != null) {
-                // The player's existing skin must use the SAME frozen pose as the helmet.
-                // The normal vanilla submission would animate the head and spine using a
-                // different skeleton. Reuse the already-existing Combatant skin renderer;
-                // it caches the native mesh and preserves AvatarRenderState visibility/UVs.
-                if (!(modelState instanceof AvatarRenderState avatarState)
-                        || !PlayerRigCpuRenderer.submitPlayer(collector, (PlayerModel) model,
-                                avatarState, skinBacked.rig(), matrices, renderType, light,
-                                overlay, tint, sprite, outlineColor, null)) {
-                    original.call(collector, model, modelState, matrices, renderType, light,
-                            overlay, tint, sprite, outlineColor);
-                }
-                for (var clothing : skinBacked.asset().clothingSprites()) {
-                    // Clothing uses the exact same pose and Minecraft player UVs, too.
-                    if (!(modelState instanceof AvatarRenderState avatarState)
-                            || !PlayerRigCpuRenderer.submitPlayer(collector, (PlayerModel) model,
-                                    avatarState, skinBacked.rig(), matrices,
-                                    RenderTypes.entityTranslucent(clothing), light, overlay,
-                                    tint, sprite, outlineColor, null)) {
-                        original.call(collector, model, modelState, matrices,
-                                RenderTypes.entityTranslucent(clothing), light, overlay,
-                                tint, sprite, outlineColor);
+        if (model instanceof PlayerModel playerModel) {
+            var skinOverlay = combatant.client.features.playermodel.PlayerModels.skinBacked(modelState);
+            if (skinOverlay != null) {
+                // Altin uses its COMPLETE imported armor; only the explicitly requested
+                // native head is submitted from the player's live skin. Do NOT submit the
+                // entire player or silently fill missing OBJ groups with a naked avatar.
+                if (combatant.client.features.playermodel.PlayerModels.submit(
+                        modelState, collector, matrices, renderType, light, overlay, tint, outlineColor)) {
+                    if (modelState instanceof AvatarRenderState avatarState) {
+                        int smoothTint = combatant.client.features.playermodel.PlayerModels.nativeSkinTint(
+                                tint, skinOverlay.hit());
+                        // Keep the native skin fragments on the same gradual hit curve as
+                        // imported armor; the sharp vanilla overlay causes flashing.
+                        int smoothOverlay = skinOverlay.hit() > 0.0f
+                                ? net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY : overlay;
+                        if (!skinOverlay.asset().skinParts().isEmpty()) {
+                            PlayerRigCpuRenderer.submitPlayer(collector, playerModel, avatarState,
+                                    skinOverlay.rig(), matrices, renderType, light,
+                                    smoothOverlay, smoothTint, sprite, outlineColor, null,
+                                    skinOverlay.asset().skinFit().headScale(),
+                                    skinOverlay.asset().skinFit().hideHat(), skinOverlay.asset().skinParts(),
+                                    skinOverlay.asset().skinFit().headOffset());
+                        }
+                        // Optional clothes never trigger a second complete body submission.
+                        if (!skinOverlay.asset().clothingParts().isEmpty()) {
+                            for (var clothing : skinOverlay.asset().clothingSprites()) {
+                                PlayerRigCpuRenderer.submitPlayer(collector, playerModel, avatarState,
+                                        skinOverlay.rig(), matrices, RenderTypes.entityTranslucent(clothing),
+                                        light, smoothOverlay, smoothTint, sprite, outlineColor, null,
+                                        skinOverlay.asset().skinFit().headScale(),
+                                        skinOverlay.asset().skinFit().hideHat(),
+                                        skinOverlay.asset().clothingParts(),
+                                        skinOverlay.asset().skinFit().headOffset());
+                            }
+                        }
                     }
+                    return;
                 }
+                // GPU preflight failed: let the normal vanilla player renderer be the
+                // complete fallback instead of showing only a head without armor.
             }
-            return;
+            if (skinOverlay == null && combatant.client.features.playermodel.PlayerModels.submit(
+                    modelState, collector, matrices, renderType, light, overlay, tint, outlineColor))
+                return;
         }
         if (!combatant.client.features.playermodel.PlayerModels.active(modelState)
                 && model instanceof PlayerModel playerModel
@@ -294,11 +306,16 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
             return RenderTypes.entityCutout(getTextureLocation(state));
         }
         SeeInvisibles seeInvisibles = Modules.get(SeeInvisibles.class);
-        if (seeInvisibles != null && seeInvisibles.shouldRenderInvisiblePlayer(state.entityType, state.isInvisible)
-                && seeInvisibles.getInvisiblePlayerAlpha01() >= 1.0f
-                && (!(state instanceof ViewObstructionFadeState fade)
-                    || !fade.combatant$isViewObstructionFadeActive())) {
-            // At alpha=255 this is an opaque cutout player and must write regular scene depth.
+        if (seeInvisibles != null && seeInvisibles.shouldRenderInvisiblePlayer(state.entityType, state.isInvisible)) {
+            // Vanilla often returns NULL for an invisible non-glowing player.
+            // Returning null here suppresses submitModel and therefore the GPU
+            // replacement entirely; a changed alpha setting cannot affect it.
+            // Keep the collector's translucent type for native skin fragments,
+            // while the imported GPU body uses stable depth-writing coverage.
+            if (seeInvisibles.getInvisiblePlayerAlpha01() < 1.0f
+                    || (state instanceof ViewObstructionFadeState fade
+                        && fade.combatant$isViewObstructionFadeActive()))
+                return RenderTypes.entityTranslucent(getTextureLocation(state), true);
             return RenderTypes.entityCutout(getTextureLocation(state));
         }
         if (original == null || original.hasBlending()) {

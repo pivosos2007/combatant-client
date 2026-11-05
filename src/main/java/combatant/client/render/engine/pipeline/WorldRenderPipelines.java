@@ -91,32 +91,6 @@ public final class WorldRenderPipelines {
             .withCull(false)
             .build();
 
-    /** Procedural additive ground ring (no texture); drop-in for textured jump circles. */
-    @PipelineRegister
-    public static final RenderPipeline WORLD_GLOW_RING = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_glow_ring"))
-            .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("pos_tex_color.vert"))
-            .withFragmentShader(shader("world_glow_ring.frag"))
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
-            .withCull(false)
-            .build();
-
-    /** Glow ring against the pre-translucent depth attachment. */
-    @PipelineRegister
-    public static final RenderPipeline WORLD_GLOW_RING_DEPTH = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_glow_ring_depth"))
-            .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("pos_tex_color.vert"))
-            .withFragmentShader(shader("world_glow_ring.frag"))
-            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
-            .withCull(false)
-            .build();
-
     /**
      * Animated ESP surface (pixel-width rim, climbing scan band, fresnel + sheen). Same vertex payload
      * as the bubble surface: UV0 = face uv, Params = normal + vertical fade, Params2 = time/phase/scan/rim.
@@ -475,6 +449,36 @@ public final class WorldRenderPipelines {
             .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(false)
             .build();
+    /** Single-pass shader materials for textured world sprites; per-sprite modes share one pipeline. */
+    @PipelineRegister
+    public static final RenderPipeline WORLD_SPRITE_EFFECT = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_sprite_effect"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("world_sprite_effect.vert"))
+            .withFragmentShader(shader("world_sprite_effect.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
+            .withCull(false)
+            .build();
+
+    /** Same sprite treatments with a depth test; no additional scene render pass. */
+    @PipelineRegister
+    public static final RenderPipeline WORLD_SPRITE_EFFECT_DEPTH = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_sprite_effect_depth"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("world_sprite_effect.vert"))
+            .withFragmentShader(shader("world_sprite_effect.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunctions.ALPHA_ADDITIVE)
+            .withCull(false)
+            .build();
+
     /**
      * Depth test (GEQUAL); additive; textured triangles.
      */

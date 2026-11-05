@@ -240,6 +240,138 @@ public final class CachedUiScriptRuntime {
     }
 
     /**
+     * Automatic read dependency tracking. On an unchanged set of JS-observed
+     * values this path does not snapshot props, enter V8, or reconcile a tree.
+     * The factory runs on the owning thread; it must never be invoked by V8.
+     * Callers no longer maintain a structural signature. Dynamic HUDs that
+     * already have direct native patch handles should keep using bakeDynamic.
+     */
+    public UiRuntime bakeTracked(UiScriptModuleHandle handle,
+                                 UiScriptModule module,
+                                 String key,
+                                 float scriptWidth,
+                                 float scriptHeight,
+                                 TextRenderer textRenderer,
+                                 float layoutX,
+                                 float layoutY,
+                                 float layoutW,
+                                 float layoutH,
+                                 PropsFactory propsFactory) {
+        return bakeTracked(handle, module, key, scriptWidth, scriptHeight, textRenderer,
+                layoutX, layoutY, layoutW, layoutH, propsFactory, null, null);
+    }
+
+    public UiRuntime bakeTracked(UiScriptModuleHandle handle,
+                                 UiScriptModule module,
+                                 String key,
+                                 float scriptWidth,
+                                 float scriptHeight,
+                                 TextRenderer textRenderer,
+                                 float layoutX,
+                                 float layoutY,
+                                 float layoutW,
+                                 float layoutH,
+                                 PropsFactory propsFactory,
+                                 RuntimePatchFactory patchFactory,
+                                 BoundsPatchFactory boundsPatchFactory) {
+        FRAME_STATS.bakeCalls++;
+        if (handle == null || module == null || textRenderer == null || propsFactory == null) return null;
+        State state = state(key);
+        resetPatchCounters(state);
+        if (handle.isRuntimeBlocked()) {
+            FRAME_STATS.blockedCalls++;
+            if (!state.treeReady) return null;
+            ensureLayout(state, handle, key, textRenderer, layoutX, layoutY, layoutW, layoutH);
+            return state.runtime;
+        }
+        ensureTrackedTree(state, handle, module, key, scriptWidth, scriptHeight, propsFactory);
+        if (!state.treeReady) return null;
+        if (patchFactory != null) {
+            applyPropPatches(state, handle, key, safePatches(patchFactory));
+            if (state.runtime.lastPropPatchRequiresLayout()) state.layoutReady = false;
+        }
+        ensureLayout(state, handle, key, textRenderer, layoutX, layoutY, layoutW, layoutH);
+        applyBoundsPatches(state, handle, key, boundsPatchFactory);
+        reporter.reportRenderState(handle, state.runtime, scriptWidth, scriptHeight);
+        return state.runtime;
+    }
+
+    private void ensureTrackedTree(State state,
+                                   UiScriptModuleHandle handle,
+                                   UiScriptModule module,
+                                   String key,
+                                   float scriptWidth,
+                                   float scriptHeight,
+                                   PropsFactory propsFactory) {
+        acceptCompleted(state, handle, module, key);
+        try {
+            // Build current values on the owning thread. Copy them only if a
+            // dependency has changed; most frames do not enter the worker.
+            Map<String, ?> live = propsFactory.create();
+            if (live == null) live = Map.of();
+            long now = Util.getMillis();
+            double delta = lastFrameMs > 0 ? Math.max(0.0, (now - lastFrameMs) / 1000.0) : 0.0;
+            lastFrameMs = now;
+            UiScriptDependencies.Inputs current = new UiScriptDependencies.Inputs(
+                    frame++, now / 1000.0, delta, scriptWidth, scriptHeight, live);
+            UiScriptDependencies.Inputs baseline = state.trackedCommittedContext == null ? null
+                    : UiScriptDependencies.Inputs.from(state.trackedCommittedContext);
+            FRAME_STATS.trackedComparisons++;
+            boolean sameTree = state.treeReady && state.treeModule == module
+                    && UiScriptDependencies.equivalent(state.trackedDependencies, baseline, current);
+            if (sameTree) {
+                FRAME_STATS.trackedSkips++;
+                // A stale speculative request must not overwrite this tree if
+                // the data changes back before the worker completes.
+                if (state.trackedRequestedContext != null
+                        && state.requestedGeneration == generation
+                        && state.requestedModule == module
+                        && state.requestedSignature != state.treeSignature) {
+                    state.requestedSignature = ++state.nextTrackedSerial;
+                    state.trackedRequestedContext = null;
+                    state.mailbox.set(null);
+                }
+                return;
+            }
+
+            boolean pending = state.requestedGeneration == generation
+                    && state.requestedModule == module && state.trackedRequestedContext != null
+                    && state.requestedSignature != state.treeSignature
+                    && !(state.failedModule == module && state.failedSignature == state.requestedSignature);
+            if (pending) {
+                // Before the very first tracked result we cannot know which
+                // inputs matter. Do not churn the mailbox while it is running.
+                if (!state.treeReady || state.trackedCommittedContext == null) return;
+                if (UiScriptDependencies.equivalent(state.trackedDependencies,
+                        UiScriptDependencies.Inputs.from(state.trackedRequestedContext), current)) return;
+            }
+            if (state.failedModule == module && state.trackedFailedContext != null
+                    && UiScriptDependencies.samePayload(
+                        UiScriptDependencies.Inputs.from(state.trackedFailedContext), current)) return;
+
+            long started = System.nanoTime();
+            Map<String, Object> captured = UiScriptSnapshot.capture(live);
+            FRAME_STATS.snapshotNanos += System.nanoTime() - started;
+            long serial = ++state.nextTrackedSerial;
+            UiScriptRenderContext ctx = new UiScriptRenderContext(current.frame(), current.time(),
+                    current.delta(), scriptWidth, scriptHeight, UiProps.fromDetachedSnapshot(captured));
+            RenderRequest request = new RenderRequest(generation, module, serial, ctx, System.nanoTime(), true);
+            state.trackedRequestedContext = ctx;
+            state.requestedSignature = serial;
+            state.requestedModule = module;
+            state.requestedGeneration = generation;
+            if (state.mailbox.getAndSet(request) != null) FRAME_STATS.asyncCoalesced++;
+            FRAME_STATS.trackedDispatches++;
+            schedule(state);
+        } catch (RuntimeException error) {
+            FRAME_STATS.failedRenders++;
+            reportTreeError(state, handle, new UiScriptRuntimeError(module.getId(), "snapshot", error.getMessage(), error));
+            if (UiRuntimeValidation.enabled()) throw error;
+        }
+        if (state.mailbox.get() != null) schedule(state);
+    }
+
+    /**
      * Dynamic-patch bake for HUDs whose initial tree contains live data and
      * whose per-frame props are updated without rebuilding nested patch maps.
      * The typed writer runs on the owning render thread, before layout; async
@@ -387,18 +519,12 @@ public final class CachedUiScriptRuntime {
      * Poll-only render-thread path. A new tree is evaluated off-thread, then committed here.
      * The previous successful runtime remains renderable while a new result is pending.
      */
-    private TreeUpdate ensureTree(State state,
-                                  UiScriptModuleHandle handle,
-                                  UiScriptModule module,
-                                  String key,
-                                  long treeSignature,
-                                  float scriptWidth,
-                                  float scriptHeight,
-                                  PropsFactory propsFactory) {
+    private TreeUpdate acceptCompleted(State state, UiScriptModuleHandle handle, UiScriptModule module, String key) {
         Completed completed = state.completed.getAndSet(null);
         if (completed != null && completed.generation == generation
                 && completed.signature == state.requestedSignature
-                && completed.module == state.requestedModule) {
+                && completed.module == state.requestedModule
+                && completed.module == module) {
             FRAME_STATS.queueWaitNanos += completed.queueWaitNanos;
             FRAME_STATS.asyncRunNanos += completed.runNanos;
             FRAME_STATS.asyncResults++;
@@ -419,6 +545,7 @@ public final class CachedUiScriptRuntime {
                 // Don't retry a broken module every frame; keep the last successful tree.
                 state.failedSignature = completed.signature;
                 state.failedModule = completed.module;
+                if (completed.tracked) state.trackedFailedContext = completed.context;
             } else {
                 try {
                     state.runtime.setTree(result.root());
@@ -431,6 +558,16 @@ public final class CachedUiScriptRuntime {
                     state.treeReady = true;
                     state.layoutReady = false;
                     FRAME_STATS.jsRenders++;
+                    if (completed.tracked) {
+                        state.trackedCommittedContext = completed.context;
+                        state.trackedDependencies = result.dependencies();
+                        state.trackedFailedContext = null;
+                    } else {
+                        state.trackedCommittedContext = null;
+                        state.trackedDependencies = null;
+                    }
+                    state.failedModule = null;
+                    state.failedSignature = Long.MIN_VALUE;
                     return TreeUpdate.REBUILT;
                 } catch (RuntimeException error) {
                     FRAME_STATS.failedRenders++;
@@ -439,9 +576,23 @@ public final class CachedUiScriptRuntime {
                     if (UiRuntimeValidation.enabled()) throw error;
                     state.failedSignature = completed.signature;
                     state.failedModule = completed.module;
+                    if (completed.tracked) state.trackedFailedContext = completed.context;
                 }
             }
         }
+        return TreeUpdate.UNCHANGED;
+    }
+
+    private TreeUpdate ensureTree(State state,
+                                  UiScriptModuleHandle handle,
+                                  UiScriptModule module,
+                                  String key,
+                                  long treeSignature,
+                                  float scriptWidth,
+                                  float scriptHeight,
+                                  PropsFactory propsFactory) {
+        TreeUpdate accepted = acceptCompleted(state, handle, module, key);
+        if (accepted == TreeUpdate.REBUILT) return accepted;
         if (state.treeReady && state.treeSignature == treeSignature && state.treeModule == module) {
             return TreeUpdate.UNCHANGED;
         }
@@ -458,7 +609,7 @@ public final class CachedUiScriptRuntime {
                 RenderRequest request = new RenderRequest(
                         generation, module, treeSignature,
                         new UiScriptRenderContext(frame++, now / 1000.0, delta,
-                                scriptWidth, scriptHeight, UiProps.fromDetachedSnapshot(props)), System.nanoTime());
+                                scriptWidth, scriptHeight, UiProps.fromDetachedSnapshot(props)), System.nanoTime(), false);
                 state.requestedSignature = treeSignature;
                 state.requestedModule = module;
                 state.requestedGeneration = generation;
@@ -519,18 +670,21 @@ public final class CachedUiScriptRuntime {
                 }
                 UiScriptRenderResult result;
                 try (RenderCostProfiler.Scope ignored = RenderCostProfiler.uiRuntime("js:" + request.module.getId())) {
-                    result = workerEngine.render(request.module, request.context);
+                    result = request.tracked
+                            ? workerEngine.renderTracked(request.module, request.context)
+                            : workerEngine.render(request.module, request.context);
                 }
                 if (request.generation == generation) {
                     state.completed.set(new Completed(request.generation, request.module,
-                            request.signature, result, queueWaitNanos, System.nanoTime() - start));
+                            request.signature, result, request.context, request.tracked,
+                            queueWaitNanos, System.nanoTime() - start));
                 }
             } catch (Throwable error) {
                 if (request.generation == generation) {
                     state.completed.set(new Completed(request.generation, request.module, request.signature,
                             UiScriptRenderResult.failed(new UiScriptRuntimeError(
                                     request.module.getId(), "render", error.getMessage(), error)),
-                            queueWaitNanos, System.nanoTime() - start));
+                            request.context, request.tracked, queueWaitNanos, System.nanoTime() - start));
                 }
             }
         } finally {
@@ -683,7 +837,10 @@ public final class CachedUiScriptRuntime {
                                      int asyncRejected,
                                      long snapshotNanos,
                                      long queueWaitNanos,
-                                     long asyncRunNanos) {
+                                     long asyncRunNanos,
+                                     int trackedComparisons,
+                                     int trackedSkips,
+                                     int trackedDispatches) {
     }
 
     private static final class FrameStats {
@@ -701,6 +858,9 @@ public final class CachedUiScriptRuntime {
         private long snapshotNanos;
         private long queueWaitNanos;
         private long asyncRunNanos;
+        private int trackedComparisons;
+        private int trackedSkips;
+        private int trackedDispatches;
 
         private void reset() {
             bakeCalls = 0;
@@ -717,6 +877,9 @@ public final class CachedUiScriptRuntime {
             snapshotNanos = 0L;
             queueWaitNanos = 0L;
             asyncRunNanos = 0L;
+            trackedComparisons = 0;
+            trackedSkips = 0;
+            trackedDispatches = 0;
         }
 
         private FrameStatsSnapshot snapshot() {
@@ -735,7 +898,10 @@ public final class CachedUiScriptRuntime {
                     ASYNC_REJECTED.get(),
                     snapshotNanos,
                     queueWaitNanos,
-                    asyncRunNanos
+                    asyncRunNanos,
+                    trackedComparisons,
+                    trackedSkips,
+                    trackedDispatches
             );
         }
     }
@@ -749,12 +915,13 @@ public final class CachedUiScriptRuntime {
     }
 
     private record RenderRequest(long generation, UiScriptModule module,
-                                 long signature, UiScriptRenderContext context, long enqueuedNanos) {
+                                 long signature, UiScriptRenderContext context,
+                                 long enqueuedNanos, boolean tracked) {
     }
 
     private record Completed(long generation, UiScriptModule module,
-                             long signature, UiScriptRenderResult result,
-                             long queueWaitNanos, long runNanos) {
+                             long signature, UiScriptRenderResult result, UiScriptRenderContext context,
+                             boolean tracked, long queueWaitNanos, long runNanos) {
     }
 
     private static final class State {
@@ -776,6 +943,11 @@ public final class CachedUiScriptRuntime {
         private float layoutW;
         private float layoutH;
         private boolean treeReady;
+        private long nextTrackedSerial;
+        private UiScriptRenderContext trackedRequestedContext;
+        private UiScriptRenderContext trackedCommittedContext;
+        private UiScriptRenderContext trackedFailedContext;
+        private java.util.List<UiScriptDependencies.Dependency> trackedDependencies;
         private boolean layoutReady;
 
         private boolean requestMatches(long generation, UiScriptModule module, long signature) {

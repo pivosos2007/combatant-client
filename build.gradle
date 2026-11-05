@@ -94,13 +94,15 @@ def svgMsdfGeneratedResources = layout.buildDirectory.dir("generated/resources/s
 // The generator uses the JDK source-file launcher; no Python/Groovy plugin or runtime reflection.
 def generatedUniformResources = layout.buildDirectory.dir("generated/resources/combatantUniforms")
 def javetNativeGeneratedResources = layout.buildDirectory.dir("generated/resources/javetNatives")
-def javetVersion = "5.0.9"
+def javetVersion = "6.0.3"
 def targetJavaVersion = 25
 
 sourceSets {
     main {
         resources.srcDir(svgMsdfGeneratedResources)
         resources.srcDir(generatedUniformResources)
+        // processResources adds the resolved natives separately; local debug copies may be stale.
+        resources.exclude("javet/natives/**/*.dll", "javet/natives/**/*.so", "javet/natives/**/*.dylib")
     }
     svgMsdfTool {
         java.srcDir("src/svgMsdfTool/java")

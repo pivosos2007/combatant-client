@@ -9,6 +9,7 @@
 package combatant.client.features.hmi_recode.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import combatant.client.features.hmi_recode.script.HmiScriptRuntime;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.client.resources.model.geometry.ItemQuads;
 
@@ -29,20 +30,23 @@ import java.util.RandomAccess;
 public final class HmiModelQuadList extends AbstractList<BakedQuad> implements RandomAccess {
     private final List<BakedQuad> delegate;
     private final List<HmiModelCommand> commands;
+    private final HmiScriptRuntime.Result program;
     private final IdentityHashMap<BakedQuad, Integer> indices;
     private final IdentityHashMap<BakedQuad, Integer> cacheIndices;
     private final PoseStack.Pose[] sourcePoses;
     private final PoseStack.Pose[] transformedPoses;
 
     public HmiModelQuadList(List<BakedQuad> delegate, List<HmiModelCommand> commands) {
-        this(delegate, commands, index(delegate));
+        this(delegate, commands, null, index(delegate));
     }
 
     private HmiModelQuadList(List<BakedQuad> delegate,
                              List<HmiModelCommand> commands,
+                             HmiScriptRuntime.Result program,
                              IdentityHashMap<BakedQuad, Integer> indices) {
         this.delegate = delegate;
-        this.commands = List.copyOf(commands);
+        this.commands = commands == null ? List.of() : List.copyOf(commands);
+        this.program = program;
         this.indices = indices;
         this.cacheIndices = index(delegate);
         this.sourcePoses = new PoseStack.Pose[delegate.size()];
@@ -60,9 +64,17 @@ public final class HmiModelQuadList extends AbstractList<BakedQuad> implements R
     public static ItemQuads wrap(ItemQuads quads, List<HmiModelCommand> commands) {
         IdentityHashMap<BakedQuad, Integer> indices = index(quads.all());
         return new ItemQuads(
-                new HmiModelQuadList(quads.all(), commands, indices),
-                new HmiModelQuadList(quads.solid(), commands, indices),
-                new HmiModelQuadList(quads.translucent(), commands, indices));
+                new HmiModelQuadList(quads.all(), commands, null, indices),
+                new HmiModelQuadList(quads.solid(), commands, null, indices),
+                new HmiModelQuadList(quads.translucent(), commands, null, indices));
+    }
+
+    public static ItemQuads wrap(ItemQuads quads, HmiScriptRuntime.Result program) {
+        IdentityHashMap<BakedQuad, Integer> indices = index(quads.all());
+        return new ItemQuads(
+                new HmiModelQuadList(quads.all(), null, program, indices),
+                new HmiModelQuadList(quads.solid(), null, program, indices),
+                new HmiModelQuadList(quads.translucent(), null, program, indices));
     }
 
     @Override
@@ -76,7 +88,7 @@ public final class HmiModelQuadList extends AbstractList<BakedQuad> implements R
     }
 
     public PoseStack.Pose transformPose(PoseStack.Pose original, BakedQuad quad) {
-        if (original == null || commands.isEmpty()) return original;
+        if (original == null || (commands.isEmpty() && (program == null || !program.hasModelCommands()))) return original;
 
         Integer index = indices.get(quad);
         if (index == null) return original;
@@ -88,7 +100,8 @@ public final class HmiModelQuadList extends AbstractList<BakedQuad> implements R
 
         PoseStack stack = new PoseStack();
         stack.last().set(original);
-        HmiModelCommand.apply(commands, index, stack);
+        if (program != null) program.applyModelCommands(index, stack);
+        else HmiModelCommand.apply(commands, index, stack);
         cached = stack.last().copy();
         sourcePoses[cacheIndex] = original;
         transformedPoses[cacheIndex] = cached;

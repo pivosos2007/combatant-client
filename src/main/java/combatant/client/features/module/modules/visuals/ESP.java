@@ -58,7 +58,6 @@ import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.core.CombatantRenderSystem;
-import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.pipeline.EffectRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.postprocess.PostProcessExecutionContext;
@@ -70,14 +69,13 @@ import combatant.client.render.engine.renderer.FullScreenRenderer;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.engine.renderer.GlowSurfaces;
 import combatant.client.render.engine.text.TextRenderer;
-import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.engine.uniform.impl.ShaderEspBlurUniforms;
 import combatant.client.render.engine.uniform.impl.ShaderEspGradientUniforms;
 import combatant.client.render.engine.uniform.impl.ShaderEspSmokeUniforms;
 import combatant.client.render.iris.IrisCombatantFrameHooks;
 import combatant.client.render.helpers.MatteHudStyle;
-import combatant.client.render.helpers.ScreenProjection;
 import combatant.client.render.helpers.ScreenSpaceOverlay2D;
 import combatant.client.util.player.PlayerHealthResolver;
 
@@ -187,6 +185,17 @@ public class ESP extends Module {
             visibleWhen(num("esp3dFillAlpha", "fill_alpha", 0.30f, 0.0f, 1.0f), this::is3DBox);
     private final NumberValue<Float> box3dOutlineAlpha =
             visibleWhen(num("esp3dOutlineAlpha", "outline_alpha", 1.0f, 0.0f, 1.0f), this::is3DBox);
+    private final EnumValue<GlowSurfaces.Animation> box3dAnimation =
+            visibleWhen(enumSetting("esp3dGlowAnimation", "glow_animation", GlowSurfaces.Animation.BREATHE), this::is3DBox);
+    private final NumberValue<Float> box3dAnimationSpeed =
+            visibleWhen(num("esp3dGlowSpeed", "glow_speed", 1.0f, 0.1f, 5.0f),
+                    () -> is3DBox() && box3dAnimation.get() != GlowSurfaces.Animation.STATIC);
+    private final NumberValue<Float> box3dAccent =
+            visibleWhen(num("esp3dGlowAccent", "glow_accent", 0.75f, 0.0f, 1.0f), this::is3DBox);
+    private final NumberValue<Float> box3dFaceGlow =
+            visibleWhen(num("esp3dFaceGlow", "face_glow", 0.75f, 0.0f, 2.0f), this::is3DBox);
+    private final NumberValue<Float> box3dLineGlow =
+            visibleWhen(num("esp3dLineGlow", "line_glow", 1.35f, 0.0f, 4.0f), this::is3DBox);
     private final BooleanValue shaderGlow =
             visibleWhen(bool("espShaderGlowEnabled", "shader_glow_enabled", true), this::isShaderBox);
     private final NumberValue<Float> shaderGlowStrength =
@@ -299,119 +308,13 @@ public class ESP extends Module {
         return FastFormat.oneDecimal(health) + " HP";
     }
 
-    private static void addFilledBox(MeshBuilder mesh,
-                                     AABB box,
-                                     int c000, int c001, int c010, int c011,
-                                     int c100, int c101, int c110, int c111) {
-        double minX = box.minX;
-        double minY = box.minY;
-        double minZ = box.minZ;
-        double maxX = box.maxX;
-        double maxY = box.maxY;
-        double maxZ = box.maxZ;
-
-        quad(mesh, minX, minY, minZ, c000, maxX, minY, minZ, c100, maxX, minY, maxZ, c101, minX, minY, maxZ, c001);
-        quad(mesh, minX, maxY, minZ, c010, minX, maxY, maxZ, c011, maxX, maxY, maxZ, c111, maxX, maxY, minZ, c110);
-        quad(mesh, minX, minY, maxZ, c001, maxX, minY, maxZ, c101, maxX, maxY, maxZ, c111, minX, maxY, maxZ, c011);
-        quad(mesh, minX, minY, minZ, c000, minX, maxY, minZ, c010, maxX, maxY, minZ, c110, maxX, minY, minZ, c100);
-        quad(mesh, maxX, minY, minZ, c100, maxX, maxY, minZ, c110, maxX, maxY, maxZ, c111, maxX, minY, maxZ, c101);
-        quad(mesh, minX, minY, minZ, c000, minX, minY, maxZ, c001, minX, maxY, maxZ, c011, minX, maxY, minZ, c010);
-    }
-
-    private static void addOutlineBox(MeshBuilder mesh,
-                                      AABB box,
-                                      int c000, int c001, int c010, int c011,
-                                      int c100, int c101, int c110, int c111) {
-        double minX = box.minX;
-        double minY = box.minY;
-        double minZ = box.minZ;
-        double maxX = box.maxX;
-        double maxY = box.maxY;
-        double maxZ = box.maxZ;
-
-        line(mesh, minX, minY, minZ, c000, maxX, minY, minZ, c100);
-        line(mesh, maxX, minY, minZ, c100, maxX, minY, maxZ, c101);
-        line(mesh, maxX, minY, maxZ, c101, minX, minY, maxZ, c001);
-        line(mesh, minX, minY, maxZ, c001, minX, minY, minZ, c000);
-
-        line(mesh, minX, maxY, minZ, c010, maxX, maxY, minZ, c110);
-        line(mesh, maxX, maxY, minZ, c110, maxX, maxY, maxZ, c111);
-        line(mesh, maxX, maxY, maxZ, c111, minX, maxY, maxZ, c011);
-        line(mesh, minX, maxY, maxZ, c011, minX, maxY, minZ, c010);
-
-        line(mesh, minX, minY, minZ, c000, minX, maxY, minZ, c010);
-        line(mesh, maxX, minY, minZ, c100, maxX, maxY, minZ, c110);
-        line(mesh, maxX, minY, maxZ, c101, maxX, maxY, maxZ, c111);
-        line(mesh, minX, minY, maxZ, c001, minX, maxY, maxZ, c011);
-    }
-
-    private static void quad(MeshBuilder mesh,
-                             double x1, double y1, double z1, int c1,
-                             double x2, double y2, double z2, int c2,
-                             double x3, double y3, double z3, int c3,
-                             double x4, double y4, double z4, int c4) {
-        mesh.ensureQuadCapacity();
-        putVertex(mesh, x1, y1, z1, c1);
-        int i1 = mesh.next();
-        putVertex(mesh, x2, y2, z2, c2);
-        int i2 = mesh.next();
-        putVertex(mesh, x3, y3, z3, c3);
-        int i3 = mesh.next();
-        putVertex(mesh, x4, y4, z4, c4);
-        int i4 = mesh.next();
-        mesh.quad(i1, i2, i3, i4);
-    }
-
-    private static void quad(MeshBuilder mesh,
-                             double x1, double y1, double z1,
-                             double x2, double y2, double z2,
-                             double x3, double y3, double z3,
-                             double x4, double y4, double z4,
-                             int r, int g, int b, int a) {
-        mesh.ensureQuadCapacity();
-        int i1 = mesh.vec3(x1, y1, z1).color(r, g, b, a).next();
-        int i2 = mesh.vec3(x2, y2, z2).color(r, g, b, a).next();
-        int i3 = mesh.vec3(x3, y3, z3).color(r, g, b, a).next();
-        int i4 = mesh.vec3(x4, y4, z4).color(r, g, b, a).next();
-        mesh.quad(i1, i2, i3, i4);
-    }
-
-    private static void line(MeshBuilder mesh,
-                             double x1, double y1, double z1, int c1,
-                             double x2, double y2, double z2, int c2) {
-        mesh.ensureLineCapacity();
-        putVertex(mesh, x1, y1, z1, c1);
-        int i1 = mesh.next();
-        putVertex(mesh, x2, y2, z2, c2);
-        int i2 = mesh.next();
-        mesh.line(i1, i2);
-    }
-
-    private static void line(MeshBuilder mesh,
-                             double x1, double y1, double z1,
-                             double x2, double y2, double z2,
-                             int r, int g, int b, int a) {
-        mesh.ensureLineCapacity();
-        int i1 = mesh.vec3(x1, y1, z1).color(r, g, b, a).next();
-        int i2 = mesh.vec3(x2, y2, z2).color(r, g, b, a).next();
-        mesh.line(i1, i2);
-    }
-
-    private static void putVertex(MeshBuilder mesh, double x, double y, double z, int argb) {
-        mesh.vec3(x, y, z).color(
-                (argb >>> 16) & 0xFF,
-                (argb >>> 8) & 0xFF,
-                argb & 0xFF,
-                (argb >>> 24) & 0xFF
-        );
-    }
-
-    private static int boxGradientColor(int baseRgb, AABB box, double x, double y, double z, int alpha, float strength) {
+    private static int boxGradientColor(int baseRgb, AABB box, double x, double y, double z,
+                                        int alpha, float strength, float entityPhase) {
         double nx = safeRatio(x - box.minX, box.maxX - box.minX);
         double ny = safeRatio(y - box.minY, box.maxY - box.minY);
         double nz = safeRatio(z - box.minZ, box.maxZ - box.minZ);
-        double phase = AnimationUtility.time(BOX_3D_GRADIENT_SPEED)
-                + (box.minX + box.minY * 0.7 + box.minZ * 1.3) * 0.18;
+        // The color animation follows the entity, not its moving world-space AABB.
+        double phase = AnimationUtility.time(BOX_3D_GRADIENT_SPEED) + entityPhase * (Math.PI * 2.0);
         double waveA = 0.5 + 0.5 * Math.sin(phase + nx * 2.65 + ny * 5.30 - nz * 1.75);
         double waveB = 0.5 + 0.5 * Math.sin(phase * 0.72 - nx * 3.10 + ny * 1.35 + nz * 4.40);
         float t = clamp01((float) (ny * 0.44 + nz * 0.18 + (1.0 - nx) * 0.16 + waveA * 0.16 + waveB * 0.12));
@@ -617,25 +520,16 @@ public class ESP extends Module {
 
         Vec3 camPos = mc.gameRenderer.mainCamera().position();
         List<RenderEntry> entries = collectPlayerEntries(camPos);
+        if (renderEntities.get()) entries.addAll(collectSearchEntityEntries(camPos));
         if (entries.isEmpty()) return;
-
-        float previousLineWidth = RenderState.lineWidth;
-        MeshBuilder lines;
-        MeshBuilder tris;
-        try {
-            RenderState.lineWidth = box3dLineWidth.get();
-            lines = renderer.batch(WorldRenderPipelines.WORLD_COLORED_LINES, Renderer3D.DepthMode.NONE);
-            tris = renderer.batch(WorldRenderPipelines.WORLD_COLORED, Renderer3D.DepthMode.NONE);
-        } finally {
-            RenderState.lineWidth = previousLineWidth;
-        }
-
+        GlowSurfaces.Batch glow = GlowSurfaces.begin(renderer, false,
+                box3dAnimation.get(), box3dAnimationSpeed.get(), box3dAccent.get());
+        if (glow == null) return;
         entries.sort(Comparator.comparingDouble(RenderEntry::distSq).reversed());
         for (RenderEntry entry : entries) {
             Entity entity = entry.entity();
             AABB box = resolveWorldBox(entity, tickDelta, shouldUseHitboxExpansion(entity));
-            int color = resolve3DColor(entity, entry.color());
-            add3DBox(tris, lines, box, color);
+            add3DGlowBox(glow, box, resolve3DColor(entity, entry.color()), stable3DPhase(entity));
         }
     }
 
@@ -1532,31 +1426,31 @@ public class ESP extends Module {
         );
     }
 
-    private void add3DBox(MeshBuilder tris, MeshBuilder lines, AABB box, int argb) {
+    /** The same phase across position interpolation, walking, teleports and changing AABB sizes. */
+    private static float stable3DPhase(Entity entity) {
+        UUID id = entity.getUUID();
+        long h = id.getMostSignificantBits() ^ Long.rotateLeft(id.getLeastSignificantBits(), 17);
+        h ^= h >>> 33;
+        h *= 0xff51afd7ed558ccdL;
+        h ^= h >>> 33;
+        return (h & 0xFFFFL) / 65536.0f;
+    }
+
+    private void add3DGlowBox(GlowSurfaces.Batch glow, AABB box, int argb, float phase) {
         int rgb = argb & 0x00FFFFFF;
         int fillAlpha = alpha255(box3dFillAlpha.get());
         int outlineAlpha = alpha255(box3dOutlineAlpha.get());
-        float gradientStrength = Math.max(0.0f, Math.min(2.5f, box3dGradientStrength.get()));
-
-        int c000 = boxGradientColor(rgb, box, box.minX, box.minY, box.minZ, fillAlpha, gradientStrength);
-        int c001 = boxGradientColor(rgb, box, box.minX, box.minY, box.maxZ, fillAlpha, gradientStrength);
-        int c010 = boxGradientColor(rgb, box, box.minX, box.maxY, box.minZ, fillAlpha, gradientStrength);
-        int c011 = boxGradientColor(rgb, box, box.minX, box.maxY, box.maxZ, fillAlpha, gradientStrength);
-        int c100 = boxGradientColor(rgb, box, box.maxX, box.minY, box.minZ, fillAlpha, gradientStrength);
-        int c101 = boxGradientColor(rgb, box, box.maxX, box.minY, box.maxZ, fillAlpha, gradientStrength);
-        int c110 = boxGradientColor(rgb, box, box.maxX, box.maxY, box.minZ, fillAlpha, gradientStrength);
-        int c111 = boxGradientColor(rgb, box, box.maxX, box.maxY, box.maxZ, fillAlpha, gradientStrength);
-
-        addFilledBox(tris, box, c000, c001, c010, c011, c100, c101, c110, c111);
-        addOutlineBox(lines, box,
-                withAlpha(c000, outlineAlpha),
-                withAlpha(c001, outlineAlpha),
-                withAlpha(c010, outlineAlpha),
-                withAlpha(c011, outlineAlpha),
-                withAlpha(c100, outlineAlpha),
-                withAlpha(c101, outlineAlpha),
-                withAlpha(c110, outlineAlpha),
-                withAlpha(c111, outlineAlpha));
+        float gradient = Math.max(0.0f, Math.min(2.5f, box3dGradientStrength.get()));
+        if (fillAlpha > 0) {
+            glow.boxColored(box,
+                    (x, y, z) -> boxGradientColor(rgb, box, x, y, z, fillAlpha, gradient, phase),
+                    box3dFaceGlow.get(), true, phase);
+        }
+        if (outlineAlpha > 0) {
+            glow.edges(box,
+                    (x, y, z) -> boxGradientColor(rgb, box, x, y, z, outlineAlpha, gradient, phase),
+                    box3dLineGlow.get(), box3dLineWidth.get(), phase);
+        }
     }
 
     public boolean shouldRenderHitboxReplacement(Entity entity) {

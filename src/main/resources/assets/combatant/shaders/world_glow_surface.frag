@@ -31,7 +31,7 @@ void main() {
     float body = clamp(visual.body, 0.0, 2.0);
     float accent = clamp(visual.accent * accentWeight, 0.0, 2.0);
     vec3 base = clamp(v_Color.rgb * visual.tint, 0.0, 1.0);
-    vec3 hot = mix(base, vec3(1.0), 0.55);
+    vec3 hot = mix(base, vec3(1.0), 0.24);
 
     if (v_Rim < -0.5) {
         // Ribbon edges use the same batch/pipeline as faces but an independent glow intensity.
@@ -61,10 +61,14 @@ void main() {
 
     float rimWeight = max(v_Rim, 0.0) * (0.12 + 0.88 * fade);
     float rim = core * 0.92 + halo * 0.34 + fresnel * 0.22;
-    vec3 rgb = base * (0.86 + 0.14 * body)
-            + hot * (core * 0.85 + accent * 0.55) * clamp(rimWeight * body * 2.0, 0.0, 2.0);
-    float alpha = v_Color.a * (0.90 + 0.22 * body)
-            + rimWeight * rim * body + max(v_Rim, 0.0) * accent * fade * 0.35;
+    // Interior modulation is deliberate: animated presets remain visible across the quads,
+    // not only in the border pixels. Tint stays saturated for AnimatedRenderColors Rainbow.
+    float faceEnergy = clamp(0.28 + body * 0.58 + accent * 0.22, 0.0, 1.85);
+    vec3 rgb = base * faceEnergy
+            + hot * (core * 0.85 + halo * 0.15 + fresnel * 0.18 + accent * 0.26)
+                    * clamp(rimWeight * body * 1.6, 0.0, 2.0);
+    float alpha = v_Color.a * clamp(0.30 + 0.66 * body + 0.16 * accent, 0.0, 1.6)
+            + rimWeight * rim * body + max(v_Rim, 0.0) * accent * fade * 0.23;
     if (alpha <= 0.003) discard;
     fragColor = vec4(min(rgb, vec3(1.0)), clamp(alpha, 0.0, 1.0));
 }

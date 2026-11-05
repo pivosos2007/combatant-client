@@ -27,3 +27,21 @@ export function colorHandle(key,x,y,fill,p,large=false){
       fill:'#00000000',stroke:'#AA000000',strokeWidth:1,interactive:false})
   ];
 }
+
+/** Convert ARGB/RGB configuration colors to the Spectrum HSV controls. */
+export function argbToHsv(value){
+  const raw=String(value||'').replace(/^0x/i,'').replace(/^#/,'');
+  const hex=/^[a-fA-F0-9]{6}([a-fA-F0-9]{2})?$/.test(raw)?raw:'FFFFFFFF';
+  const a=hex.length===8?parseInt(hex.slice(0,2),16):255;
+  const rgb=hex.slice(-6),r=parseInt(rgb.slice(0,2),16)/255;
+  const g=parseInt(rgb.slice(2,4),16)/255,b=parseInt(rgb.slice(4,6),16)/255;
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
+  let h=0;
+  if(d>0){
+    if(mx===r)h=((g-b)/d)%6;
+    else if(mx===g)h=(b-r)/d+2;
+    else h=(r-g)/d+4;
+    h=(h*60+360)%360;
+  }
+  return {hue:h,saturation:mx===0?0:d/mx*100,brightness:mx*100,alpha:a/255*100};
+}

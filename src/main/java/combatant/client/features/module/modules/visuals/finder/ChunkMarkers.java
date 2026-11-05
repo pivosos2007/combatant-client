@@ -62,8 +62,6 @@ public final class ChunkMarkers<R extends ChunkMarkers.Hit> {
 
     public static final int MAX_SCAN_RADIUS = 16;
     private static final double BEAM_HEIGHT = 128.0;
-    // Shader surfaces need some height for the rim and scan band to read; the flat plate is only 0.06 thick.
-    public static final double SHADER_SLAB_HEIGHT = 1.0;
 
     private final Minecraft mc = Minecraft.getInstance();
     private final Settings settings;
@@ -161,17 +159,12 @@ public final class ChunkMarkers<R extends ChunkMarkers.Hit> {
         double y = settings.markerY().get();
         int fill = settings.fillColor().getArgb();
         int line = settings.lineColor().getArgb();
-        // Shader modes take their alpha from the module's shader settings, so tint with an opaque colour.
-        int shaderColor = line | 0xFF000000;
         for (Map.Entry<Long, R> entry : accepted.entrySet()) {
             int chunkX = ChunkPos.getX(entry.getKey());
             int chunkZ = ChunkPos.getZ(entry.getKey());
             double minX = chunkX << 4;
             double minZ = chunkZ << 4;
-            AABB slab = new AABB(minX, y, minZ, minX + 16.0, y + SHADER_SLAB_HEIGHT, minZ + 16.0);
-            if (!style.drawShaderBox(renderer, slab, shaderColor)) {
-                draw.chunkPlate(chunkX, chunkZ, y, fill, line);
-            }
+            draw.chunkPlate(chunkX, chunkZ, y, fill, line);
             double centerX = minX + 8.0;
             double centerZ = minZ + 8.0;
             if (settings.tracers().get()) draw.tracer(new Vec3(centerX, y, centerZ), line);

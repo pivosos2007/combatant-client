@@ -44,7 +44,8 @@ public abstract class AvatarRendererMixin {
         PlayerModelRenderState replacementState = (PlayerModelRenderState) state;
         replacementState.combatant$setReplacement(null);
         PlayerModel replacement = Modules.get(PlayerModel.class);
-        PlayerModels.Ready asset = PlayerModels.applies(player) ? PlayerModels.prepare(replacement) : null;
+        PlayerModel.Target target = replacement != null ? replacement.targetFor(player) : PlayerModel.Target.SELF;
+        PlayerModels.Ready asset = PlayerModels.applies(player, replacement, target) ? PlayerModels.prepare(replacement, target) : null;
         boolean viewRig = viewModel != null && viewModel.isPlayerRigActive();
         if (!viewRig && asset == null) {
             rigState.combatant$setPlayerRig(null);
@@ -60,8 +61,17 @@ public abstract class AvatarRendererMixin {
         ));
         if (asset != null) {
             try {
-                replacementState.combatant$setReplacement(PlayerModels.snapshot(
-                        asset, rigState.combatant$getPlayerRig(), replacement));
+                var fadeState = (combatant.client.render.ViewObstructionFadeState) state;
+                PlayerModels.Snapshot snapshot = PlayerModels.snapshot(
+                        asset, rigState.combatant$getPlayerRig(), replacement, target, player, fadeState);
+                replacementState.combatant$setReplacement(snapshot);
+                // Partial skin-backed replacements submit their native head/clothing through
+                // the vanilla collector. Give those pieces the same animated opacity as
+                // the GPU armor, instead of allowing a visible head to pop on fade.
+                if (snapshot != null && snapshot.faded()) {
+                    fadeState.combatant$setViewObstructionFadeActive(true);
+                    fadeState.combatant$setViewObstructionFadeAlpha(snapshot.opacity());
+                }
             } catch (IllegalArgumentException failure) {
                 PlayerModels.reportFailure(failure);
                 if (!viewRig) rigState.combatant$setPlayerRig(null);

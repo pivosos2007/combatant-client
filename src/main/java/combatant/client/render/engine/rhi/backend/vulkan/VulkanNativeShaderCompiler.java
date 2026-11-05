@@ -33,8 +33,10 @@ final class VulkanNativeShaderCompiler implements AutoCloseable {
 
     ByteBuffer compile(String label, String source, int shaderKind) {
         if (closed) throw new IllegalStateException("Vulkan native shader compiler is closed");
-        // Native shaders compiled here target Vulkan GLSL; supply the correct instance builtin.
-        if (label != null && label.contains("rain_instanced.") && source.startsWith("#version")) {
+        // Every native Vulkan GLSL stage that tests VULKAN must take its Vulkan branch.
+        // Restricting this define to rain_instanced also broke schematic_instanced and
+        // asset_compat_instanced (they select gl_InstanceIndex vs gl_InstanceID).
+        if (source.contains("#ifdef VULKAN") && source.startsWith("#version")) {
             int endVersion = source.indexOf('\n');
             if (endVersion >= 0) source = source.substring(0, endVersion + 1)
                     + "#define VULKAN 1\n" + source.substring(endVersion + 1);

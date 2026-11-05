@@ -3,6 +3,8 @@
  */
 package combatant.client.features.gui.schematic;
 
+import combatant.client.automation.compat.litematica.LitematicaCompat;
+import combatant.client.automation.compat.litematica.LitematicaWorkspace;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.SettingsPanelComponent;
 import combatant.client.features.gui.clickgui.settings.SettingErrorView;
@@ -10,8 +12,7 @@ import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleManager;
-import combatant.client.features.module.modules.player.schematic.SchematicBuilder;
-import combatant.client.features.module.modules.visuals.schematic.SchematicProjection;
+import combatant.client.features.module.modules.player.Printer;
 import combatant.client.features.theme.Theme;
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputDevice;
@@ -25,6 +26,8 @@ import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
+import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
 import combatant.client.render.engine.renderer.ui.runtime.input.UiPointerEvent;
 import combatant.client.render.engine.renderer.ui.runtime.input.UiScrollEvent;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
@@ -81,8 +84,30 @@ public final class SchematicPanel {
     private final SchematicViewport viewport = new SchematicViewport();
     private final SchematicLayerGrid grid = new SchematicLayerGrid();
     private final SchematicUi nativeUi = new SchematicUi();
+    // Configuration lives inside this workspace. It is not another ClickGUI section.
+    private final LitematicaSettingsPanel litematicaSettings = new LitematicaSettingsPanel();
+    private boolean litematicaSettingsMode;
     private final SingleLineTextInput searchInput = new SingleLineTextInput(96);
+    private final SingleLineTextInput originInput = new SingleLineTextInput(14,
+            ch -> ch >= '0' && ch <= '9' || ch == '-');
+    private int originEdit = -1;
+    private int selectedLiteIndex = -1;
+    private int linkedLiteIndex = -1;
+    private int previewedLiteIndex = -1;
     private TextRenderer searchFont;
+    private long searchFontGeneration = -1L;
+
+    /** Font resources are destroyed and recreated on reload; never retain a renderer
+     * from a previous Fonts generation across a ClickGUI session. */
+    private TextRenderer currentSearchFont() {
+        long generation = Fonts.generation();
+        if (searchFont == null || searchFontGeneration != generation) {
+            searchFont = Fonts.renderer("SourceSans3", FontInfo.Type.Regular,
+                    ClickGuiRenderer.getOnestMedium());
+            searchFontGeneration = generation;
+        }
+        return searchFont;
+    }
     private UiRuntime runtime;
     private Layout bounds;
     private boolean initialized;
@@ -105,10 +130,29 @@ public final class SchematicPanel {
     private boolean cardsMode;
     private String visibleDrawer = "none";
     private float drawerProgress;
+    private boolean drawerEnterPending;
+    private long drawerEnterStarted;
     private long lastFeedbackSequence;
     private final List<LocalToast> localToasts = new ArrayList<>();
     private static final long TOAST_DURATION = 4_500_000_000L;
-    private record LocalToast(long id, String message, String variant, long started) {}
+    private static final long TOAST_DISMISS_NS = 220_000_000L;
+    /** Stable toast identity: repeated feedback updates one card instead of spawning duplicates. */
+    private static final class LocalToast {
+        private final long id;
+        private final String message, variant;
+        private long started;
+        private long dismissedAt;
+        private int count = 1;
+        private float stack = -1f;
+        private LocalToast(long id, String message, String variant, long started) {
+            this.id = id; this.message = message; this.variant = variant; this.started = started;
+        }
+        long id() { return id; }
+        String message() { return message; }
+        String variant() { return variant; }
+        long started() { return started; }
+        int count() { return count; }
+    }
     private String drawerMode = "none";
     private String settingsId;
     private List<SchematicMaterials.Entry> materials = List.of();
@@ -121,6 +165,7 @@ public final class SchematicPanel {
     public SchematicPanel() { this(null); }
 
     private static String tr(String key, Object... args) { return I18n.get(key, args); }
+    private static LitematicaWorkspace lite() { return LitematicaCompat.workspace(); }
     private static float clamp(float value, float min, float max) { return Math.max(min, Math.min(max, value)); }
     private static String color(int argb) { return String.format("#%08X", argb | 0xFF000000); }
     private static Map<String, Object> map(Object... entries) {
@@ -138,13 +183,30 @@ public final class SchematicPanel {
         library.refresh();
         lastFeedbackSequence = SchematicActions.feedbackSequence();
         localToasts.clear();
-        libraryMode = state.schematic() == null;
+        LitematicaWorkspace bridge = lite();
+        LitematicaWorkspace.Placement active = null;
+        if (bridge != null) for (LitematicaWorkspace.Placement entry : bridge.placements()) {
+            if (entry.selected()) { active = entry; selectedLiteIndex = entry.index(); break; }
+        }
+        if (active == null) state.clear();
+        libraryMode = active == null;
+        previewedLiteIndex = active == null ? -1 : active.index();
+        if (active != null) {
+            if (state.schematic() != null && (active.file() == null ||
+                    !state.schematic().fileName().equals(active.file().getFileName().toString())))
+                state.clear();
+            if (active.file() != null && state.schematic() == null
+                    && SchematicActions.loadingPath() == null) {
+                // Only populate the optional in-menu preview. Never create another placement.
+                SchematicActions.preview(active.file());
+            }
+        }
         if (selectedPath == null && state.schematic() != null)
             selectedPath = library.resolve(state.schematic().fileName());
     }
 
     public void restartOpenAnimation() { openAnim = 0f; lastFrame = 0L; }
-    public void tick() { state.tickDiff(Minecraft.getInstance(), 256, 256); }
+    public void tick() { /* Litematica owns in-world verification and rendering. */ }
 
     public void renderStandalone(GuiGraphicsExtractor context, int mx, int my) {
         if (!initialized) init();
@@ -192,40 +254,112 @@ public final class SchematicPanel {
         }
         SchematicUi.syncTheme();
         if (bounds != null) {
-            if (searchFont == null) searchFont = Fonts.renderer("SourceSans3", FontInfo.Type.Regular,
-                    ClickGuiRenderer.getOnestMedium());
-            searchInput.layout(bounds.searchX + 43f, Math.max(40f, bounds.searchW - 88f), searchFont, 17f);
+            searchInput.layout(bounds.searchX + 43f, Math.max(40f, bounds.searchW - 88f),
+                    currentSearchFont(), 17f);
         }
-        refreshFiltered();
+        if (!litematicaSettingsMode) refreshFiltered();
         for (SchematicActions.Feedback item : SchematicActions.feedbackSince(lastFeedbackSequence)) {
             lastFeedbackSequence = item.sequence();
-            localToasts.add(new LocalToast(item.sequence(), item.message(), item.variant(), now));
+            LocalToast duplicate = null;
+            for (LocalToast itemToast : localToasts) {
+                if (itemToast.message.equals(item.message()) && itemToast.variant.equals(item.variant())) {
+                    duplicate = itemToast; break;
+                }
+            }
+            if (duplicate != null) {
+                duplicate.count++;
+                duplicate.started = now;
+                duplicate.dismissedAt = 0L;
+                localToasts.remove(duplicate);
+                localToasts.add(duplicate); // newer feedback rises to the top of the stack
+            } else localToasts.add(new LocalToast(item.sequence(), item.message(), item.variant(), now));
         }
-        localToasts.removeIf(item -> now - item.started() >= TOAST_DURATION);
+        localToasts.removeIf(item -> now - item.started() >= TOAST_DURATION ||
+                (item.dismissedAt != 0L && now - item.dismissedAt >= TOAST_DISMISS_NS));
         if (localToasts.size() > 3) localToasts.subList(0, localToasts.size() - 3).clear();
-        float desiredDrawer = "none".equals(drawerMode) || libraryMode ? 0f : 1f;
-        drawerProgress += (desiredDrawer - drawerProgress) * Math.min(1f, dt * 16f);
+        for (int i = 0; i < localToasts.size(); i++) {
+            LocalToast toast = localToasts.get(i);
+            float target = (localToasts.size() - i - 1) * 73f;
+            if (toast.stack < 0f) toast.stack = target + 12f;
+            toast.stack += (target - toast.stack) * Math.min(1f, dt * 13f);
+        }
+        float desiredDrawer = "none".equals(drawerMode) || libraryMode || litematicaSettingsMode ? 0f : 1f;
+        if (desiredDrawer == 0f) drawerEnterPending = false;
+        // An async JS tree can take a few frames to produce the new panel.
+        // Wait at the leading edge instead of completing the entrance off-screen.
+        if (drawerEnterPending && (runtime != null && findUiNode(runtime.root(), "drawer:reveal") != null
+                || now - drawerEnterStarted > 650_000_000L)) drawerEnterPending = false;
+        if (!drawerEnterPending)
+            drawerProgress += (desiredDrawer - drawerProgress) * Math.min(1f, dt * 9f);
         if (Math.abs(desiredDrawer - drawerProgress) < .005f) drawerProgress = desiredDrawer;
         if (!"none".equals(drawerMode)) visibleDrawer = drawerMode;
         else if (drawerProgress == 0f) visibleDrawer = "none";
-        refreshMaterials(now);
-        refreshIssues();
+        // The native viewport animates every frame. JS receives a bounded number of
+        // geometry snapshots: an unbounded float would supersede each asynchronous
+        // worker result before it can be committed (drawer appears only after Alt+Tab).
+        if (bounds != null) {
+            bounds = Layout.compute(bounds.x, bounds.y, bounds.w, bounds.h,
+                    onClose != null, libraryMode || litematicaSettingsMode, drawerProgress);
+            if (originEdit >= 0 && searchFont != null) {
+                originInput.layout(bounds.x + bounds.inspectorX + 84f,
+                        Math.max(1f, bounds.inspectorW - 155f), searchFont, 17f);
+            }
+        }
+        LitematicaWorkspace bridge = lite();
+        linkedLiteIndex = -1;
+        Path currentNativeFile = null;
+        if (bridge != null) for (LitematicaWorkspace.Placement entry : bridge.placements()) {
+            if (entry.selected()) {
+                selectedLiteIndex = linkedLiteIndex = entry.index();
+                currentNativeFile = entry.file();
+                if (state.placement() != null && !entry.origin().equals(state.placement().origin())
+                        && originEdit < 0) state.setOrigin(entry.origin());
+                break;
+            }
+        }
+        if (previewedLiteIndex != linkedLiteIndex && SchematicActions.loadingPath() == null) {
+            previewedLiteIndex = linkedLiteIndex;
+            state.clear();
+            if (linkedLiteIndex >= 0 && currentNativeFile != null)
+                SchematicActions.preview(currentNativeFile);
+            if (linkedLiteIndex < 0 && !libraryMode) {
+                libraryMode = true;
+                drawerMode = "none";
+            }
+        }
+        if (!litematicaSettingsMode) {
+            refreshMaterials(now);
+            refreshIssues();
+        }
         // One fullscreen region of the existing UI dual-Kawase blur, not a second
         // postprocess pass. Runs in the same UI batch graph as ordinary glass.
         Renderer2D.COLOR.blurRect(bounds.x, bounds.y, bounds.w, bounds.h,
                 0f, 29f, 1f, .94f, 0xFFFFFF);
         // Draw the native canvas before the Spectrum overlay so toasts, inspector,
         // header and animated controls remain above the voxel renderer.
-        if (!libraryMode) Renderer2D.COLOR.quad(bounds.x, bounds.y, bounds.w, bounds.h, 0xA8171717);
-        renderCanvas(dt);
+        if (!libraryMode && !litematicaSettingsMode)
+            Renderer2D.COLOR.quad(bounds.x, bounds.y, bounds.w, bounds.h, 0xA8171717);
+        if (!litematicaSettingsMode) renderCanvas(dt);
         renderScript();
-        renderCanvasTooltip();
-        if (searchFocused && bounds != null && libraryMode) {
+        if (litematicaSettingsMode) {
+            litematicaSettings.updateInput(bounds.x + 54f, bounds.y + bounds.header,
+                    Math.max(1f, bounds.w - 54f), Math.max(1f, bounds.h - bounds.header),
+                    currentSearchFont(), runtime);
+        } else renderCanvasTooltip();
+        if (!litematicaSettingsMode && originEdit >= 0 && bounds != null && !libraryMode && "properties".equals(drawerMode)) {
+            float fx = bounds.x + bounds.inspectorX + 70f;
+            float fy = bounds.y + bounds.header + 95f + originEdit * 45f;
+            CombatantTextInputBridge.focus(originInput, Math.round(fx), Math.round(fy),
+                    Math.round(fx + Math.max(1f, bounds.inspectorW - 129f)), Math.round(fy + 40f));
+            CombatantTextInputBridge.blur(searchInput);
+        } else if (!litematicaSettingsMode && searchFocused && bounds != null && libraryMode) {
             CombatantTextInputBridge.focus(searchInput,
                     Math.round(bounds.searchX), Math.round(bounds.searchY),
                     Math.round(bounds.searchX + bounds.searchW), Math.round(bounds.searchY + 44f));
+            CombatantTextInputBridge.blur(originInput);
         } else {
             CombatantTextInputBridge.blur(searchInput);
+            CombatantTextInputBridge.blur(originInput);
         }
         settingsPanel.render(0f, 0f, 0f, 0f, mouseX, mouseY, SETTINGS_SCALE);
     }
@@ -241,18 +375,100 @@ public final class SchematicPanel {
         }
         UiScriptModule module = moduleHandle.module();
         if (module == null) return;
+        if (litematicaSettingsMode) litematicaSettings.syncViewport(runtime);
         Map<String, Object> props = props();
         runtime = script.bake(moduleHandle, module, "schematic-workspace",
                 CachedUiScriptRuntime.signature(props), bounds.w, bounds.h,
                 ClickGuiRenderer.getOnestMedium(), bounds.x, bounds.y, bounds.w, bounds.h, () -> props);
         if (runtime == null) return;
         registerActions();
+        if (litematicaSettingsMode) litematicaSettings.registerActions(runtime);
         runtime.render(new UiRenderContext(Renderer2D.COLOR, ClickGuiRenderer.getOnestMedium(),
                         null, 0f, UiProjectionMode.CURRENT, AnimationUtility.easeOutCubic(openAnim)),
-                () -> runtime.input().updateHover(runtime.root(), mouseX, mouseY));
+                () -> {
+                    animateRetainedDrawer();
+                    if (litematicaSettingsMode) litematicaSettings.paintLiveColor(runtime);
+                    runtime.input().updateHover(runtime.root(), mouseX, mouseY);
+                });
+    }
+
+    /**
+     * Move the retained inspector every render frame, not only after an asynchronous
+     * script rebuild. UiRuntime calls this after scroll's layout pass, so the next
+     * reconciliation or scroll tick cannot erase the animated position for a frame.
+     * The same patched bounds are used by the renderer, clipping and hit-testing.
+     */
+    private void animateRetainedDrawer() {
+        if (runtime == null || bounds == null || libraryMode || litematicaSettingsMode) return;
+        UiNode drawer = findUiNode(runtime.root(), "drawer:reveal");
+        if (drawer == null) return;
+        float targetX = bounds.x + bounds.inspectorX;
+        float delta = targetX - drawer.bounds().x();
+        if (Math.abs(delta) < 0.01f) return;
+        shiftSubtreeX(drawer, delta);
+    }
+
+    private static void shiftSubtreeX(UiNode node, float dx) {
+        UiBounds old = node.bounds();
+        node.setBounds(new UiBounds(old.x() + dx, old.y(), old.width(), old.height()));
+        for (UiNode child : node.children()) shiftSubtreeX(child, dx);
+    }
+
+    private static UiNode findUiNode(UiNode node, String key) {
+        if (node == null) return null;
+        if (key.equals(node.key())) return node;
+        for (UiNode child : node.children()) {
+            UiNode result = findUiNode(child, key);
+            if (result != null) return result;
+        }
+        return null;
+    }
+
+    private Map<String, Object> liteProps() {
+        int synced = Theme.theme() == null ? 0xFF4069FD : blend(0xFF4069FD, Theme.theme().accent(), .82f);
+        int background = Theme.theme() == null ? 0xFF1D1D1D : blend(0xFF1D1D1D, Theme.theme().windowBg(), .15f);
+        int surface = Theme.theme() == null ? 0xFF292929 : blend(0xFF292929, Theme.theme().surface(), .18f);
+        int border = Theme.theme() == null ? 0xFF737373 : blend(0xFF737373, Theme.theme().strokeSoft(), .18f);
+        Map<String,Object> colors = map("accent",color(synced),
+                "accentHover",color(blend(synced,0xFFFFFFFF,.14f)),
+                "accentPress",color(blend(synced,0xFFFFFFFF,.27f)),
+                "focus",color(blend(synced,0xFFFFFFFF,.36f)),
+                "selected",color(blend(0xFF333333,synced,.31f)),
+                "background",color(background),"surface",color(surface),"border",color(border),
+                "raised",color(blend(surface,0xFFFFFFFF,.05f)));
+        // Configuration has no native drawer. Exclude its exiting animation
+        // from the signature so changing category never waits for stale frames.
+        Layout configLayout = Layout.compute(bounds.x, bounds.y, bounds.w, bounds.h,
+                onClose != null, true, 0f);
+        return map("width",bounds.w,"height",bounds.h,"layout",configLayout.props(),
+                "colors",colors,"liteSettingsMode",true,"liteCategory",litematicaSettings.selectedGroup(),
+                "lite",litematicaSettings.snapshot(),"libraryMode",false,"loaded",linkedLiteIndex>=0,
+                "loading",false,"standalone",onClose!=null,"toasts",toastSnapshot());
+    }
+
+    private List<Map<String,Object>> toastSnapshot() {
+        List<Map<String,Object>> result = new ArrayList<>(localToasts.size());
+        long now = System.nanoTime();
+        for (LocalToast toast : localToasts) {
+            float age = clamp((now - toast.started()) / (float)TOAST_DURATION, 0f, 1f);
+            float entering = clamp(age * 12f, 0f, 1f);
+            float leaving = clamp((1f - age) * 12f, 0f, 1f);
+            float fade = Math.min(entering * entering * (3f - 2f * entering),
+                    leaving * leaving * (3f - 2f * leaving));
+            if (toast.dismissedAt != 0L) {
+                float remaining = clamp(1f - (now - toast.dismissedAt) / (float)TOAST_DISMISS_NS, 0f, 1f);
+                fade = Math.min(fade, remaining * remaining * (3f - 2f * remaining));
+            }
+            result.add(map("id", toast.id(), "message", toast.message(), "variant", toast.variant(),
+                    // Don't rebuild the entire script for subpixel toast changes.
+                    "alpha", Math.round(clamp(fade, 0f, 1f) * 10f) / 10f,
+                    "count", toast.count(), "stack", Math.round(toast.stack / 3f) * 3f));
+        }
+        return result;
     }
 
     private Map<String, Object> props() {
+        if (litematicaSettingsMode) return liteProps();
         Schematic schematic = state.schematic();
         SchematicDiff diff = state.currentDiff();
         SchematicPlacement placement = state.placement();
@@ -349,13 +565,7 @@ public final class SchematicPanel {
                 "size", selectedFile.dimensions(), "blocks", selectedFile.totalBlocks(),
                 "regions", selectedFile.regionCount(), "error", selectedFile.error(),
                 "modified", selectedFile.lastModified());
-        List<Map<String, Object>> toastProps = new ArrayList<>();
-        for (LocalToast toast : localToasts) {
-            float age = (System.nanoTime() - toast.started()) / (float) TOAST_DURATION;
-            float fade = Math.min(1f, Math.min(age * 12f, (1f - age) * 12f));
-            toastProps.add(map("id", toast.id(), "message", toast.message(), "variant", toast.variant(),
-                    "alpha", clamp(fade, 0f, 1f)));
-        }
+        List<Map<String, Object>> toastProps = toastSnapshot();
         int correct = 0, total = 0;
         if (diff != null) for (int i = 0; i < state.layerCount(); i++) {
             correct += diff.correct(i); total += diff.total(i);
@@ -374,29 +584,70 @@ public final class SchematicPanel {
                 "selected", color(blend(0xFF333333, synced, .31f)),
                 "background", color(background), "surface", color(surface), "border", color(border),
                 "raised", color(blend(surface, 0xFFFFFFFF, .05f)));
-        return map("width", bounds.w, "height", bounds.h, "layout", bounds.props(), "colors", colors,
+        LitematicaWorkspace bridge = lite();
+        BlockPos origin = placement != null ? placement.origin() : BlockPos.ZERO;
+        LitematicaWorkspace.Placement nativeActive = null;
+        if (bridge != null) for (LitematicaWorkspace.Placement entry : bridge.placements())
+            if (entry.selected()) { nativeActive = entry; origin = entry.origin(); break; }
+        if (schematic == null && bridge != null && selectedLiteIndex >= 0) {
+            for (LitematicaWorkspace.Placement entry : bridge.placements()) {
+                if (entry.index() == selectedLiteIndex) { origin = entry.origin(); break; }
+            }
+        }
+        float originCaret = originEdit < 0 ? 0f :
+                ClickGuiRenderer.textWidth(searchFont,
+                        originInput.text().substring(0, Math.min(originInput.cursor(), originInput.text().length())), 17f)
+                        - originInput.viewportOffset();
+        float originSelectFrom = originEdit < 0 ? 0f : textWidth(originInput.text(), originInput.selectionStart())
+                - originInput.viewportOffset();
+        float originSelectTo = originEdit < 0 ? 0f : textWidth(originInput.text(), originInput.selectionEnd())
+                - originInput.viewportOffset();
+        float scriptDrawer = Math.round(drawerProgress * 12f) / 12f;
+        Layout scriptLayout = Layout.compute(bounds.x, bounds.y, bounds.w, bounds.h,
+                onClose != null, libraryMode, scriptDrawer);
+        return map("width", bounds.w, "height", bounds.h, "layout", scriptLayout.props(), "colors", colors,
+                "origin", map("x", origin.getX(), "y", origin.getY(), "z", origin.getZ()),
+                "coordActive", originEdit < 0 ? "" : switch(originEdit){case 0 -> "x"; case 1 -> "y";default -> "z";},
+                "coordText", originInput.text(), "coordCaret", originCaret,
+                "coordScroll", originInput.viewportOffset(),
+                "coordSelectionStart", originSelectFrom, "coordSelectionEnd", originSelectTo,
+                "litematica", bridge != null,
+                "liteSettingsMode", litematicaSettingsMode,
+                "liteCategory", litematicaSettings.selectedGroup(),
+                "liteCategoryLabel", litematicaSettings.selectedGroupLabel(),
+                "liteClip", bridge == null ? "" : bridge.clipMode(),
                 "standalone", onClose != null, "fileCount", library.headers().size(),
                 "scanning", library.isScanning(), "files", files, "search", searchText, "searchFocused", searchFocused,
                 "searchScroll", searchScroll, "caretOffset", caret, "selectionStart", selectFrom, "selectionEnd", selectTo,
                 "selected", selectedFile != null, "selectedName", selectedFile == null ? "" : selectedFile.name(),
                 "canLoad", canLoad, "libraryMode", libraryMode, "drawerMode", visibleDrawer,
-                "drawerProgress", drawerProgress, "cardsMode", cardsMode,
+                // 12 visual animation steps: keep JS asynchronous builds responsive
+                // instead of sending a different structural signature every frame.
+                "drawerProgress", scriptDrawer, "cardsMode", cardsMode,
                 "fileDetails", fileDetails, "toasts", toastProps,
-                "loaded", schematic != null, "title", schematic == null ? "" : schematic.name(),
+                "loaded", nativeActive != null, "previewAvailable", schematic != null,
+                "title", nativeActive != null ? nativeActive.name() : "",
                 "subtitle", schematic == null ? tr("screen.combatant.schematic.pick_file") : schematic.fileName(),
                 "loading", SchematicActions.loadingPath() != null, "error", SchematicActions.lastError(),
-                "placed", state.isPlaced(), "building", SchematicActions.builderEnabled(),
+                "placed", nativeActive != null, "building", SchematicActions.builderEnabled(),
                 "projecting", SchematicActions.projectionEnabled(), "layer", state.layer() + 1,
-                "layerCount", state.layerCount(), "layerMode", state.layerMode().name(),
+                "layerCount", state.layerCount(), "layerMode", bridge == null ? "" : bridge.clipMode(),
                 "playing", playing, "speed", SPEEDS[speedIndex], "view", view3d ? "3d" : "2d",
+                "freeFly", viewport.freeFly(), "flySpeed", Math.round(viewport.flySpeed()),
                 "viewMode", viewport.mode().name().toLowerCase(Locale.ROOT),
                 "viewModeLabel", tr("screen.combatant.schematic.view.mode." + viewport.mode().name().toLowerCase(Locale.ROOT)),
                 "autoRotate", viewport.autoRotate(), "gap", viewport.gap(), "exploded", viewport.mode().exploded(),
+                "renderFpsTarget", viewport.targetFps(), "renderDistanceScale", viewport.renderDistanceScale(),
                 "materialView", issuesShown ? "issues" : materialsTotal ? "total" : "layer",
                 "issueCount", issues.size(), "inventory", inventory, "info", info,
                 "layers", layers, "progress", progress, "progressLabel", correct + " / " + total,
                 "builderStatus", builderStatus(), "closeLabel", tr("screen.combatant.schematic.close"),
                 "settingsLabel", tr("screen.combatant.schematic.module_settings"), "labels", translations());
+    }
+
+    private float textWidth(String text, int index) {
+        if (searchFont == null || text == null || index <= 0) return 0f;
+        return ClickGuiRenderer.textWidth(searchFont, text.substring(0, Math.min(index, text.length())), 17f);
     }
 
     private float textTo(String text, int index) {
@@ -433,8 +684,8 @@ public final class SchematicPanel {
     }
 
     private String builderStatus() {
-        SchematicBuilder builder = ModuleManager.get(SchematicBuilder.class);
-        return builder == null ? "" : tr("screen.combatant.schematic.builder." + builder.status().name().toLowerCase(Locale.ROOT));
+        Printer printer = ModuleManager.get(Printer.class);
+        return printer != null && printer.isEnabled() ? "Printer active (Litematica)" : "";
     }
 
     private void registerActions() {
@@ -442,40 +693,80 @@ public final class SchematicPanel {
         register("refresh", library::refresh);
         register("folder", SchematicActions::openFolder);
         register("load", () -> { if (selectedPath != null) {
-            SchematicActions.load(selectedPath); libraryMode = false; drawerMode = "none";
+            SchematicActions.load(selectedPath);
+            if (SchematicActions.lastError().isBlank()) { libraryMode = false; drawerMode = "none"; }
             searchFocused = false; searchInput.unfocus();
         } });
         register("unload", () -> { SchematicActions.unload(); libraryMode = true; drawerMode = "none";
+            linkedLiteIndex = -1;
             searchFocused = false; searchInput.unfocus(); });
         register("search", () -> searchFocused = true);
         register("list-mode", () -> cardsMode = false);
         register("cards-mode", () -> cardsMode = true);
         register("search-clear", () -> { searchInput.clear(); searchFocused = true; });
-        register("library", () -> { libraryMode = true; drawerMode = "none"; });
-        register("editor", () -> { if (state.hasSchematic() || SchematicActions.loadingPath() != null) {
-            libraryMode = false; searchFocused = false;
-        } });
+        register("library", () -> { leaveLitematicaSettings(); libraryMode = true; drawerMode = "none"; });
+        register("editor", () -> {
+            // Returning from config must always work; if no placement exists, show Library.
+            boolean hasDocument = state.hasSchematic() || linkedLiteIndex >= 0
+                    || SchematicActions.loadingPath() != null;
+            if (litematicaSettingsMode || hasDocument) {
+                leaveLitematicaSettings(); libraryMode = !hasDocument;
+                searchFocused = false; searchInput.unfocus();
+            }
+        });
+        for (String category : new String[]{"generic", "visuals", "overlays", "colors", "hotkeys"})
+            register("lite-category:" + category, () -> {
+                if (originEdit >= 0) commitOriginEdit();
+                searchFocused = false;
+                searchInput.unfocus();
+                drawerMode = "none";
+                if (settingsPanel.isActive()) {settingsPanel.close();settingsId = null;}
+                litematicaSettingsMode = true;
+                litematicaSettings.selectGroup(category);
+            });
         register("properties-toggle", () -> toggleDrawer("properties"));
         register("materials-toggle", () -> toggleDrawer("materials"));
         register("layers-toggle", () -> toggleDrawer("layers"));
-        register("drawer-close", () -> drawerMode = "none");
+        LitematicaWorkspace bridge = lite();
+        register("origin-edit:x", () -> startOriginEdit(0));
+        register("origin-edit:y", () -> startOriginEdit(1));
+        register("origin-edit:z", () -> startOriginEdit(2));
+        for (int axis = 0; axis < 3; axis++) {
+            int target = axis;
+            String name = switch(axis) { case 0 -> "x"; case 1 -> "y"; default -> "z"; };
+            register("origin-step:" + name + ":up", () -> stepOrigin(target, 1));
+            register("origin-step:" + name + ":down", () -> stepOrigin(target, -1));
+        }
+        register("drawer-close", () -> {
+            if (originEdit >= 0) commitOriginEdit();
+            drawerMode = "none";
+        });
         for (LocalToast toast : localToasts) {
             runtime.actions().register("schematic:toast-close:" + toast.id(), ctx -> {
-                localToasts.removeIf(item -> item.id() == toast.id());
+                for (LocalToast item : localToasts)
+                    if (item.id() == toast.id() && item.dismissedAt == 0L)
+                        item.dismissedAt = System.nanoTime();
                 return true;
             });
         }
-        register("origin-here", SchematicActions::setOriginHere);
-        register("origin-look", SchematicActions::setOriginLooked);
-        register("rotate", state::rotateClockwise);
-        register("mirror", state::cycleMirror);
+        register("origin-here", () -> {if (SchematicActions.setOriginHere()) syncLiteOrigin();});
+        register("origin-look", () -> {if (SchematicActions.setOriginLooked()) syncLiteOrigin();});
+        register("rotate", () -> {
+            LitematicaWorkspace b = lite();
+            if (b != null && linkedLiteIndex >= 0 && b.rotate(linkedLiteIndex))
+                state.rotateClockwise();
+        });
+        register("mirror", () -> {
+            LitematicaWorkspace b = lite();
+            if (b != null && linkedLiteIndex >= 0 && b.mirror(linkedLiteIndex))
+                state.cycleMirror();
+        });
         register("builder", () -> {
-            if (state.isPlaced() || SchematicActions.builderEnabled()) SchematicActions.toggleBuilder();
+            if (linkedLiteIndex >= 0 || SchematicActions.builderEnabled()) SchematicActions.toggleBuilder();
         });
         register("projection", SchematicActions::toggleProjection);
         register("layer-mode", SchematicActions::cycleLayerMode);
-        register("builder-settings", () -> toggleSettings(SchematicBuilder.class, "screen.combatant.schematic.builder_title"));
-        register("projection-settings", () -> toggleSettings(SchematicProjection.class, "screen.combatant.schematic.projection_title"));
+        register("builder-settings", () -> toggleSettings(Printer.class, "Printer"));
         register("view-3d", () -> view3d = true);
         register("view-2d", () -> view3d = false);
         register("view-mode", viewport::cycleMode);
@@ -483,6 +774,11 @@ public final class SchematicPanel {
         register("gap-increase", () -> viewport.setGap(clamp(viewport.gap() + .25f, 0f, SchematicViewport.MAX_GAP)));
         register("auto-rotate", viewport::toggleAutoRotate);
         register("reset-camera", this::resetView);
+        register("free-fly", viewport::toggleFreeFly);
+        register("render-fps-down", () -> viewport.setTargetFps(viewport.targetFps() - 5));
+        register("render-fps-up", () -> viewport.setTargetFps(viewport.targetFps() + 5));
+        register("render-distance-down", () -> viewport.setRenderDistanceScale(viewport.renderDistanceScale() - .25f));
+        register("render-distance-up", () -> viewport.setRenderDistanceScale(viewport.renderDistanceScale() + .25f));
         register("layer-prev", () -> state.stepLayer(-1));
         register("layer-next", () -> state.stepLayer(1));
         register("layer-prev10", () -> state.stepLayer(-10));
@@ -499,7 +795,8 @@ public final class SchematicPanel {
                 SchematicHeader file = filtered.get(row);
                 selectedPath = file.path();
                 if (doubleClickFile && !file.failed()) {
-                    SchematicActions.load(selectedPath); libraryMode = false; drawerMode = "none";
+                    SchematicActions.load(selectedPath);
+            if (SchematicActions.lastError().isBlank()) { libraryMode = false; drawerMode = "none"; }
             searchFocused = false; searchInput.unfocus();
                 }
                 searchFocused = false;
@@ -508,14 +805,92 @@ public final class SchematicPanel {
         }
     }
 
+    private BlockPos displayedOrigin() {
+        LitematicaWorkspace bridge = lite();
+        if (bridge != null) for (LitematicaWorkspace.Placement entry : bridge.placements())
+            if (entry.index() == selectedLiteIndex) return entry.origin();
+        return state.placement() != null ? state.placement().origin() : BlockPos.ZERO;
+    }
+
+    private void startOriginEdit(int axis) {
+        if (libraryMode || !"properties".equals(drawerMode) ||
+                linkedLiteIndex < 0) return;
+        if (originEdit >= 0 && originEdit != axis) commitOriginEdit();
+        originEdit = axis;
+        BlockPos origin = displayedOrigin();
+        int value = axis == 0 ? origin.getX() : axis == 1 ? origin.getY() : origin.getZ();
+        originInput.setText(Integer.toString(value));
+        originInput.moveToEnd();
+    }
+
+    private void stepOrigin(int axis, int step) {
+        if (linkedLiteIndex < 0) return;
+        if (originEdit >= 0) commitOriginEdit();
+        BlockPos current = displayedOrigin();
+        long value = (axis == 0 ? current.getX() : axis == 1 ? current.getY() : current.getZ()) + (long)step;
+        if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) return;
+        BlockPos next = new BlockPos(axis == 0 ? (int)value : current.getX(),
+                axis == 1 ? (int)value : current.getY(), axis == 2 ? (int)value : current.getZ());
+        LitematicaWorkspace bridge = lite();
+        if (bridge != null && bridge.setOrigin(linkedLiteIndex, next) && state.hasSchematic())
+            state.setOrigin(next);
+    }
+
+    private void syncLiteOrigin() {
+        LitematicaWorkspace bridge = lite();
+        if (bridge != null && linkedLiteIndex >= 0 && state.placement() != null)
+            bridge.setOrigin(linkedLiteIndex, state.placement().origin());
+    }
+
+    private void commitOriginEdit() {
+        if (originEdit < 0) return;
+        int axis = originEdit;
+        try {
+            int value = Integer.parseInt(originInput.text().trim());
+            BlockPos pos = displayedOrigin();
+            BlockPos next = new BlockPos(axis == 0 ? value : pos.getX(),
+                    axis == 1 ? value : pos.getY(), axis == 2 ? value : pos.getZ());
+            LitematicaWorkspace bridge = lite();
+            int index = linkedLiteIndex;
+            if (bridge != null && index >= 0) {
+                bridge.setOrigin(index, next);
+                // Native coordinate-lock masks may reject individual axes.
+                for (LitematicaWorkspace.Placement entry : bridge.placements()) {
+                    if (entry.index() == index) { next = entry.origin(); break; }
+                }
+            }
+            if (state.hasSchematic()) state.setOrigin(next);
+        } catch (NumberFormatException ignored) {
+            // Keep the previous coordinate on invalid input or integer overflow.
+        }
+        originEdit = -1;
+        originInput.unfocus();
+    }
+
+    private void leaveLitematicaSettings() {
+        if (litematicaSettingsMode) {
+            litematicaSettings.removed();
+            litematicaSettingsMode = false;
+        }
+    }
+
     private void toggleDrawer(String requested) {
-        if (libraryMode) return;
-        drawerMode = requested.equals(drawerMode) ? "none" : requested;
+        if (libraryMode || litematicaSettingsMode) return;
+        if (originEdit >= 0) commitOriginEdit();
+        String next = requested.equals(drawerMode) ? "none" : requested;
+        if (!"none".equals(next) && drawerProgress < .01f) {
+            // Give the worker a stable first snapshot that actually includes the drawer.
+            drawerProgress = .09f;
+            drawerEnterPending = true;
+            drawerEnterStarted = System.nanoTime();
+        } else if ("none".equals(next)) drawerEnterPending = false;
+        drawerMode = next;
         searchFocused = false;
     }
 
     private boolean editorVisible() {
-        return !libraryMode && !(bounds != null && bounds.compact && !"none".equals(drawerMode));
+        return !libraryMode && !litematicaSettingsMode &&
+                !(bounds != null && bounds.compact && !"none".equals(drawerMode));
     }
 
     private void register(String key, Runnable action) {
@@ -532,6 +907,11 @@ public final class SchematicPanel {
         float vw = canvasNativeW(), vh = canvasNativeH();
         boolean hot = inside(mouseX, mouseY, vx, vy, vw, vh) && !layerDragging && !gapDragging;
         if (view3d) {
+            if (viewport.freeFly() && !settingsPanel.isActive() && originEdit < 0 && !searchFocused) {
+                viewport.fly(keyAxis(InputKeys.D, InputKeys.A),
+                        keyAxis(InputKeys.SPACE, -1) - (shiftDown() ? 1f : 0f),
+                        keyAxis(InputKeys.W, InputKeys.S), dt, ctrlDown());
+            }
             viewport.render(schematic, grid.paletteColors(schematic), state.layer(), diff, vx, vy, vw, vh,
                     dt, mouseX, mouseY, hot && !insideInset(mouseX, mouseY), 1f);
             float side = insetSize(vw, vh);
@@ -677,6 +1057,30 @@ public final class SchematicPanel {
             settingsPanel.close(); settingsId = null;
         }
         if (bounds == null || !inside(mx, my, bounds.x, bounds.y, bounds.w, bounds.h)) return false;
+        if (litematicaSettingsMode) {
+            boolean textInput = litematicaSettings.mousePressed(mx,my,button,bounds.x+54f,bounds.y+bounds.header,
+                    Math.max(1f,bounds.w-54f),Math.max(1f,bounds.h-bounds.header));
+            boolean handled = runtime != null && runtime.input().pointerDown(runtime.root(),
+                    new UiPointerEvent(mx, my, button));
+            return textInput || handled;
+        }
+        if (button == 0 && !libraryMode && "properties".equals(drawerMode)) {
+            float fx = bounds.x + bounds.inspectorX + 70f;
+            float fy = bounds.y + bounds.header + 95f;
+            for (int axis = 0; axis < 3; axis++) {
+                if (inside(mx, my, fx, fy + axis * 45f,
+                        Math.max(1f, bounds.inspectorW - 129f), 40f)) {
+                    startOriginEdit(axis);
+                    if (searchFont != null) {
+                        originInput.layout(fx + 14f, Math.max(1f, bounds.inspectorW - 155f),
+                                searchFont, 17f);
+                        originInput.beginDrag(mx, shiftDown());
+                    }
+                    return true;
+                }
+            }
+            if (originEdit >= 0) commitOriginEdit();
+        }
         if (button == 0 && libraryMode && inside(mx, my, bounds.searchX,
                 bounds.searchY, bounds.searchW, 44f)) {
             searchFocused = true;
@@ -685,19 +1089,20 @@ public final class SchematicPanel {
             return true;
         }
         if (searchFocused) { searchFocused = false; searchInput.unfocus(); }
-        if (button == 0 && state.hasSchematic() && editorVisible()) {
-            if (inside(mx, my, bounds.stripX - 7f, bounds.stripY - 7f, bounds.stripW + 14f, 33f)) {
+        if (state.hasSchematic() && editorVisible()) {
+            if (button == 0 && inside(mx, my, bounds.stripX - 7f, bounds.stripY - 7f, bounds.stripW + 14f, 33f)) {
                 layerDragging = true; setLayerAt(mx); return true;
             }
-            if (bounds.viewW >= 810f && view3d && viewport.mode().exploded()
+            if (button == 0 && bounds.viewW >= 810f && view3d && viewport.mode().exploded()
                     && inside(mx, my, bounds.gapX, bounds.gapY - 8f, bounds.gapW, 36f)) {
                 gapDragging = true; setGapAt(mx); return true;
             }
-            if (insideInset(mx, my)) { view3d = false; return true; }
+            if (button == 0 && insideInset(mx, my)) { view3d = false; return true; }
             if (inside(mx, my, canvasNativeX(), canvasNativeY(), canvasNativeW(), canvasNativeH())) {
                 if (doubled) resetView();
                 if (view3d) viewport.beginDrag(button, mx, my, shiftDown());
-                else { gridDragging = true; lastGridX = mx; lastGridY = my; }
+                else if (button == 0) { gridDragging = true; lastGridX = mx; lastGridY = my; }
+                else return false;
                 return true;
             }
         }
@@ -707,6 +1112,7 @@ public final class SchematicPanel {
     public boolean mouseDragged(float mx, float my) {
         mouseX = mx; mouseY = my;
         SingleLineTextInput.mouseMoved(mx);
+        if (litematicaSettingsMode && litematicaSettings.mouseDragged(mx,my)) return true;
         if (layerDragging) { setLayerAt(mx); return true; }
         if (gapDragging) { setGapAt(mx); return true; }
         if (viewport.dragging()) { viewport.drag(mx, my); return true; }
@@ -720,6 +1126,7 @@ public final class SchematicPanel {
 
     public void mouseReleased(float mx, float my) {
         SingleLineTextInput.mouseReleased();
+        if (litematicaSettingsMode) litematicaSettings.mouseReleased();
         if (bounds == null) return;
         settingsPanel.mouseReleased(mx, my, InputKeys.MOUSE_LEFT);
         if (viewport.dragging()) {
@@ -733,6 +1140,9 @@ public final class SchematicPanel {
     public boolean mouseScrolled(float mx, float my, double amount) {
         if (settingsPanel.isActive() && settingsPanel.mouseScrolled(mx, my, amount)) return true;
         if (bounds == null) return false;
+        if (litematicaSettingsMode)
+            return runtime != null && runtime.input().scroll(runtime.root(),
+                    new UiScrollEvent(mx, my, 0d, -amount));
         if (runtime != null && runtime.input().scroll(runtime.root(), new UiScrollEvent(mx, my, 0d, -amount))) return true;
         int direction = amount > 0 ? 1 : amount < 0 ? -1 : 0;
         if (direction == 0) return false;
@@ -772,7 +1182,25 @@ public final class SchematicPanel {
     }
 
     public boolean keyPressed(int key) {
+        if (litematicaSettingsMode) {
+            if (litematicaSettings.keyPressed(key)) return true;
+            if (key == InputKeys.ESCAPE) { leaveLitematicaSettings(); return true; }
+            return false;
+        }
         if (settingsPanel.isActive() && settingsPanel.keyPressed(key, 0, 0)) return true;
+        if (originEdit >= 0) {
+            if (key == InputKeys.ESCAPE) { originEdit = -1; originInput.unfocus(); return true; }
+            if (key == InputKeys.ENTER || key == InputKeys.KP_ENTER) { commitOriginEdit(); return true; }
+            if (key == InputKeys.TAB) {
+                int next = (originEdit + (shiftDown() ? 2 : 1)) % 3;
+                commitOriginEdit(); startOriginEdit(next); return true;
+            }
+            int mask = (ctrlDown() ? InputModifierMask.SHORTCUT : 0)
+                    | (shiftDown() ? InputModifierMask.SHIFT : 0);
+            int shortcut = key >= InputKeys.A && key <= InputKeys.Z ? 'a' + key - InputKeys.A : key;
+            originInput.keyPressed(key, shortcut, mask);
+            return true;
+        }
         if (searchFocused) {
             if (key == InputKeys.ESCAPE || key == InputKeys.ENTER || key == InputKeys.KP_ENTER) {
                 searchFocused = false; searchInput.unfocus(); return true;
@@ -795,13 +1223,25 @@ public final class SchematicPanel {
             return true;
         }
         switch (key) {
+            case InputKeys.F -> {
+                if (!editorVisible() || !view3d || !state.hasSchematic()) return false;
+                viewport.toggleFreeFly();
+            }
+            case InputKeys.W, InputKeys.A, InputKeys.S, InputKeys.D,
+                    InputKeys.LEFT_SHIFT, InputKeys.RIGHT_SHIFT -> {
+                if (!viewport.freeFly() || !view3d || !editorVisible()) return false;
+            }
             case InputKeys.UP -> state.stepLayer(1);
             case InputKeys.DOWN -> state.stepLayer(-1);
             case InputKeys.PAGE_UP -> state.stepLayer(10);
             case InputKeys.PAGE_DOWN -> state.stepLayer(-10);
             case InputKeys.HOME -> state.setLayer(0);
             case InputKeys.END -> state.setLayer(state.layerCount() - 1);
-            case InputKeys.SPACE -> { playing = !playing && state.hasSchematic(); playAccumulator = 0f; }
+            case InputKeys.SPACE -> {
+                if (!viewport.freeFly() || !view3d || !editorVisible()) {
+                    playing = !playing && state.hasSchematic(); playAccumulator = 0f;
+                }
+            }
             case InputKeys.ENTER, InputKeys.KP_ENTER -> SchematicActions.load(selectedPath);
             case InputKeys.R -> resetView();
             case InputKeys.T -> view3d = !view3d;
@@ -810,6 +1250,12 @@ public final class SchematicPanel {
         }
         return true;
     }
+    private float keyAxis(int positive, int negative) {
+        float value = positive >= 0 && CombatantInput.state().isPressed(InputDevice.KEYBOARD, positive) ? 1f : 0f;
+        if (negative >= 0 && CombatantInput.state().isPressed(InputDevice.KEYBOARD, negative)) value -= 1f;
+        return value;
+    }
+
     private boolean ctrlDown() {
         return CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.LEFT_CONTROL)
                 || CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.RIGHT_CONTROL);
@@ -819,13 +1265,25 @@ public final class SchematicPanel {
                 || CombatantInput.state().isPressed(InputDevice.KEYBOARD, InputKeys.RIGHT_SHIFT);
     }
     public boolean charTyped(int codepoint) {
+        if (litematicaSettingsMode) return litematicaSettings.charTyped((char) codepoint);
         if (settingsPanel.isActive() && settingsPanel.charTyped((char) codepoint, 0)) return true;
+        if (originEdit >= 0) {
+            if (!CombatantTextInputBridge.owns(originInput) && codepoint >= 32 && !Character.isISOControl(codepoint))
+                originInput.insert(new String(Character.toChars(codepoint)));
+            return true;
+        }
         if (!searchFocused) return false;
         if (!CombatantTextInputBridge.owns(searchInput) && codepoint >= 32 && !Character.isISOControl(codepoint))
             searchInput.insert(new String(Character.toChars(codepoint)));
         return true;
     }
     public boolean cancelCurrentAction() {
+        if (litematicaSettingsMode) {
+            if (litematicaSettings.cancel()) return true;
+            leaveLitematicaSettings();
+            return true;
+        }
+        if (originEdit >= 0) { originEdit = -1; originInput.unfocus(); return true; }
         if (settingsPanel.isActive()) { settingsPanel.close(); settingsId = null; return true; }
         if (searchFocused) { searchFocused = false; searchInput.unfocus(); return true; }
         if (layerDragging || gapDragging || gridDragging || viewport.dragging()) {
@@ -833,22 +1291,31 @@ public final class SchematicPanel {
             return true;
         }
         if (!"none".equals(drawerMode)) { drawerMode = "none"; return true; }
-        if (libraryMode && state.hasSchematic()) { libraryMode = false; return true; }
+        if (libraryMode && (state.hasSchematic() || linkedLiteIndex >= 0)) { libraryMode = false; return true; }
         return false;
     }
 
-    public boolean isTextInputActive() { return searchFocused || settingsPanel.isActive(); }
+    public boolean isTextInputActive() {
+        return litematicaSettingsMode && litematicaSettings.blocksMovement() ||
+                searchFocused || originEdit >= 0 || settingsPanel.isActive();
+    }
 
     public void removed() {
+        viewport.dispose();
+        leaveLitematicaSettings();
         drawerMode = "none";
         visibleDrawer = "none";
         drawerProgress = 0f;
+        drawerEnterPending = false;
         localToasts.clear();
         settingsPanel.close();
         playing = false;
         searchInput.unfocus();
+        originEdit = -1;
+        originInput.unfocus();
         CombatantTextInputBridge.blur(searchInput);
         searchFont = null;
+        searchFontGeneration = -1L;
         runtime = null;
         script.reset();
     }
@@ -876,9 +1343,11 @@ public final class SchematicPanel {
             float rail = 54f;
             boolean overlayDrawer = w < 760f;
             float drawerW = overlayDrawer ? w - rail : clamp(w * .27f, 250f, 314f);
-            float workingW = Math.max(130f, w - rail - (!browsing && !overlayDrawer ? drawerW * clamp(drawerProgress, 0f, 1f) : 0f));
+            float t = clamp(drawerProgress, 0f, 1f);
+            float smooth = t * t * (3f - 2f * t);
+            float workingW = Math.max(130f, w - rail - (!browsing && !overlayDrawer ? drawerW * smooth : 0f));
             float workingH = Math.max(120f, h - head);
-            float drawerX = overlayDrawer ? rail : rail + workingW;
+            float drawerX = overlayDrawer ? w - (w - rail) * smooth : w - drawerW * smooth;
             float drawerWidth = overlayDrawer ? w - rail : drawerW;
             float canvasX = rail + 10f;
             float canvasY = head + 56f;

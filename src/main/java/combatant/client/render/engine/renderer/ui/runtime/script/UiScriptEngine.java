@@ -10,6 +10,11 @@ package combatant.client.render.engine.renderer.ui.runtime.script;
 public interface UiScriptEngine extends AutoCloseable {
     UiScriptRenderResult render(UiScriptModule module, UiScriptRenderContext context);
 
+    /** Optional dependency-aware execution; other engines use conservative invalidation. */
+    default UiScriptRenderResult renderTracked(UiScriptModule module, UiScriptRenderContext context) {
+        return render(module, context);
+    }
+
     @Override
     void close();
 }

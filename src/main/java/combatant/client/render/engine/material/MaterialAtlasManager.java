@@ -258,7 +258,7 @@ public final class MaterialAtlasManager {
 
     private static NativeImage copyImage(NativeImage source) {
         NativeImage copy = new NativeImage(source.getWidth(), source.getHeight(), false);
-        copy.copyRect(source, 0, 0, 0, 0, source.getWidth(), source.getHeight(), false, false);
+        source.copyRect(copy, 0, 0, 0, 0, source.getWidth(), source.getHeight(), false, false);
         return copy;
     }
 
@@ -542,7 +542,7 @@ public final class MaterialAtlasManager {
 
     private static void blit(NativeImage source, NativeImage target, int dstX, int dstY) {
         if (source == null) return;
-        target.copyRect(source, 0, 0, dstX, dstY, source.getWidth(), source.getHeight(), false, false);
+        source.copyRect(target, 0, 0, dstX, dstY, source.getWidth(), source.getHeight(), false, false);
     }
 
     private static NativeImage frame(NativeImage sheet, Timeline timeline, int sequenceFrame,
@@ -550,7 +550,7 @@ public final class MaterialAtlasManager {
                                      int subFrame) {
         NativeImage output = new NativeImage(frameWidth, frameHeight, false);
         if (timeline == null) {
-            output.copyRect(sheet, 0, 0, 0, 0, frameWidth, frameHeight, false, false);
+            sheet.copyRect(output, 0, 0, 0, 0, frameWidth, frameHeight, false, false);
             return output;
         }
         int sequence = Math.floorMod(sequenceFrame, timeline.frames().size());

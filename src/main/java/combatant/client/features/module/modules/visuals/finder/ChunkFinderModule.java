@@ -30,7 +30,7 @@ public abstract class ChunkFinderModule<R extends ChunkMarkers.Hit> extends Shad
 
     protected ChunkFinderModule(int defaultMinMarkerDistance, String defaultFillHex, String defaultLineHex,
                                 int chunksPerTick, long microsPerTick) {
-        super(RenderMode.BOX, RenderMode.BOX, RenderMode.GLOW, RenderMode.SHADER);
+        super(RenderMode.BOX, RenderMode.BOX);
         ChunkMarkers.Settings settings = new ChunkMarkers.Settings(
                 numCommon("scan_radius", CommonSettingSchemas.FINDER_SCAN_RADIUS,
                         ChunkMarkers.MAX_SCAN_RADIUS, 2, ChunkMarkers.MAX_SCAN_RADIUS),

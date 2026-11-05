@@ -25,17 +25,35 @@ import java.util.List;
 
 public final class PlayerModelVisualPreviewProvider implements VisualPreviewProvider {
     private final PlayerModel module;
+    private final PlayerModel.Target target;
     private final PlayerModelSelector selector;
 
     public PlayerModelVisualPreviewProvider(PlayerModel module) {
-        this.module = module;
-        this.selector = new PlayerModelSelector(module);
+        this(module, PlayerModel.Target.SELF);
     }
-    @Override public String id() { return "player_model"; }
-    @Override public String title() { return module.getDisplayName(); }
+
+    public PlayerModelVisualPreviewProvider(PlayerModel module, PlayerModel.Target target) {
+        this.module = module;
+        this.target = target;
+        this.selector = new PlayerModelSelector(module, target);
+    }
+    @Override public String id() { return "player_model:" + target.key(); }
+    @Override public String title() { return module.getDisplayName() + " — " + target.label(); }
     @Override public VisualPreviewControlMode controlMode() { return VisualPreviewControlMode.OBJECT_ROTATE; }
     @Override public List<Setting> settings() {
-        return module.getSettings().stream().filter(s -> !java.util.Set.of("model", "reload", "replacement").contains(s.getId())).toList();
+        String prefix = target == PlayerModel.Target.SELF ? "" : target.key() + "_";
+        return module.getSettings().stream().filter(setting -> {
+            String id = setting.getId();
+            if (id.equals("texture_resolution") || id.equals("texture_filtering") || id.equals("preview_pose"))
+                return true;
+            if (target == PlayerModel.Target.SELF)
+                return !id.equals("model") && !id.equals("replacement") && !id.equals("reload")
+                        && java.util.Arrays.stream(PlayerModel.Target.values())
+                            .filter(other -> other != PlayerModel.Target.SELF)
+                            .noneMatch(other -> id.startsWith(other.key() + "_"));
+            return id.startsWith(prefix) && !id.equals(prefix + "model")
+                    && !id.equals(prefix + "replacement");
+        }).toList();
     }
     @Override public float leftPanelWidth(float width) { return Math.min(440f, width * 0.35f); }
     @Override public boolean mousePressed(float x, float y, int button) { return selector.mousePressed(x, y, button); }
@@ -47,7 +65,7 @@ public final class PlayerModelVisualPreviewProvider implements VisualPreviewProv
     public void renderSubject(VisualPreviewSceneContext context) {
         var mc = context.minecraft();
         if (mc.player == null || mc.level == null) return;
-        PlayerModels.Ready asset = PlayerModels.prepare(module);
+        PlayerModels.Ready asset = PlayerModels.prepare(module, target);
         VisualPreviewItemRenderer.renderScene(context, true, 0.68f, (matrices, storage) -> {
             var dispatcher = mc.getEntityRenderDispatcher();
             if (!(dispatcher.extractEntity(mc.player, context.tickDelta()) instanceof AvatarRenderState state)) return;
@@ -56,11 +74,11 @@ public final class PlayerModelVisualPreviewProvider implements VisualPreviewProv
             state.lightCoords = 0xF000F0;
             applyPreviewPose(state);
             ((PlayerModelRenderState) state).combatant$setReplacement(null);
-            if (module.replacement.get() && asset != null) {
+            if (module.replacement(target).get() && asset != null) {
                 var rig = PlayerAnimator.animate(mc.player, state, context.tickDelta(),
                         TickDelta.frameDeltaSeconds(), "Hybrid", 1f);
                 ((PlayerRigRenderState) state).combatant$setPlayerRig(rig);
-                ((PlayerModelRenderState) state).combatant$setReplacement(PlayerModels.snapshot(asset, rig, module));
+                ((PlayerModelRenderState) state).combatant$setReplacement(PlayerModels.snapshot(asset, rig, module, target));
             }
             CameraRenderState camera = new CameraRenderState();
             camera.pos = Vec3.ZERO;

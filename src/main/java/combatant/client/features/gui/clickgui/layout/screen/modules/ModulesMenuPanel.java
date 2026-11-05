@@ -55,7 +55,9 @@ final class ModulesMenuPanel {
     float settingsScrollbarHandleY, settingsScrollbarHandleH;
     boolean settingsScrollbarDragging;
     float settingsScrollbarDragOffset;
-    float previewX, previewY, previewW, previewH;
+    final List<PreviewHit> previewHits = new ArrayList<>();
+
+    record PreviewHit(String actionId, float x, float y, float w, float h) {}
 
     float swap;
     float anim;
@@ -109,7 +111,7 @@ final class ModulesMenuPanel {
         subcategoryRightHintAnim = 0.0f;
         subcategoryContentAnim = 1.0f;
         subcategoryDirection = 1;
-        previewX = previewY = previewW = previewH = 0.0f;
+        previewHits.clear();
     }
 
     void update() {
@@ -268,10 +270,11 @@ final class ModulesMenuPanel {
                 return true;
             }
 
-            if (button == combatant.client.input.InputKeys.MOUSE_LEFT
-                    && previewW > 0.0f
-                    && ModulesMenuScreen.inside(mx, my, previewX, previewY, previewW, previewH)) {
-                return ModulesMenuResolver.openPreview(selected);
+            if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
+                for (PreviewHit hit : previewHits) {
+                    if (ModulesMenuScreen.inside(mx, my, hit.x(), hit.y(), hit.w(), hit.h()))
+                        return ModulesMenuResolver.openPreview(selected, hit.actionId());
+                }
             }
 
             try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MODULES, ModulesMenuScreen.computePortScale())) {

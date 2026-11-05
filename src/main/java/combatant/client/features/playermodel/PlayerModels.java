@@ -16,6 +16,7 @@ import combatant.client.render.engine.asset.model.material.ModelMaterialBridge;
 import combatant.client.util.resources.asset.AssetLoad;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
+import combatant.client.render.ViewObstructionFadeState;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.world.entity.HumanoidArm;
 import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer.ReplacementSkinCache;
@@ -36,19 +37,31 @@ import java.util.concurrent.Executors;
 
 public final class PlayerModels {
     public record Ready(List<PlayerModelCompiler.Surface> surfaces, Identifier texture,
-                        ReplacementSkinCache handSkin, String bodyMode, List<Identifier> clothingSprites) {
+                        ReplacementSkinCache handSkin, String bodyMode, List<Identifier> clothingSprites,
+                        java.util.Set<String> clothingParts, Set<String> skinParts, boolean fullImportedBody,
+                        PlayerModelProfile.SkinFit skinFit) {
         public Ready(List<PlayerModelCompiler.Surface> surfaces, Identifier texture) {
-            this(surfaces, texture, new ReplacementSkinCache(), "replace", List.of());
+            this(surfaces, texture, new ReplacementSkinCache(), "replace", List.of(), Set.of(),
+                    Set.of(), true, PlayerModelProfile.SkinFit.DEFAULT);
         }
         public Ready(List<PlayerModelCompiler.Surface> surfaces, Identifier texture,
                      ReplacementSkinCache handSkin) {
-            this(surfaces, texture, handSkin, "replace", List.of());
+            this(surfaces, texture, handSkin, "replace", List.of(), Set.of(),
+                    Set.of(), true, PlayerModelProfile.SkinFit.DEFAULT);
         }
         public boolean usesPlayerSkin() { return "player_skin".equals(bodyMode); }
     }
-    public record Snapshot(Ready asset, PlayerRigInstance rig, Matrix4f fitting, ReplacementSkinCache skin) {}
+    public record Snapshot(Ready asset, PlayerRigInstance rig, Matrix4f fitting,
+                           ReplacementSkinCache skin, float opacity, float hit) {
+        public Snapshot(Ready asset, PlayerRigInstance rig, Matrix4f fitting, ReplacementSkinCache skin) {
+            this(asset, rig, fitting, skin, 1.0f, 0.0f);
+        }
+        public boolean faded() { return opacity < 0.995f; }
+    }
     private record Loaded(List<PlayerModelCompiler.Surface> surfaces, List<PlayerModelTexture.Level> texture,
-                          String bodyMode, List<Identifier> clothingSprites) {}
+                          String bodyMode, List<Identifier> clothingSprites, Set<String> clothingParts,
+                          Set<String> skinParts, boolean fullImportedBody,
+                          PlayerModelProfile.SkinFit skinFit) {}
     private record Key(String model, PlayerModelTexture.Quality quality, long generation) {}
     private record GeometryKey(String model, String profile, List<String> renderGroups, long generation) {}
     private static final AtomicLong GENERATION = new AtomicLong();
@@ -76,8 +89,9 @@ public final class PlayerModels {
             for (Identifier id : ids) Minecraft.getInstance().getTextureManager().release(id);
         }
     }
-    private static Key key;
-    private static CompletableFuture<Loaded> pending;
+    /** Multiple relations may be rendered in the same frame: never cancel an unrelated model load. */
+    private static final Map<Key, CompletableFuture<Loaded>> PENDING = new LinkedHashMap<>();
+    private static final Map<Key, String> FAILED = new HashMap<>();
     private static Ready ready;
     private static String status = "";
     private static final PlayerRigInstance HAND_BIND_RIG = createHandRig();
@@ -96,18 +110,28 @@ public final class PlayerModels {
 
     public static boolean applies(AbstractClientPlayer player) {
         PlayerModel module = Modules.get(PlayerModel.class);
-        return module != null && module.isEnabled() && module.replacement.get()
-                && Minecraft.getInstance().player == player;
+        return applies(player, module, module == null || player == null
+                ? PlayerModel.Target.SELF : module.targetFor(player));
+    }
+
+    public static boolean applies(AbstractClientPlayer player, PlayerModel module, PlayerModel.Target target) {
+        return player != null && module != null && module.isEnabled()
+                && module.replacement(target).get();
     }
 
     public static String status() { return status; }
+    /** Last prepared local-player model, retained for existing callers. */
     public static Ready ready() { return ready; }
     public static void reportFailure(Exception failure) {
         status = "Vanilla fallback: " + failure.getMessage();
-        combatant.client.util.logging.DebugLog.warnOnChange("player-model-load", status, "[PlayerModel] %s", status);
     }
 
-    public static Ready prepare(PlayerModel module) {
+    public static Ready prepare(PlayerModel module) { return prepare(module, PlayerModel.Target.SELF); }
+
+    public static Ready prepare(PlayerModel module, PlayerModel.Target target) {
+        if (module == null || target == null) return null;
+        boolean self = target == PlayerModel.Target.SELF;
+        Key requested = null;
         try {
             TextureOwner retired;
             while ((retired = (TextureOwner) RELEASED.poll()) != null) {
@@ -115,56 +139,80 @@ public final class PlayerModels {
             }
             var catalog = ModelCatalog.discover(Minecraft.getInstance().getResourceManager());
             List<ModelCatalog.Entry> entries = catalog.entries();
-            module.model.addOptions(entries.stream().map(ModelCatalog.Entry::id).toList());
-            String selected = module.model.get();
-            if (selected.equals("none") && !entries.isEmpty()) module.model.set(entries.getFirst().id());
-            else if (!selected.contains(":")) {
-                var legacy = entries.stream().filter(e -> ModelCatalog.id(e.id()).getPath().equals(selected)).toList();
-                if (legacy.size() == 1) module.model.set(legacy.getFirst().id());
+            var selection = module.model(target);
+            selection.addOptions(entries.stream().map(ModelCatalog.Entry::id).toList());
+            String selected = selection.get();
+            // Maintain the legacy automatic selection for self only. New relations are opt-in.
+            if (self && selected.equals("none") && !entries.isEmpty()) {
+                selection.set(entries.getFirst().id());
+                selected = selection.get();
+            } else if (!selected.equals("none") && !selected.contains(":")) {
+                String legacySelection = selected;
+                var legacy = entries.stream()
+                        .filter(e -> ModelCatalog.id(e.id()).getPath().equals(legacySelection)).toList();
+                if (legacy.size() == 1) {
+                    selection.set(legacy.getFirst().id());
+                    selected = selection.get();
+                }
             }
-            if (entries.isEmpty()) {
-                ready = null;
-                status = catalog.errors().isEmpty() ? "" : String.join("; ", catalog.errors());
+            if (selected.equals("none") || entries.isEmpty()) {
+                if (self) {
+                    ready = null;
+                    status = catalog.errors().isEmpty() ? "" : String.join("; ", catalog.errors());
+                }
                 return null;
             }
-            Key requested = new Key(module.model.get(), new PlayerModelTexture.Quality(module.textureScale(),
+            requested = new Key(selected, new PlayerModelTexture.Quality(module.textureScale(),
                     module.textureFiltering.get().equals("Linear")), GENERATION.get());
-            if (!requested.equals(key)) {
-                key = requested;
-                ready = null;
-                status = "Loading " + requested.model();
-                if (pending != null) pending.cancel(false);
-                ready = CACHE.get(requested);
-                if (ready != null) {
-                    pending = null;
-                    status = requested.model;
-                    return ready;
-                }
+            Ready cached = CACHE.get(requested);
+            if (cached != null) {
+                if (self) { ready = cached; status = selected; }
+                return cached;
+            }
+            String failed = FAILED.get(requested);
+            if (failed != null) {
+                if (self) { ready = null; status = failed; }
+                return null;
+            }
+            CompletableFuture<Loaded> future = PENDING.get(requested);
+            if (future == null) {
                 var resources = Minecraft.getInstance().getResourceManager();
-                pending = CompletableFuture.supplyAsync(() -> {
-                    try { return load(requested, entries, new combatant.client.render.engine.asset.model.io.MinecraftModelResolver(resources)); }
-                    catch (IOException | RuntimeException failure) { throw new CompletionException(failure); }
+                Key loadKey = requested;
+                List<ModelCatalog.Entry> loadEntries = List.copyOf(entries);
+                future = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return load(loadKey, loadEntries,
+                                new combatant.client.render.engine.asset.model.io.MinecraftModelResolver(resources));
+                    } catch (IOException | RuntimeException failure) {
+                        throw new CompletionException(failure);
+                    }
                 }, LOADER);
+                PENDING.put(requested, future);
             }
-            if (pending != null && pending.isDone()) {
-                CompletableFuture<Loaded> completed = pending;
-                pending = null;
-                Loaded loaded = completed.join();
-                Identifier texture = upload(loaded.texture, requested.quality);
-                ready = new Ready(loaded.surfaces, texture, new ReplacementSkinCache(),
-                        loaded.bodyMode, loaded.clothingSprites);
-                TEXTURES.add(new TextureOwner(ready));
-                CACHE.put(requested, ready);
-                while (CACHE.size() > 4) CACHE.remove(CACHE.keySet().iterator().next());
-                status = requested.model();
+            if (!future.isDone()) {
+                if (self) { ready = null; status = "Loading " + selected; }
+                return null;
             }
-            return ready;
+            PENDING.remove(requested);
+            Loaded loaded = future.join();
+            Identifier texture = upload(loaded.texture, requested.quality());
+            Ready resolved = new Ready(loaded.surfaces, texture, new ReplacementSkinCache(),
+                    loaded.bodyMode, loaded.clothingSprites, loaded.clothingParts,
+                    loaded.skinParts, loaded.fullImportedBody, loaded.skinFit);
+            TEXTURES.add(new TextureOwner(resolved));
+            CACHE.put(requested, resolved);
+            while (CACHE.size() > 12) CACHE.remove(CACHE.keySet().iterator().next());
+            if (self) { ready = resolved; status = selected; }
+            return resolved;
         } catch (Exception failure) {
-            ready = null;
             Throwable cause = failure instanceof CompletionException && failure.getCause() != null
                     ? failure.getCause() : failure;
-            status = "Vanilla fallback: " + cause.getMessage();
-            combatant.client.util.logging.DebugLog.warnOnChange("player-model-load", status, "[PlayerModel] %s", status);
+            String message = "Vanilla fallback: " + cause.getMessage();
+            if (requested != null) {
+                PENDING.remove(requested);
+                FAILED.put(requested, message);
+            }
+            if (self) { ready = null; status = message; }
             return null;
         }
     }
@@ -172,6 +220,7 @@ public final class PlayerModels {
     private static Loaded load(Key key, List<ModelCatalog.Entry> entries, combatant.client.render.engine.asset.model.io.ModelResourceResolver source) throws IOException {
         ModelCatalog.Entry entry = entries.stream().filter(e -> e.id().equals(key.model)).findFirst()
                 .orElseThrow(() -> new IOException("Complete model not found: " + key.model));
+        PlayerModelProfile profile = PlayerModelProfile.load(source, entry.profile());
         GeometryKey geometryKey = new GeometryKey(entry.model(), entry.profile(),
                 entry.renderGroups(), key.generation);
         List<PlayerModelCompiler.Surface> surfaces = GEOMETRY.get(geometryKey);
@@ -179,8 +228,7 @@ public final class PlayerModels {
             var imported = ModelImporters.load(ModelCatalog.id(entry.model()), id -> source.open(
                     id.equals(ModelCatalog.id(entry.atlas())) ? ModelCatalog.id(entry.texture()) : id));
             var runtime = new ModelRuntimeAsset(imported, ModelMaterialBridge.build(imported));
-            surfaces = PlayerModelCompiler.compile(runtime, PlayerModelProfile.load(source, entry.profile()),
-                    entry.renderGroups());
+            surfaces = PlayerModelCompiler.compile(runtime, profile, entry.renderGroups());
             GEOMETRY.put(geometryKey, surfaces);
             while (GEOMETRY.size() > 4) GEOMETRY.remove(GEOMETRY.keySet().iterator().next());
         }
@@ -199,7 +247,9 @@ public final class PlayerModels {
                 throw new IOException("Clothing sprite must use square RGBA player-skin UVs: " + sprite);
         }
         return new Loaded(surfaces, PlayerModelTexture.decode(ModelCatalog.read(source, entry.texture()), key.quality),
-                entry.bodyMode(), entry.clothingSprites().stream().map(ModelCatalog::id).toList());
+                entry.bodyMode(), entry.clothingSprites().stream().map(ModelCatalog::id).toList(),
+                Set.copyOf(entry.clothingParts()), Set.copyOf(entry.skinParts()),
+                entry.renderGroups().isEmpty(), profile.skinFit());
     }
 
     static void validatePng(byte[] bytes) throws IOException {
@@ -218,10 +268,24 @@ public final class PlayerModels {
     }
 
     public static Snapshot snapshot(Ready asset, PlayerRigInstance pose, PlayerModel module) {
+        return snapshot(asset, pose, module, PlayerModel.Target.SELF);
+    }
+
+    public static Snapshot snapshot(Ready asset, PlayerRigInstance pose, PlayerModel module,
+                                    PlayerModel.Target target) {
         if (asset == null || pose == null) return null;
-        Snapshot snapshot = new Snapshot(asset, freezePose(pose), module.fitting(), new ReplacementSkinCache());
-        status = module.model.get();
-        return snapshot;
+        return new Snapshot(asset, freezePose(pose), module.fitting(target), new ReplacementSkinCache());
+    }
+
+    /** Capture render-state alpha and damage once, before GPU draw submissions are deferred. */
+    public static Snapshot snapshot(Ready asset, PlayerRigInstance pose, PlayerModel module,
+                                    PlayerModel.Target target, AbstractClientPlayer player,
+                                    ViewObstructionFadeState fade) {
+        Snapshot base = snapshot(asset, pose, module, target);
+        if (base == null || player == null) return base;
+        PlayerModelVisualEffects.Values effects = PlayerModelVisualEffects.sample(player, fade);
+        return new Snapshot(base.asset(), base.rig(), base.fitting(), base.skin(),
+                effects.opacity(), effects.hit());
     }
 
     static PlayerRigInstance freezePose(PlayerRigInstance pose) {
@@ -235,20 +299,20 @@ public final class PlayerModels {
                                  RenderType originalType, int light, int overlay, int tint, int outlineColor) {
         if (!(state instanceof PlayerModelRenderState target) || target.combatant$getReplacement() == null) return false;
         Snapshot snapshot = target.combatant$getReplacement();
+        target.combatant$setReplacementSubmitted(false);
         matrices.pushPose();
         try {
             matrices.mulPose(snapshot.fitting);
-            PlayerModel module = Modules.get(PlayerModel.class);
-            PlayerModelRenderDiagnostics.setEnabled(module != null && module.performanceDiagnostics.get());
             // Both opaque and translucent surfaces are GPU-skinned. The latter are
             // flushed at the correct world transparency boundary, not via a second
             // per-frame CPU mesh emission into Vanilla's collector.
-            if (PlayerModelGpuRenderer.trySubmit(snapshot, matrices, originalType, light, overlay, tint, outlineColor))
+            if (PlayerModelGpuRenderer.trySubmit(snapshot, matrices, originalType, light, overlay, tint, outlineColor)) {
+                target.combatant$setReplacementSubmitted(true);
                 return true;
+            }
             // Do not upload skinned geometry through VertexConsumer when a GPU
             // contract is unavailable. Let the caller use the vanilla player model
             // rather than silently doing an O(vertices) CPU replacement draw.
-            PlayerModelRenderDiagnostics.fallback(snapshot.asset, PlayerModelGpuRenderer.lastRejectReason());
             return false;
         } finally { matrices.popPose(); }
     }
@@ -306,10 +370,23 @@ public final class PlayerModels {
         return null;
     }
 
+    /** Give native skin and clothing fragments the same smooth damage color as imported armor. */
+    public static int nativeSkinTint(int tint, float hit) {
+        if (hit <= 0.0f) return tint;
+        float amount = Math.max(0.0f, Math.min(1.0f, hit));
+        int color = tint == -1 ? 0xFFFFFFFF : tint;
+        int green = Math.round(((color >>> 8) & 255) * (1.0f - 0.65f * amount));
+        int blue = Math.round((color & 255) * (1.0f - 0.65f * amount));
+        return (color & 0xFFFF0000) | (green << 8) | blue;
+    }
+
     /** Only a full imported body replaces native armor, cape, wings and attachments.
      *  A partial skin-backed helmet must not suppress unrelated vanilla layers. */
     public static boolean replacesBody(Object state) {
-        return active(state) && skinBacked(state) == null;
+        if (!(state instanceof PlayerModelRenderState replacement) ||
+                !replacement.combatant$isReplacementSubmitted()) return false;
+        Snapshot overlay = skinBacked(state);
+        return overlay == null || overlay.asset().fullImportedBody();
     }
 
     public static boolean active(Object state) {
@@ -321,21 +398,19 @@ public final class PlayerModels {
         PlayerModelGpuRenderer.reset();
         combatant.client.render.engine.rig.gpu.RigGpuMeshCache.global().invalidate();
         ModelCatalog.invalidate();
-        if (pending != null) pending.cancel(false);
-        pending = null;
-        key = null;
+        for (CompletableFuture<Loaded> future : PENDING.values()) future.cancel(false);
+        PENDING.clear();
+        FAILED.clear();
         ready = null;
         CACHE.clear();
         HAND_GEOMETRY.clear();
+        PlayerModelVisualEffects.clear();
         LOADER.execute(GEOMETRY::clear);
     }
 
     @AssetLoad(order = 510)
     public static void reloadResources() {
         invalidate();
-        if (pending != null) pending.cancel(false);
-        pending = null;
-        key = null;
         Minecraft mc = Minecraft.getInstance();
         if (mc != null) for (TextureOwner owner : TEXTURES) owner.release();
         TEXTURES.clear();

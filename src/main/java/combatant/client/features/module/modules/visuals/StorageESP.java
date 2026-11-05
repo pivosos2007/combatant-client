@@ -91,7 +91,7 @@ public final class StorageESP extends ShaderBoxModule {
     }
 
     public StorageESP() {
-        super(RenderMode.BOX, RenderMode.values());
+        super(RenderMode.BOX, RenderMode.BOX, RenderMode.OUTLINE, RenderMode.FILL);
     }
 
     private final NumberValue<Integer> maxDistance = num("max_distance", 96, 8, 512);
@@ -249,15 +249,13 @@ public final class StorageESP extends ShaderBoxModule {
                     base = scaleAlpha(base, dimFactor);
                 }
 
-                if (!drawShaderBox(renderer, found.box, base)) {
-                    int line = mode == RenderMode.FILL ? 0 : base;
-                    int fill = switch (mode) {
-                        case OUTLINE, GLOW, SHADER -> 0;
-                        case BOX -> scaleAlpha(base, 0.2f);
-                        case FILL -> scaleAlpha(base, 0.45f);
-                    };
-                    draw.box(found.box, fill, line);
-                }
+                int line = mode == RenderMode.FILL ? 0 : base;
+                int fill = switch (mode) {
+                    case OUTLINE -> 0;
+                    case BOX -> scaleAlpha(base, 0.2f);
+                    case FILL -> scaleAlpha(base, 0.45f);
+                };
+                draw.box(found.box, fill, line);
                 if (tracers.get(found.kind).get()) draw.tracer(center, base);
             }
         }

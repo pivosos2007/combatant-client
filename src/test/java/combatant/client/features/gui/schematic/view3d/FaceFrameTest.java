@@ -61,6 +61,41 @@ class FaceFrameTest {
     }
 
     @Test
+    void zoomInsideOpaqueVolumePreservesVisibleNearClippedSurfaces() {
+        FaceList faces = FaceMesher.build(VoxelVolume.of(1, 1, 1, new int[]{1}),
+                new int[]{0, 0xFFFFFFFF}, ViewMode.ALL, 0, 0f, 100);
+        OrbitCamera camera = cameraFor(0.5f, 0.5f, 0.5f, 0.87f);
+        camera.zoom(50);
+        camera.snap();
+        camera.computeView(0f, 0f, 800f, 600f);
+        FaceFrame frame = new FaceFrame();
+        int n = frame.build(faces, camera, 0f, 0f, 800f, 600f);
+        assertTrue(n > 0, "inside surfaces must not disappear due to backface culling");
+        boolean clipped = false;
+        for (int i = 0; i < n; i++) {
+            int f = frame.face(i);
+            clipped |= frame.clipped(f);
+            assertTrue(frame.vertices(f) >= 3 && frame.vertices(f) <= 5);
+            for (int c = 0; c < frame.vertices(f); c++) {
+                assertTrue(Float.isFinite(frame.screen(f, c, 0)));
+                assertTrue(Float.isFinite(frame.screen(f, c, 1)));
+            }
+        }
+        assertTrue(clipped, "the near plane must clip rather than drop intersected faces");
+    }
+
+    @Test
+    void translucentCubeRetainsBackFacesForSeeThroughMaterials() {
+        BlockShape glass = new BlockShape(true, false, 0, new float[0], new float[0],
+                new float[0], new int[0], new byte[0]);
+        FaceList faces = FaceMesher.build(VoxelVolume.of(1, 1, 1, new int[]{1}),
+                new BlockShape[]{BlockShape.CUBE, glass}, new int[]{0, 0xFFFFFFFF},
+                ViewMode.ALL, 0, 0f, 100);
+        OrbitCamera camera = cameraFor(0.5f, 0.5f, 0.5f, 0.87f);
+        assertEquals(6, new FaceFrame().build(faces, camera, 0f, 0f, 800f, 600f));
+    }
+
+    @Test
     void facesOutsideTheClipRectAreSkipped() {
         FaceList faces = FaceMesher.build(VoxelVolume.of(1, 1, 1, new int[]{1}), new int[]{0, 0xFF808080}, ViewMode.ALL, 0, 0f, 100);
         OrbitCamera camera = cameraFor(0.5f, 0.5f, 0.5f, 0.87f);

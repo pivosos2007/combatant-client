@@ -62,6 +62,7 @@ public final class FaceList {
     private float[] box = new float[6 * 256];
     private byte[] dir = new byte[256];
     private byte[] cls = new byte[256];
+    private boolean[] backCull = new boolean[256];
     private int[] color = new int[256];
     private int[] light = new int[256];
     private int[] voxel = new int[256];
@@ -101,7 +102,7 @@ public final class FaceList {
     }
 
     void add(int direction, byte faceClass, int argb, int lightArgb, int voxelIndex,
-             float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+             float minX, float minY, float minZ, float maxX, float maxY, float maxZ, boolean opaque) {
         if (count == dir.length) grow();
         int b = count * 6;
         box[b] = minX;
@@ -112,6 +113,7 @@ public final class FaceList {
         box[b + 5] = maxZ;
         dir[count] = (byte) direction;
         cls[count] = faceClass;
+        backCull[count] = opaque;
         color[count] = argb;
         light[count] = lightArgb;
         voxel[count] = voxelIndex;
@@ -146,6 +148,7 @@ public final class FaceList {
         int d = ay >= ax && ay >= az ? (ny >= 0f ? UP : DOWN) : ax >= az ? (nx >= 0f ? EAST : WEST) : (nz >= 0f ? SOUTH : NORTH);
         dir[count] = (byte) d;
         cls[count] = faceClass;
+        backCull[count] = shape.cull[q] >= 0;
         color[count] = argb;
         light[count] = lightArgb;
         voxel[count] = voxelIndex;
@@ -158,6 +161,7 @@ public final class FaceList {
         box = Arrays.copyOf(box, next * 6);
         dir = Arrays.copyOf(dir, next);
         cls = Arrays.copyOf(cls, next);
+        backCull = Arrays.copyOf(backCull, next);
         color = Arrays.copyOf(color, next);
         light = Arrays.copyOf(light, next);
         voxel = Arrays.copyOf(voxel, next);
@@ -175,6 +179,11 @@ public final class FaceList {
 
     public int direction(int face) {
         return dir[face];
+    }
+
+    /** Only opaque cube sides and model sides with an explicit cull direction can reject their back face. */
+    public boolean cullBack(int face) {
+        return backCull[face];
     }
 
     public byte faceClass(int face) {

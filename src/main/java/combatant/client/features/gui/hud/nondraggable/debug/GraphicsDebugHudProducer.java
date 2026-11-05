@@ -22,6 +22,9 @@ final class GraphicsDebugHudProducer {
     }
 
     static void insert(List<String> vanilla, DebugHudLineRegistry.VanillaLineSink lines) {
+        // When the vanilla right column is absent (F3 hidden), there is no graphics
+        // section to annotate. Inserting at index -1 would create a stray HUD line.
+        if (vanilla == null || vanilla.isEmpty()) return;
         // No RhiCapabilities allocations and no native GL calls when F3 is drawn.
         // Vulkan does not expose an IGlBackendInfo, so no misleading OpenGL line is added.
         IGlBackendInfo gl = GlBackendAccess.current();
@@ -29,7 +32,9 @@ final class GraphicsDebugHudProducer {
         String level = gl.combatant$availableCapabilitiesLevel();
         if (level == null || level.isBlank()) return;
 
-        lines.after(graphicsLineIndex(vanilla, gl), "Available capabilities level: " + level);
+        int lineIndex = graphicsLineIndex(vanilla, gl);
+        if (lineIndex < 0) return;
+        lines.after(lineIndex, "Available capabilities level: " + level);
     }
 
     /**
@@ -40,12 +45,14 @@ final class GraphicsDebugHudProducer {
         int display = -1;
         int adapter = -1;
         int version = -1;
+        int lastVisibleLine = -1;
         String rawVersion = gl.combatant$glVersion();
         String renderer = gl.combatant$renderer();
         for (int i = 0; i < vanilla.size(); ++i) {
             String line = vanilla.get(i);
             if (line == null) continue;
             String normalized = line.strip().toLowerCase(Locale.ROOT);
+            if (!normalized.isBlank()) lastVisibleLine = i;
             if (normalized.startsWith("display:") || normalized.startsWith("graphics:")) {
                 display = i;
             }
@@ -60,6 +67,7 @@ final class GraphicsDebugHudProducer {
         if (version >= 0) return version;
         if (adapter >= 0) return adapter;
         if (display >= 0) return display;
-        return vanilla.size() - 1;
+        // A blank-only column is not a visible F3 graphics section.
+        return lastVisibleLine;
     }
 }

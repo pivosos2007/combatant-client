@@ -1,0 +1,27 @@
+#version 430 core
+
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(binding = 0) uniform sampler2D u_TraceColor;
+layout(binding = 1) uniform sampler2D u_TraceConfidence;
+layout(binding = 2, rgba16f) writeonly uniform image2D u_ReflectionColor;
+layout(binding = 3, r8) writeonly uniform image2D u_ReflectionConfidence;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_ReflectionColor);
+    if (any(greaterThanEqual(pixel, size))) return;
+
+    vec2 uv = (vec2(pixel) + vec2(0.5)) / vec2(size);
+    vec4 color = textureLod(u_TraceColor, uv, 0.0);
+    float confidence = textureLod(u_TraceConfidence, uv, 0.0).r;
+    imageStore(u_ReflectionColor, pixel, color);
+    imageStore(u_ReflectionConfidence, pixel, vec4(confidence, 0.0, 0.0, 0.0));
+}

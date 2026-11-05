@@ -153,21 +153,6 @@ public final class PostProcessRenderPipelines {
             .build();
 
     @PipelineRegister
-    public static final RenderPipeline POSTPROCESS_TARGET_LENS = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/postprocess_target_lens"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("damage_tint.vert"))
-            .withFragmentShader(shader("target_lens.frag"))
-            .withSampler("u_Texture")
-            .withSampler("u_Depth")
-            .withUniform("TargetLens", UniformType.UNIFORM_BUFFER)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withoutBlend()
-            .withCull(false)
-            .build();
-
-    @PipelineRegister
     public static final RenderPipeline POSTPROCESS_BLAST_SHOCKWAVE = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/postprocess_blast_shockwave"))
             .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)

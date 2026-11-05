@@ -169,11 +169,7 @@ public enum HoldMyItems {
             scope.preparedPlan = plan;
 
             try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("hmi:prepare_hand")) {
-                Object[] scriptContext;
-                try (ProfilerPhase.Scope ignoredContext = ProfilerPhase.scope("hmi:context_pack")) {
-                    scriptContext = scope.scriptContext();
-                }
-                HmiScriptRuntime.Result[] prepared = SCRIPTS.executePlan(plan, scriptContext);
+                HmiScriptRuntime.Result[] prepared = SCRIPTS.executePlan(plan, scope);
                 scope.handPoseResult = prepared[HmiScriptKind.HAND_POSE.ordinal()];
                 scope.handRelativeResult = prepared[HmiScriptKind.HAND_RELATIVE_POSE.ordinal()];
                 scope.itemPoseResult = prepared[HmiScriptKind.ITEM_POSE.ordinal()];
@@ -214,7 +210,6 @@ public enum HoldMyItems {
         } else {
             scope.handRelativeResult = apply(
                     HmiScriptKind.HAND_RELATIVE_POSE,
-                    scope.scriptContext(),
                     matrices,
                     scope
             );
@@ -231,7 +226,7 @@ public enum HoldMyItems {
             scope.itemPoseResult = scope.replayData != null ? scope.replayData.itemPose() : null;
             scope.itemModelResult = scope.replayData != null ? scope.replayData.itemModel() : null;
             applyResult(scope.itemPoseResult, matrices, itemScope, false);
-            scope.modelCommands = scope.itemModelResult != null ? scope.itemModelResult.modelCommands() : List.of();
+            scope.modelProgram = scope.itemModelResult;
             return;
         }
 
@@ -241,40 +236,49 @@ public enum HoldMyItems {
         if (prepared) {
             applyResult(scope.itemPoseResult, matrices, itemScope, true);
         } else {
-            scope.itemPoseResult = apply(HmiScriptKind.ITEM_POSE, itemScope.scriptContext(), matrices, itemScope);
-            scope.itemModelResult = SCRIPTS.execute(HmiScriptKind.ITEM_MODEL, itemScope.scriptContext());
+            HmiScriptRuntime.Result[] replacement = SCRIPTS.executePlan(
+                    HmiScriptRuntime.ITEM_POSE | HmiScriptRuntime.ITEM_MODEL, itemScope);
+            scope.itemPoseResult = replacement[HmiScriptKind.ITEM_POSE.ordinal()];
+            scope.itemModelResult = replacement[HmiScriptKind.ITEM_MODEL.ordinal()];
+            applyResult(scope.itemPoseResult, matrices, itemScope, true);
         }
         playSounds(scope.itemModelResult, itemScope);
-        scope.modelCommands = scope.itemModelResult != null ? scope.itemModelResult.modelCommands() : List.of();
+        scope.modelProgram = scope.itemModelResult;
     }
 
     public static boolean hasModelCommands() {
         if (!active) return false;
         RenderScope scope = current();
-        return scope != null && scope.modelCommands != null && !scope.modelCommands.isEmpty();
+        return scope != null && scope.modelProgram != null && scope.modelProgram.hasModelCommands();
     }
 
     public static List<HmiModelCommand> snapshotModelCommands() {
         if (!active) return List.of();
         RenderScope scope = current();
-        if (scope == null || scope.modelCommands == null || scope.modelCommands.isEmpty()) return List.of();
-        return List.copyOf(scope.modelCommands);
+        if (scope == null || scope.modelProgram == null || !scope.modelProgram.hasModelCommands()) return List.of();
+        return List.copyOf(scope.modelProgram.modelCommands());
+    }
+
+    /** Immutable replay/deferred-render snapshot; no conversion to per-quad Java commands. */
+    public static HmiScriptRuntime.Result snapshotModelProgram() {
+        if (!active) return HmiScriptRuntime.Result.EMPTY;
+        RenderScope scope = current();
+        return scope != null && scope.modelProgram != null ? scope.modelProgram : HmiScriptRuntime.Result.EMPTY;
     }
 
     public static void applyModelCommands(PoseStack matrices, int quadIndex) {
         if (!active) return;
         RenderScope scope = current();
-        if (scope == null || scope.modelCommands == null) return;
-        HmiModelCommand.apply(scope.modelCommands, quadIndex, matrices);
+        if (scope == null || scope.modelProgram == null) return;
+        scope.modelProgram.applyModelCommands(quadIndex, matrices);
     }
 
     private static HmiScriptRuntime.Result apply(
             HmiScriptKind kind,
-            Object[] context,
             PoseStack matrices,
             RenderScope scope
     ) {
-        HmiScriptRuntime.Result result = SCRIPTS.execute(kind, context);
+        HmiScriptRuntime.Result result = SCRIPTS.execute(kind, scope);
         applyResult(result, matrices, scope, true);
         return result;
     }
@@ -286,9 +290,9 @@ public enum HoldMyItems {
             boolean withSounds
     ) {
         if (result == null) return;
-        for (HmiTransformCommand command : result.commands()) command.apply(matrices);
+        result.applyTransforms(matrices);
         if (withSounds) playSounds(result, scope);
-        if (!result.modelCommands().isEmpty()) scope.modelCommands = result.modelCommands();
+        if (result.hasModelCommands()) scope.modelProgram = result;
     }
 
     private static void playSounds(HmiScriptRuntime.Result result, RenderScope scope) {
@@ -361,12 +365,11 @@ public enum HoldMyItems {
         private final boolean replay;
         private final ReplayData replayData;
         private final MotionSettings motionSettings;
-        private List<HmiModelCommand> modelCommands = List.of();
+        private HmiScriptRuntime.Result modelProgram;
         private HmiScriptRuntime.Result handPoseResult;
         private HmiScriptRuntime.Result handRelativeResult;
         private HmiScriptRuntime.Result itemPoseResult;
         private HmiScriptRuntime.Result itemModelResult;
-        private Object[] scriptContext;
         private int preparedPlan;
 
         private RenderScope(LocalPlayer player, float tickDelta, InteractionHand hand, ItemStack item, float swingProgress,
@@ -399,15 +402,8 @@ public enum HoldMyItems {
                     mainHandSwingProgress, offHandSwingProgress, equipProgress, mainHand,
                     rightArm, mainHandSwitchEvent, offHandSwitchEvent, blockBreaking, deltaSeconds, swingCount,
                     replay, replayData, motionSettings);
-            scope.modelCommands = modelCommands;
+            scope.modelProgram = modelProgram;
             return scope;
-        }
-
-        private Object[] scriptContext() {
-            if (scriptContext == null) {
-                scriptContext = HmiContextFactory.renderContext(this);
-            }
-            return scriptContext;
         }
 
         public LocalPlayer player() { return player; }

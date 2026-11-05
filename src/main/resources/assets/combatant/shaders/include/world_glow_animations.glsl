@@ -1,7 +1,7 @@
 /*
  * Combatant world glow preset ABI (GLSL 330; shared by OpenGL and Vulkan compilation).
  * IDs are kept in sync with GlowSurfaces.Animation; do not change existing IDs.
- * For custom slots, override world_glow_custom.glsl in a higher-priority resource pack.
+ * Custom visualizations extend any preset via world_glow_custom.glsl.
  * This file deliberately does not own the Fresnel, halo or edge shading.
  */
 struct CombatantGlowVisual {
@@ -19,33 +19,26 @@ CombatantGlowVisual combatantGlowVisual(vec3 tint, float body, float accent) {
 CombatantGlowVisual combatantGlowAnimation(int preset, vec2 uv, vec3 viewPosition, float t, float phase) {
     const float TAU = 6.28318530718;
     float p = phase * TAU;
-    if (preset == 1) { // PULSE: restrained intensity pulse, no translating stripe.
+    CombatantGlowVisual result = combatantGlowVisual(vec3(1.0), 1.0, 0.0);
+    if (preset == 1) { // PULSE
         float wave = 0.5 + 0.5 * sin(t * 1.8 + p);
-        return combatantGlowVisual(vec3(1.0), 0.73 + 0.42 * wave, 0.12 + 0.30 * wave);
-    }
-    if (preset == 2) { // BREATHE: slower easing with stronger surface variation.
+        result = combatantGlowVisual(vec3(1.0), 0.55 + 0.80 * wave, 0.15 + 0.75 * wave);
+    } else if (preset == 2) { // BREATHE
         float wave = 0.5 + 0.5 * sin(t * 0.92 + p);
         wave = wave * wave * (3.0 - 2.0 * wave);
-        return combatantGlowVisual(vec3(1.0), 0.70 + 0.50 * wave, 0.08 + 0.28 * wave);
-    }
-    if (preset == 3) { // FLOW: smooth travelling interference, not a hard scanning band.
+        result = combatantGlowVisual(vec3(1.0), 0.60 + 0.70 * wave, 0.10 + 0.65 * wave);
+    } else if (preset == 3) { // FLOW
         float wave = 0.5 + 0.5 * sin((uv.x + uv.y * 0.82) * TAU * 1.4 - t * 1.65 + p);
-        return combatantGlowVisual(vec3(1.0), 0.82 + 0.26 * wave, 0.25 + 0.50 * wave);
-    }
-    if (preset == 4) { // RIPPLE: concentric motion from the face center.
-        float radius = length((uv - vec2(0.5)) * vec2(1.0, 1.0));
+        result = combatantGlowVisual(vec3(1.0), 0.68 + 0.62 * wave, 0.10 + 1.20 * wave);
+    } else if (preset == 4) { // RIPPLE
+        float radius = length(uv - vec2(0.5));
         float wave = 0.5 + 0.5 * cos(radius * 20.0 - t * 2.1 + p);
-        return combatantGlowVisual(vec3(1.0), 0.82 + 0.24 * wave, 0.65 * wave * wave);
-    }
-    if (preset == 5) { // SWEEP: opt-in legacy-style moving band, no longer hardcoded.
+        result = combatantGlowVisual(vec3(1.0), 0.70 + 0.60 * wave, 1.30 * wave * wave);
+    } else if (preset == 5) { // SWEEP: explicit legacy preset
         float sweep = fract(uv.y * 0.7 + t * 0.38 + phase);
         float band = smoothstep(0.0, 0.05, sweep) * (1.0 - smoothstep(0.05, 0.30, sweep));
         float sheen = 0.5 + 0.5 * sin((uv.x + uv.y) * 17.0 - t * 2.1 + p);
-        return combatantGlowVisual(vec3(1.0), 0.93 + 0.14 * sheen, band);
+        result = combatantGlowVisual(vec3(1.0), 0.75 + 0.45 * sheen, band);
     }
-    if (preset == 8) return combatantGlowCustom1(uv, viewPosition, t, phase);
-    if (preset == 9) return combatantGlowCustom2(uv, viewPosition, t, phase);
-    if (preset == 10) return combatantGlowCustom3(uv, viewPosition, t, phase);
-    if (preset == 11) return combatantGlowCustom4(uv, viewPosition, t, phase);
-    return combatantGlowVisual(vec3(1.0), 1.0, 0.0); // STATIC, or unknown ID
+    return combatantGlowCustomize(preset, uv, viewPosition, t, phase, result);
 }

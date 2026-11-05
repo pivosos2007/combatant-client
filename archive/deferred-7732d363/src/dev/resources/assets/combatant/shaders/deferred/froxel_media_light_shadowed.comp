@@ -1,0 +1,3 @@
+#version 430 core
+#define COMBATANT_FROXEL_DIRECTIONAL_SHADOWS 1
+#moj_import <combatant:deferred_froxel_media_light_impl.glsl>
