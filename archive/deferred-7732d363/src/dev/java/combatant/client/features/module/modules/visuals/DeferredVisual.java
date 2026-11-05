@@ -20,7 +20,6 @@ import combatant.client.render.engine.deferred.DeferredCameraPostConfig;
 import combatant.client.render.engine.deferred.DeferredDebugDiagnostics;
 import combatant.client.render.engine.deferred.DeferredDebugView;
 import combatant.client.render.engine.deferred.DeferredDebugVolumeAxis;
-import combatant.client.render.engine.deferred.DeferredEnvironmentFeatureConfig;
 import combatant.client.render.engine.deferred.DeferredFeature;
 import combatant.client.render.engine.deferred.DeferredFeatureOverride;
 import combatant.client.render.engine.deferred.DeferredPostConfig;
@@ -54,11 +53,6 @@ public final class DeferredVisual extends Module {
     private static final String EFFECT_REFLECTIONS = "reflections";
     private static final String EFFECT_COLORED_BLOCK_LIGHT = "colored_block_light";
     private static final String EFFECT_DYNAMIC_LIGHTS = "dynamic_lights";
-    private static final String EFFECT_PARTICIPATING_MEDIA = "participating_media";
-    private static final String EFFECT_WATER = "water";
-    private static final String EFFECT_SKY = "sky";
-    private static final String EFFECT_CLOUDS = "clouds";
-    private static final String EFFECT_WEATHER = "weather";
     private static final String EFFECT_TAA = "taa";
     private static final String EFFECT_EXPOSURE = "exposure";
     private static final String EFFECT_BLOOM = "bloom";
@@ -69,10 +63,9 @@ public final class DeferredVisual extends Module {
     private static final DeferredFeature[] DEBUG_FEATURES = {
             DeferredFeature.SHADOWS, DeferredFeature.CONTACT_SHADOWS, DeferredFeature.GTAO,
             DeferredFeature.INDIRECT_LIGHT, DeferredFeature.COLORED_BLOCK_LIGHT, DeferredFeature.DYNAMIC_LIGHTS,
-            DeferredFeature.REFLECTIONS, DeferredFeature.WATER, DeferredFeature.TAA, DeferredFeature.EXPOSURE,
-            DeferredFeature.BLOOM, DeferredFeature.PARTICIPATING_MEDIA,
+            DeferredFeature.REFLECTIONS, DeferredFeature.TAA, DeferredFeature.EXPOSURE,
+            DeferredFeature.BLOOM,
             DeferredFeature.DEPTH_OF_FIELD, DeferredFeature.MOTION_BLUR,
-            DeferredFeature.CLOUDS, DeferredFeature.SKY, DeferredFeature.WEATHER
     };
 
     private static final Map<String, Boolean> DEFAULT_EFFECTS = createDefaultEffects();
@@ -190,11 +183,6 @@ public final class DeferredVisual extends Module {
         defaults.put(EFFECT_REFLECTIONS, true);
         defaults.put(EFFECT_COLORED_BLOCK_LIGHT, true);
         defaults.put(EFFECT_DYNAMIC_LIGHTS, true);
-        defaults.put(EFFECT_PARTICIPATING_MEDIA, true);
-        defaults.put(EFFECT_WATER, true);
-        defaults.put(EFFECT_SKY, true);
-        defaults.put(EFFECT_CLOUDS, true);
-        defaults.put(EFFECT_WEATHER, true);
         // Keep projection stable by default until the temporal path is validated independently.
         defaults.put(EFFECT_TAA, false);
         defaults.put(EFFECT_EXPOSURE, true);
@@ -280,11 +268,6 @@ public final class DeferredVisual extends Module {
         boolean reflections = isEffectSelected(EFFECT_REFLECTIONS);
         boolean coloredLight = isEffectSelected(EFFECT_COLORED_BLOCK_LIGHT);
         boolean dynamicLights = isEffectSelected(EFFECT_DYNAMIC_LIGHTS);
-        boolean media = isEffectSelected(EFFECT_PARTICIPATING_MEDIA);
-        boolean water = isEffectSelected(EFFECT_WATER);
-        boolean sky = isEffectSelected(EFFECT_SKY);
-        boolean clouds = isEffectSelected(EFFECT_CLOUDS);
-        boolean weather = isEffectSelected(EFFECT_WEATHER);
         boolean taa = isEffectSelected(EFFECT_TAA);
         if (runtime.shadowsEnabled() != shadows
                 || runtime.contactShadowsEnabled() != contactShadows
@@ -292,9 +275,7 @@ public final class DeferredVisual extends Module {
                 || runtime.indirectLightEnabled() != indirect
                 || runtime.reflectionsEnabled() != reflections
                 || runtime.coloredBlockLightEnabled() != coloredLight
-                || runtime.dynamicLightsEnabled() != dynamicLights
-                || runtime.participatingMediaEnabled() != media
-                || runtime.waterEnabled() != water) {
+                || runtime.dynamicLightsEnabled() != dynamicLights) {
             DeferredRuntimeConfig.update(builder -> builder
                     .shadowsEnabled(shadows)
                     .contactShadowsEnabled(contactShadows)
@@ -302,17 +283,9 @@ public final class DeferredVisual extends Module {
                     .indirectLightEnabled(indirect)
                     .reflectionsEnabled(reflections)
                     .coloredBlockLightEnabled(coloredLight)
-                    .dynamicLightsEnabled(dynamicLights)
-                    .participatingMediaEnabled(media)
-                    .waterEnabled(water));
+                    .dynamicLightsEnabled(dynamicLights));
         }
 
-        DeferredEnvironmentFeatureConfig.Snapshot environment = DeferredEnvironmentFeatureConfig.current();
-        if (environment.skyEnabled() != sky
-                || environment.cloudsEnabled() != clouds
-                || environment.weatherEnabled() != weather) {
-            DeferredEnvironmentFeatureConfig.apply(sky, clouds, weather);
-        }
         if (DeferredTemporalConfig.current().taaEnabled() != taa) {
             DeferredTemporalConfig.setTaaEnabled(taa);
         }

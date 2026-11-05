@@ -6,7 +6,7 @@
  *
  * The caller owns semantic ray construction (surface position/normal/material). This include owns
  * only projection, Hi-Z traversal, footprint/slope/distance-aware hit thickness and geometric
- * confidence so opaque and forward-water SSR cannot silently drift into different algorithms.
+ * confidence for opaque SSR.
  */
 struct CombatantReflectionTracePolicy {
     mat4 inverseProjection;

@@ -17,7 +17,6 @@ uniform sampler2D u_GbufferDepth;
 uniform sampler2D u_EnvironmentIrradiance;
 uniform sampler2D u_ResolvedDepth;
 uniform sampler2D u_ShadowVisibility;
-uniform sampler2D u_CloudShadowVisibility;
 uniform sampler2D u_AmbientVisibility;
 
 layout(std140) uniform DeferredLighting {
@@ -27,7 +26,6 @@ layout(std140) uniform DeferredLighting {
     vec4 u_DirectionalDirection;
     vec4 u_DirectionalRadiance;
     vec4 u_DepthAndFlags;
-    vec4 u_CloudShadowFlags;
 };
 
 const float PI = 3.14159265358979323846;
@@ -138,12 +136,9 @@ void main() {
             float shadowVisibility = u_DepthAndFlags.z > 0.5
                     ? clamp(texture(u_ShadowVisibility, v_TexCoord).r, 0.0, 1.0)
                     : 1.0;
-            float cloudShadowVisibility = u_CloudShadowFlags.x > 0.5
-                    ? clamp(texture(u_CloudShadowVisibility, v_TexCoord).r, 0.0, 1.0)
-                    : 1.0;
             litColor += (diffuseBrdf + specularBrdf)
                     * max(u_DirectionalRadiance.rgb, vec3(0.0))
-                    * ndotl * shadowVisibility * cloudShadowVisibility;
+                    * ndotl * shadowVisibility;
         }
     }
 

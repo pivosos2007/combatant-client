@@ -358,52 +358,6 @@ final class DeferredReflectionCascadeSource implements AutoCloseable {
         return faceData;
     }
 
-    WaterCascadeSnapshot waterSnapshot(Vec3 currentCameraOrigin) {
-        if (atlas == null || capturedViews.isEmpty() || currentCameraOrigin == null) {
-            return WaterCascadeSnapshot.EMPTY;
-        }
-        int count = Math.min(capturedViews.size(), MAX_CASCADE_COUNT * FACES_PER_CASCADE);
-        ArrayList<WaterCascadeFace> faces = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) {
-            DeferredSecondaryView view = capturedViews.get(i);
-            Vec3 delta = view.origin().subtract(currentCameraOrigin);
-            faces.add(new WaterCascadeFace(
-                    view.viewProjection(),
-                    new float[]{
-                            (float) view.viewportWidth() / (float) atlasWidth,
-                            (float) view.viewportHeight() / (float) atlasHeight,
-                            (float) view.viewportX() / (float) atlasWidth,
-                            (float) view.viewportY() / (float) atlasHeight
-                    },
-                    new float[]{view.nearPlane(), view.farPlane(),
-                            (float) (view.index() % FACES_PER_CASCADE), (float) count},
-                    new float[]{(float) delta.x, (float) delta.y, (float) delta.z, 0.0f}
-            ));
-        }
-        return new WaterCascadeSnapshot(faces);
-    }
-
-    record WaterCascadeFace(Matrix4f viewProjection, float[] atlasScaleBias, float[] rangeFace, float[] originDelta) {
-        WaterCascadeFace {
-            viewProjection = new Matrix4f(viewProjection);
-            atlasScaleBias = atlasScaleBias.clone();
-            rangeFace = rangeFace.clone();
-            originDelta = originDelta.clone();
-        }
-    }
-
-    record WaterCascadeSnapshot(List<WaterCascadeFace> faces) {
-        static final WaterCascadeSnapshot EMPTY = new WaterCascadeSnapshot(List.of());
-
-        WaterCascadeSnapshot {
-            faces = faces == null ? List.of() : List.copyOf(faces);
-        }
-
-        boolean valid() {
-            return !faces.isEmpty();
-        }
-    }
-
     private static Vector3f direction(int face) {
         return switch (face) {
             case 0 -> new Vector3f(1.0f, 0.0f, 0.0f);

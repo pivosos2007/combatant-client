@@ -8,7 +8,6 @@
 package combatant.client.render.engine.deferred;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -42,9 +41,8 @@ import java.util.Locale;
  * Neutral opaque-light composition after the individual lighting producers have finished.
  *
  * <p>{@link DeferredResource#LIGHTING_COLOR} is the pre-reflection HDR result. The final
- * reflection pass writes {@link DeferredResource#OPAQUE_REFLECTED_RADIANCE}; sky and participating
- * media composition then produce {@link DeferredResource#SCENE_RADIANCE}; publishing to the mutable
- * Minecraft scene target happens only after that resource is complete.</p>
+ * reflection pass writes {@link DeferredResource#OPAQUE_REFLECTED_RADIANCE} before publishing
+ * to the mutable Minecraft scene target.</p>
  */
 final class DeferredOpaqueCompositeSource implements AutoCloseable {
     private static final int LOCAL_SIZE = 8;
@@ -57,14 +55,8 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
 
     private static final Std430StructLayout REFLECTION_DATA_LAYOUT = Std430StructLayout.builder()
             .member("inverseProjection", Std430Type.MAT4)
-            .member("inverseView", Std430Type.MAT4)
             .member("depthTransform", Std430Type.VEC4)
             .member("flags", Std430Type.VEC4)
-            .build();
-
-    private static final Std430StructLayout SKY_STATE_LAYOUT = Std430StructLayout.builder()
-            .member("state0", Std430Type.VEC4)
-            .member("state1", Std430Type.VEC4)
             .build();
 
     private static final ShaderResourceLayout INDIRECT_LAYOUT = new ShaderResourceLayout(List.of(
@@ -90,9 +82,7 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
             new ShaderResourceSlot(6, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(7, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
             new ShaderResourceSlot(8, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY),
-            new ShaderResourceSlot(9, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(10, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(11, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY)
+            new ShaderResourceSlot(9, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY)
     ));
 
     private CombatantRhi owner;
@@ -100,7 +90,6 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
     private RhiComputePipeline reflectionPipeline;
     private RhiStorageBuffer indirectData;
     private RhiStorageBuffer reflectionData;
-    private RhiStorageBuffer fallbackSkyState;
 
     void install(ArrayList<DeferredPassSpec> passes) {
         passes.add(DeferredPassSpec.builder("world.indirect.composite", DeferredStage.INDIRECT_COMPOSITE)
@@ -119,20 +108,19 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
                 .read(DeferredResource.LIGHTING_COLOR, DeferredResource.GBUFFER_SURFACE,
                         DeferredResource.GBUFFER_GEOMETRY, DeferredResource.GBUFFER_MATERIAL,
                         DeferredResource.RESOLVED_DEPTH, DeferredResource.GBUFFER_DEPTH)
-                .optionalRead(DeferredResource.REFLECTION_COLOR, DeferredResource.REFLECTION_CONFIDENCE,
-                        DeferredResource.SKY_SPECULAR_RADIANCE, DeferredResource.SKY_ENVIRONMENT_STATE)
+                .optionalRead(DeferredResource.REFLECTION_COLOR, DeferredResource.REFLECTION_CONFIDENCE)
                 .write(DeferredResource.OPAQUE_REFLECTED_RADIANCE)
                 .requires(RhiShaderStage.COMPUTE)
                 .when(context -> context.isValid(DeferredResource.LIGHTING_COLOR))
                 .execute(this::composeReflections)
                 .build());
 
-        passes.add(DeferredPassSpec.builder("world.opaque.publish", DeferredStage.VOLUMETRIC_MEDIA_COMPOSITE)
+        passes.add(DeferredPassSpec.builder("world.opaque.publish", DeferredStage.REFLECTION_COMPOSITE)
                 .priority(100)
-                .read(DeferredResource.SCENE_RADIANCE, DeferredResource.GBUFFER_AUXILIARY,
+                .read(DeferredResource.OPAQUE_REFLECTED_RADIANCE, DeferredResource.GBUFFER_AUXILIARY,
                         DeferredResource.GBUFFER_DEPTH, DeferredResource.RESOLVED_DEPTH)
                 .write(DeferredResource.SCENE_COLOR)
-                .when(context -> context.isValid(DeferredResource.SCENE_RADIANCE)
+                .when(context -> context.isValid(DeferredResource.OPAQUE_REFLECTED_RADIANCE)
                         && context.resources().texture(DeferredResource.SCENE_COLOR) != null
                         && context.isValid(DeferredResource.GBUFFER_DEPTH)
                         && context.isValid(DeferredResource.RESOLVED_DEPTH)
@@ -148,7 +136,6 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
         reflectionPipeline();
         indirectData();
         reflectionData();
-        fallbackSkyState();
     }
 
     void release(CombatantRhi currentOwner) {
@@ -220,43 +207,28 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
                 ? requireTexture(context, DeferredResource.REFLECTION_COLOR) : base;
         GpuTextureView confidence = hasReflection
                 ? requireTexture(context, DeferredResource.REFLECTION_CONFIDENCE) : surface;
-        boolean hasSkyResources = context.featureEnabled(DeferredFeature.SKY)
-                && context.isValid(DeferredResource.SKY_SPECULAR_RADIANCE)
-                && context.isValid(DeferredResource.SKY_ENVIRONMENT_STATE)
-                && context.resources().texture(DeferredResource.SKY_SPECULAR_RADIANCE) != null
-                && context.resources().buffer(DeferredResource.SKY_ENVIRONMENT_STATE) != null;
-        GpuTextureView skySpecular = hasSkyResources
-                ? requireTexture(context, DeferredResource.SKY_SPECULAR_RADIANCE) : base;
-        RhiStorageBuffer skyState = hasSkyResources
-                ? requireBuffer(context, DeferredResource.SKY_ENVIRONMENT_STATE) : fallbackSkyState();
         RhiStorageImage output = requireImage(context, DeferredResource.OPAQUE_REFLECTED_RADIANCE);
         boolean zeroToOne = zeroToOneDepth(context);
 
         Std430Writer writer = new Std430Writer(REFLECTION_DATA_LAYOUT, 1)
                 .putMat4(0, "inverseProjection", current.inverseProjection())
-                .putMat4(0, "inverseView", current.inverseView())
                 .putVec4(0, "depthTransform",
                         zeroToOne ? 1.0f : 2.0f,
                         zeroToOne ? 0.0f : -1.0f,
                         zeroToOne ? 1.0f : 0.5f,
                         zeroToOne ? 0.0f : 0.5f)
-                .putVec4(0, "flags", hasReflection ? 1.0f : 0.0f, hasSkyResources ? 1.0f : 0.0f, 0.0f, 0.0f);
+                .putVec4(0, "flags", hasReflection ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
         RhiStorageBuffer data = reflectionData();
         data.upload(writer.buffer(), 0L);
 
         GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
         GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
-        GpuSampler skySampler = RenderSystem.getSamplerCache().getSampler(
-                AddressMode.REPEAT, AddressMode.CLAMP_TO_EDGE,
-                FilterMode.LINEAR, FilterMode.LINEAR, true
-        );
         context.advancedShaders().dispatch(new ComputeDispatchCommand(
                 "Combatant reflection composite",
                 reflectionPipeline(),
                 groups(output.descriptor().width()), groups(output.descriptor().height()), 1,
                 List.of(
-                        new StorageBinding(9, data, 0L, writer.byteSize(), StorageAccess.READ_ONLY),
-                        new StorageBinding(11, skyState, 0L, SKY_STATE_LAYOUT.arrayStride(), StorageAccess.READ_ONLY)
+                        new StorageBinding(9, data, 0L, writer.byteSize(), StorageAccess.READ_ONLY)
                 ),
                 List.of(
                         new SampledTextureBinding(0, base, linear),
@@ -266,15 +238,14 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
                         new SampledTextureBinding(4, geometry, nearest),
                         new SampledTextureBinding(5, material, nearest),
                         new SampledTextureBinding(6, depth, nearest),
-                        new SampledTextureBinding(7, gbufferDepth, nearest),
-                        new SampledTextureBinding(10, skySpecular, skySampler)
+                        new SampledTextureBinding(7, gbufferDepth, nearest)
                 ),
                 List.of(new StorageImageBinding(8, output, StorageAccess.WRITE_ONLY))
         ));
     }
 
     private void publish(DeferredPassContext context) {
-        GpuTextureView source = requireTexture(context, DeferredResource.SCENE_RADIANCE);
+        GpuTextureView source = requireTexture(context, DeferredResource.OPAQUE_REFLECTED_RADIANCE);
         GpuTextureView target = requireTexture(context, DeferredResource.SCENE_COLOR);
         GpuTextureView auxiliary = requireTexture(context, DeferredResource.GBUFFER_AUXILIARY);
         GpuTextureView gbufferDepth = requireTexture(context, DeferredResource.GBUFFER_DEPTH);
@@ -341,20 +312,6 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
     }
 
 
-    private RhiStorageBuffer fallbackSkyState() {
-        if (owner == null) throw new IllegalStateException("Opaque composite has no RHI owner");
-        if (fallbackSkyState == null) {
-            fallbackSkyState = owner.advancedShaders().createStorageBuffer(new StorageBufferDescriptor(
-                    "combatant-reflection-fallback-sky-state", SKY_STATE_LAYOUT, 1, StorageAccess.READ_ONLY, false
-            ));
-            Std430Writer writer = new Std430Writer(SKY_STATE_LAYOUT, 1)
-                    .putVec4(0, "state0", 0.0f, 0.0f, 0.0f, 0.0f)
-                    .putVec4(0, "state1", 0.0f, 0.0f, 0.0f, 0.0f);
-            fallbackSkyState.upload(writer.buffer(), 0L);
-        }
-        return fallbackSkyState;
-    }
-
     private void closeOwned() {
         if (indirectPipeline != null) {
             try { indirectPipeline.close(); } catch (Throwable ignored) { }
@@ -371,10 +328,6 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
         if (reflectionData != null) {
             try { reflectionData.close(); } catch (Throwable ignored) { }
             reflectionData = null;
-        }
-        if (fallbackSkyState != null) {
-            try { fallbackSkyState.close(); } catch (Throwable ignored) { }
-            fallbackSkyState = null;
         }
     }
 
@@ -396,12 +349,6 @@ final class DeferredOpaqueCompositeSource implements AutoCloseable {
         return value;
     }
 
-
-    private static RhiStorageBuffer requireBuffer(DeferredPassContext context, DeferredResource resource) {
-        RhiStorageBuffer value = context.resources().buffer(resource);
-        if (value == null) throw new IllegalStateException("Deferred storage buffer is not bound: " + resource);
-        return value;
-    }
 
     private static boolean zeroToOneDepth(DeferredPassContext context) {
         return context.rhi().capabilities().zeroToOneDepth();
