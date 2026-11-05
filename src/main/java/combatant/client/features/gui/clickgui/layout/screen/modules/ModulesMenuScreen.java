@@ -617,9 +617,6 @@ public final class ModulesMenuScreen {
         float scroll = panel.subcategorySmoothScroll;
         boolean viewportHover = inside(mouseX, mouseY, rowX, rowY, rowW, rowH);
 
-        // Edge affordances are intentionally derived from the smooth position, not the target
-        // scroll. That keeps the chevrons visually coupled to the strip while wheel inertia is
-        // still settling. Near either end the corresponding hint fades away instead of popping.
         float hintFadeDistance = 7.5f * scale;
         float leftHintTarget = panel.maxSubcategoryScroll > 0.5f
                 ? AnimationUtility.clamp01(scroll / Math.max(0.001f, hintFadeDistance))
@@ -652,9 +649,6 @@ public final class ModulesMenuScreen {
 
                 UiBoxShape shape = UiBoxShape.rounded(x, rowY, itemW, rowH, radius);
 
-                // Tint the optical glass itself. The old version put an opaque-ish theme gradient
-                // over the result, which flattened the refraction and made these read as matte pills.
-                // Keep only a whisper of authored gradient below for the theme's two-colour direction.
                 int themeGlass = mix(buttonGradient.start(), buttonGradient.end(), 0.50f);
                 int glassRgb = mix(ModulesMenuStyle.panelBgGlassDark(), themeGlass,
                         0.72f + 0.08f * hover);
@@ -777,9 +771,6 @@ public final class ModulesMenuScreen {
         float right = AnimationUtility.easeOutCubic(panel.subcategoryRightHintAnim);
         if (Math.max(left, right) <= 0.002f || alpha <= 0.002f) return;
 
-        // A short edge scrim keeps the SVG readable over both selected and idle glass pills while
-        // still letting the underlying strip remain visible. It also makes clipped labels read as
-        // continuation rather than accidental scissor damage.
         float fadeW = 10.5f * scale;
         int edgeRgb = ModulesMenuStyle.panelBgGlassDark();
         if (left > 0.002f) {

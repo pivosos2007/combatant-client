@@ -1,3 +1,9 @@
+/*
+ * HoldMyItems script asset.
+ * Upstream license: CC0-1.0.
+ * See THIRD_PARTY_LICENSES/HoldMyItems-CC0-1.0.txt.
+ */
+
 var player = context.player
 var useAction = I.getUseAction(context.item)
 var isUsingItem = P.isUsingItem(player)

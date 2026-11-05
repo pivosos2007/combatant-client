@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // CrouchLayer: isolated player animation/state layer.
 (() => {
   const R=globalThis.CombatantPlayerRig;
@@ -12,11 +19,9 @@
         m.speed/.075,
         c.horizontalSpeed/.075
       )));
-      // Slow stepping, but with enough travel to actually read as locomotion.
+      // Slow deliberate stepping, but with enough travel to actually read as locomotion.
       const sneakHz=.46+.34*moving;
       const sneakPhase=m.advanceCycle('sneak',sneakHz,2.6);
-      // Tactical crouch: center of mass goes down/forward, but the spine remains nearly vertical.
-      // Foot height is solved by AnatomicalJoints.crouch() instead of blindly lowering the pelvis.
       this.rig.move('pelvis',0,(1.45/16)*k,-.018*k);
       this.rig.rotate('pelvis',5*k,0,0);
       this.rig.rotate('spine_lower',-1.4*k,0,0);

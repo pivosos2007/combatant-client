@@ -805,8 +805,6 @@ public final class BetterButtons extends AbstractHudElement {
         ViewportContext.beginUnscaled(null);
         try (RenderWarpStack.Scope ignored = pushParallaxWarp(parallax,
                 buttonX * scale, buttonY * scale, buttonW * scale, buttonH * scale)) {
-            // Textured-shape path carries source-space local/invW, so UVs receive the same projective
-            // interpolation as the warped widget instead of being an affine sprite pasted on top.
             Renderer2D.TEXTURE.roundedTexRect(
                     x * scale, y * scale, w * scale, h * scale,
                     0.0f, 0.0f,

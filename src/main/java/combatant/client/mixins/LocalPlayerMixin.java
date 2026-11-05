@@ -20,8 +20,11 @@ package combatant.client.mixins;
  */
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import org.spongepowered.asm.mixin.injection.ModifyArgs;
+import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 import combatant.client.events.impl.*;
 import combatant.client.features.module.modules.movement.*;
+import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import combatant.client.util.combat.SprintController;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
@@ -68,6 +71,17 @@ import java.util.List;
 
 @Mixin(LocalPlayer.class)
 public abstract class LocalPlayerMixin implements ILocalPlayer {
+
+    @ModifyArgs(method = "rideTick", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/world/entity/vehicle/boat/AbstractBoat;setInput(ZZZZ)V"))
+    private void combatant$entityControlBoatStrafe(Args args) {
+        LocalPlayer self = (LocalPlayer) (Object) this;
+        if (!(self.getVehicle() instanceof AbstractBoat boat)) return;
+        EntityControl control = Modules.get(EntityControl.class);
+        if (control == null || !control.useBoatStrafing(self, boat)) return;
+        args.set(0, false);
+        args.set(1, false);
+    }
 
     @ModifyExpressionValue(
             method = "modifyInput",
@@ -662,7 +676,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     private void combatant$freezeTickMovement(CallbackInfo ci) {
         LocalPlayer p = (LocalPlayer) (Object) this;
 
-        // Something other than the hold moved the player (a server teleport): follow it instead of snapping back.
         if (frozen && (p.getX() != savedX || p.getY() != savedY || p.getZ() != savedZ)) {
             frozen = false;
         }
@@ -919,8 +932,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         if (scale < 1.0F) cir.setReturnValue(cir.getReturnValue().scale(scale));
     }
 
-    // One handler instead of two competing HEAD injectors, so the order is explicit: InventoryMove first (it may
-    // hold the close back until Grim sees a stationary player and flushes its buffered clicks), then XCarry.
     @Inject(method = "closeContainer", at = @At("HEAD"), cancellable = true)
     private void combatant$closeContainer(CallbackInfo ci) {
         InventoryMove move = Modules.get(InventoryMove.class);

@@ -95,9 +95,6 @@ void main() {
     float bodyNoise = fbm(p * 2.05 + flow * (0.65 + swirl * 0.35) + vec2(time * 0.035, -time * 0.07), octaves);
     float turbulence = pow(clamp(bodyNoise * (0.72 + density * 0.45), 0.0, 1.0), 1.0 / contrast);
 
-    // Turbulence may erode a trail, but never amplify temporal energy. Make that erosion depend on
-    // elapsed time rather than frame count so Duration behaves the same at 60/144/240 FPS. The
-    // explicit extinction term also guarantees that sub-visible history eventually becomes zero.
     float decay = clamp(u_Params.x, 0.0, 0.99995);
     float turbulenceDecay = pow(mix(0.94, 1.0, turbulence), frameScale);
     float decayedTrail = previousTrail * decay * turbulenceDecay;

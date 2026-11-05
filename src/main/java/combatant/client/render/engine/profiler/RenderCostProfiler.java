@@ -50,7 +50,6 @@ public enum RenderCostProfiler {
     }
 
     public static Scope uiNode(Object label) {
-        // Intentionally disabled: one zone per retained UI node creates too much trace noise.
         return Scope.NOOP;
     }
 

@@ -290,8 +290,6 @@ final class SchematicTextures {
         SchematicGhostModel ghost = SchematicGhostModel.bake(state, SchematicTextures::tintOf);
         boolean occludes = ghost.fullCube && state.canOcclude();
         if (ghost.fullCube && occludes) return BlockShape.CUBE;
-        // Extremely complex models and quads from other atlases cannot share this preview's atlas batch.
-        // Ordinary stairs, fences and slabs must retain their model geometry rather than appearing as solid cubes.
         if (ghost.fullCube || ghost.quadCount == 0 || ghost.quadCount > MAX_MODEL_QUADS || offBlockAtlas(ghost)) {
             return new BlockShape(true, occludes, 0, new float[0], new float[0], new float[0], new int[0], new byte[0]);
         }

@@ -352,8 +352,6 @@ class SchematicBuilderAnticheatTest {
 
     @Test
     void interactiveSupportsAreClassifiedForSneakPlacement() throws IOException {
-        // Blocks a plain click would open or toggle must be placed against sneaking, otherwise the click is
-        // an interaction packet the server answers with a GUI (Grim MultiActions) instead of a placement.
         assertTrue(BuildPlanner.isInteractive(Blocks.CHEST.defaultBlockState()));
         assertTrue(BuildPlanner.isInteractive(Blocks.HOPPER.defaultBlockState()));
         assertTrue(BuildPlanner.isInteractive(Blocks.REPEATER.defaultBlockState()));

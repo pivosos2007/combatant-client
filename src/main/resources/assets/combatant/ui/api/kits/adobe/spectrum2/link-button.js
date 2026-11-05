@@ -1,4 +1,9 @@
-/* Combatant Client (GPL-3.0). Spectrum 2 LinkButton; link-like navigation action. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 export class SpectrumLinkButton {
   static render(props={}) {

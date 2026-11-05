@@ -1,4 +1,11 @@
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Faceted crystal-glass hover material for ClickGUI module rows.
  *
  * The material is intentionally analytic and low-cost: one triangular lattice,
@@ -40,8 +47,6 @@ float crystalPow16(float x) {
 }
 
 vec4 crystalSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 c1, vec3 hi) {
-    // Skewed mineral lattice. It stays spatially stable; animation is carried by
-    // light/growth travelling through the facets rather than by sliding geometry.
     vec2 q = p;
     q.x += q.y * 0.31 + seed * 2.73;
     q.y += seed * 1.41;
@@ -57,14 +62,10 @@ vec4 crystalSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 
     float edgeAa = max(fwidth(edgeCoord), 0.0015);
     float seam = 1.0 - smoothstep(edgeAa * 0.78, edgeAa * 2.70, edgeCoord);
 
-    // Distance towards the center of a triangular facet. This gives the crystal
-    // an inner volume instead of treating every triangle as a flat tinted tile.
     float centerCoord = 1.0 - max(bary.x, max(bary.y, bary.z));
     float innerCore = smoothstep(0.105, 0.285, centerCoord);
     float innerShell = smoothstep(0.030, 0.175, centerCoord);
 
-    // Stable pseudo-normal per facet. Facets therefore react to one coherent
-    // light direction and read as actual planes instead of random brightness.
     vec2 tilt = vec2(rnd.x * 2.0 - 1.0, rnd.y * 2.0 - 1.0);
     vec3 normal = normalize(vec3(tilt * vec2(0.48, 0.36), 0.86 + rndZ * 0.34));
     vec3 lightDir = normalize(vec3(-0.52, -0.31, 0.94));
@@ -144,8 +145,6 @@ vec4 crystalSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3 
     sweep *= 0.22 + ndl * 0.78;
     color = mix(color, hi * 1.08, sweep * innerShell * 0.075);
 
-    // Keep the body transparent. Opacity is concentrated at seams, refraction,
-    // specular hits and sparse chips rather than filling the row with tinted fog.
     float alpha = 0.018 + depthGrade * 0.014 + innerShell * 0.010;
     alpha += seam * (0.040 + fresnel * 0.030 + growthEnergy * 0.036);
     alpha += internalLight * 0.034;

@@ -231,8 +231,6 @@ public final class OrbitCamera {
     public boolean projectClipped(float x, float y, float z, float[] out, int off) {
         float dx = x - eyeX, dy = y - eyeY, dz = z - eyeZ;
         float depth = dx * forwardX + dy * forwardY + dz * forwardZ;
-        // The near-plane intersection may round slightly behind the plane for
-        // large world coordinates. Clamp it instead of discarding the entire face.
         if (!Float.isFinite(depth)) return false;
         float inv = focal / Math.max(NEAR, depth);
         out[off] = originX + (dx * rightX + dy * rightY + dz * rightZ) * inv;

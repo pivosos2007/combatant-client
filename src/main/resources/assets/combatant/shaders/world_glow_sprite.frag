@@ -8,8 +8,6 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-// Procedural soft glow sprite: hot core, wide halo, and a tiny cross flare. Replaces the baked
-// firefly texture so large sprites stay smooth instead of showing texel steps.
 
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;

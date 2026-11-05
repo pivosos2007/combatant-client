@@ -454,8 +454,6 @@ public final class CustomBar extends AbstractHudElement {
             }
         };
 
-        // Keep vanilla TrackedWaypoint geometry for the HUD rail, but resolve identity, targets
-        // and source precedence through the shared map domain instead of Bar-local state.
         Map<String, LocatorObservation> locatorObservations = locatorObservationIndex();
         Map<UUID, PlayerLocationSnapshot> unifiedLocations = PlayerLocationService.get().snapshot().bestByPlayer();
         Map<String, PlayerLocationSnapshot> unifiedLocationsByName = unifiedLocationNameIndex(unifiedLocations);

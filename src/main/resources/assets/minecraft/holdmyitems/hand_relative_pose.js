@@ -1,3 +1,9 @@
+/*
+ * HoldMyItems script asset.
+ * Upstream license: CC0-1.0.
+ * See THIRD_PARTY_LICENSES/HoldMyItems-CC0-1.0.txt.
+ */
+
 var l = (context.bl ? 1 : -1)
 
 

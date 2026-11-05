@@ -706,11 +706,6 @@ public final class InstaCart extends Module {
         // charge used while finding a direction.
         int releaseCharge = InstaCartCycleRules.expectedReleaseCharge(charge);
         if (releaseCharge < required) {
-            // Rotate while charging, not only AFTER reaching the planned charge.
-            // Otherwise the bow becomes faster on the next tick and the viable
-            // Fast window may vanish before the server receives the aim.
-            // The planner already selected a charge/arc. Keep that angle fixed
-            // until its release tick instead of flipping between ballistic lobes.
             Shot early = pendingShot;
             if (early != null) aim(early.rotation(), () -> { });
             shotWaitReason = "Charging and pre-aiming";

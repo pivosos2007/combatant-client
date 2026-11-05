@@ -1,8 +1,9 @@
 #version 430 core
 /*
- * Combatant Client - persistent UI precipitation field.
- * GPL-3.0. This field stores adhered water, flowing water, wetness and speed.
- * Compute updates state once per frame, not per widget. No cyclic sprites.
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(binding = 0) uniform sampler2D u_Previous;
@@ -127,8 +128,6 @@ void main() {
     pinned = max(pinned - release, 0.0);
 
     float mobile = remainder + inflow + release;
-    // Thin mobile films stick back to the surface instead of diffusing into
-    // infinite hairlines. This transfer preserves liquid volume.
     float recapture = mobile * (1.0 - smoothstep(0.025, 0.13, mobile))
                       * (1.0 - exp(-1.5 * dt));
     mobile = max(mobile - recapture, 0.0);

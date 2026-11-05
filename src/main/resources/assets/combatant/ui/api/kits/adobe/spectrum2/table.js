@@ -1,6 +1,9 @@
-/* Combatant Client (GPL-3.0), Copyright (c) 2026 pivosos2007.
- * Adobe Spectrum 2 TableView, retained rows and native selection/sort affordances.
- * Data, sorting and selection are controlled by the Java host. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 
 export class SpectrumTable {

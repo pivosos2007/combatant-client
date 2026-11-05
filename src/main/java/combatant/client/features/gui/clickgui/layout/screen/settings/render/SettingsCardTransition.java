@@ -47,8 +47,6 @@ public enum SettingsCardTransition {
     }
 
     private static float arrivalAlpha(float p) {
-        // Never make a section materialize from zero. A very shallow 92 -> 100%
-        // settle is enough to register a category change without dimming the cards.
         return 0.92f + 0.08f * AnimationUtility.easeOutCubic(AnimationUtility.clamp01(p));
     }
 

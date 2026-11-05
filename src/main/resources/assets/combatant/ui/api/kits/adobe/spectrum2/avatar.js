@@ -1,4 +1,9 @@
-/* Combatant Client (GPL-3.0). Independent Spectrum 2 avatar fallback adaptation. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 const palette=['#FF426A98','#FF745797','#FF2F7E7E','#FF915F45','#FF596D35','#FF866582'];
 export class SpectrumAvatar {

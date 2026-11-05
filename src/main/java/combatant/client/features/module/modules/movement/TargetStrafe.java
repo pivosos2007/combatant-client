@@ -95,8 +95,6 @@ public final class TargetStrafe extends Module {
                 type == PointType.CUBE, type == PointType.CENTER, autoJump.get(), speed.get());
         Vec3 direction = navigator.direction(player);
         if (direction == null) {
-            // No safe automatic command: relinquish control instead of freezing
-            // the player. Vanilla WASD and momentum remain untouched.
             return;
         }
         boolean jump = autoJump.get() && navigator.needsJump(player);
@@ -158,9 +156,6 @@ public final class TargetStrafe extends Module {
         event.setLeft((keys & MovementKeys.LEFT) != 0);
         event.setRight((keys & MovementKeys.RIGHT) != 0);
         event.setJump(event.isJump() || jump || hop);
-        // Synthetic Grim movement has no physical forward key. Let the shared
-        // SprintController apply its actual food/control/sprint-block policy
-        // on the event below, instead of requiring a previous vanilla key.
         event.setSprint((keys & MovementKeys.FORWARD) != 0
                 && !SprintController.INSTANCE.isSprintBlocked());
     }

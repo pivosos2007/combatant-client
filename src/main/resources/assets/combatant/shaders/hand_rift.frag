@@ -196,9 +196,6 @@ void main() {
 
     if (mask > 0.01) {
         vec2 flow = riftFlow(uv, time, flowSpeed);
-        // The object is not merely tinted: its already-rendered surface is advected through a
-        // silhouette-aware refractive field. Near the edge the sampling can cross the mask, which
-        // bends the apparent contour instead of leaving a perfectly rigid cutout.
         vec2 normal = maskNormal(uv, texel, 2.5 + distortionPx * 0.08);
         vec2 tangent = vec2(-normal.y, normal.x);
         float edgeTight = innerEdgeBand(uv, texel, 2.0);
@@ -219,8 +216,6 @@ void main() {
         float warpPx = distortionPx * bodyEnvelope * (0.44 + 0.34 * abs(fold) + 0.22 * abs(torsion));
         vec2 warpedUv = clamp(uv + warpDir * texel * warpPx, vec2(0.001), vec2(0.999));
 
-        // Crossing the silhouette is deliberate but bounded. This is what gives swords/tools a
-        // slight liquid bend instead of only scrolling their texture inside an unchanged outline.
         float warpedMask = maskAt(warpedUv);
         float crossEdge = saturate((0.30 - warpedMask) * 2.6) * (0.32 + edgeWide * 0.68);
         vec2 guardedUv = mix(warpedUv, uv + warpDir * texel * warpPx * 0.28, crossEdge * 0.72);
@@ -242,7 +237,6 @@ void main() {
         float compression = edgeTight * u_Shadow.a * shadowStrength * (0.10 + 0.08 * abs(torsion));
         focused = mix(focused, u_Shadow.rgb, saturate(compression));
 
-        // Tint is intentionally weak: Rift remains a refractive material, not a flat Chams fill.
         float tintAmount = saturate(u_Fill.a) * (0.08 + caustic * 0.055);
         focused = mix(focused, focused * mix(vec3(1.0), u_Fill.rgb, 0.34), tintAmount);
 
@@ -258,9 +252,6 @@ void main() {
         return;
     }
 
-    // Outside the silhouette, space is pulled toward the object while the tangential curl makes
-    // the distortion trail like smoke. Caustic ridges use the same nearest-edge direction, so
-    // they inherit the held item's shape instead of looking like a screen-space overlay.
     float envelope = saturate(1.0 - distanceNorm);
     envelope = envelope * envelope * (3.0 - 2.0 * envelope);
     vec2 flow = riftFlow(uv, time, flowSpeed);

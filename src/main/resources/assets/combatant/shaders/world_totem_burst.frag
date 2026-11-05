@@ -2,6 +2,13 @@
 #extension GL_ARB_separate_shader_objects : require
 
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Layered spherical TotemFX surface.
  *
  * Params:
@@ -78,7 +85,6 @@ void main() {
     float arc2 = circleBand(n, axis2, width * (offensive > 0.5 ? 0.72 : 1.04));
     float arcs = max(arc0, max(arc1 * 0.82, arc2 * (0.58 + offensive * 0.34)));
 
-    // Traveling segmented pulses along the arcs make them feel energetic instead of painted on.
     float longitude = atan(n.z, n.x);
     float latitude = asin(clamp(n.y, -1.0, 1.0));
     float segment = 0.5 + 0.5 * sin(longitude * (offensive > 0.5 ? 8.0 : 6.0)
@@ -98,7 +104,6 @@ void main() {
           + 0.055 * centerFacing
     ) * breakup;
 
-    // The inner shell is deliberately rim-heavy and slightly delayed, making a nested energy boundary.
     float innerDelay = smoothstep(0.035, 0.13, t);
     float innerFade = 1.0 - smoothstep(offensive > 0.5 ? 0.46 : 0.40, 0.86, t);
     float innerPulse = 0.72 + 0.28 * sin(t * 20.0 + seed * 0.17);

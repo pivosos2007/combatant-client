@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 uniform sampler2D u_Texture;
 uniform sampler2D u_Mask;
 
@@ -22,20 +29,23 @@ void main() {
         return;
     }
 
-    vec2 flow = mask.rg * 2.0 - 1.0;
+    // World masks are PREMULTIPLIED. Decode the flow after undoing coverage,
+    // otherwise the normal collapses toward (-1,-1) as the source texture fades.
+    float coverage = clamp(mask.a, 0.0, 1.0);
+    vec2 flow = clamp(mask.rg / max(coverage, 1.0e-4), vec2(0.0), vec2(1.0)) * 2.0 - 1.0;
     float flowLen = length(flow);
     if (flowLen > 1.0e-5) flow /= flowLen;
+    else flow = vec2(0.0);
 
-    // Secondary movement only: the world-space mask defines the volume/shape. Keep screen-space
-    // wobble low-frequency so the interior reads as refracted space rather than animated caustics.
     float waveA = sin((uv.y + u_Time * 0.115) * 19.0 + uv.x * 7.0);
     float waveB = cos((uv.x - u_Time * 0.092) * 17.0 - uv.y * 6.0);
     vec2 micro = vec2(waveA, waveB) * 0.075;
 
-    // B already carries alpha-weighted accumulated local strength from mask rasterization.
-    // Multiplying by A again would square coverage and make thin/ring masks unnaturally weak.
-    float envelope = mask.b * u_GlobalStrength;
-    vec2 offset = (flow + micro) * (0.0135 * envelope);
+    // Blue is premultiplied strength. Recover it before applying alpha once to the
+    // final composite. This keeps thin antialiased lines visible without hard silhouettes.
+    float strength = clamp(mask.b / max(coverage, 1.0e-4), 0.0, 1.0) * u_GlobalStrength;
+    float envelope = strength;
+    vec2 offset = (flow + micro) * (0.018 * envelope);
     // Keep the displacement stable in pixel space. invWidth / invHeight == height / width.
     offset.x *= clamp(u_InvWidth / max(u_InvHeight, 1.0e-7), 0.25, 4.0);
 
@@ -57,9 +67,9 @@ void main() {
     cavity += texture(u_Texture, clamp(uvG + offset * 0.55, vec2(0.0), vec2(1.0))).rgb;
     cavity += texture(u_Texture, clamp(uvG - offset * 0.42, vec2(0.0), vec2(1.0))).rgb;
     cavity *= 1.0 / 3.0;
-    float optical = clamp(envelope * mask.a, 0.0, 1.0);
+    float optical = clamp(envelope * coverage, 0.0, 1.0);
     refracted = mix(refracted, cavity, optical * 0.34);
 
     vec3 base = texture(u_Texture, uv).rgb;
-    color = vec4(mix(base, refracted, clamp(mask.a, 0.0, 1.0)), 1.0);
+    color = vec4(mix(base, refracted, coverage), 1.0);
 }

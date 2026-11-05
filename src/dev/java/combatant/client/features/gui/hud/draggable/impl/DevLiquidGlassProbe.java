@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.features.gui.hud.draggable.impl;
 
 import combatant.client.features.gui.hud.HudElementInfo;
@@ -76,7 +83,6 @@ public final class DevLiquidGlassProbe extends DraggableHudElement {
         float top = Math.max(10f * s, Math.min(y, Math.max(10f * s, screenH - h - 10f * s)));
         setBounds(left, top, w, h);
 
-        // The shell is opaque enough for legibility, but not a second blur pass.
         renderer.roundedRect(left, top, w, h, 17f * s, 1f, 0xE5121722);
         renderer.roundedRect(left + 1f * s, top + 1f * s, w - 2f * s,
                 h - 2f * s, 16f * s, 1f, 0x1A61697A);
@@ -176,7 +182,6 @@ public final class DevLiquidGlassProbe extends DraggableHudElement {
         // All strokes are inset inside the card and follow the same SDF as the lens.
         renderer.roundedRectStroke(gx, gy, gw, gh, radius, 1f * s, 0x778C9BAA);
 
-        // Overlay typography is deliberately drawn AFTER the glass, never refracted away.
         label(fonts, true, title, left + 11f * s, top + 9f * s,
                 15.2f * s, w - 22f * s, 0xFFF6F8FF);
         label(fonts, false, subtitle, left + 11f * s, top + 29f * s,
@@ -261,8 +266,6 @@ public final class DevLiquidGlassProbe extends DraggableHudElement {
                     x, y, w, h, radius, colors[i]);
         }
 
-        // Fixed markers are deliberately clipped too; they can never spill into
-        // the card header, neighboring tile, or outside the test viewport.
         maskedMark(renderer, x + 6f * s, y + 13f * s, w - 12f * s, 2f * s,
                 x, y, w, h, radius, 0xFFFFFFFF);
         maskedMark(renderer, x + 6f * s, y + h * 0.66f, w - 12f * s, 3f * s,

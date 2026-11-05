@@ -1,4 +1,9 @@
-/* Combatant GPL-3.0. Shared persisted color presets for Java and JS UI hosts. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 package combatant.client.features.gui.clickgui.settings;
 
 import java.util.List;

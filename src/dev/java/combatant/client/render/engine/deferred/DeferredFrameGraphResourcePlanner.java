@@ -53,10 +53,6 @@ final class DeferredFrameGraphResourcePlanner {
             physicalContracts.add(new FrameGraphPassContract(
                     pass.stage().renderPhase(), pass.id(), pass.executionDomain(), uses, pass.externallyDriven()));
         }
-        // Correctness-first renderer bring-up: do not alias deferred transient resources yet.
-        // Several passes execute at Minecraft/Sodium integration boundaries rather than inside one
-        // monolithic graph submission; keeping one physical allocation per logical resource makes
-        // producer validity and debug inspection deterministic until those boundaries are proven.
         return FrameGraphPhysicalPlanner.plan(physicalContracts, declarations, false);
     }
 

@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // Combatant animation registry/runtime. Concrete animations live one class per file under animations/.
 (() => {
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));

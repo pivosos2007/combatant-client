@@ -230,7 +230,6 @@ export function render(ctx) {
     angle: themeAngle,
   }));
 
-  // Soft middle veil keeps the panel matte instead of looking like glossy glass.
   if ((!p.materialMode || p.materialMode === "voronoi")) nodes.push(ui.roundedGradient({
     key: "armor:matte-veil",
     x: 0.55 * scale,

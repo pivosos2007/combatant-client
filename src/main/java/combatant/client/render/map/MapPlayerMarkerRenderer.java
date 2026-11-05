@@ -72,8 +72,6 @@ public final class MapPlayerMarkerRenderer {
         float y = centerY - visualSize * 0.5f;
         float radius = Math.max(4.2f, visualSize * 0.24f);
 
-        // Relation is represented as a soft underlay rather than an outline/stroke. This keeps the
-        // head readable without turning every player into a bordered HUD card.
         float halo = hovered ? 0.28f : 0.16f;
         Renderer2D.COLOR.roundedRect(
                 x - 1.25f, y - 1.25f, visualSize + 2.5f, visualSize + 2.5f,

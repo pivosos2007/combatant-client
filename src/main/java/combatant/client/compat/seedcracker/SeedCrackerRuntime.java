@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.compat.seedcracker;
 
 import combatant.client.config.subsystem.SeedCrackerConfig;
@@ -173,8 +180,6 @@ public final class SeedCrackerRuntime {
                 : autoSave ? "SeedCrackerX: result stored for this server/dimension/profile [disk]."
                 : "SeedCrackerX: result stored for this session. Use @seed persist to save it to disk.";
         if (provisional) storage += " Model fallback: validate before using in modules (@seed saved).";
-        // The original TimeMachine prints seed candidates via Log.printSeed;
-        // this is a storage/verification notice, not a second seed announcement.
         CommandOutput.send(storage, !saved || provisional ? CommandOutput.Tone.WARNING : CommandOutput.Tone.SUCCESS);
     }
 

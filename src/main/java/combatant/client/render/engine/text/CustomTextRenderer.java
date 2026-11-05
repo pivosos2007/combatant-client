@@ -289,9 +289,6 @@ public class CustomTextRenderer implements TextRenderer {
         // raster using the actual projection density, but keep metrics and geometry in
         // logical units. World billboards use their own scale and never inherit UI DPI.
         if (!screenSpace) {
-            // WorldTextRenderer intentionally keeps its existing atlas-selection
-            // semantics: its raster footprint is perspective-dependent, not the
-            // active HUD framebuffer density.
             if (big) return fonts.length - 1;
             double scaleA = Math.floor(requestedScale * 10) / 10;
             int index = scaleA >= 3.0 ? 4 : scaleA >= 2.5 ? 3

@@ -50,9 +50,6 @@ enum UnifiedSettingsSkin {
     static float ACCENT_GRADIENT_ANGLE = 45f;
     static int CHECK_COLOR = 0xFFEFF3FF;
 
-    // Expensive-style controls keep the geometry, while the material is authored from the
-    // active Combatant theme.  These are deliberately four-corner friendly so LayoutRender2D
-    // can keep the same gradient grammar used by the rest of the client.
     static int MODERN_CONTROL_TOP = 0xE61A1B1D;
     static int MODERN_CONTROL_BOTTOM = 0xF017181A;
     static int MODERN_CONTROL_HOVER_TOP = 0xF01E1F22;
@@ -130,9 +127,6 @@ enum UnifiedSettingsSkin {
         ACCENT_GRADIENT_ANGLE = CARD_GRADIENT_ENABLED ? cardGradient.angleDeg() : 45f;
 
         if (modernSettings()) {
-            // MAIN/MAP controls intentionally keep the theme on a short leash. Richness comes
-            // from hierarchy, edge lighting, inset wells and state geometry -- not from tinting
-            // every rectangle with the active accent/card gradient.
             TEXT_PRIMARY = forceAlpha(theme.textPrimary(), 255);
             TEXT_MUTED = forceAlpha(theme.textMuted(), 218);
             TEXT_FAINT = forceAlpha(theme.textMuted(), 138);
@@ -216,8 +210,6 @@ enum UnifiedSettingsSkin {
         return (mapSettings() ? map : main) * scale();
     }
 
-    // Expensive control grammar. Heights are intentionally type-specific in the renderer;
-    // rowHeight is only the compact single-line baseline (checkbox/text/bind/action).
     static float rowHeight() { return modernMetric(27f, 28f); }
     static float rowGap() { return modernMetric(15f, 16f); }
     static float labelSize() { return modernMetric(14.8f, 15f); }

@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // VehicleLayer: isolated player animation/state layer.
 (() => {
   const R=globalThis.CombatantPlayerRig;
@@ -15,8 +22,6 @@
           flexElbow(this.rig,side,18*k);
           return;
         }
-        // getRowingTime() is already continuous/interpolated. Use it directly rather than a
-        // separate low-frequency clock.
         const p=time;
         const pull=(Math.sin(p)+1)*.5;
         const sign=side==='right'?1:-1;

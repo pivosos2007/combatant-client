@@ -236,8 +236,6 @@ void applyLocalDeform(inout vec3 position, inout vec3 normal) {
     vec3 restCenter = origin + axis * longitudinal;
     vec3 crossSection = position - restCenter;
 
-    // Twist the local cross-section first. Bend then rotates that already-twisted frame,
-    // so twist follows the curved limb instead of remaining around the original straight axis.
     if ((flags & RIG_DEFORM_TWIST) != 0u && abs(params.y) > 1.0e-7) {
         float twistT = deformProfile(u, ranges.z, ranges.w, params.w);
         float twistAngle = params.y * twistT;

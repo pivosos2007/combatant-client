@@ -119,8 +119,6 @@ public final class OrbitNavigator {
             return;
         }
 
-        // After a confirmed stall, deliberately choose a detour rather than
-        // issuing the same mathematically safe but physically ineffective step.
         Vec3 best = straight.safe && detourTicks == 0 ? desired : null;
         Probe bestProbe = straight;
         double bestScore = best != null ? score(desired, desired, straight, startingHazard) : -Double.MAX_VALUE;

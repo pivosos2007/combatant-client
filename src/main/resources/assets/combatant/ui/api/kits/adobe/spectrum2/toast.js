@@ -1,5 +1,9 @@
-/* Combatant Client (GPL-3.0), Copyright (c) 2026 pivosos2007.
- * Spectrum 2 Toast: nonmodal, dismissible feedback. Controlled by its owner. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 
 export class SpectrumToast {
@@ -11,9 +15,6 @@ export class SpectrumToast {
     const message=ui.str(props.message,'Status updated');
     const actionLabel=ui.str(props.actionLabel,'');
     const hasAction=actionLabel.length>0;
-    // Preserve the identical action layout during exit even though its handler
-    // is disabled. The action/close are no longer hit targets while fading.
-    // The narrow layout moves the action below the message rather than shrinking it.
     const stackAction=hasAction && width<360;
     const height=stackAction?112:64;
     const color={neutral:p.raised,informative:p.accent,positive:'#FF167C55',

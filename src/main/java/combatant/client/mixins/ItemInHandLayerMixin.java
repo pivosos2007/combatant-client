@@ -57,10 +57,6 @@ public abstract class ItemInHandLayerMixin {
                 ? PlayerRigSocket.LEFT_ITEM
                 : PlayerRigSocket.RIGHT_ITEM;
 
-        // submitArmWithItem() applies -90X, +180Y and a grip translation immediately after
-        // translateToHand(). The rig socket already represents the final vanilla-compatible grip,
-        // so pre-cancel that fixed post transform here. Vanilla then reapplies it and the resulting
-        // matrix is exactly the solved socket matrix instead of socket * gripOffset.
         Matrix4f socketMatrix = SOCKET_MATRIX.get();
         rig.socketMatrix(socket, socketMatrix);
         matrices.mulPose(socketMatrix);

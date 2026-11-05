@@ -118,9 +118,6 @@ public final class WorldJumpShockwaves implements PostProcessPass {
 
         GpuTextureView depth = execution.context().preTranslucentDepth();
         boolean depthUsable = depthSampleable(depth, execution.context().width(), execution.context().height());
-        // Pre-translucent capture may be absent for a frame/backend. Use
-        // the graph's scene-depth snapshot instead of silently rendering
-        // depth-tested waves through walls as if depth testing were disabled.
         if (!depthUsable) {
             depth = execution.context().mainDepth();
             depthUsable = depthSampleable(depth, execution.context().width(), execution.context().height());

@@ -1,6 +1,8 @@
 /*
- * Combatant Client GPL-3.0.
- * Persistent, compute-owned liquid state shared by UI glass and material overlays.
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
 package combatant.client.render.engine.renderer.ui;
 
@@ -85,8 +87,6 @@ public final class UiClimateField {
         if (lastNanos != 0 && now - lastNanos > 15_000_000_000L) valid = false;
         float dt = lastNanos == 0 ? 1.0f / 60.0f
                 : Math.min(Math.max((now - lastNanos) * 1.0e-9f, 0.0f), 0.05f);
-        // After an extended pause, preserve the existing deposits instead of
-        // extrapolating seconds of motion in a single frame.
         lastNanos = now;
         HudClimateSurface.Sample weather = HudClimateSurface.sample();
         int event = HudClimateSurface.waterExitSequence();

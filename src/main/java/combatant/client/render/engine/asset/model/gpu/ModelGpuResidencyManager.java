@@ -117,8 +117,6 @@ public final class ModelGpuResidencyManager {
             residency.close();
             return;
         }
-        // Imported persistent buffers may still be referenced by commands already submitted in the
-        // current frame. Use the existing RHI retirement queue instead of destroying them eagerly.
         currentOwner.resources().retire(residency);
     }
 

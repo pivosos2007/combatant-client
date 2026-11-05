@@ -1,4 +1,11 @@
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Shared GPU palette resolver for Shader ESP.
  * Mode ids are kept in sync with AnimatedRenderColors.shaderMode().
  */

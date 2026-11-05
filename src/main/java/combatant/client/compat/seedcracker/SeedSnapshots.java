@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.compat.seedcracker;
 
 import net.fabricmc.loader.api.FabricLoader;
@@ -207,8 +214,6 @@ public final class SeedSnapshots {
                 } catch (IllegalArgumentException ignored) { }
             }
         } catch (IOException ex) { DebugLog.error("SeedCracker snapshot load failed", ex); }
-        // Previous versions indexed snapshots by server/profile, while already saving the dimension as a field.
-        // Rewrite in the new format once, preserving precisely the original dimension.
         if (legacyFound && !persist()) DebugLog.warn("SeedCracker snapshot migration write failed; retry on next save");
     }
 

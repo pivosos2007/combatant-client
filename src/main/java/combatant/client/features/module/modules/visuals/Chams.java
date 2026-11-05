@@ -489,6 +489,10 @@ public class Chams extends Module {
                         "combatant:chams-hand-mask", maskDispatcher, storage,
                         handMask.getColorTextureView(), handMask.getDepthTextureView(),
                         combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
+                // Imported PlayerModel arms are drawn directly by the GPU renderer and
+                // never enter the vanilla submits copied above.
+                combatant.client.features.playermodel.PlayerModelGpuRenderer.renderHandMask(
+                        handMask.getColorTextureView(), handMask.getDepthTextureView());
             }
             markHandMaskReady();
         } finally {
@@ -540,6 +544,11 @@ public class Chams extends Module {
             hmiReplay = viewModel != null && viewModel.beginHmiReplayPass();
             renderIrisHandMaskPhase(renderer, cameraRenderState, positionMatrix, dispatcher, tickDelta, true);
             renderIrisHandMaskPhase(renderer, cameraRenderState, positionMatrix, dispatcher, tickDelta, false);
+            // Iris' replay also sends custom arms straight to the RHI instead of
+            // the feature dispatcher. Use the camera/projection captured for the
+            // visible first-person hand pass, not the shaderpack's world matrices.
+            combatant.client.features.playermodel.PlayerModelGpuRenderer.renderHandMask(
+                    handMask.getColorTextureView(), handMask.getDepthTextureView());
         } finally {
             try {
                 if (hmiReplay) viewModel.endHmiReplayPass();
@@ -872,8 +881,6 @@ public class Chams extends Module {
             float glassStrength = Math.max(0.0f, fillA * 4.0f);
             float glassLevel = Math.min(glassStrength, 4.0f);
 
-            // Hand glass is intentionally blur-first, like Renderer2D liquid glass.
-            // The item is already rendered in src; this pass only adds frosted refraction on top.
             float edgeWidth = 12.0f + glassLevel * 2.25f;
             float refractionPx = 5.5f + glassLevel * 2.35f;
             float hazeStrength = 0.72f + Math.min(glassStrength, 3.0f) * 0.085f;

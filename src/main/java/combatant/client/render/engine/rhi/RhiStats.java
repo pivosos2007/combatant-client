@@ -119,7 +119,6 @@ public final class RhiStats {
         dynamicArenaIndexUsedObservedBytes = 0L;
         dynamicLargestVertexAllocationBytes = 0L;
         dynamicLargestIndexAllocationBytes = 0L;
-        // Persistent arena allocation totals are lifetime-level and intentionally not reset here.
     }
 
     public void drawCall() {

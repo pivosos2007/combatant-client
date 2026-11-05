@@ -190,7 +190,6 @@ public enum StatusEffectHeuristics {
         return e.equals(MobEffects.STRENGTH);
     }
 
-    // If ambiguous, force-pick these instead of skipping
     private static boolean isForcePick(int idx) {
         Holder<MobEffect> e = at(idx);
         if (e == null) return false;

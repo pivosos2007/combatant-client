@@ -718,7 +718,6 @@ public final class OrderedUiBatcher {
                                 }
                             }
 
-                            // No valid immutable destination: preserve legibility rather than faking the mode.
                             drawCalls++;
                             int mirrorStart = pendingDraws.size();
                             TextRenderSystem.appendGlyphMeshCommand(
@@ -837,8 +836,6 @@ public final class OrderedUiBatcher {
                     boolean uiUnderlayScene = batch.backdropRequest.usesUiUnderlayAsScene();
                     boolean currentTargetScene =
                             batch.backdropRequest.sceneSource() == UiBackdropRequest.SceneSource.CURRENT_TARGET;
-                    // Deferred extraction can outlive a Mojang framebuffer generation during reload/resize.
-                    // Resolve logical CURRENT_TARGET at replay time instead of retaining its old texture view.
                     GpuTextureView blurSourceView = uiUnderlayScene
                             ? uiUnderlayView
                             : capturedScene ? liquidSourceView

@@ -3375,8 +3375,6 @@ public final class Renderer2D {
         UiBackdropRequest backdrop = liquidGlassBackdrop(
                 bounds, UiBlurQuality.fromRenderer(preparedBlurQuality), preparedBlurOffset,
                 safe.thicknessPx, effectiveDistort, 0.0f);
-        // The effect command needs the capture bounds; the exact implicit mask is evaluated by the
-        // liquid-glass batch itself and intentionally stays backend-local.
         effect(UiEffectSpec.liquidGlass(
                 UiShape.rect(x, y, w, h), compound.smoothing(), safe.thicknessPx, safe.distortPx,
                 tintArgb, backdrop, backdropBlend));
@@ -4418,8 +4416,6 @@ public final class Renderer2D {
         float rBR = Math.max(0.0f, radiusBR);
         float rBL = Math.max(0.0f, radiusBL);
         UiShape blurShape = UiShape.roundedRect(x, y, w, h, rTL, rTR, rBR, rBL);
-        // Captured scene is prewarmed before HUD extraction. Keep this key identical so clipped
-        // HUD consumers reuse that texture instead of trying to run Kawase passes inside stencil.
         BlurQuality blurQuality = DEFAULT_LIQUID_GLASS_BLUR_QUALITY;
         float blurOffset = LIQUID_GLASS_KAWASE_OFFSET_PX;
         UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneBlur(
@@ -4859,8 +4855,6 @@ public final class Renderer2D {
             primitivePointsTmp[i * 2 + 1] = primitive.localY(i);
         }
         float rounding = Math.min(primitive.rounding(), (float) Math.min(w, h) * 0.45f);
-        // Shared material vertex layout: two unused polygon slots carry TL/TR/BR/BL radii.
-        // The negative count is a geometry discriminator, not a new vertex attribute.
         int materialVertexCount = primitive.pointCount();
         if (primitive.hasRoundedCorners()) {
             float[] radii = primitive.cornerRadii();

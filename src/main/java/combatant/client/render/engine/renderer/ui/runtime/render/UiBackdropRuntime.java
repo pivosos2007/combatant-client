@@ -70,7 +70,6 @@ final class UiBackdropRuntime {
         );
         UiLiquidGlassMaterial material = new UiLiquidGlassMaterial(
                 optics, frostedJitter, innerGlow, innerGlowSize, innerGlowColor);
-        // Ice is an optional compositing material, not a new optical mode.
         if (props != null && (props.bool("glassIce", false)
                 || "ice".equalsIgnoreCase(props.string("glassMaterial", ""))
                 || "ice".equalsIgnoreCase(props.string("materialMode", "")))) {

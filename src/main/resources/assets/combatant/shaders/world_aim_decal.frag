@@ -2,6 +2,13 @@
 #extension GL_ARB_separate_shader_objects : require
 
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Dedicated aiming decal for Predictions.
  * The marker is intentionally line-dominant: concentric rings, directional sectors and broken calibration arcs.
  */
@@ -70,7 +77,6 @@ void main() {
     float ray2 = rayMask(local, -2.16, radius * 0.29, radius * 0.74, lineWidth * 0.58, aa);
     float sectors = max(ray0, max(ray1, ray2));
 
-    // Calibrated micro-ticks concentrated on two arcs rather than around the whole circumference.
     float tickRing = ringMask(r, radius * 0.865, lineWidth * 0.48, aa);
     float tickPattern = smoothstep(0.68, 0.94, 0.5 + 0.5 * cos(angle * 28.0 + 0.3));
     float tickWindows = max(

@@ -135,9 +135,6 @@ public final class SeeInvisiblesVisualDepth {
         LevelRenderState worldState = ((LevelRendererAccessor) mc.levelRenderer).combatant$getWorldRenderState();
         if (worldState == null || worldState.cameraRenderState == null) return;
         try {
-            // The main and pre-translucent depths must NEVER be conflated: the main
-            // attachment may contain liquids, while PRE_DEPTH deliberately omits them.
-            // The same SeeInvisibles silhouette is drawn into both independent copies.
             visualTarget = copySceneDepth(TARGET_NAME, sourceDepth, colorTarget);
             preVisualTarget = copySceneDepth(PRE_TARGET_NAME, sourcePreDepth, colorTarget);
             if (visualTarget == null && preVisualTarget == null) return;
@@ -166,8 +163,6 @@ public final class SeeInvisiblesVisualDepth {
                 // selected player model as the visible pass. No duplicate state extraction.
                 capturing = true;
                 try {
-                    // The frame graph may retain its entity states: preserve them exactly,
-                    // rather than appending duplicate entities or clearing the world list.
                     List<EntityRenderState> saved = new ArrayList<>(worldState.entityRenderStates);
                     worldState.entityRenderStates.clear();
                     worldState.entityRenderStates.addAll(snapshot);

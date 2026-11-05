@@ -2,6 +2,13 @@
 #extension GL_ARB_separate_shader_objects : require
 
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Combatant widget material vertex contract.
  * Params6 carries material direction/intensity controls explicitly rather than packing them into color alpha.
  */

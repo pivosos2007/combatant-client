@@ -35,9 +35,6 @@ vec3 uiPbrSurface(vec2 local, vec2 bevelNormal, float edge, int mode) {
     float angle = radians(v_Params10.x);
     vec2 direction = vec2(cos(angle), sin(angle));
     mat2 rotation = mat2(direction, vec2(-direction.y, direction.x));
-    // HUD microtextures are screen-anchored: a widget's entrance/exit animation
-    // reveals the field instead of dragging or rescaling the micrograin.
-    // uScreen.zw = framebuffer pixels; uScreen.xy = GUI logical viewport.
     vec2 framebufferPerLogical = max(uScreen.zw / max(uScreen.xy, vec2(1.0)), vec2(1e-6));
     vec2 stableUiPosition = v_Local.xy / (abs(v_Local.z) > 1e-6 ? v_Local.z : 1.0);
     vec2 uv = transpose(rotation) * (stableUiPosition * framebufferPerLogical)

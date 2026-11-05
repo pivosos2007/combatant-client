@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* Shared projective interpolation helpers for RenderPipelineContract.UI_WARPED. */
 float uiSourceInvW(vec4 local) {
     return abs(local.z) > 0.000001 ? local.z : 1.0;

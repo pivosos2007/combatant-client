@@ -1046,10 +1046,6 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
             BetterTooltips.renderTooltipWithContext(BetterButtons.getLastContext());
         }
 
-        // This is the actual final Combatant 2D drain for the frame. BetterButtons and
-        // BetterTooltips intentionally render from this TAIL hook, so draining SCREEN_ABSOLUTE_TOP
-        // any earlier (for example immediately after GuiRenderer.render()) still allowed those
-        // screen-owned surfaces to cover the debug HUD.
         Renderer2D.drainDeferred2D(Renderer2D.Deferred2DLayer.SCREEN_ABSOLUTE_TOP);
     }
 

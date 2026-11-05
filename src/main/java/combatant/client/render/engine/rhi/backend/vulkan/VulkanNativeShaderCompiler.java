@@ -6,6 +6,7 @@
  */
 package combatant.client.render.engine.rhi.backend.vulkan;
 
+import combatant.client.render.engine.shader.CombatantShaderSources;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
@@ -33,14 +34,9 @@ final class VulkanNativeShaderCompiler implements AutoCloseable {
 
     ByteBuffer compile(String label, String source, int shaderKind) {
         if (closed) throw new IllegalStateException("Vulkan native shader compiler is closed");
-        // Every native Vulkan GLSL stage that tests VULKAN must take its Vulkan branch.
-        // Restricting this define to rain_instanced also broke schematic_instanced and
-        // asset_compat_instanced (they select gl_InstanceIndex vs gl_InstanceID).
-        if (source.contains("#ifdef VULKAN") && source.startsWith("#version")) {
-            int endVersion = source.indexOf('\n');
-            if (endVersion >= 0) source = source.substring(0, endVersion + 1)
-                    + "#define VULKAN 1\n" + source.substring(endVersion + 1);
-        }
+        // shaderc may already define VULKAN. A guarded, idempotent fallback
+        // selects gl_InstanceIndex without redefining the compiler's macro.
+        source = CombatantShaderSources.ensureVulkanMacro(source);
         ByteBuffer sourceUtf8 = MemoryUtil.memUTF8(source, false);
         ByteBuffer nameUtf8 = MemoryUtil.memUTF8(label == null ? "combatant-native" : label);
         ByteBuffer entryUtf8 = MemoryUtil.memUTF8("main");

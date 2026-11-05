@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* Pure screen-space gate shared by aim assistance and its regression tests. */
 package combatant.client.util.target;
 

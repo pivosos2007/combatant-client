@@ -202,10 +202,6 @@ public final class VanillaRigCubeCompiler {
             }
         }
 
-        // ModelPart.Cube public extents are the pre-dilation box, while Polygon vertices are already baked
-        // with CubeDeformation. A visible-face subset can leave one axis constant, so reconstruct the missing
-        // opposite baked plane from that visible plane plus vanilla's symmetric per-axis dilation instead of
-        // silently falling back to the smaller pre-dilation extent.
         if (!(maxX - minX > EPSILON)) {
             AxisBounds inferred = inferBakedAxis(minX, cube.minX / 16.0f, cube.maxX / 16.0f);
             minX = inferred.min();

@@ -143,8 +143,6 @@ public enum TextRenderSystem {
             }
         }
 
-        // Glass text is a UI backdrop material. Outside an ordered UI batch, preserve readable
-        // output rather than sampling the active color attachment recursively.
         submitGlyphMeshImmediate(label, font, mesh,
                 font instanceof GlyphMaskFont ? UiRenderPipelines.UI_TEXT_MASK_FAST
                         : (font.isMsdf() ? UiRenderPipelines.UI_TEXT_MSDF_FAST : UiRenderPipelines.UI_TEXT_FAST),
@@ -192,8 +190,6 @@ public enum TextRenderSystem {
             }
         }
 
-        // A backdrop operator needs a stable destination image. Outside ordered UI replay, fall
-        // back to ordinary MSDF text rather than pretending that a recursive attachment sample is valid.
         submitGlyphMeshImmediate(label, font, mesh,
                 font instanceof GlyphMaskFont ? UiRenderPipelines.UI_TEXT_MASK_FAST
                         : (font.isMsdf() ? UiRenderPipelines.UI_TEXT_MSDF_FAST : UiRenderPipelines.UI_TEXT_FAST),

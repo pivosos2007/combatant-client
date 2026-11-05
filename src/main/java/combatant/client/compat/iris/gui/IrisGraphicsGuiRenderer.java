@@ -646,7 +646,6 @@ public final class IrisGraphicsGuiRenderer {
     }
 
     private static void drawBackdrop(FixedCanvas c, Style s) {
-        // Iris is intentionally more transparent than Sodium: the world/shader output remains legible.
         Renderer2D.COLOR.quad(0f, 0f, c.logicalWidth, c.logicalHeight, 0x3C000000);
     }
 
@@ -1376,9 +1375,6 @@ public final class IrisGraphicsGuiRenderer {
             Component v = access.combatant$getValueLabel();
             if (c != null && !c.getString().isBlank()) label = LegacyTextUtil.stripLegacy(c.getString());
             if (v != null) value = LegacyTextUtil.stripLegacy(v.getString());
-            // Iris computes valueLabel lazily from its native renderer. The custom renderer owns
-            // presentation, so read the live option state directly instead of depending on a
-            // native render pass having happened first.
             if (widget instanceof BooleanElementWidget bool) {
                 value = bool.getValue();
             } else if (widget instanceof StringElementWidget string) {

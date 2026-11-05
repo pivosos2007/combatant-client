@@ -79,6 +79,8 @@ public final class Strafe extends Module {
         if (player == null || mc.level == null) {
             return;
         }
+        Jesus jesus = Modules.get(Jesus.class);
+        if (jesus != null && jesus.isManagingVulcan297(player)) return;
 
         boolean moving = MovementUtil.isMoving();
         float yaw = player.getYRot();

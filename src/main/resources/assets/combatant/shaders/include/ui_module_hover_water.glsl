@@ -1,4 +1,11 @@
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Thin water hover material for ClickGUI Modules.
  * Four analytic waves provide height + slope directly. No numerical normal
  * sampling, no exp-based iterative field and no dense body alpha.

@@ -255,8 +255,6 @@ final class Blaze3dMeshArena implements AutoCloseable {
         validateRange("vertex upload", vertexOffsetBytes, vertexBytes, vertexCapacity);
         validateRange("index upload", indexOffsetBytes, indexBytes, indexCapacity);
 
-        // Compatibility-tier uploads use one Mojang encoder for the vertex+index pair instead of
-        // constructing one wrapper per buffer write. Persistent mapping needs no encoder at all.
         CommandEncoder encoder = persistentMappedWrites ? null : RenderSystem.getDevice().createCommandEncoder();
         write(name + " vertex upload", vertexBuffer.slice(vertexOffsetBytes, vertexBytes), vertexSrc, vertexBytes, encoder);
         write(name + " index upload", indexBuffer.slice(indexOffsetBytes, indexBytes), indexSrc, indexBytes, encoder);

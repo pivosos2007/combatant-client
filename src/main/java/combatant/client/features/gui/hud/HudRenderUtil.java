@@ -31,7 +31,6 @@ public enum HudRenderUtil {
     public static final int GLASS_BG = 0x660C0C0C;
     public static final float GLASS_PANEL_FILL_ALPHA = 0.165f;
     public static final float GLASS_SMALL_FILL_ALPHA = 0.212f;
-    // High quality is intentionally retained; only the Kawase sampling offset is reduced.
     public static final float HUD_GLASS_KAWASE_OFFSET_PX = 0.38f;
 
     public static int glassBackground() {

@@ -55,8 +55,8 @@ public final class WorldPostProcessMasks implements PostProcessPass {
     private static final String MASK_TARGET_NAME = "combatant-world-post-mask";
     private static final String MASK_RESOLVE_NAME = "combatant-world-post-mask-resolve";
     private static final String MASK_TARGET_OWNER = "WorldPostProcessMasks";
-    /** Neutral encoded flow = RG 0.5, zero strength/coverage. */
-    private static final int NEUTRAL_CLEAR_ARGB = 0x00808000;
+    /** The mask shader outputs premultiplied RGBA; transparent black is the only valid clear. */
+    private static final int NEUTRAL_CLEAR_ARGB = 0x00000000;
     private static final float MIN_ALPHA = 0.003f;
     private static final int SPHERE_LONGITUDE_SEGMENTS = 20;
     private static final int SPHERE_LATITUDE_SEGMENTS = 10;

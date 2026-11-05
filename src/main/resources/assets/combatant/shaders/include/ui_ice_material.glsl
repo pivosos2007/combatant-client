@@ -70,8 +70,6 @@ CombatantIceSurface combatantIceSurface(vec2 uv, vec2 sizePx, float signedDistan
     float cracks = clamp(controls.w * seam * (0.55 + 0.45 * crystal.id), 0.0, 1.0);
     float coverage = clamp(rim * controls.z * 0.70 + cracks * 0.75
                     + ridge * controls.z * 0.15, 0.0, 1.0);
-    // Source albedo is intentionally NOT used as a snowy colour wash. The map
-    // informs only tiny optical inclusions; the colour is theme-controlled.
     vec3 inclusion = iceLinear(colorAo.rgb) * 0.08 + vec3(0.92, 0.95, 1.0) * 0.92;
     return CombatantIceSurface(normal, inclusion, roughness, colorAo.a,
             cracks, frost, rim, coverage, finish.x, finish.y);

@@ -105,7 +105,6 @@ class AfkSchedulerTest {
         for (int i = 0; i < 101; i++) {
             assertNull(scheduler.tick(EnumSet.noneOf(Action.class)));
         }
-        // Enabling an action now still waits a fresh interval instead of firing instantly.
         assertEquals(101, ticksUntilAction(scheduler, ALL));
     }
 

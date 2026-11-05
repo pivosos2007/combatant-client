@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // motion:tool_sword_swing/tool_sword_swing
 (() => {
   const L=globalThis.RigAnimationLibrary;

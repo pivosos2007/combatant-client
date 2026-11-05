@@ -686,9 +686,6 @@ public class AutoBed extends Module {
         if (isPendingBedBlock(pendingBedData.footPos())) return pendingBedData.footPos();
         if (isPendingBedBlock(pendingBedData.headPos())) return pendingBedData.headPos();
 
-        // If placement yaw was not applied exactly, vanilla can still place the bed at the same clicked foot
-        // but with another horizontal head direction. Adopt that real client-side bed immediately instead of
-        // sitting in Waiting bed until the confirm timeout expires.
         BlockPos adopted = findBedTouchingPendingPlacement();
         if (adopted != null) return adopted;
         return null;

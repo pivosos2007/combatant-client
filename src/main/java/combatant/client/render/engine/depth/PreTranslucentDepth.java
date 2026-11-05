@@ -79,9 +79,6 @@ public enum PreTranslucentDepth {
                         "[PreTranslucentDepth] MSAA capture failed: %s: %s",
                         failure.getClass().getSimpleName(), failure.getMessage());
             }
-            // OpenGL supports depth-only framebuffer blits, even though it does not implement
-            // MsaaControl.resolveDepthSnapshot(view, view). Keep a single-sample depth copy
-            // for post-process consumers rather than exposing a non-sampleable MSAA view.
             if (!CombatantRenderSystem.rhi().msaa().supportsDepthSnapshotResolve()) {
                 try {
                     ensureResolvedDepthCopy(w, h);

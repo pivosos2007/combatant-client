@@ -39,8 +39,6 @@ public enum PickerCatalogFactory {
     private static final Comparator<PickerEntryData> ENTRY_ORDER = Comparator
             .comparing(PickerEntryData::label, String.CASE_INSENSITIVE_ORDER)
             .thenComparing(PickerEntryData::id, String.CASE_INSENSITIVE_ORDER);
-    // PARTICLES is intentionally dynamic: ParticleClassCatalog learns implementations from
-    // ParticleEngine.add(), so caching its first (usually startup-empty) snapshot loses all later observations.
     private static final EnumSet<TextListSetting.PickerMode> ASYNC_MODES = EnumSet.of(
             TextListSetting.PickerMode.BLOCKS,
             TextListSetting.PickerMode.ITEMS,
@@ -82,7 +80,6 @@ public enum PickerCatalogFactory {
 
         if (!markRuntimeReadyIfPossible()) return false;
 
-        // Highest first-open value first; executor ordering intentionally prioritizes item-backed pickers.
         requestEntriesAsync(TextListSetting.PickerMode.ITEMS);
         requestEntriesAsync(TextListSetting.PickerMode.POTIONS);
         requestEntriesAsync(TextListSetting.PickerMode.BLOCKS);

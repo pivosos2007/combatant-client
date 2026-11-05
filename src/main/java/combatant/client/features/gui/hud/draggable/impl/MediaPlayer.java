@@ -136,8 +136,6 @@ public final class MediaPlayer extends DraggableHudElement {
     private final BooleanValue gradient =
             new BooleanValue("media_player_gradient", true);
     private float anim = 0f;
-    // Wave motion is independent of the static glass optics and the HUD open animation.
-    // Using elapsed time rather than frame-based lerp keeps fades stable at different FPS.
     private static final float FLOW_ATTACK_SECONDS = 0.38f;
     private static final float FLOW_RELEASE_SECONDS = 0.52f;
     private float flowMotion;

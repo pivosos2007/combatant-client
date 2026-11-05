@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // combat:one_handed_slash_switch_blade_right
 (() => {
   const L=globalThis.RigAnimationLibrary;

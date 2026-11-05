@@ -284,10 +284,6 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             boolean clipped = ScissorFunction.pushRaw(contentX, contentY, contentW, contentH);
             float fadeBottom = contentY + contentH;
             float baseFadeDepth = Math.min(contentH, 14f * panelScale);
-            // The fade is an affordance for content that still exists below the viewport,
-            // not a permanent readability penalty on the final setting. As the scroll
-            // approaches its lower bound, collapse the ramp with the remaining distance.
-            // At the exact bottom start == end, so pushBottomAlphaFade disables itself.
             float remainingScroll = Math.max(0f, maxScroll + smoothedScroll);
             float activeFadeDepth = Math.min(baseFadeDepth, remainingScroll);
             float fadeStart = fadeBottom - activeFadeDepth;
@@ -563,8 +559,6 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
                 0.0f, Math.max(0.85f, scale * 0.72f),
                 false, 46, alpha
         );
-        // Use the normal ClickGUI blur path so this panel gets the same Kawase blur
-        // as the rest of ClickGUI instead of the weaker local pass.
         ClickGuiRenderer.drawBlur(
                 panelX, panelY, panelW, panelH,
                 0.0f,

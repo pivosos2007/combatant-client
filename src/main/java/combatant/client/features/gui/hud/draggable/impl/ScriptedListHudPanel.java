@@ -42,6 +42,10 @@ final class ScriptedListHudPanel {
             110.0f, 22.0f, 2.5f,
             8.0f, 6.0f, 8.0f, 1.9f
     );
+    static final Variant GAUGES = new Variant(
+            "gauges", "Gauges", "", 115.0f, 22.0f, 3.0f,
+            8.0f, 6.0f, 8.0f, 2.1f, "IconsNur", 1.0f, "chart-spline"
+    );
     static final Variant ADMINS = new Variant(
             "admins", "Admins", String.valueOf((char) 0x45),
             96.0f, 22.0f, 3.0f,
@@ -286,7 +290,16 @@ final class ScriptedListHudPanel {
                    float rowRightPad,
                    float rowCenterOffset,
                    String headerIconFont,
-                   float headerIconScale) {
+                   float headerIconScale,
+                   String headerIconAsset) {
+        Variant(String id, String title, String headerIcon, float minWidth,
+                float countLabelOffset, float countValueOffset, float rowIconSize,
+                float rowDividerH, float rowRightPad, float rowCenterOffset,
+                String headerIconFont, float headerIconScale) {
+            this(id, title, headerIcon, minWidth, countLabelOffset, countValueOffset,
+                    rowIconSize, rowDividerH, rowRightPad, rowCenterOffset,
+                    headerIconFont, headerIconScale, "");
+        }
         Variant(String id,
                 String title,
                 String headerIcon,
@@ -298,7 +311,7 @@ final class ScriptedListHudPanel {
                 float rowRightPad,
                 float rowCenterOffset) {
             this(id, title, headerIcon, minWidth, countLabelOffset, countValueOffset,
-                    rowIconSize, rowDividerH, rowRightPad, rowCenterOffset, "IconsNur", 1.0f);
+                    rowIconSize, rowDividerH, rowRightPad, rowCenterOffset, "IconsNur", 1.0f, "");
         }
     }
 
@@ -483,6 +496,7 @@ final class ScriptedListHudPanel {
             out.put("rowCenterOffset", variant.rowCenterOffset);
             out.put("headerIconFont", variant.headerIconFont);
             out.put("headerIconScale", variant.headerIconScale);
+            out.put("headerIconAsset", variant.headerIconAsset);
             out.put("timePillHeight", TIME_PILL_HEIGHT);
             out.put("timePillLeftPad", TIME_PILL_LEFT_PAD);
             out.put("timePillRingBox", TIME_PILL_RING_BOX);
@@ -521,6 +535,11 @@ final class ScriptedListHudPanel {
                 h = CachedUiScriptRuntime.mix(h, key);
                 h = CachedUiScriptRuntime.mix(h, string(row.get("iconKind")));
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightMode")));
+                if ("gauge".equals(string(row.get("rightMode")))) {
+                    h = CachedUiScriptRuntime.mix(h, string(row.get("meterStyle")));
+                    float threshold = floatValue(row.get("meterThreshold"));
+                    h = CachedUiScriptRuntime.mix(h, threshold > 0f && threshold < 1f);
+                }
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightText")).length());
                 h = CachedUiScriptRuntime.mix(h, Math.round(logical(floatValue(row.get("rightTextWidth"))) * 100.0f));
                 Object partsValue = row.get("nameParts");
@@ -538,9 +557,13 @@ final class ScriptedListHudPanel {
         LinkedHashMap<String, LinkedHashMap<String, Object>> patches() {
             LinkedHashMap<String, LinkedHashMap<String, Object>> patches = new LinkedHashMap<>();
             putPatch(patches, "header:count-value", "text", String.valueOf(Math.max(0, activeCount)));
-            putPatch(patches, "header:icon", "color", hex(headerIconColor));
-            putPatch(patches, "header:icon", "gradientStartColor", hex(headerIconGradientStart));
-            putPatch(patches, "header:icon", "gradientEndColor", hex(headerIconGradientEnd));
+            if (variant.headerIconAsset.isEmpty()) {
+                putPatch(patches, "header:icon", "color", hex(headerIconColor));
+                putPatch(patches, "header:icon", "gradientStartColor", hex(headerIconGradientStart));
+                putPatch(patches, "header:icon", "gradientEndColor", hex(headerIconGradientEnd));
+            } else {
+                putPatch(patches, "header:icon", "tint", hex(headerIconColor));
+            }
             for (LinkedHashMap<String, Object> row : rows) {
                 String key = string(row.get("key"));
                 String rowPrefix = "row:" + key;
@@ -561,6 +584,14 @@ final class ScriptedListHudPanel {
                     putPatch(patches, rowPrefix + ":svg", "tint", iconTint);
                 }
                 putPatch(patches, rowPrefix + ":divider", "fill", string(row.get("dividerColor")));
+                if ("gauge".equals(string(row.get("rightMode")))) {
+                    putPatch(patches, rowPrefix + ":meter:fill", "fill", string(row.get("meterColor")));
+                    for (int segment = 0; segment < 10; segment++) {
+                        float value = floatValue(row.get("meterFill"));
+                        putPatch(patches, rowPrefix + ":meter:segment:" + segment, "fill",
+                                value * 10f >= segment + 1f ? string(row.get("meterColor")) : string(row.get("meterTrack")));
+                    }
+                }
                 if ("time-pill".equals(string(row.get("rightMode")))) {
                     putPatch(patches, rowPrefix + ":time-pill", "startColor", string(row.get("timeFillStart")));
                     putPatch(patches, rowPrefix + ":time-pill", "endColor", string(row.get("timeFillEnd")));
@@ -606,12 +637,46 @@ final class ScriptedListHudPanel {
             for (Map<String, Object> row : rows) {
                 float progress = Math.max(0, Math.min(1, floatValue(row.getOrDefault("layoutProgress", row.getOrDefault("alpha", 1.0f)))));
                 float clipHeight = 11.0f * progress;
-                clips.put("row:" + string(row.get("key")) + ":clip",
+                String clipKey = "row:" + string(row.get("key")) + ":clip";
+                clips.put(clipKey,
                         new UiBounds(0, cursor + variant.rowCenterOffset - clipHeight * 0.5f,
                                 logical(width), clipHeight));
+                UiNode clip = findNode(root, clipKey);
+                if (clip != null) clip.patchFloatProp("runtimeOpacity",
+                        Math.max(0f, Math.min(1f, floatValue(row.getOrDefault("alpha", 1f)))));
                 cursor += clipHeight;
             }
             patchAnimatedNode(root, clips, logical(width) - root.bounds().width());
+            for (Map<String, Object> row : rows) {
+                if (!"gauge".equals(string(row.get("rightMode")))) continue;
+                String prefix = "row:" + string(row.get("key")) + ":meter:";
+                UiNode track = findNode(root, prefix + "track");
+                UiNode fill = findNode(root, prefix + "fill");
+                float level = Math.max(0f, Math.min(1f, floatValue(row.get("meterFill"))));
+                if (track != null && fill != null) {
+                    UiBounds t = track.bounds();
+                    fill.setBounds(new UiBounds(t.x(), t.y(), Math.max(0.01f, t.width() * level), t.height()));
+                }
+                if (track != null && "Segments".equals(string(row.get("meterStyle")))) {
+                    UiBounds t = track.bounds();
+                    for (int segment = 0; segment < 10; segment++) {
+                        UiNode part = findNode(root, prefix + "segment:" + segment);
+                        if (part == null) continue;
+                        float gap = .65f;
+                        float segmentW = Math.max(.4f, (t.width() - 9f * gap) / 10f);
+                        part.setBounds(new UiBounds(t.x() + segment * (segmentW + gap),
+                                t.y(), segmentW, t.height()));
+                    }
+                }
+                UiNode target = findNode(root, prefix + "threshold");
+                if (track != null && target != null) {
+                    UiBounds t = track.bounds();
+                    UiBounds b = target.bounds();
+                    float threshold = Math.max(0f, Math.min(1f, floatValue(row.get("meterThreshold"))));
+                    target.setBounds(new UiBounds(t.x() + t.width() * threshold - b.width() * .5f,
+                            b.y(), b.width(), b.height()));
+                }
+            }
         }
 
         private void patchAnimatedNode(UiNode node, Map<String, UiBounds> clips, float widthDelta) {
@@ -665,10 +730,21 @@ final class ScriptedListHudPanel {
             for (UiNode child : node.children()) patchAnimatedNode(child, clips, widthDelta);
         }
 
+        private static UiNode findNode(UiNode node, String key) {
+            if (node.key().equals(key)) return node;
+            for (UiNode child : node.children()) {
+                UiNode match = findNode(child, key);
+                if (match != null) return match;
+            }
+            return null;
+        }
+
         private static void translateRow(UiNode node, float dy, float widthDelta) {
             UiBounds b = node.bounds();
-            boolean rightAligned = node.key().endsWith(":right") || node.key().contains(":time-");
-            node.setBounds(new UiBounds(b.x() + (rightAligned ? widthDelta : 0), b.y() + dy, b.width(), b.height()));
+            boolean rightAligned = node.key().endsWith(":right") || node.key().contains(":time-")
+                    || node.key().contains(":meter:");
+            node.setBounds(new UiBounds(b.x() + (rightAligned ? widthDelta : 0), b.y() + dy,
+                    b.width(), b.height()));
             for (UiNode child : node.children()) translateRow(child, dy, widthDelta);
         }
 
@@ -684,6 +760,7 @@ final class ScriptedListHudPanel {
             h = CachedUiScriptRuntime.mix(h, variant.rowCenterOffset);
             h = CachedUiScriptRuntime.mix(h, variant.headerIconFont);
             h = CachedUiScriptRuntime.mix(h, variant.headerIconScale);
+            h = CachedUiScriptRuntime.mix(h, variant.headerIconAsset);
             return h;
         }
 

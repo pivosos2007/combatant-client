@@ -65,9 +65,6 @@ public abstract class AvatarRendererMixin {
                 PlayerModels.Snapshot snapshot = PlayerModels.snapshot(
                         asset, rigState.combatant$getPlayerRig(), replacement, target, player, fadeState);
                 replacementState.combatant$setReplacement(snapshot);
-                // Partial skin-backed replacements submit their native head/clothing through
-                // the vanilla collector. Give those pieces the same animated opacity as
-                // the GPU armor, instead of allowing a visible head to pop on fade.
                 if (snapshot != null && snapshot.faded()) {
                     fadeState.combatant$setViewObstructionFadeActive(true);
                     fadeState.combatant$setViewObstructionFadeAlpha(snapshot.opacity());

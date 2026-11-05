@@ -15,6 +15,7 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.features.module.Modules;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -70,7 +71,8 @@ public final class WaterSpeed extends Module {
             return;
         }
 
-        if (!player.isInWater()) {
+        Jesus jesus = Modules.get(Jesus.class);
+        if (!player.isInWater() || jesus != null && jesus.isManagingVulcan297(player)) {
             resetArmTimer();
             return;
         }

@@ -44,8 +44,6 @@ public enum VisualPreviewBackgroundRenderer {
         int height = mc.getWindow().getHeight();
         if (width <= 0 || height <= 0) return;
 
-        // The volume is intentionally evaluated at half linear resolution and at most every other
-        // frame. It is a smooth background field, so full-resolution marching only burns GPU time.
         int renderWidth = Math.max(320, (width + 1) / 2);
         int renderHeight = Math.max(180, (height + 1) / 2);
         TextureTarget volumeTarget = CombatantRenderSystem.resources().persistentFramebuffer(
@@ -73,9 +71,6 @@ public enum VisualPreviewBackgroundRenderer {
                     scene.screen().cameraX(),
                     -scene.screen().cameraY(),
                     scene.screen().cameraZ(),
-                    // The shader multiplies ray vectors on the left (vec2 * mat2), which applies
-                    // the transpose of rot(). Feed the inverse sign so the panorama follows the
-                    // actual camera orientation instead of rotating together with the subject.
                     (float) Math.toRadians(-scene.screen().cameraYaw()),
                     (float) Math.toRadians(-scene.screen().cameraPitch()),
                     accent,

@@ -1,4 +1,9 @@
-/* Combatant Client, GPL-3.0. References Litematica only after its presence has been checked. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 package combatant.client.automation.compat.litematica.impl;
 
 import combatant.client.automation.compat.litematica.LitematicaWorkspace;
@@ -36,11 +41,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class LitematicaWorkspaceImpl implements LitematicaWorkspace {
-    /**
-     * Rotation/mirror APIs require a MaLiLib GUI message consumer, not the
-     * IStringConsumer used by setOrigin. Locked placements are rejected before
-     * these methods are called; this is a non-null fallback for the API.
-     */
     private static final IMessageConsumer PLACEMENT_FEEDBACK = new IMessageConsumer() {
         @Override public void addMessage(MessageType type, String messageKey, Object... args) { }
         @Override public void addMessage(MessageType type, int lifeTime, String messageKey, Object... args) { }
@@ -53,8 +53,6 @@ public final class LitematicaWorkspaceImpl implements LitematicaWorkspace {
         List<SchematicPlacement> items = current();
         return index < 0 || index >= items.size() ? null : items.get(index);
     }
-    /** The real schematic holder and placement manager own imported schematics.
-     * There is no Combatant-side world placement or second ghost renderer. */
     @Override public ImportResult importFile(Path file) {
         if (file == null || !Files.isRegularFile(file) || !Files.isReadable(file))
             return new ImportResult(false, "File is not readable", -1);
@@ -139,9 +137,6 @@ public final class LitematicaWorkspaceImpl implements LitematicaWorkspace {
             default -> Configs.Generic.OPTIONS;
         };
     }
-    // MaLiLib configuration types are stable across frames. Do not repeatedly scan
-    // their reflection metadata when reading dozens of settings in a category.
-    // ClassValue scopes the cache to the loaded mod's classloader.
     private static final ClassValue<Map<String, Optional<Method>>> READ_METHODS = new ClassValue<>() {
         @Override protected Map<String, Optional<Method>> computeValue(Class<?> type) {
             return new ConcurrentHashMap<>();
@@ -237,7 +232,6 @@ public final class LitematicaWorkspaceImpl implements LitematicaWorkspace {
                 min = low.toString(); max = high.toString();
             }
         }
-        // Native file dialog is appropriate only for Litematica's schematic directory.
         if (config.getName().equals("customSchematicBaseDirectory") && kind.equals("string")) kind = "directory";
         return new Option(config.getName(), localText(label), kind, localText(value),
                 localText(comment), choices, min, max);
@@ -288,8 +282,6 @@ public final class LitematicaWorkspaceImpl implements LitematicaWorkspace {
         if (text == null) return false;
         for (IConfigBase option : group(section)) {
             if (!option.getName().equals(id)) continue;
-            // Do not silently clamp invalid user input: validate against the same
-            // MaLiLib min/max contracts its own settings widgets use.
             Object numeric = invoke(option, "getIntegerValue");
             Object minimum = invoke(option, "getMinIntegerValue");
             Object maximum = invoke(option, "getMaxIntegerValue");
@@ -368,8 +360,6 @@ public final class LitematicaWorkspaceImpl implements LitematicaWorkspace {
             if (section.equals("hotkeys")) {
                 Object target = invoke(option, "getKeybind");
                 if (target == null) return false;
-                // IStringRepresentable in MaLiLib 26.3 exposes this native parser;
-                // do not simulate scan codes or instantiate a parallel hotkey model.
                 try {
                     Method setter = target.getClass().getMethod("setValueFromString", String.class);
                     setter.invoke(target, text);

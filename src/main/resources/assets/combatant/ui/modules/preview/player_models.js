@@ -1,8 +1,8 @@
 /*
- * Combatant Client (GPL-3.0), Copyright (c) 2026 pivosos2007.
- * PlayerModel collection selector. Layout/tokens follow the native Spectrum 2
- * foundation, tabs, quiet actions and InlineAlert clipped-edge convention.
- * This is a main-resource UI: the Spectrum gallery itself is dev-only.
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
 const num=ui.num, str=ui.str;
 const transparent='#00000000';

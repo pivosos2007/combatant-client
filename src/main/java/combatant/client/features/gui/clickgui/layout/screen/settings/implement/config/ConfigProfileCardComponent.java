@@ -126,14 +126,12 @@ public final class ConfigProfileCardComponent {
         drawAction(downloadX, by, btn, "download", false, mx, my, scale, palette);
         drawAction(trashX, by, btn, "trash-2", false, mx, my, scale, palette);
 
-        // Share row, top right: copy code, export file, bind to the current server.
+        // File export and the per-server auto-load binding.
         float small = 12f * scale;
         float smallGap = 3f * scale;
         float smallY = y + 4.4f * scale;
         float bindX = x + w - 7f * scale - small;
         float exportX = bindX - smallGap - small;
-        float copyX = exportX - smallGap - small;
-        drawAction(copyX, smallY, small, "share-2", false, mx, my, scale, palette);
         drawAction(exportX, smallY, small, "folder-output", false, mx, my, scale, palette);
         drawAction(bindX, smallY, small, "map-pin", serverBound, mx, my, scale, palette);
 
@@ -142,7 +140,6 @@ public final class ConfigProfileCardComponent {
                 new ActionHit(diffX, by, btn, btn, CardActionType.DIFF),
                 new ActionHit(downloadX, by, btn, btn, CardActionType.APPLY),
                 new ActionHit(trashX, by, btn, btn, CardActionType.DELETE),
-                new ActionHit(copyX, smallY, small, small, CardActionType.COPY),
                 new ActionHit(exportX, smallY, small, small, CardActionType.EXPORT),
                 new ActionHit(bindX, smallY, small, small, CardActionType.BIND));
         }
@@ -168,10 +165,10 @@ public final class ConfigProfileCardComponent {
         );
     }
 
-    public enum CardActionType {SELECT, RENAME, DIFF, APPLY, DELETE, COPY, EXPORT, BIND}
+    public enum CardActionType {SELECT, RENAME, DIFF, APPLY, DELETE, EXPORT, BIND}
 
     public record CardHit(float x, float y, float w, float h, ActionHit title, ActionHit diff, ActionHit apply,
-                          ActionHit delete, ActionHit copy, ActionHit export, ActionHit bind) {
+                          ActionHit delete, ActionHit export, ActionHit bind) {
     }
 
     public record ActionHit(float x, float y, float w, float h, CardActionType type) {

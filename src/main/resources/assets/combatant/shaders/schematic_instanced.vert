@@ -1,4 +1,11 @@
 #version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(location = 0) in vec3 Position;
 layout(std430, binding = 2) readonly buffer SchematicCamera {
     mat4 u_View;
@@ -22,8 +29,6 @@ layout(location = 3) flat out vec4 v_Atlas1;
 layout(location = 4) flat out uvec4 v_Style;
 
 void main() {
-    // GL gl_InstanceID deliberately ignores baseInstance. All commands use firstInstance=0;
-    // the compute-generated compacted list provides the real face index on both APIs.
 #ifdef VULKAN
     uint faceId = visible[uint(gl_InstanceIndex)];
 #else

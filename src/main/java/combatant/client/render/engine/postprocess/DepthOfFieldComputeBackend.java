@@ -141,9 +141,6 @@ public final class DepthOfFieldComputeBackend implements AutoCloseable {
         RhiStorageBuffer data = params();
         data.upload(writer.buffer(), 0L);
 
-        // Graph source/depth/focus views can come from raster or transfer work. Synchronize
-        // those writes before native compute starts; sampled views are not necessarily
-        // Combatant-owned storage images, so this is intentionally a global dependency.
         owner.advancedShaders().barrier(new RhiResourceBarrier(
                 RhiResourceBarrier.Stage.ALL,
                 RhiResourceBarrier.Access.WRITE,

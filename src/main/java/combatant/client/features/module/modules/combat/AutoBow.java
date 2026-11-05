@@ -386,9 +386,6 @@ public class AutoBow extends Module {
         float logicalHeight = HudScale.virtualHeight(fbw, fbh);
         float baseRadius = hudRadius.get().floatValue();
         TargetingUtil.TargetingSettings settings = buildTargetingSettings();
-        // The on-screen ring is the selection region, not just an ornamental HUD.
-        // Rank eligible targets by distance to the crosshair; the configured
-        // target priority breaks ties rather than replacing ring preference.
         List<ScreenCandidate> eligible = new ArrayList<>();
         List<LivingEntity> available = getPrioritizedCandidates(settings);
         for (LivingEntity entity : available) {

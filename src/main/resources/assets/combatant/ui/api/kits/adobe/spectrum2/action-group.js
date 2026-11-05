@@ -1,6 +1,9 @@
-/* Combatant Client (GPL-3.0). Spectrum 2 ActionButtonGroup.
- * Compact non-quiet actions form ONE outlined control with internal dividers;
- * regular and quiet variants retain individual button geometry. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 import { SpectrumActionButton } from './action-button.js';
 

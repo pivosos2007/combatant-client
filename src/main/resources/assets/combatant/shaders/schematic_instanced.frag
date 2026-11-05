@@ -1,4 +1,11 @@
 #version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(binding = 0) uniform sampler2D u_BlockAtlas;
 layout(location = 0) in vec2 v_UV;
 layout(location = 1) in float v_VFraction;
@@ -39,8 +46,6 @@ void main() {
             color.rgb *= mix(1.05, 0.86, clamp(v_VFraction, 0.0, 1.0));
         }
     }
-    // Depth-writing ordered coverage rather than translucent face blending:
-    // transparent/ghost faces never accumulate dozens of hidden internal layers.
     const float bayer[16] = float[16](
         0., 8., 2., 10., 12., 4., 14., 6.,
         3., 11., 1., 9., 15., 7., 13., 5.);

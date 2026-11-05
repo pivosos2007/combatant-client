@@ -444,9 +444,6 @@ public final class UiPathRenderer {
         double innerPrevY = leftInner ? endLeftY[prev] : endRightY[prev];
         double innerNextX = leftInner ? startLeftX[next] : startRightX[next];
         double innerNextY = leftInner ? startLeftY[next] : startRightY[next];
-        // A normal join has one shared concave intersection after prepareSegments(). If that
-        // intersection was rejected by the bounded-intersection rule, root the wedge at the path
-        // center instead of emitting a long triangle toward an arbitrary offset-line crossing.
         boolean sharedInner = distanceSq(innerPrevX, innerPrevY, innerNextX, innerNextY) <= EPSILON * EPSILON;
         double innerX = sharedInner ? (innerPrevX + innerNextX) * 0.5 : px;
         double innerY = sharedInner ? (innerPrevY + innerNextY) * 0.5 : py;

@@ -200,8 +200,6 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, S extend
                     }
                     return;
                 }
-                // GPU preflight failed: let the normal vanilla player renderer be the
-                // complete fallback instead of showing only a head without armor.
             }
             if (skinOverlay == null && combatant.client.features.playermodel.PlayerModels.submit(
                     modelState, collector, matrices, renderType, light, overlay, tint, outlineColor))

@@ -2,6 +2,13 @@
 #extension GL_ARB_separate_shader_objects : require
 
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Analytic world-space spherical post-process mask.
  *
  * Params:
@@ -50,8 +57,6 @@ void main() {
     float shoulder = smoothstep(0.08, 0.62, fresnel) * (1.0 - smoothstep(0.72, 0.99, fresnel));
     float rim = smoothstep(0.56, 0.97, fresnel);
 
-    // The sphere normal gives a seam-free projected radial flow. At the exact center use the
-    // animated phase as a stable fallback instead of lat/long UVs.
     vec2 radial = viewN.xy;
     float radialLength = length(radial);
     if (radialLength > 1.0e-5) radial /= radialLength;
@@ -65,8 +70,6 @@ void main() {
     float waveB = cos(dot(worldN, axisB) * 13.0 - phase * 1.13);
     float breakup = (waveA * 0.58 + waveB * 0.42) * warp;
 
-    // Interior flow curls gently while the rim kicks outward. This produces an actual refractive
-    // cavity over the full projected sphere instead of a texture-shaped caustic shell.
     float tangentBias = swirl * (0.28 + cavity * 0.72) + breakup * 0.24;
     vec2 flow = radial * (0.58 + rim * 0.72 - cavity * 0.18)
               + tangent * tangentBias;

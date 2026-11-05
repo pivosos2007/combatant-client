@@ -69,7 +69,6 @@ public enum RenderPrewarmManager {
 
         long startedNs = System.nanoTime();
 
-        // Materialize generated ClickGUI entries here, during initialization, instead of in ClickGui.init().
         ClickGuiSectionManager.prewarm();
         UiScriptStats uiScripts = prewarmUiScripts();
 

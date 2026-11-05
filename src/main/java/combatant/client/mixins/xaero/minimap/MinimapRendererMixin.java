@@ -37,6 +37,5 @@ public abstract class MinimapRendererMixin {
         args.set(4, ((color >>> 16) & 0xFF) / 255.0f);
         args.set(5, ((color >>> 8) & 0xFF) / 255.0f);
         args.set(6, (color & 0xFF) / 255.0f);
-        // args[7] is Xaero's already-computed arrow alpha/opacity and is intentionally preserved.
     }
 }

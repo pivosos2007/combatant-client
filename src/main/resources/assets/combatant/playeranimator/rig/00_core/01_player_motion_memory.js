@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // PlayerMotionMemory: isolated rig component.
 (() => {
   const R=globalThis.CombatantPlayerRig;
@@ -89,8 +96,6 @@
     advanceCycle(kind,targetHz,responseHz=3.0) {
       const rateKey=kind+'Rate', phaseKey=kind+'Phase';
       this[rateKey]=damp(this[rateKey]||targetHz,targetHz,this.frameDt,responseHz);
-      // Keep phase unbounded. Water layers intentionally use non-integer harmonics and slow
-      // phase modulation; wrapping to TAU would introduce a visible replay seam.
       this[phaseKey]+=TAU*this[rateKey]*this.frameDt;
       return this[phaseKey];
     }
@@ -112,16 +117,12 @@
           this.takeoffSpeed=this.speed;
           this.takeoffVertical=this.vertical;
           this.takeoffSprinting=!!c.sprinting;
-          // The leg that was actually in front at takeoff starts the jump queue. This makes the
-          // jump inherit the running step instead of replaying one canned impulse every time.
           this.jumpLeadRight=Math.cos(c.walkPhase)<0;
           this.jumpQueueStrength=smooth01(saturate((this.takeoffSpeed-.035)/.145));
           this.maxFallSpeed=Math.max(0,-this.vertical);
         } else {
           this.airTime+=dt;
           this.maxFallSpeed=Math.max(this.maxFallSpeed,-this.vertical);
-          // airStridePhase intentionally does NOT loop. Air motion is a one-shot queue:
-          // takeoff leg -> follow leg -> free flight -> landing preparation.
           this.airStridePhase=this.takeoffPhase;
         }
         this.landTime=99;

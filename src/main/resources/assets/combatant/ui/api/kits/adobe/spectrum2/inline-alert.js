@@ -1,5 +1,9 @@
-/* Combatant Client (GPL-3.0). Spectrum 2 InlineAlert: heading, content and
- * semantic icon. Accent uses the runtime clip-node contract. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 import { SpectrumButton } from './button.js';
 
@@ -28,11 +32,6 @@ export class SpectrumInlineAlert {
     if(style==='subtleFill')children.push(
       SpectrumFoundation.rect(`${key}:tint`,0,0,width,height,radius,
         SpectrumFoundation.withOpacity(tone,.13)));
-    // Same silhouette as Map Browser's Triangulation mode selection:
-    // paint the *whole* rounded card, then reveal only its leading 4 px.
-    // The UI runtime owns clipping; this component never calls ScissorFunction.
-    // In particular, a standalone narrow rounded rectangle would have the
-    // wrong corner curve and create a capsule rather than a clipped edge.
     if(variant!=='neutral'){
       children.push(ui.stack({key:`${key}:accent-clip`,
         class:'clip overflow-hidden',style:ui.absolute(0,0,4,height),interactive:false,

@@ -104,9 +104,6 @@ public final class InstaCartPlanner {
                         existingCart++;
                         continue;
                     }
-                    // MinecartItem.useOn() spawns carts 0.5 blocks higher on
-                    // ascending rails (Minecraft 26.3). The blast origin must
-                    // match the real cart instead of a permanently flat rail.
                     Vec3 center = cartSpawnPoint(level, pos).add(0.0, 0.35, 0.0);
                     float preliminaryDamage = ExplosionDamageUtil.getExplosionDamage(target, center,
                             MIN_EXPLOSION_POWER, settings.predictTicks(), false);

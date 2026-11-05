@@ -82,12 +82,6 @@ public abstract class IrisIncludeProcessorMixin {
         try {
             return processor.getIncludedFile(AbsolutePackPath.fromAbsolutePath(candidate));
         } finally {
-            // Session preflight intentionally suppresses patch application while it expands every
-            // declared target. IncludeProcessor caches that expanded source before our RETURN hook.
-            // Leaving those entries alive makes a cached parent permanently embed pristine nested
-            // includes, so targets such as Photon raytracer.glsl are never visited during the real
-            // shader compile. Preflight is observational: discard all cache entries it populated so
-            // the actual compile traverses the include graph again with patch application enabled.
             cache.clear();
         }
     }

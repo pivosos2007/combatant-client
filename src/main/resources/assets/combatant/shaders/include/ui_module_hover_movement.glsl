@@ -1,4 +1,11 @@
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Directional movement/slipstream material for ClickGUI module hover rows.
  *
  * Movement must not resemble the Player pearlescent/plasma field. This effect
@@ -50,8 +57,6 @@ vec4 movementSurface(vec2 p, float time, float reveal, float seed, vec3 c0, vec3
     );
     pressure *= pressure;
 
-    // A secondary compressed band makes the motion feel layered rather than a
-    // single scrolling texture.
     float compression = 1.0 - smoothstep(
         0.018,
         0.070,

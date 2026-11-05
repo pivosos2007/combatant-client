@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* Analytic shape-clip contract. Included only by COMBATANT_ANALYTIC_CLIP variants. */
 #include <combatant:ui_geometry.glsl>
 

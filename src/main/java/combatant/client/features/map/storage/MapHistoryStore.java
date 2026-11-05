@@ -150,8 +150,6 @@ public final class MapHistoryStore {
         CountDownLatch latch = new CountDownLatch(1);
         // A shutdown command must not be silently dropped. Client shutdown may wait for queue space.
         try {
-            // The worker keeps draining while the queue is non-empty even after running=false, so
-            // blocking here preserves already accepted history instead of clearing a saturated queue.
             queue.put(new ShutdownCommand(latch));
             if (!latch.await(15000, TimeUnit.MILLISECONDS)) {
                 DebugLog.warn("Timed out draining map history during shutdown; {} commands remain", queue.size());
@@ -323,8 +321,6 @@ public final class MapHistoryStore {
         try {
             catalog.add(file, appended);
         } catch (IOException catalogError) {
-            // Data append is already durable. Rebuild the disposable catalog instead of retrying
-            // the same chunk and creating a physical duplicate.
             DebugLog.error("Failed to update map history catalog; rebuilding", catalogError);
             try {
                 catalog.rebuild();

@@ -76,7 +76,7 @@ class HudListPanelLayout extends HudPanelLayout {
   nameParts(row, rowCenterY) {
     const fs = this.fs();
     const rowTextH = n(this.p.rowTextHeight, 8);
-    const x = this.horizontalLayout().titleX;
+    const x = this.p.id === "gauges" ? 8 : this.horizontalLayout().titleX;
     const y = rowCenterY - rowTextH * 0.5;
     const parts = arr(prop(row, "nameParts", []));
     const nodes = [];
@@ -179,6 +179,52 @@ class HudListPanelLayout extends HudPanelLayout {
     return { decorations, text };
   }
 
+  gaugeParts(row, key, centerY, rightText, rightColor) {
+    const w = this.w(), scale = this.fs();
+    const rightPad = n(prop(this.v, "rowRightPad", 8), 8);
+    const percentW = 24 * scale;
+    const trackW = 38;
+    const gap = 3.5;
+    const trackH = 3.0;
+    const trackX = w - rightPad - percentW - gap - trackW;
+    const trackY = centerY - trackH * 0.5;
+    const colorFill = c(prop(row, "meterColor", "#FFFFFFFF"), "#FFFFFFFF");
+    const colorTrack = c(prop(row, "meterTrack", "#55FFFFFF"), "#55FFFFFF");
+    const level = Math.max(0, Math.min(1, n(prop(row, "meterFill", 0), 0)));
+    const threshold = Math.max(0, Math.min(1, n(prop(row, "meterThreshold", 0), 0)));
+    const mode = c(prop(row, "meterStyle", "Bar"), "Bar");
+    const decorations = [ui.shape({
+      key: `row:${key}:meter:track`, shape: "rounded",
+      class: abs(trackX, trackY, trackW, trackH), radius: 1.5,
+      fill: colorTrack,
+    })];
+    if (mode === "Segments") {
+      const segmentGap = .65;
+      const segmentW = (trackW - 9 * segmentGap) / 10;
+      for (let i = 0; i < 10; i++) decorations.push(ui.shape({
+        key: `row:${key}:meter:segment:${i}`, shape: "rounded",
+        class: abs(trackX + i * (segmentW + segmentGap), trackY, segmentW, trackH),
+        radius: .5, fill: level * 10 >= i + 1 ? colorFill : colorTrack,
+      }));
+    } else decorations.push(ui.shape({
+      key: `row:${key}:meter:fill`, shape: "rounded",
+      class: abs(trackX, trackY, Math.max(.01, trackW * level), trackH),
+      radius: 1.5, fill: colorFill,
+    }));
+    if (threshold > 0 && threshold < 1) decorations.push(ui.shape({
+      key: `row:${key}:meter:threshold`, shape: "rect",
+      class: abs(trackX + trackW * threshold - .35, trackY - 1, .7, trackH + 2),
+      fill: rightColor,
+    }));
+    const rowTextH = n(this.p.rowTextHeight, 8);
+    const percent = ui.text({key: `row:${key}:right`, text: rightText,
+      color: rightColor,
+      class: cls(abs(w - rightPad - percentW, centerY - rowTextH * .5, percentW,
+        rowTextH + 4), font("OnestMedium", this.fontSize()), `text-${rightColor}`, "text-align-right"),
+    });
+    return {decorations, text:[percent]};
+  }
+
   rowParts(row, index, cursorY) {
     const fs = this.fs();
     const rowTextH = n(this.p.rowTextHeight, 8);
@@ -202,7 +248,7 @@ class HudListPanelLayout extends HudPanelLayout {
     if (icon) icons.push(icon);
     const horizontal = this.horizontalLayout();
     const dividerH = n(prop(this.v, "rowDividerH", 6), 6);
-    decorations.push(ui.shape({
+    if (rightMode !== "gauge") decorations.push(ui.shape({
       key: `row:${key}:divider`,
       shape: "rounded",
       class: abs(horizontal.dividerX, rowCenterY - dividerH * 0.5, horizontal.dividerW, dividerH),
@@ -210,7 +256,11 @@ class HudListPanelLayout extends HudPanelLayout {
       fill: c(prop(row, "dividerColor", color(this.pal, "divider", "#66FFFFFF")), color(this.pal, "divider", "#66FFFFFF")),
     }));
     text.push(...this.nameParts(row, rowCenterY));
-    if (rightMode === "time-pill") {
+    if (rightMode === "gauge") {
+      const gauge = this.gaugeParts(row, key, rowCenterY, rightText, rightColor);
+      decorations.push(...gauge.decorations);
+      text.push(...gauge.text);
+    } else if (rightMode === "time-pill") {
       const pill = this.timePillParts(row, rowCenterY, key, rightText, rightColor);
       decorations.push(...pill.decorations);
       text.push(...pill.text);
@@ -258,9 +308,6 @@ class HudListPanelLayout extends HudPanelLayout {
     }
 
     return [
-      // Body-level scissor prevents residual fragments from escaping the shrinking panel;
-      // each row also owns a centered shrinking scissor so opaque item icons disappear
-      // continuously instead of being guillotined by the panel bottom edge.
       ui.stack({
         key: "rows:clip",
         class: abs(0, bodyY, this.w(), bodyH, "clip overflow-hidden"),

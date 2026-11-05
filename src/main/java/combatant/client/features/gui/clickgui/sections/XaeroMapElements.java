@@ -148,8 +148,6 @@ final class XaeroMapElements {
             }
         }
 
-        // Geometry first. Labels are intentionally emitted in later passes so a tooltip can never
-        // end up underneath a subsequently batched entity/item icon.
         updateWaypointHoverAnimations(snapshot);
         java.util.IdentityHashMap<Element, Float> topExtents = new java.util.IdentityHashMap<>();
         for (Element element : snapshot.elements()) {
@@ -513,8 +511,6 @@ final class XaeroMapElements {
         float radius = Math.min(10.0f * scale, badgeHeight * 0.38f);
         float cx = (float) point.x();
         float anchorY = (float) point.y();
-        // The marker still points at the exact map coordinate, but its glass body overlaps the
-        // anchor slightly instead of floating a full icon-height above it.
         float badgeBottom = anchorY + 3.5f * scale;
         float x = cx - badgeWidth * 0.5f;
         float y = badgeBottom - badgeHeight;

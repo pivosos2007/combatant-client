@@ -21,6 +21,8 @@ import combatant.client.render.engine.rig.gpu.RigGpuMeshCache;
 import combatant.client.render.engine.rig.shader.RigBonesUniforms;
 import combatant.client.render.engine.rig.shader.PlayerRigLightingUniforms;
 import combatant.client.features.gui.preview.VisualPreviewRuntime;
+import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.visuals.Chams;
 import combatant.client.render.iris.IrisRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
@@ -46,8 +48,6 @@ public final class PlayerModelGpuRenderer {
         private final int overlay;
         private final int tint;
         private final List<PlayerModelCompiler.Surface> surfaces;
-        // Both alpha passes draw in the SAME frame. Share the uploaded GPU bone palette
-        // and lighting payload, rather than writing the same UBO twice per instance.
         private GpuBufferSlice bones;
         private GpuBufferSlice lighting;
 
@@ -88,6 +88,12 @@ public final class PlayerModelGpuRenderer {
     // with the world frame queue or its camera matrices.
     private static final List<Submission> PREVIEW_PENDING = new ArrayList<>(2);
     private static final List<Submission> HAND_PENDING = new ArrayList<>(2);
+    // First-person replacement arms bypass vanilla's SubmitNodeStorage entirely. Chams
+    // replays the same GPU geometry into its private hand mask after the visible pass.
+    // Capture the actual hand projection/view rather than relying on the world camera.
+    private record HandMaskCapture(List<Submission> submissions, Matrix4f view, Matrix4f projection) {}
+    private static HandMaskCapture handMaskCapture;
+    private static HandMaskCapture previewHandMaskCapture;
     // Independent entity-only depth capture must not enqueue to the visible-world
     // queue, or the replacement is absent from EntityDepthLayer's framebuffer.
     private static final List<Submission> ENTITY_DEPTH_PENDING = new ArrayList<>(2);
@@ -218,14 +224,15 @@ public final class PlayerModelGpuRenderer {
     }
 
     /** Clear a preview at the start of its isolated subject frame. */
-    public static void beginPreview() { PREVIEW_PENDING.clear(); }
+    public static void beginPreview() {
+        PREVIEW_PENDING.clear();
+        previewHandMaskCapture = null;
+    }
 
     public static boolean submitHand(PlayerModels.Snapshot snapshot,
                                      List<PlayerModelCompiler.Surface> surfaces,
                                      PoseStack matrices, int light) {
         if (snapshot == null || matrices == null || surfaces == null || surfaces.isEmpty()) return false;
-        // If a device rejected the GPU pipeline, the first-person hook must
-        // keep Vanilla's arm draw, rather than silently dropping the hand.
         if (retryAfterNanos != 0 && System.nanoTime() - retryAfterNanos < 0)
             return false;
         List<Submission> destination = VisualPreviewRuntime.isRenderingSubject()
@@ -235,18 +242,44 @@ public final class PlayerModelGpuRenderer {
         return true;
     }
 
-    public static void beginHands() { HAND_PENDING.clear(); }
+    public static void beginHands() {
+        HAND_PENDING.clear();
+        handMaskCapture = null;
+    }
+
+    private static boolean shouldCaptureHandMask() {
+        Chams chams = Modules.get(Chams.class);
+        return chams != null && (chams.isEnabled() || VisualPreviewRuntime.isPreviewingModule("chams"));
+    }
 
     public static void renderHands(com.mojang.renderpearl.api.textures.GpuTextureView color,
                                    com.mojang.renderpearl.api.textures.GpuTextureView depth,
                                    Matrix4f modelView, Matrix4f projection) {
         if (HAND_PENDING.isEmpty()) return;
         try {
+            if (shouldCaptureHandMask() && color != null && depth != null
+                    && modelView != null && projection != null) {
+                handMaskCapture = new HandMaskCapture(List.copyOf(HAND_PENDING),
+                        new Matrix4f(modelView), new Matrix4f(projection));
+            }
             drawGpu(HAND_PENDING, color, depth, modelView, projection, false);
             drawGpu(HAND_PENDING, color, depth, modelView, projection, true);
         } finally {
             HAND_PENDING.clear();
         }
+    }
+
+    /** Add imported first-person arms to Chams' mask without touching the visible scene.
+     * The vanilla hand dispatcher cannot see these direct RHI submissions. */
+    public static void renderHandMask(com.mojang.renderpearl.api.textures.GpuTextureView color,
+                                      com.mojang.renderpearl.api.textures.GpuTextureView depth) {
+        boolean preview = VisualPreviewRuntime.isRenderingSubject();
+        HandMaskCapture capture = preview ? previewHandMaskCapture : handMaskCapture;
+        if (preview) previewHandMaskCapture = null;
+        else handMaskCapture = null;
+        if (capture == null || color == null || depth == null) return;
+        drawGpu(capture.submissions(), color, depth, capture.view(), capture.projection(), false);
+        drawGpu(capture.submissions(), color, depth, capture.view(), capture.projection(), true);
     }
 
     public static void endWorldFrame() {
@@ -288,8 +321,10 @@ public final class PlayerModelGpuRenderer {
         if (PREVIEW_PENDING.isEmpty()) return;
         try {
             if (color == null || depth == null || projection == null) return;
-            // Do not create a per-frame framebuffer: reuse the preview's existing
-            // color and private depth attachments with the normal RHI pipeline.
+            if (shouldCaptureHandMask()) {
+                previewHandMaskCapture = new HandMaskCapture(List.copyOf(PREVIEW_PENDING),
+                        new Matrix4f(), new Matrix4f(projection));
+            }
             drawGpu(PREVIEW_PENDING, color, depth, new Matrix4f(), projection, false);
             drawGpu(PREVIEW_PENDING, color, depth, new Matrix4f(), projection, true);
         } finally {
@@ -398,6 +433,8 @@ public final class PlayerModelGpuRenderer {
         PENDING.clear();
         PREVIEW_PENDING.clear();
         HAND_PENDING.clear();
+        previewHandMaskCapture = null;
+        handMaskCapture = null;
         abortEntityDepthCapture();
         opaqueDrawn = false;
         collectingWorld = false;
@@ -411,6 +448,8 @@ public final class PlayerModelGpuRenderer {
         PENDING.clear();
         PREVIEW_PENDING.clear();
         HAND_PENDING.clear();
+        previewHandMaskCapture = null;
+        handMaskCapture = null;
         abortEntityDepthCapture();
 
     }

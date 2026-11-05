@@ -41,8 +41,6 @@ public enum UiClipUniforms {
     private static final int EXPECTED_WRITES_PER_FRAME = 128;
     private static final Data DATA = new Data();
 
-    // The allocator slice is valid for one frame and snapshots are immutable, so identical
-    // (frame, snapshot instance) pairs share one slice instead of repacking ~100 values per draw.
     private static long lastFrameId = Long.MIN_VALUE;
     private static UiClipSnapshot lastSnapshot;
 

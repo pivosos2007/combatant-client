@@ -186,10 +186,6 @@ public final class ItemBatchRenderer {
                 }
             }
         } catch (RuntimeException failure) {
-            // FeatureRenderDispatcher.prepareFrameWithContext() calls PreparedFrame.begin()
-            // before feature preparation and does not roll it back if preparation itself throws.
-            // Do not keep a possibly-poisoned dispatcher alive after the intentionally-soft
-            // world-atlas failure path.
             atlasFailure = failure;
         } finally {
             atlasState.restore();

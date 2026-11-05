@@ -396,8 +396,6 @@ public final class CompactHudStatModel {
         writer.put("fill", "materialMode", background.materialMode);
         writer.put("fill", "startColor", dynamicColor(background.primary));
         writer.put("fill", "endColor", dynamicColor(background.secondary));
-        // These are renderer props, not layout-only values; patch them directly instead of
-        // relying on an unrelated layout signature to eventually rebuild the tree.
         writer.putFloat("fill", "strokeWidth", Math.max(0.45f, background.strokeWidth));
         writer.putFloat("fill", "softness", background.softness);
         float paintAlpha = Math.max(alpha01(background.primary), alpha01(background.secondary));

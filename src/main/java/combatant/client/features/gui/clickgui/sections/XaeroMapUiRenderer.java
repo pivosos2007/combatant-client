@@ -71,9 +71,6 @@ final class XaeroMapUiRenderer {
                 areaX + inset, leftBottom - size - CONTROL_ISLAND_GAP, size,
                 state.dimensionTooltip(), state.customDimension(), true));
 
-        // Right-side chrome is intentionally split into small semantic islands rather than
-        // one long glass rail. Inside an island the lobes sit close enough for a metaball neck;
-        // between islands there is enough air that the groups remain readable at a glance.
         float right = areaX + areaWidth - inset - size;
         float cursor = areaY + areaHeight - inset - size;
 
@@ -215,8 +212,6 @@ final class XaeroMapUiRenderer {
 
         XaeroMapGlass.withMaterial(renderer, material, () -> {
             if (b != null) {
-                // The idle neck is restrained. Hover/press adds mass so the transition is
-                // geometric rather than merely a color change.
                 float smoothing = 15.0f + groupHover * 5.5f + groupPress * 2.25f;
                 UiCompoundSdf field = UiCompoundSdf.smoothSquircleUnion(
                         UiRect.of(a.x, a.y, a.size, a.size), CONTROL_SQUIRCLE_EXPONENT,

@@ -57,8 +57,6 @@ public final class MapLinkProfilesValue extends ConfigValue<List<MapLinkProfile>
             String serverMatcher = string(row.get("serverMatcher"), "");
             String baseUrl = string(row.get("baseUrl"), "");
             MapLinkProviderType providerType = provider(row.get("providerType"));
-            // refreshIntervalMs was an exact polling interval. It is intentionally not migrated:
-            // maxUpdateDelayMs has different semantics (an upper bound for provider cadence).
             long maxUpdateDelayMs = number(row.get("maxUpdateDelayMs"),
                     MapLinkProfile.DEFAULT_MAX_UPDATE_DELAY_MS).longValue();
             int defaultY = number(row.get("defaultY"), 64).intValue();

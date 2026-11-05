@@ -133,7 +133,6 @@ public abstract class VulkanCommandEncoderMixin implements IVulkanCommandEncoder
         try {
             CombatantRenderSystem.rhi().shapeClip().endRenderPass();
         } catch (Throwable ignored) {
-            // Render pass teardown must never make Vulkan submission fail.
         }
         VulkanRenderStateBridge.endRenderPass();
     }

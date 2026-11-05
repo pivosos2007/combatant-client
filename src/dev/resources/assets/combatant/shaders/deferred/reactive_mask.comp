@@ -1,5 +1,12 @@
 #version 430 core
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0) uniform sampler2D u_GbufferDepth;
@@ -28,7 +35,6 @@ float materialReactive(uint materialId) {
         if (entry.occupied == 0u) break;
         if (entry.materialId == materialId) return clamp(entry.policy.x, 0.0, 1.0);
     }
-    // Unknown material is explicit uncertainty: reject history rather than pretend it is stable.
     return 1.0;
 }
 

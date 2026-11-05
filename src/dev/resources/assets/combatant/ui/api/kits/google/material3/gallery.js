@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* Google Material 3 preview content. UI Kit is independent from the catalog host. */
 import { GoogleMaterial3 } from './components.js';
 const M = GoogleMaterial3;

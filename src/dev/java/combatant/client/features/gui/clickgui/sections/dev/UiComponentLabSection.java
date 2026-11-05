@@ -1,6 +1,8 @@
 /*
- * Combatant Client (GPL-3.0). Development-only component gallery, hosting independent Google and Adobe kits.
- * Rendering is native to Combatant; Google components live in their own JS kit.
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
 package combatant.client.features.gui.clickgui.sections.dev;
 
@@ -275,7 +277,6 @@ public final class UiComponentLabSection implements ClickGuiSection {
     private void showAdobeToast(String variant) {
         AdobeToastEntry toast = new AdobeToastEntry(++adobeToastSerial, variant);
         if (adobeToasts.size() < ADOBE_TOAST_LIMIT && adobeToastPending.isEmpty()) {
-            // Existing toasts move upward rather than being removed or covered.
             adobeToasts.add(toast);
         } else {
             // Preserve the newest notification; retire the oldest to make space.

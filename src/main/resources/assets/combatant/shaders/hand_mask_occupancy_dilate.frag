@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Mask;
@@ -27,8 +34,6 @@ void main() {
     int radius = clamp(int(ceil(max(u_Params2.z, 1.0) / CELL_SIZE)), 1, MAX_CELL_RADIUS);
     float occupied = 0.0;
 
-    // Square dilation is intentionally conservative. It may retain a few extra fragments near
-    // corners, but it can never discard a fragment covered by the original radial edge search.
     for (int y = -MAX_CELL_RADIUS; y <= MAX_CELL_RADIUS; ++y) {
         if (abs(y) > radius) continue;
         for (int x = -MAX_CELL_RADIUS; x <= MAX_CELL_RADIUS; ++x) {

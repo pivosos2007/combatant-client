@@ -144,8 +144,6 @@ public final class PlayerModel extends Module {
         ModeValue value = new ModeValue("texture_resolution", "100%",
                 "100%", "75%", "50%", "25%", "12.5%") {
             @Override public void fromJson(Object json) {
-                // Migrate old absolute caps to relative quality levels instead of silently
-                // ignoring existing configs. New saves always use relative percentages.
                 if (json instanceof String old) {
                     json = switch (old) {
                         case "Original" -> "100%";

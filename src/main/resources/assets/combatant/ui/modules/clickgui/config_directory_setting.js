@@ -1,6 +1,8 @@
-/* Combatant Client (GPL-3.0).
- * Main Settings / System: configuration directory, using production Spectrum 2 primitives.
- * All file operations are owned by the Java host, never by the UI script.
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
 import { SpectrumFoundation } from '../../api/kits/adobe/spectrum2/foundation.js';
 const S2 = SpectrumFoundation;

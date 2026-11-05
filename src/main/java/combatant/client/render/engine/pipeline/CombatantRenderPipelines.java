@@ -97,9 +97,6 @@ public enum CombatantRenderPipelines {
     public static void precompile(ResourceManager resources) {
         List<RenderPipeline> pipelines = all();
 
-        // In 26.3 the active PipelineCache owns compiled ordinary graphics pipelines.
-        // Do not create a second private cache via GpuDevice.compilePipeline(): those
-        // compiled objects would not be visible to Minecraft's render passes.
         if (RenderSystem.tryGetDevice() == null) {
             DebugLog.warn("[Combatant] RenderSystem not ready in precompile(ResourceManager)");
             return;

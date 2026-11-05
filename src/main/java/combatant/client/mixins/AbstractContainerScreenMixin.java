@@ -49,8 +49,6 @@ public abstract class AbstractContainerScreenMixin {
                 slotId, button, input, mc.player, null)) ci.cancel();
     }
 
-    // While an inventory is open, F is handled by the screen rather than Minecraft.handleKeybinds.
-    // Consume this key before vanilla can swap ANY hovered item with the protected offhand.
     @Inject(method = "checkHotbarKeyPressed", at = @At("HEAD"), cancellable = true)
     private void combatant$guardInventoryOffhandKey(KeyEvent key, CallbackInfoReturnable<Boolean> cir) {
         Minecraft mc = Minecraft.getInstance();

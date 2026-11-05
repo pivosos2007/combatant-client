@@ -943,9 +943,6 @@ public enum ClickGuiRenderer {
         float innerH = Math.max(1.0f, tabBarH - outerPad * 2.0f);
         float innerRadius = innerH * 0.5f;
 
-        // The category rail is intentionally a translucent glass substrate rather than
-        // another opaque panel. Keep the paint near ~185/255 and let the backdrop blur
-        // carry most of the separation from the world behind it.
         float outerSurfaceAlpha = TAB_BAR_SURFACE_ALPHA;
         int outerLeft = scaleAlpha(mixColor(theme().surface(), theme().windowBg(), 0.34f), outerSurfaceAlpha * eased);
         int outerRight = scaleAlpha(mixColor(theme().surfaceHover(), theme().windowBg(), 0.22f), outerSurfaceAlpha * eased);

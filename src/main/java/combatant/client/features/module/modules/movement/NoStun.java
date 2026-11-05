@@ -29,6 +29,8 @@ import combatant.client.events.impl.EventCollision;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.events.impl.MovementInputEvent;
 import combatant.client.events.impl.PlayerJumpEvent;
+import combatant.client.features.gui.hud.gauges.GaugeRegistry;
+import combatant.client.features.gui.hud.gauges.GaugeConnect;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -186,6 +188,7 @@ public class NoStun extends Module {
     @EventHandler
     private void onGameTick(GameTickEvent event) {
         if (!isEnabled() || !isVulcan297() || mc.player == null || mc.level == null) {
+            GaugeRegistry.removeOwner("nostun");
             resetVulcan297WebBudget();
             resetVulcan297SlownessSpeedEBuffer();
             return;
@@ -202,6 +205,28 @@ public class NoStun extends Module {
         if (!shouldUseVulcan297SlownessLogic(mc.player)) {
             resetVulcan297SlownessSpeedEBuffer();
         }
+        GaugeRegistry.updateAnnotated("nostun", this);
+    }
+
+    @GaugeConnect(id = "web", labelKey = "hud.gauges.nostun.web",
+            readiness = GaugeRegistry.Readiness.THRESHOLD,
+            threshold = (float) (VULCAN_297_WEB_FULL_COST / VULCAN_297_WEB_BUFFER_MAX),
+            hideAfterMillis = 1000)
+    private GaugeRegistry.Sample webGauge() {
+        if (!functions.get(FN_ENV_BLOCKS) || !envBlocks.get(ENV_WEB)) return null;
+        float available = (float) (1.0 - vulcan297WebBudget / VULCAN_297_WEB_BUFFER_MAX);
+        return new GaugeRegistry.Sample(available, canUseVulcan297WebBurst(),
+                vulcan297WebBudget > .001f, GaugeRegistry.Flow.FILL, "");
+    }
+
+    @GaugeConnect(id = "slowness", labelKey = "hud.gauges.nostun.slowness",
+            readiness = GaugeRegistry.Readiness.CONTINUOUS, hideAfterMillis = 1000)
+    private GaugeRegistry.Sample slownessGauge() {
+        if (!shouldUseVulcan297SlownessLogic(mc.player)) return null;
+        float available = (float) (1.0 - vulcan297SlownessSpeedEBuffer / VULCAN_297_SPEED_E_BUFFER_MAX);
+        return new GaugeRegistry.Sample(available,
+                vulcan297SlownessSpeedEBuffer < VULCAN_297_SPEED_E_BUFFER_MAX,
+                vulcan297SlownessSpeedEBuffer > .001f, GaugeRegistry.Flow.FILL, "");
     }
 
     @EventHandler
@@ -213,6 +238,7 @@ public class NoStun extends Module {
 
     @Override
     public void onDisable() {
+        GaugeRegistry.removeOwner("nostun");
         resetVulcan297WebBudget();
         resetVulcan297SlownessSpeedEBuffer();
     }

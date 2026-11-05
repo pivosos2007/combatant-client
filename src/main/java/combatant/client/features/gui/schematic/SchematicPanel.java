@@ -1,5 +1,8 @@
 /*
- * Combatant Client, GPL-3.0. Copyright (c) 2026 pivosos2007.
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
  */
 package combatant.client.features.gui.schematic;
 
@@ -64,11 +67,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Spectrum 2 workspace. Java manages domain data, native mesh/voxel rendering and input;
- * declarative script owns presentation, controls, layout, file list and material inspector.
- * Standalone Schematics and ClickGUI use the same workspace.
- */
 @UiScriptAsset("combatant:modules/schematic/workspace")
 public final class SchematicPanel {
     private static final float SETTINGS_SCALE = 2.0f;
@@ -84,7 +82,6 @@ public final class SchematicPanel {
     private final SchematicViewport viewport = new SchematicViewport();
     private final SchematicLayerGrid grid = new SchematicLayerGrid();
     private final SchematicUi nativeUi = new SchematicUi();
-    // Configuration lives inside this workspace. It is not another ClickGUI section.
     private final LitematicaSettingsPanel litematicaSettings = new LitematicaSettingsPanel();
     private boolean litematicaSettingsMode;
     private final SingleLineTextInput searchInput = new SingleLineTextInput(96);
@@ -97,8 +94,6 @@ public final class SchematicPanel {
     private TextRenderer searchFont;
     private long searchFontGeneration = -1L;
 
-    /** Font resources are destroyed and recreated on reload; never retain a renderer
-     * from a previous Fonts generation across a ClickGUI session. */
     private TextRenderer currentSearchFont() {
         long generation = Fonts.generation();
         if (searchFont == null || searchFontGeneration != generation) {
@@ -136,7 +131,6 @@ public final class SchematicPanel {
     private final List<LocalToast> localToasts = new ArrayList<>();
     private static final long TOAST_DURATION = 4_500_000_000L;
     private static final long TOAST_DISMISS_NS = 220_000_000L;
-    /** Stable toast identity: repeated feedback updates one card instead of spawning duplicates. */
     private static final class LocalToast {
         private final long id;
         private final String message, variant;
@@ -197,7 +191,6 @@ public final class SchematicPanel {
                 state.clear();
             if (active.file() != null && state.schematic() == null
                     && SchematicActions.loadingPath() == null) {
-                // Only populate the optional in-menu preview. Never create another placement.
                 SchematicActions.preview(active.file());
             }
         }
@@ -233,7 +226,6 @@ public final class SchematicPanel {
         mouseX = mx;
         mouseY = my;
         bounds = Layout.compute(x, y, w, h, false, libraryMode, drawerProgress);
-        // Embedded ClickGUI forwards button edges only; sample continuous drags per frame.
         mouseDragged(mx, my);
         renderWorkspace();
     }
@@ -285,8 +277,6 @@ public final class SchematicPanel {
         }
         float desiredDrawer = "none".equals(drawerMode) || libraryMode || litematicaSettingsMode ? 0f : 1f;
         if (desiredDrawer == 0f) drawerEnterPending = false;
-        // An async JS tree can take a few frames to produce the new panel.
-        // Wait at the leading edge instead of completing the entrance off-screen.
         if (drawerEnterPending && (runtime != null && findUiNode(runtime.root(), "drawer:reveal") != null
                 || now - drawerEnterStarted > 650_000_000L)) drawerEnterPending = false;
         if (!drawerEnterPending)
@@ -294,9 +284,6 @@ public final class SchematicPanel {
         if (Math.abs(desiredDrawer - drawerProgress) < .005f) drawerProgress = desiredDrawer;
         if (!"none".equals(drawerMode)) visibleDrawer = drawerMode;
         else if (drawerProgress == 0f) visibleDrawer = "none";
-        // The native viewport animates every frame. JS receives a bounded number of
-        // geometry snapshots: an unbounded float would supersede each asynchronous
-        // worker result before it can be committed (drawer appears only after Alt+Tab).
         if (bounds != null) {
             bounds = Layout.compute(bounds.x, bounds.y, bounds.w, bounds.h,
                     onClose != null, libraryMode || litematicaSettingsMode, drawerProgress);
@@ -331,12 +318,8 @@ public final class SchematicPanel {
             refreshMaterials(now);
             refreshIssues();
         }
-        // One fullscreen region of the existing UI dual-Kawase blur, not a second
-        // postprocess pass. Runs in the same UI batch graph as ordinary glass.
         Renderer2D.COLOR.blurRect(bounds.x, bounds.y, bounds.w, bounds.h,
                 0f, 29f, 1f, .94f, 0xFFFFFF);
-        // Draw the native canvas before the Spectrum overlay so toasts, inspector,
-        // header and animated controls remain above the voxel renderer.
         if (!libraryMode && !litematicaSettingsMode)
             Renderer2D.COLOR.quad(bounds.x, bounds.y, bounds.w, bounds.h, 0xA8171717);
         if (!litematicaSettingsMode) renderCanvas(dt);
@@ -392,12 +375,6 @@ public final class SchematicPanel {
                 });
     }
 
-    /**
-     * Move the retained inspector every render frame, not only after an asynchronous
-     * script rebuild. UiRuntime calls this after scroll's layout pass, so the next
-     * reconciliation or scroll tick cannot erase the animated position for a frame.
-     * The same patched bounds are used by the renderer, clipping and hit-testing.
-     */
     private void animateRetainedDrawer() {
         if (runtime == null || bounds == null || libraryMode || litematicaSettingsMode) return;
         UiNode drawer = findUiNode(runtime.root(), "drawer:reveal");
@@ -436,8 +413,6 @@ public final class SchematicPanel {
                 "selected",color(blend(0xFF333333,synced,.31f)),
                 "background",color(background),"surface",color(surface),"border",color(border),
                 "raised",color(blend(surface,0xFFFFFFFF,.05f)));
-        // Configuration has no native drawer. Exclude its exiting animation
-        // from the signature so changing category never waits for stale frames.
         Layout configLayout = Layout.compute(bounds.x, bounds.y, bounds.w, bounds.h,
                 onClose != null, true, 0f);
         return map("width",bounds.w,"height",bounds.h,"layout",configLayout.props(),
@@ -460,7 +435,6 @@ public final class SchematicPanel {
                 fade = Math.min(fade, remaining * remaining * (3f - 2f * remaining));
             }
             result.add(map("id", toast.id(), "message", toast.message(), "variant", toast.variant(),
-                    // Don't rebuild the entire script for subpixel toast changes.
                     "alpha", Math.round(clamp(fade, 0f, 1f) * 10f) / 10f,
                     "count", toast.count(), "stack", Math.round(toast.stack / 3f) * 3f));
         }
@@ -572,8 +546,6 @@ public final class SchematicPanel {
         }
         double progress = total > 0 ? (double) correct / total : 0d;
         int themeAccent = Theme.theme() == null ? 0xFF4069FD : Theme.theme().accent();
-        // Spectrum neutral palette stays recognizable. Only semantic accent, focus and selected
-        // surfaces are derived from the active ClickGUI theme.
         int synced = blend(0xFF4069FD, themeAccent, .82f);
         int background = Theme.theme() == null ? 0xFF1D1D1D : blend(0xFF1D1D1D, Theme.theme().windowBg(), .15f);
         int surface = Theme.theme() == null ? 0xFF292929 : blend(0xFF292929, Theme.theme().surface(), .18f);
@@ -621,8 +593,6 @@ public final class SchematicPanel {
                 "searchScroll", searchScroll, "caretOffset", caret, "selectionStart", selectFrom, "selectionEnd", selectTo,
                 "selected", selectedFile != null, "selectedName", selectedFile == null ? "" : selectedFile.name(),
                 "canLoad", canLoad, "libraryMode", libraryMode, "drawerMode", visibleDrawer,
-                // 12 visual animation steps: keep JS asynchronous builds responsive
-                // instead of sending a different structural signature every frame.
                 "drawerProgress", scriptDrawer, "cardsMode", cardsMode,
                 "fileDetails", fileDetails, "toasts", toastProps,
                 "loaded", nativeActive != null, "previewAvailable", schematic != null,
@@ -861,7 +831,6 @@ public final class SchematicPanel {
             }
             if (state.hasSchematic()) state.setOrigin(next);
         } catch (NumberFormatException ignored) {
-            // Keep the previous coordinate on invalid input or integer overflow.
         }
         originEdit = -1;
         originInput.unfocus();
@@ -942,7 +911,6 @@ public final class SchematicPanel {
         return inside(mx, my, vx + 12f, vy + vh - side - 14f, side, side);
     }
 
-    /** Native voxel hit tooltip; UI actions and layout are exclusively script-owned. */
     private void renderCanvasTooltip() {
         if (bounds == null || state.schematic() == null || settingsPanel.isActive()
                 || layerDragging || gapDragging || viewport.dragging()
@@ -976,8 +944,6 @@ public final class SchematicPanel {
         float height = 74f;
         float tx = Math.max(bounds.x + 8f, Math.min(mouseX + 16f, bounds.x + bounds.w - width - 8f));
         float ty = Math.max(bounds.y + 8f, Math.min(mouseY + 16f, bounds.y + bounds.h - height - 8f));
-        // Accent is the same *rounded card*, with its body clipped 4 px from the left.
-        // Both top-left and bottom-left corners inherit the tooltip's exact radius.
         int swatch = grid.paletteColor(schematic, palette) | 0xFF000000;
         Renderer2D.COLOR.roundedRect(tx, ty, width, height, 7f, swatch);
         boolean bodyClip = ScissorFunction.pushRaw(tx + 4f, ty, width - 4f, height);
@@ -1214,9 +1180,6 @@ public final class SchematicPanel {
         if (ctrlDown() && key == InputKeys.F) { libraryMode = true; drawerMode = "none";
             searchFocused = true; searchInput.selectAll(); return true; }
         if (key == InputKeys.ESCAPE) {
-            // One-way unwinding: clear the current transient state, then leave the
-            // root screen on a subsequent ESC. Do not bounce endlessly between
-            // Library and Workspace when a document is loaded.
             if (cancelCurrentAction()) return true;
             if (onClose == null) return false; // ClickGUI owns root-level close.
             requestClose();
@@ -1327,7 +1290,6 @@ public final class SchematicPanel {
         return scale <= 0f ? screen : screen * mc.getWindow().getGuiScale() / scale;
     }
 
-    /** Editing and browsing are distinct Spectrum 2 contexts, not three columns. */
     private record Layout(float x, float y, float w, float h, float header,
                           float libraryX, float libraryY, float libraryW, float libraryH,
                           float viewX, float viewY, float viewW, float viewH,

@@ -53,8 +53,6 @@ void main() {
     float glyphAlpha = smoothstep(-0.62, 0.54, signedPx);
     if (glyphAlpha * v_Color.a <= 0.001) discard;
 
-    // The SDF itself is the glass boundary. Derivatives give a stable screen-space edge normal,
-    // so refraction/rim stay attached to the actual glyph instead of a surrounding rectangle.
     vec2 sdfGradient = vec2(dFdx(signedPx), dFdy(signedPx));
     vec2 normal = safeNormalize(sdfGradient);
     float edgeDistance = abs(signedPx);
@@ -90,8 +88,6 @@ void main() {
 
     // Slight interior haze is sampled from the prepared blur, but alpha remains SDF-sharp.
     glass = mix(glass, blurredScene, (1.0 - body) * 0.06);
-    // Real monochrome-negative blend: scene luminance is inverted inside the glyph. This is
-    // intentionally independent from glass tint so light/dark backdrop transitions read clearly.
     vec3 backdrop = clamp(mix(blurredScene, cleanScene, 0.62 + body * 0.16), 0.0, 1.0);
     float backdropLuma = luminance(backdrop);
     float invertedLuma = 1.0 - smoothstep(0.06, 0.94, backdropLuma);

@@ -2,6 +2,13 @@
 #extension GL_ARB_separate_shader_objects : require
 
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Resolves the frame-invariant center autofocus distance once. The main DoF pass reads this
  * single texel instead of repeating five multi-layer depth probes for every screen fragment.
  */

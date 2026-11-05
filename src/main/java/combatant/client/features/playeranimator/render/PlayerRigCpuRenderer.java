@@ -118,8 +118,6 @@ public final class PlayerRigCpuRenderer {
 
         private float[] vertices(RigMeshPart part, PlayerRigInstance rig, RigDeformState deform) {
             if (skinMatrices == null) {
-                // Snapshots are immutable after submission. Resolve the rig once, rather than
-                // repeating the dirty-flag check for every influence of every vertex.
                 rig.solve();
                 skinMatrices = new Matrix4fc[rig.pose().boneCount()];
                 for (int bone = 0; bone < skinMatrices.length; bone++) {
@@ -290,8 +288,6 @@ public final class PlayerRigCpuRenderer {
                 emit(c, deform, rig, scratch, pose, consumer, light, overlay, tint, partScale,
                         headPart ? headOffset : NO_HEAD_OFFSET);
                 if (topology == PrimitiveTopology.QUADS) {
-                    // A triangle represented as (a,b,c,c) makes the quad's second generated
-                    // triangle degenerate instead of joining unrelated mesh faces.
                     emit(c, deform, rig, scratch, pose, consumer, light, overlay, tint, partScale,
                         headPart ? headOffset : NO_HEAD_OFFSET);
                 } else if (topology != PrimitiveTopology.TRIANGLES) {
@@ -312,11 +308,6 @@ public final class PlayerRigCpuRenderer {
                 headOffset[0] / 16f, headOffset[1] / 16f, headOffset[2] / 16f);
         skin(vertex, rig, scratch);
         int color = ARGB.multiply(tint, vertex.colorArgb());
-        // Do not use a fluent chain here. UvMapping.wrap(...) may return a
-        // SpriteCoordinateExpander, whose addVertex(...) forwards to and returns the delegate.
-        // Chaining setUv(...) from that return value therefore bypasses sprite UV expansion and
-        // makes trim passes sample the whole armor-trims atlas. Keep every attribute write on the
-        // wrapper itself so atlas-backed armor trims receive the same UV remap as vanilla models.
         consumer.addVertex(pose, scratch.position);
         consumer.setColor(color);
         consumer.setUv(vertex.u(), vertex.v());

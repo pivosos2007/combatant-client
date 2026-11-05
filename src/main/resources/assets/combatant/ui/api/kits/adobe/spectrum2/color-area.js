@@ -1,4 +1,9 @@
-/* Combatant Client (GPL-3.0). ColorArea: a GPU quad gradient, not a grid of nodes. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 import { clampColor, hsvHex, colorHandle } from './color-utils.js';
 export class SpectrumColorArea {

@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* Google Material 3 top-layer examples; the kit owns drawing, the host owns
  * input/focus/lifecycle. Matches the Material Web menu/selection semantics. */
 import { GoogleMaterial3 } from './components.js';

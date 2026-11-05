@@ -8,6 +8,7 @@
 package combatant.client.mixins;
 
 import com.mojang.renderpearl.api.device.GpuSurface;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.client.KeyMapping;
@@ -42,6 +43,7 @@ import combatant.client.features.gui.chat.BetterChatStoreManager;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.Timer;
+import combatant.client.features.module.modules.movement.EntityControl;
 import combatant.client.features.module.modules.player.NoDelay;
 import combatant.client.features.module.modules.player.NoInteract;
 import combatant.client.features.module.modules.visuals.Freecam;
@@ -87,6 +89,14 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
     @Unique
     private static void combatant$guardSingleplayerSaveWithAltUsername() {
         SessionChanger.restoreSingleplayerJoinSessionForDisconnect();
+    }
+
+    @ModifyExpressionValue(method = "startUseItem", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/player/LocalPlayer;isHandsBusy()Z"))
+    private boolean combatant$entityControlAllowBoatItems(boolean handsBusy) {
+        if (!handsBusy) return false;
+        EntityControl control = Modules.get(EntityControl.class);
+        return control == null || !control.allowBoatItemUse(Minecraft.getInstance().player);
     }
 
     @Inject(method = "startUseItem", at = @At("HEAD"), cancellable = true)

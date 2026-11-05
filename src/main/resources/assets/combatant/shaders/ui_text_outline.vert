@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(location = 0) in vec2 Position;
 layout(location = 1) in vec2 UV0;
 layout(location = 2) in vec4 Color;

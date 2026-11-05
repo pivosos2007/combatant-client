@@ -580,9 +580,6 @@ public enum Themes {
             THEME_NEON_RED, "Neon Red", 0xFFD22730, 0xFFB8192A, false
     );
     private static final ThemeEntry RED_COFFEE_ENTRY = pairedPaletteEntry(
-            // Black is the identity/background half of this palette. Using it as
-            // the semantic accent would make selected states disappear on the
-            // dark UI, so the red half is intentionally promoted to accent.
             THEME_RED_COFFEE, "Red Coffee", 0xFFE1223B, 0xFF000000, false
     );
     private static final ThemeEntry DEEP_OCEAN_ENTRY = pairedPaletteEntry(
@@ -1019,9 +1016,6 @@ public enum Themes {
     }
 
     private static void beginThemeTransition(Theme fromTheme, ThemeEntry fromEntry) {
-        // Snapshot the currently rendered HUD gradients before replacing transition state.
-        // This also keeps rapid/re-entrant theme changes continuous instead of restarting
-        // from a raw disabled gradient slot.
         GradientSpec displayedHudAccent = hudAccentGradient();
         GradientSpec displayedHudForeground = hudForegroundGradient();
         GradientSpec displayedHudSelection = hudSelectionGradient();
@@ -1153,7 +1147,6 @@ public enum Themes {
         Theme resolvedTheme = theme != null ? theme : CLASSIC;
         GradientSpec gradient = entry != null ? entry.strokeGradient() : null;
         if (gradient != null && gradient.enabled()) {
-            // HUD strokes are intentionally normalized top -> bottom.
             return new GradientSpec(true, gradient.start(), gradient.end(), 90.0f);
         }
         return new GradientSpec(true, resolvedTheme.accent(), resolvedTheme.accentSoft(), 90.0f);

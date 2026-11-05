@@ -1,6 +1,9 @@
-/* Combatant Client (GPL-3.0). Spectrum 2 Illustrated Message native adaptation.
- * The geometric document illustration is original and uses retained UI primitives,
- * not proprietary Spectrum illustration assets or external image loads. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 import { SpectrumButtonGroup } from './button-group.js';
 

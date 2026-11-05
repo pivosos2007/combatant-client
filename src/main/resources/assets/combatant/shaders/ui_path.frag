@@ -2,6 +2,13 @@
 #extension GL_ARB_separate_shader_objects : require
 
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Continuous UI path coverage. The CPU tessellator emits a narrow outer fringe;
  * x is distance from the solid boundary and y is the fringe width in logical pixels.
  */

@@ -1,5 +1,11 @@
-/* Combatant Client (GPL-3.0), Copyright (c) 2026 pivosos2007.
- * Adobe Spectrum 2 native design primitives; not Adobe upstream code. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/* Spectrum 2-inspired implementation; not Adobe source code. */
 export class PlayerModelSpectrumFoundation {
   static CURSOR_UNSUPPORTED = 'cursor-unsupported';
   static cursor(disabled,enabled='cursor-pointer') {

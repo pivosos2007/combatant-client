@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // LocomotionLayer: isolated player animation/state layer.
 (() => {
   const R=globalThis.CombatantPlayerRig;
@@ -33,8 +40,8 @@
 
       const side=saturate(Math.abs(s));
       const sideSign=Math.sign(s);
-      // The visual lag is deliberately visible: loose limbs trail root acceleration while the
-      // chest leans into it. This remains a secondary motion, never a replacement gait.
+      const lagX=m.inertiaStrafe*.095*moving;
+      const lagZ=-m.inertiaForward*.072*moving;
       this.rig.rotate('pelvis',gait90*1.6*moving,-s*7*moving,-s*2.2*moving-m.inertiaStrafe*4.0*moving);
       this.rig.rotate('spine_lower',(run?4.5:1.5)*Math.max(0,f)*moving+m.inertiaForward*5.0*moving,s*3*moving,m.inertiaStrafe*3.5*moving);
       this.rig.rotate('chest',-gait90*1.0*moving,s*6*moving+m.inertiaStrafe*5.5*moving,s*2.5*moving+m.inertiaStrafe*4.0*moving);
@@ -42,7 +49,8 @@
 
       const rightSwing=gait*dir;
       const leftSwing=-rightSwing;
-      // Leg lag must rotate around the hip, not displace the joint from the pelvis.
+      this.rig.move('right_thigh',lagX,0,lagZ);
+      this.rig.move('left_thigh',lagX,0,lagZ);
       // RIGHT +Z / LEFT -Z is outward. The old signs folded the legs toward each other.
       this.rig.rotate('right_thigh',rightSwing*legAmp,sideSign*side*5*moving,5*moving+gait90*s*10*moving+m.inertiaStrafe*7*moving);
       this.rig.rotate('left_thigh',leftSwing*legAmp,sideSign*side*5*moving,-5*moving-gait90*s*10*moving+m.inertiaStrafe*7*moving);

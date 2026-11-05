@@ -42,13 +42,6 @@ public abstract class IrisRenderingPipelineFinalizeMixin {
 
     @Inject(method = "onBeginClear", at = @At("HEAD"), remap = false)
     private void combatant$seedMsaaAfterMainClear(CallbackInfo ci) {
-        // Iris calls beginLevelRendering while LevelRenderer is only building the frame graph.
-        // The actual main color/depth clear executes later, immediately before onBeginClear().
-        // Activating the multisample twins at beginLevelRendering TAIL therefore let that real
-        // clear hit only Minecraft's single-sample main target while the MS depth/color images
-        // retained the previous world. Photon then classified those stale depth samples as
-        // geometry instead of sky, which leaked the old world across the whole sky/deferred pass.
-        // Seed/activate at the post-clear boundary, before Iris starts the SKY phase/horizon pass.
         IrisShaderpackMsaaIntegration.beginFrame(IrisRuntime.integrationEpoch());
     }
 

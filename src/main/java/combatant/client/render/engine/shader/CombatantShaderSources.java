@@ -219,14 +219,11 @@ public enum CombatantShaderSources {
                                Resource resource, boolean analyticClip, boolean uiUnderlay) {
         try (Reader reader = resource.openAsReader()) {
             String raw = IOUtils.toString(reader);
-            // Mojang compiles the same RenderPipeline vertex sources on GL and Vulkan.
-            // Vulkan GLSL uses gl_InstanceIndex while OpenGL GLSL uses gl_InstanceID.
-            // Keep the definition scoped to this pipeline instead of changing global shader state.
             if (sourceId.getPath().endsWith("asset_compat_instanced.vert")) {
                 var device = com.mojang.blaze3d.systems.RenderSystem.tryGetDevice();
                 if (device != null && device.getDeviceInfo().backendName() != null
                         && device.getDeviceInfo().backendName().toLowerCase(java.util.Locale.ROOT).contains("vulkan")) {
-                    raw = injectDefineAfterVersion(raw, "#define VULKAN 1\n");
+                    raw = ensureVulkanMacro(raw);
                 }
             }
             if (analyticClip) raw = injectDefineAfterVersion(raw, ANALYTIC_CLIP_DEFINE);
@@ -242,6 +239,19 @@ public enum CombatantShaderSources {
         if (path.endsWith(VERT_EXTENSION) || path.endsWith(FRAG_EXTENSION)) return path.length() - 5;
         if (path.endsWith(".vsh") || path.endsWith(".fsh")) return path.length() - 4;
         return -1;
+    }
+
+    /**
+     * Vulkan shaderc may predefine VULKAN with its own value. Never redefine that
+     * builtin; the custom fallback is only needed when the source has no such macro.
+     * The marker check also prevents duplicate injection when a shader passes
+     * through both the resource loader and native stage compiler.
+     */
+    public static String ensureVulkanMacro(String source) {
+        if (source == null || !source.contains("#ifdef VULKAN")) return source;
+        String guardedDefine = "#ifndef VULKAN\n#define VULKAN 1\n#endif\n";
+        if (source.contains(guardedDefine)) return source;
+        return injectDefineAfterVersion(source, guardedDefine);
     }
 
     static String injectDefineAfterVersion(String source, String define) {

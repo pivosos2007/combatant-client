@@ -866,8 +866,6 @@ public class Scaffold extends Module {
             return;
         }
 
-        // Strict on-tick snaps to the aim for the placement tick through that tick's own movement packet instead of
-        // sending extra ones: a second or third movement packet in a tick is a Timer violation on its own.
         List<RotationProcessor> processors = onTick || smoothingCannotArriveInTime(player, currentTarget)
                 ? List.of()
                 : buildRotationProcessors();

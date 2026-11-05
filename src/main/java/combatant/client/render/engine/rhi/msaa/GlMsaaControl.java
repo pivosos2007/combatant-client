@@ -251,9 +251,6 @@ public final class GlMsaaControl implements MsaaControl {
             return false;
         }
 
-        // GL can resolve multi -> single, but not populate a multi-sampled
-        // destination from a single-sampled source using framebuffer blit.
-        // Reject that path explicitly instead of relying on a debug-only glGetError.
         int srcSamples = color ? samples(textureId(src.getColorTexture()))
                 : samples(textureId(src.getDepthTexture()));
         int dstSamples = color ? samples(textureId(dst.getColorTexture()))

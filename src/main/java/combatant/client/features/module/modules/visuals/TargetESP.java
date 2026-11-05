@@ -703,7 +703,6 @@ public class TargetESP extends Module {
                                                        int facetIndex,
                                                        CrystalFinish finish,
                                                        float finishIntensity) {
-        // Use scalar differences instead of allocating two temporary vectors for each triangle.
         float abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
         float acx = c.x - a.x, acy = c.y - a.y, acz = c.z - a.z;
         float nx = aby * acz - abz * acy;

@@ -7,7 +7,6 @@
 
 package combatant.client.features.module.modules.movement;
 
-import combatant.client.config.values.*;
 import combatant.client.util.time.TimerController;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.common.ClientboundPingPacket;
@@ -23,6 +22,8 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleListInfoProvider;
+import combatant.client.features.gui.hud.gauges.GaugeRegistry;
+import combatant.client.features.gui.hud.gauges.GaugeConnect;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
@@ -83,17 +84,15 @@ public class Timer extends Module {
             visibleWhen(num("shift_ticks", 10, 1, 40), () -> mode.get() == Mode.SHIFT);
     private final KeyBindValue boostKey =
             visibleWhen(bind("boost_key", "NONE", BindMode.HOLD),
-                    () -> mode.get() == Mode.GRIM || mode.get() == Mode.GRIM_CONCEPT || mode.get() == Mode.VULCAN);
-    private final NumberValue<Double> grimFillTime =
-            visibleWhen(num("grim_fill_time", 20.0, 1.0, 120.0), () -> mode.get() == Mode.GRIM_CONCEPT);
-    private final NumberValue<Double> grimConsumeMult =
-            visibleWhen(num("grim_consume_mult", 10.0, 1.0, 20.0), () -> mode.get() == Mode.GRIM_CONCEPT);
+                    () -> mode.get() == Mode.GRIM || mode.get() == Mode.VULCAN);
     private final EnumValue<OnFlag> onFlag =
             enumMode("on_flag", OnFlag.RESET, OnFlag.values());
     private long cancelTime;
+    private float lastGaugeFill = Float.NaN;
+    private long lastGaugeChangeNanos;
+    private Mode lastGaugeMode;
     private long lastSetbackTime = 0L;
     private String lastBoostCombo = "NONE";
-    private long lastPingTime = 0L;
 
     public static float getEnergy01() {
         return Mth.clamp(energy, 0f, 1f);
@@ -125,6 +124,9 @@ public class Timer extends Module {
 
     @Override
     public void onEnable() {
+        lastGaugeFill = Float.NaN;
+        lastGaugeMode = null;
+        lastGaugeChangeNanos = 0L;
         tickTimer = 1f;
         if (mode.get() == Mode.VULCAN) {
             vulcanWindowHead = 0;
@@ -135,15 +137,18 @@ public class Timer extends Module {
         } else if (mode.get() != Mode.MATRIX) {
             energy = 0f;
         }
-        if (mode.get() == Mode.GRIM || mode.get() == Mode.GRIM_CONCEPT) {
+        if (mode.get() == Mode.GRIM) {
             cancelTime = System.currentTimeMillis();
-            lastPingTime = 0L;
         }
         ensureBoostBind();
     }
 
     @Override
     public void onDisable() {
+        GaugeRegistry.removeOwner("timer");
+        lastGaugeFill = Float.NaN;
+        lastGaugeMode = null;
+        lastGaugeChangeNanos = 0L;
         tickTimer = 1f;
         vulcanWindowHead = 0;
         vulcanWindowCount = 0;
@@ -154,6 +159,33 @@ public class Timer extends Module {
     @Override
     public void onTick() {
         tickModes();
+        GaugeRegistry.updateAnnotated("timer", this);
+    }
+
+    @GaugeConnect(id = "energy", labelKey = "hud.gauges.timer",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = .01f,
+            hideAfterMillis = 1100)
+    private GaugeRegistry.Sample energyGauge() {
+        Mode current = mode.get();
+        if (current == Mode.NORMAL || current == Mode.SHIFT) return null;
+        float fill = getEnergy01();
+        boolean canUse = fill > .001f && (current != Mode.GRIM || getSetbackAge() >= 2000L);
+        boolean draining = tickTimer > 1.001f;
+        long now = System.nanoTime();
+        if (lastGaugeMode != current || !Float.isFinite(lastGaugeFill)
+                || Math.abs(fill - lastGaugeFill) > .0001f || draining) {
+            lastGaugeChangeNanos = now;
+            lastGaugeFill = fill;
+            lastGaugeMode = current;
+        }
+        boolean recentlyChanged = now - lastGaugeChangeNanos < 900_000_000L;
+        boolean active = switch (current) {
+            case VULCAN -> vulcanFastCount > 0 || draining;
+            case MATRIX, GRIM -> draining || (fill > .001f && fill < .995f && recentlyChanged);
+            default -> false;
+        };
+        return new GaugeRegistry.Sample(fill, canUse, active,
+                draining ? GaugeRegistry.Flow.DRAIN : GaugeRegistry.Flow.FILL, "");
     }
 
     private void tickModes() {
@@ -185,18 +217,6 @@ public class Timer extends Module {
                 tickTimer = Math.max(speed.get().floatValue(), 1f);
                 float drain = (float) ((0.0025f * speed.get()) - 0.0025f);
                 energy = Mth.clamp(energy - drain, 0f, 1f);
-            }
-            case GRIM_CONCEPT -> {
-                if (energy <= 0f || !isBoostHeld() || getSetbackAge() < 2000L) {
-                    tickTimer = 1f;
-                    return;
-                }
-
-                tickTimer = Math.max(speed.get().floatValue(), 1f);
-                float drain = (float) ((0.0025f * speed.get()) - 0.0025f);
-                float mult = grimConsumeMult.get().floatValue();
-                if (mult < 0f) mult = 0f;
-                energy = Mth.clamp(energy - drain * mult, 0f, 1f);
             }
             case SHIFT -> tickTimer = 1f;
             case VULCAN -> {
@@ -256,34 +276,6 @@ public class Timer extends Module {
                 e.cancel();
             }
         }
-        if (mode.get() == Mode.GRIM_CONCEPT) {
-            if (e.getPacket() instanceof ClientboundPingPacket && getSetbackAge() > 2000L) {
-                long now = System.currentTimeMillis();
-                if (now - cancelTime > 25000L) {
-                    cancelTime = now;
-                    energy = 0f;
-                    lastPingTime = now;
-                    return;
-                }
-
-                if (lastPingTime <= 0L) {
-                    lastPingTime = now;
-                }
-
-                if (!MovementUtil.isMoving()) {
-                    double fillSeconds = grimFillTime.get();
-                    if (fillSeconds < 1.0) fillSeconds = 1.0;
-                    double delta = (now - lastPingTime) / (fillSeconds * 1000.0);
-                    if (delta > 0.0) {
-                        energy = Mth.clamp(energy + (float) delta, 0f, 1f);
-                    }
-                }
-
-                lastPingTime = now;
-                e.cancel();
-            }
-        }
-
         if (e.getPacket() instanceof ClientboundPlayerPositionPacket) {
             lastSetbackTime = System.currentTimeMillis();
             if (mode.get() == Mode.VULCAN) {
@@ -315,7 +307,7 @@ public class Timer extends Module {
         }
 
         if (e.getPacket() instanceof ClientboundSetEntityMotionPacket velo
-                && (mode.get() == Mode.GRIM || mode.get() == Mode.GRIM_CONCEPT)) {
+                && (mode.get() == Mode.GRIM)) {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.player != null && velo.id() == mc.player.getId()) {
                 tickTimer = 1f;
@@ -381,7 +373,6 @@ public class Timer extends Module {
             case MATRIX -> "Matrix";
             case SHIFT -> "Shift";
             case GRIM -> "Grim";
-            case GRIM_CONCEPT -> "Grim Concept";
             case VULCAN -> "Vulcan";
         };
     }
@@ -433,7 +424,6 @@ public class Timer extends Module {
         MATRIX,
         SHIFT,
         GRIM,
-        GRIM_CONCEPT,
         VULCAN
     }
 

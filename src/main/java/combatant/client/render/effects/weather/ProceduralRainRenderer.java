@@ -189,8 +189,6 @@ public final class ProceduralRainRenderer implements PostProcessPass, PostProces
         if (!isActive()) return false;
         PostProcessContext ctx = execution.context();
         if (ctx.mainDepth() == null) {
-            // A missing depth capture makes scene refraction/occlusion unsafe.
-            // Stop intercepting vanilla rain on subsequent extraction instead of drawing through walls.
             healthy = false;
             DebugLog.errorOnce("reimaginedvisual.gpu_rain.depth_unavailable",
                     "[ProceduralRain] Missing mainDepth at PRE_HAND: refractive rain disabled; vanilla weather restored");

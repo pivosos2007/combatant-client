@@ -24,8 +24,6 @@ public final class ExposureProfileRegistry {
 
     static {
         register(NEUTRAL_PROFILE);
-        // The first post foundation intentionally starts all built-in worlds from the same neutral
-        // numerical policy. Artistic dimension tuning can now be data-driven without shader branches.
         register(neutral(OVERWORLD));
         register(neutral(NETHER));
         register(neutral(END));

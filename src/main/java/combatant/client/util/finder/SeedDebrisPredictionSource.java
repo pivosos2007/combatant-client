@@ -5,11 +5,10 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-package combatant.client.features.module.modules.visuals.finder;
+package combatant.client.util.finder;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.data.worldgen.placement.OrePlacements;
@@ -20,26 +19,13 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
-import combatant.client.config.values.BooleanValue;
-import combatant.client.config.values.NumberValue;
-import combatant.client.config.values.RGBAColorValue;
-import combatant.client.config.values.StringValue;
-import combatant.client.events.EventHandler;
 import combatant.client.features.command.CommandOutput;
-import combatant.client.events.impl.PacketEvent;
-import combatant.client.features.module.Module;
-import combatant.client.features.module.ModuleCategory;
-import combatant.client.features.module.ModuleInfo;
-import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Notifier;
-import combatant.client.features.module.WorldPhase;
-import combatant.client.render.engine.renderer.Renderer3D;
-import combatant.client.util.finder.ChunkBlocks;
-import combatant.client.util.finder.FinderRender;
-import combatant.client.util.finder.LoadedChunkScanner;
-import combatant.client.util.finder.OreSimulation;
-import combatant.client.util.finder.ServerSeedCheck;
 import combatant.client.compat.seedcracker.SeedCrackerRuntime;
+import net.minecraft.network.protocol.Packet;
+import java.util.function.BooleanSupplier;
+import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 import combatant.client.compat.seedcracker.SeedSnapshots;
 import combatant.client.util.logging.DebugLog;
 
@@ -64,15 +50,8 @@ import java.util.concurrent.CompletableFuture;
  * debris, next to air or lava where no anti-xray hides it, must lie in predicted veins (the debris replay fits).
  * Boxes are drawn only once the debris check passes; a failed check tells the player why.</p>
  */
-@ModuleInfo(
-        id = "netheritefinder",
-        displayName = "NetheriteFinder",
-        aliases = {"DebrisFinder", "OreSim"},
-        category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
-        description = "module.netheritefinder.description")
-public final class NetheriteFinder extends Module {
+public final class SeedDebrisPredictionSource {
 
-    private static final int MAX_BOXES = 2048;
     // Seed check: samples are predicted air-exposed quartz/gold blocks, which no anti-xray hides.
     private static final int QUARTZ_MIN_SAMPLES = 40;
     private static final int QUARTZ_DECISIVE_SAMPLES = 400;
@@ -173,17 +152,25 @@ public final class NetheriteFinder extends Module {
     // Registry building is slow and the result never changes within a game session.
     private static volatile CompletableFuture<OreSimulation> simulation;
 
-    private final StringValue seed = text("seed", "");
-    private final NumberValue<Integer> rangeChunks = num("range", 6, 1, 12);
-    private final BooleanValue showUnverified = bool("show_unverified", false);
-    private final RGBAColorValue fillColor = color("fill_color", "#50BF40BF");
-    private final RGBAColorValue lineColor = color("line_color", "#FFD11BF5");
+    private final Supplier<String> seedOverride;
+    private final IntSupplier rangeChunks;
+    private final BooleanSupplier showUnverified;
+    private final BooleanSupplier offerRecovery;
+    private boolean failed;
+
+    public SeedDebrisPredictionSource(Supplier<String> seedOverride, IntSupplier rangeChunks,
+                                      BooleanSupplier showUnverified, BooleanSupplier offerRecovery) {
+        this.seedOverride = seedOverride;
+        this.rangeChunks = rangeChunks;
+        this.showUnverified = showUnverified;
+        this.offerRecovery = offerRecovery;
+        this.scanner = new LoadedChunkScanner<>(this::predict, rangeChunks, 6, 3000L, 1);
+    }
 
     private final Minecraft mc = Minecraft.getInstance();
     // A vein can reach 2 blocks past its chunk and the air check looks 1 further, so the ring of
     // neighbours must be loaded: an unloaded chunk reads as air and would silently drop the ore.
-    private final LoadedChunkScanner<List<BlockPos>> scanner =
-            new LoadedChunkScanner<>(this::predict, rangeChunks::get, 6, 3000L, 1);
+    private final LoadedChunkScanner<List<BlockPos>> scanner;
     private final List<Candidate> candidates = new ArrayList<>();
     // The candidate whose quartz/gold fit this world; debris is predicted from its seed.
     private Candidate active;
@@ -199,23 +186,22 @@ public final class NetheriteFinder extends Module {
 
     /** Manually entered seed always wins; the saved snapshot is selected per server/worldgen. */
     private String effectiveSeed() {
-        String manual = seed.get();
+        String manual = seedOverride.get();
         if (manual != null && !manual.isBlank()) return manual;
         var recovered = SeedSnapshots.forNativeOreSimulation();
         return recovered.isPresent() ? Long.toString(recovered.getAsLong()) : "";
     }
 
-    @Override
-    public void onEnable() {
+    public void enable() {
         scanner.clear();
         resetCalibration();
         scannedSeed = "";
         calibratedLevel = null;
+        failed = false;
         simulation();
     }
 
-    @Override
-    public void onDisable() {
+    public void disable() {
         scanner.clear();
         resetCalibration();
     }
@@ -232,7 +218,7 @@ public final class NetheriteFinder extends Module {
     private static CompletableFuture<OreSimulation> simulation() {
         CompletableFuture<OreSimulation> current = simulation;
         if (current == null || current.isCompletedExceptionally()) {
-            synchronized (NetheriteFinder.class) {
+            synchronized (SeedDebrisPredictionSource.class) {
                 current = simulation;
                 if (current == null || current.isCompletedExceptionally()) {
                     current = CompletableFuture.supplyAsync(() -> OreSimulation.forNether(DEBRIS, CALIBRATION));
@@ -243,22 +229,21 @@ public final class NetheriteFinder extends Module {
         return current;
     }
 
-    @EventHandler
-    private void onPacketReceive(PacketEvent.Receive event) {
-        scanner.onPacket(event.getPacket());
+    /** Called from BlockESP's existing module event dispatcher. */
+    public void onPacket(Packet<?> packet) {
+        scanner.onPacket(packet);
     }
 
-    @Override
-    public void onTick() {
-        if (!isEnabled() || mc.level == null || mc.player == null) return;
+    public void tick() {
+        if (failed || mc.level == null || mc.player == null) return;
         if (mc.level.dimension() != Level.NETHER) return;
 
         CompletableFuture<OreSimulation> future = simulation();
         if (future.isCompletedExceptionally()) {
             Throwable cause = future.handle((ok, error) -> error).join();
-            DebugLog.error("NetheriteFinder could not build the ore simulation", cause);
-            Notifier.error("NetheriteFinder: could not load world-gen data, see log");
-            setEnabledInternal(false);
+            DebugLog.error("BlockESP seed prediction could not build the ore simulation", cause);
+            Notifier.error("BlockESP: could not load seed prediction data, see log");
+            failed = true;
             return;
         }
         if (!future.isDone()) return;
@@ -286,7 +271,7 @@ public final class NetheriteFinder extends Module {
     private void pickCandidates() {
         if (scannedSeed == null || scannedSeed.isBlank()) {
             serverHash = "hidden";
-            SeedCrackerRuntime.propose("NetheriteFinder");
+            if (offerRecovery.getAsBoolean()) SeedCrackerRuntime.propose("BlockESP");
             return;
         }
         long candidate = parseSeed(scannedSeed);
@@ -302,8 +287,8 @@ public final class NetheriteFinder extends Module {
 
     /** HUD toasts cut long text, so the toast stays short and the client-side chat gets the whole message. */
     private static void report(Notifier.Type type, String toast, String details) {
-        Notifier.message("NetheriteFinder: " + toast, type);
-        CommandOutput.send("NetheriteFinder: " + details, switch (type) {
+        Notifier.message("BlockESP seed: " + toast, type);
+        CommandOutput.send("BlockESP seed: " + details, switch (type) {
             case SUCCESS -> CommandOutput.Tone.SUCCESS;
             case WARNING -> CommandOutput.Tone.WARNING;
             case ERROR -> CommandOutput.Tone.ERROR;
@@ -326,7 +311,7 @@ public final class NetheriteFinder extends Module {
         } else {
             report(Notifier.Type.WARNING, "debris not predictable, see chat", "this server places ancient debris "
                     + "apart from the world seed (best " + detail + " while quartz/gold fit), e.g. Paper "
-                    + "feature-seeds. Debris cannot be predicted here" + (showUnverified.get() ? "." : "; boxes hidden."));
+                    + "feature-seeds. Debris cannot be predicted here" + (showUnverified.getAsBoolean() ? "." : "; boxes hidden."));
         }
     }
 
@@ -429,40 +414,19 @@ public final class NetheriteFinder extends Module {
         }
     }
 
-    @Override
-    public WorldPhase getWorldPhase() {
-        return WorldPhase.END_MAIN;
+    /** True only after visible ancient debris independently confirms the predicted generation. */
+    public boolean verified() {
+        return !failed && active != null && debrisVote.verdict == Verdict.MATCH;
     }
 
-    @Override
-    public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
-        LocalPlayer player = mc.player;
-        if (!isEnabled() || renderer == null || player == null || mc.level == null
-                || mc.level.dimension() != Level.NETHER) return;
-        // Unverified boxes are guesses: a replay that does not fit the world draws boxes that are all wrong.
-        if (debrisVote.verdict != Verdict.MATCH && !showUnverified.get()) return;
+    /** Unconfirmed or incompatible predictions must never be presented as observed blocks. */
+    public boolean mayRender() {
+        return !failed && mc.level != null && mc.level.dimension() == Level.NETHER
+                && active != null && (verified() || showUnverified.getAsBoolean());
+    }
 
-        FinderRender draw = FinderRender.begin(renderer, 1.0f);
-        int fill = fillColor.getArgb();
-        int line = lineColor.getArgb();
-        int range = rangeChunks.get();
-        ChunkPos center = player.chunkPosition();
-        Map<Long, List<BlockPos>> results = scanner.results();
-        // Walk square rings outward from the player: when MAX_BOXES cuts the list, the ore that
-        // gets dropped is the farthest, not whatever the hash map happened to put last.
-        int drawn = 0;
-        for (int ring = 0; ring <= range; ring++) {
-            for (int dx = -ring; dx <= ring; dx++) {
-                boolean edgeColumn = dx == -ring || dx == ring;
-                for (int dz = -ring; dz <= ring; dz += edgeColumn ? 1 : 2 * ring) {
-                    List<BlockPos> ore = results.get(ChunkPos.pack(center.x() + dx, center.z() + dz));
-                    if (ore == null) continue;
-                    for (BlockPos pos : ore) {
-                        draw.blockBox(pos.getX(), pos.getY(), pos.getZ(), fill, line);
-                        if (++drawn >= MAX_BOXES) return;
-                    }
-                }
-            }
-        }
+    /** Prediction snapshots are updated by the bounded chunk scanner on the client thread. */
+    public Map<Long, List<BlockPos>> predictions() {
+        return scanner.results();
     }
 }

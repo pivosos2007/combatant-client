@@ -1,5 +1,9 @@
-/* Combatant Client (GPL-3.0). Color-space math for the native Spectrum 2 previews.
- * Hue is degrees; saturation, brightness and alpha are percentages. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 export const clampColor=(v,min,max)=>Math.max(min,Math.min(max,Number.isFinite(v)?v:min));
 export function hsvToRgb(h,s,v){
   const hue=((h%360)+360)%360, sat=clampColor(s,0,100)/100, val=clampColor(v,0,100)/100;

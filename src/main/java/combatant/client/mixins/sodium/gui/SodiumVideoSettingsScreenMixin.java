@@ -184,9 +184,6 @@ public abstract class SodiumVideoSettingsScreenMixin {
                                                 CallbackInfoReturnable<Boolean> cir) {
         if (!SodiumGraphicsGuiRenderer.shouldUseModernUi()) return;
 
-        // Sodium intentionally binds Ctrl+wheel to its own GUI-scale setting. Preserve that API
-        // behavior; the Combatant presentation remains fixed-size regardless of the resulting
-        // vanilla scale value.
         if (Minecraft.getInstance().hasControlDown()) return;
 
         if (SodiumGraphicsGuiRenderer.mouseScrolled(

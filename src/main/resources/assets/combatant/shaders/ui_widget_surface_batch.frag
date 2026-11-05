@@ -87,7 +87,6 @@ void main() {
     vec2 p = centeredUv * vec2(aspect, 1.0);
     float seed = fract(v_Rect.x * 0.0137 + v_Rect.y * 0.0191 + size.x * 0.0023);
 
-    // Mouse acts like local pressure on the membrane; it bends the wave phases instead of adding a spotlight.
     vec2 md = (uv - mouseUv) * vec2(aspect, 1.0);
     float mouseRadius = length(md);
     float pressureEnvelope = (1.0 - smoothstep(0.06, 0.92, mouseRadius)) * hover;
@@ -128,7 +127,6 @@ void main() {
     col = mix(col, foldColor, causticMix);
     col += accent * crestMix * (0.45 + 0.30 * microFold);
 
-    // Cursor pressure excites the same field rather than painting an unrelated radial highlight.
     float pressureEnergy = pressureEnvelope * (0.5 + 0.5 * pressureWave);
     col = mix(col, mix(secondary, accent, 0.72), pressureEnergy * (0.045 + activity * 0.075));
 
@@ -172,7 +170,6 @@ void main() {
         float dragPulse = 0.5 + 0.5 * sin(t * 6.0 + interference * 1.8);
         col += accent * front * (0.15 + hover * 0.12 + dragging * dragPulse * 0.14);
 
-        // Compact energy node at the value front; it inherits local field phase instead of acting as a generic knob.
         vec2 nodeDelta = vec2((uv.x - valueX) * aspect, (uv.y - trackY) * 1.45);
         float node = 1.0 - smoothstep(0.045, 0.120, length(nodeDelta));
         col = mix(col, mix(secondary, accent, 0.78), node * (0.22 + hover * 0.14 + dragging * 0.12));

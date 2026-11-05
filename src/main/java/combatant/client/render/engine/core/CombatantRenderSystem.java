@@ -204,8 +204,6 @@ public enum CombatantRenderSystem {
         }
     }
 
-    // rhi() runs this on every call; the answer only changes when Blaze3D swaps its device, so
-    // cache it per device instance instead of re-reading device info and lowercasing each time.
     private static Object detectedForDevice;
     private static BackendKind detectedKind = BackendKind.UNKNOWN;
 

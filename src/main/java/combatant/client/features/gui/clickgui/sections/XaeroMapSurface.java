@@ -178,9 +178,6 @@ final class XaeroMapSurface {
         areaHeight = height;
         hoveredElement = null;
         hoveredLocationMarker = null;
-        // The map itself is not a permanent "move" affordance. Keep the native cursor neutral
-        // until the user is actually panning/selecting or points at an interactive overlay.
-        // Otherwise the whole surface looked draggable even while simply inspecting the map.
         if (contains(mouseX, mouseY)) {
             if (rightSelecting) SystemCursor.set(SystemCursor.CursorType.CROSSHAIR);
             else if (dragging) SystemCursor.set(SystemCursor.CursorType.MOVE);

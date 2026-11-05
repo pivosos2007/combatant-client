@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* PlayerModelCompiler produces deformation-free vertices bound to at most two bones.
  * Keep the shared rig vertex ABI, but do not execute the generic ribbon/deform shader
  * or fetch two unused skin matrices for every vertex of high-poly player models. */

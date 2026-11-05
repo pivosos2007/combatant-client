@@ -596,7 +596,6 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
             validateExpectedFormat(slot, binding.volume().descriptor().format(), binding.binding());
         }
         for (ShaderResourceSlot slot : layout.slots()) {
-            // Runs for every dispatch; plain loops instead of a stream pipeline per slot.
             boolean present = switch (slot.kind()) {
                 case STORAGE_BUFFER -> hasBinding(buffers, StorageBinding::binding, slot.binding());
                 case SAMPLED_TEXTURE -> hasBinding(sampled, SampledTextureBinding::binding, slot.binding());

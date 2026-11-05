@@ -1,3 +1,11 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+// motion:swimming/swimming - procedural; retained under the historical animation id for API compatibility.
 (() => {
   const L=globalThis.RigAnimationLibrary;
   L.registerProcedural(new L.ProceduralAnimation('motion:swimming/swimming',(c,r,t,w)=>{

@@ -1,3 +1,9 @@
+/*
+ * HoldMyItems script asset.
+ * Upstream license: CC0-1.0.
+ * See THIRD_PARTY_LICENSES/HoldMyItems-CC0-1.0.txt.
+ */
+
 var yawAngle = Object.prototype.hasOwnProperty.call(__hmi_registry, 'yawAngle') ? __hmi_registry['yawAngle'] : (0);
 var yawAngleO = Object.prototype.hasOwnProperty.call(__hmi_registry, 'yawAngleO') ? __hmi_registry['yawAngleO'] : (0);
 var pitchAngle = Object.prototype.hasOwnProperty.call(__hmi_registry, 'pitchAngle') ? __hmi_registry['pitchAngle'] : (0);

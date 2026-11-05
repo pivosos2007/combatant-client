@@ -128,9 +128,6 @@ public final class CombatStrikeController {
         // A predicted kill is a single deliberate attempt, not permission to
         // spam one attack packet every tick while the server processes it.
         if (lastFinisherAttacker == player && lastFinisherTarget == target && lastFinisherAttackAge >= 0) {
-            // No confirmed health change: the previous early finisher may have
-            // missed, been blocked or is still awaiting server confirmation.
-            // Wait for a normally charged attack instead of retrying guesses.
             float health = target.getHealth() + target.getAbsorptionAmount();
             if (Math.abs(health - lastFinisherTargetHealth) < 0.01f
                     || player.tickCount - lastFinisherAttackAge < FINISHER_RETRY_TICKS) {

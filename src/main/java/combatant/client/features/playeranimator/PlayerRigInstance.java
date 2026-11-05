@@ -23,8 +23,6 @@ public final class PlayerRigInstance {
     private final Quaternionf rotationScratch = new Quaternionf();
     private final Quaternionf deltaRotationScratch = new Quaternionf();
 
-    // Allocation-free two-bone reach scratch. Used by mouth/item and two-handed weapon poses so
-    // the hand follows the actual animated target bone instead of relying on guessed Euler angles.
     private final Matrix4f ikParentMatrix = new Matrix4f();
     private final Matrix4f ikInverseParentMatrix = new Matrix4f();
     private final Matrix4f ikTargetMatrix = new Matrix4f();
@@ -181,8 +179,6 @@ public final class PlayerRigInstance {
         // would feed the raw far-away point into the lower-segment direction and distort the elbow.
         ikTargetPoint.set(ikShoulderPoint).fma(distance, ikTargetDirection);
 
-        // Project the elbow hint onto the plane perpendicular to the target direction. If an addon
-        // supplies a degenerate hint, select a stable side rather than allowing a frame flip.
         ikHint.set(hintX, hintY, hintZ);
         if (ikHint.lengthSquared() < 1.0e-8f) ikHint.set(1f, 0.35f, 0.15f);
         ikPerpendicular.set(ikHint)
@@ -281,9 +277,6 @@ public final class PlayerRigInstance {
         float blend = Math.max(0f, Math.min(1f, weight));
         if (blend <= 1.0e-5f) return this;
 
-        // Resolve all commands emitted before this placement. Capture the current rendered socket
-        // first: blending in model space makes the item travel continuously from the real hand grip
-        // to the mouth instead of interpolating ITEM_CONTROL local coordinates through a curved arm.
         rig.solve();
         int socketIndex = PlayerRigDefinition.socketIndex(socket);
         rig.sockets().modelMatrix(socketIndex, ikParentMatrix);

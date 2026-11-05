@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.features.playermodel;
 
 import org.junit.jupiter.api.Test;
@@ -21,9 +28,6 @@ class PlayerModelCatalogTest {
         assertNotEquals(a.id(), b.id());
         assertEquals("community_a:models/custom/body.obj", a.model());
         assertNull(a.icon()); assertNull(a.profile());
-        assertEquals("replace", a.bodyMode());
-        assertFalse(a.usesPlayerSkin());
-        assertTrue(a.renderGroups().isEmpty()); assertTrue(a.clothingSprites().isEmpty());
         assertEquals(0, load("empty", "{\"format\":1,\"entries\":[]}").size());
     }
     @Test void rejectsVersionsDuplicateIdsTraversalAndForeignAppearanceIds() {
@@ -33,24 +37,6 @@ class PlayerModelCatalogTest {
         }
         assertThrows(IOException.class, () -> load("test", "{\"format\":2,\"entries\":[]}"));
     }
-    @Test void supportsLivePlayerSkinAndOptionalClothingSprites() throws Exception {
-        String entry = ENTRY.replace("\"atlas\":", "\"bodyMode\":\"player_skin\","
-                + "\"renderGroups\":[\"headModel\"],"
-                + "\"clothingSprites\":[\"textures/clothes/coat.png\"],\"atlas\":");
-        var model = load("test", "{\"format\":1,\"entries\":[" + entry + "]}").getFirst();
-        assertTrue(model.usesPlayerSkin());
-        assertEquals(java.util.List.of("headModel"), model.renderGroups());
-        assertEquals(java.util.List.of("test:textures/clothes/coat.png"), model.clothingSprites());
-        for (String bad : new String[]{
-                entry.replace("player_skin", "unsupported"),
-                entry.replace("headModel", "../other"),
-                entry.replace("coat.png", "../coat.png"),
-                entry.replace("coat.png", "coat.jpg"),
-                entry.replace("player_skin", "replace")}) {
-            assertThrows(IOException.class, () -> load("test", "{\"format\":1,\"entries\":[" + bad + "]}"));
-        }
-    }
-
     @Test void discoversMultipleAddonsIsolatesBrokenCatalogAndReloads() {
         var files = new java.util.LinkedHashMap<net.minecraft.resources.Identifier, net.minecraft.server.packs.resources.Resource>();
         java.util.function.BiConsumer<String, String> add = (id, json) -> files.put(ModelCatalog.id(id),

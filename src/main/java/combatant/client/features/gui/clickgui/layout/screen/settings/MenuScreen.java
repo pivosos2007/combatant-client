@@ -238,7 +238,7 @@ public final class MenuScreen {
             }
             case RELATIONS -> {
                 primary = ClickGuiI18n.tr("clickgui.hints.settings.relations.mode", "Top pills - choose relation list");
-                secondary = ClickGuiI18n.tr("clickgui.hints.settings.relations.add", "User-plus icon - pick online player");
+                secondary = ClickGuiI18n.tr("clickgui.hints.settings.relations.add", "Saved/Online - switch player source");
                 tertiary = ClickGuiI18n.tr("clickgui.hints.settings.relations.search", "Search - filter names");
             }
             case CONFIGS -> {

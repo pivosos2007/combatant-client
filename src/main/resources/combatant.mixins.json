@@ -78,6 +78,7 @@
     "DebugHudMixin",
     "DynamicUniformStorageMixin",
     "EnchantTableRendererMixin",
+    "EntityControlBoatMixin",
     "EntityRendererTemporalMixin",
     "EntityRenderStateTemporalMixin",
     "EquipmentLayerRendererMixin",

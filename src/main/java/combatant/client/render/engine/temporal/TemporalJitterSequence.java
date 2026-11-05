@@ -13,8 +13,6 @@ import org.joml.Vector2fc;
 
 /** Low-discrepancy R2 sub-pixel sequence used internally by production TAA. */
 public final class TemporalJitterSequence {
-    // Photon native-resolution TAA attenuates its R2 offset by 0.66. Apply the same
-    // attenuation here instead of using the full half-pixel sequence.
     public static final float NATIVE_TAA_JITTER_SCALE = 0.66f;
     private static final double R2_X = 1.324717957244746;
     private static final double R2_Y = 1.7548776662466927;

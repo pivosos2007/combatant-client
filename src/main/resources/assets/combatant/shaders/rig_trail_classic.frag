@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec3 v_Normal;
@@ -13,9 +20,6 @@ void main() {
     float u = sat(v_TexCoord.x);
     float side = abs(v_TexCoord.y * 2.0 - 1.0);
 
-    // Old Trail semantics: one vertical translucent sheet plus a clearly readable top/bottom stroke.
-    // The spline/rig owns the bending; the material deliberately stays simple instead of inventing
-    // a new procedural effect language.
     float tailFade = smoothstep(0.0, 0.10, u);
     float headFade = 1.0 - smoothstep(0.985, 1.0, u);
     float path = tailFade * headFade;

@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // InertiaLayer: isolated player animation/state layer.
 (() => {
   const R=globalThis.CombatantPlayerRig;
@@ -11,10 +18,7 @@
       const f=m.inertiaForward*k, s=m.inertiaStrafe*k, v=m.inertiaVertical*k;
       if (Math.abs(f)+Math.abs(s)+Math.abs(v)<1e-4) return;
 
-      // Root responds first; distal chains carry the delayed velocity farther. This makes braking
-      // readable in legs/arms instead of expressing all inertia as one chest tilt.
-      // Keep the waist centered under the torso; velocity affects joint rotations, not hip translation.
-      this.rig.move('pelvis',0,-v*.012,0);
+      this.rig.move('pelvis',s*.018,-v*.012,-f*.014);
       this.rig.rotate('pelvis',-f*2.5,0,s*3.4);
       this.rig.rotate('spine_lower',-f*4.0,0,s*5.0);
       this.rig.rotate('spine_mid',-f*3.2,0,s*4.4);
@@ -30,7 +34,8 @@
       this.rig.rotate('right_forearm',-f*4.5,s*3.5,s*3.0);
       this.rig.rotate('left_forearm',-f*4.5,s*3.5,s*3.0);
 
-      // Never translate the thigh sockets away from their parent hips.
+      this.rig.move('right_thigh',s*.052,-v*.014,-f*.040);
+      this.rig.move('left_thigh',s*.052,-v*.014,-f*.040);
       this.rig.rotate('right_thigh',legX,0,s*10.0);
       this.rig.rotate('left_thigh',legX,0,s*10.0);
       this.rig.rotate('right_knee',verticalFlex,0,0);

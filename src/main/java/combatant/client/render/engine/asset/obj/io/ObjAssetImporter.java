@@ -444,8 +444,6 @@ public final class ObjAssetImporter implements ModelImporter {
             int position = index(fields[0], positions.size());
             int texCoord = fields.length > 1 && !fields[1].isEmpty() ? index(fields[1], texCoords.size()) : -1;
             int normal = fields.length > 2 && !fields[2].isEmpty() ? index(fields[2], normals.size()) : -1;
-            // Negative OBJ indices are relative to the *current* array length, not the whole file.
-            // Cache resolved absolute indices instead of the original token.
             String key = position + "/" + texCoord + "/" + normal
                     + (normal < 0 ? "/" + faceSmoothing : "");
             Integer cached = vertexCache.get(key);

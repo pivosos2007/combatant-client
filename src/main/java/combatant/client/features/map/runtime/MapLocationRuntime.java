@@ -189,10 +189,6 @@ public final class MapLocationRuntime {
                 String name = observation.rawPlayerName();
                 UUID localByName = clean(name).isBlank()
                         ? null : localIdsByName.get(clean(name).toLowerCase(Locale.ROOT));
-                // MapLink is a remote/exact source. Never publish a second marker for ourselves or
-                // for a player the client is already receiving as a real local entity. Name-based
-                // suppression intentionally covers providers that resolved an offline/wrong UUID
-                // for a player whose authoritative UUID is already present in the current level.
                 if (localPlayerIds.contains(id) || (localByName != null && localPlayerIds.contains(localByName))) {
                     continue;
                 }
@@ -471,10 +467,6 @@ public final class MapLocationRuntime {
             HeuristicEstimate estimate = entry.getValue();
             if (id == null || estimate == null || local.contains(id) || !locatorPresent.contains(id)) continue;
             if (!PlayerTrackingRangeRuntime.get().contradictsLocalAbsence(mc, estimate.x(), estimate.z(), estimate.uncertaintyMajor())) continue;
-            // Negative local visibility is strong evidence: the whole estimate lies well inside a
-            // radius where this session has already received player entities, yet this target is not
-            // present locally while locator still says it exists. Drop the segment instead of
-            // painting a convincing-but-impossible marker next to the observer.
             HeuristicRuntime.get().clear(id);
             if (filtered == null) filtered = new LinkedHashMap<>(estimates);
             filtered.remove(id);

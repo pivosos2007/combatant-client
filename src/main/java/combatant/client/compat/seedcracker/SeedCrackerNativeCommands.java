@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.compat.seedcracker;
 
 import com.mojang.brigadier.CommandDispatcher;
@@ -44,8 +51,6 @@ public final class SeedCrackerNativeCommands {
     private static CommandDispatcher<FabricClientCommandSource> commands() {
         if (dispatcher == null) {
             var local = new CommandDispatcher<FabricClientCommandSource>();
-            // Call each original command directly. ClientCommands.registerCommands
-            // is deliberately intercepted by the optional native-command mixin.
             for (ClientCommand command : ClientCommands.COMMANDS) command.register(local);
             dispatcher = local;
         }

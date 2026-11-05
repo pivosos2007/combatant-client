@@ -27,8 +27,6 @@ void main() {
     float diffuse = clamp(dot(normal, lightDir) * 0.5 + 0.5, 0.0, 1.0);
     float specular = pow(max(dot(normal, halfDir), 0.0), 72.0);
 
-    // Soap-film colour movement. It is intentionally subtle and phase-shifted per particle so a
-    // group of bubbles does not look like a synchronized animated texture.
     float filmPhase = (1.0 - facing) * 17.0
             + diffuse * 2.4
             + v_AgePhase.x * 1.15

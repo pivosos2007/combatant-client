@@ -26,9 +26,6 @@ public final class GlobalScissorState {
     private static int height;
     private static boolean set;
 
-    // A deferred HUD replay may run inside a logical UI clip. Keep the previous GPU
-    // scissor instead of treating nested submissions as an illegal state. Reuse a
-    // primitive stack to avoid allocations during the render thread hot path.
     private static int depth;
     private static int[] saved = new int[4 * 8];
 

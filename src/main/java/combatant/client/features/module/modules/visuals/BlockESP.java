@@ -28,6 +28,14 @@ import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.module.*;
 import combatant.client.render.engine.RenderState;
+import combatant.client.compat.seedcracker.SeedSnapshots;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.PacketEvent;
+import combatant.client.features.theme.Theme;
+import combatant.client.util.finder.SeedDebrisPredictionSource;
+import combatant.client.util.finder.FinderRender;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.util.block.*;
 import combatant.client.util.logging.DebugLog;
@@ -185,6 +193,36 @@ public class BlockESP extends Module {
                     4.0f
             );
 
+    // The seed source is opt-in, independent from observed block states and anti-xray scans.
+    // Controls are declared through Module's SettingDef API: the Spectrum 2 settings UI
+    // handles visibility, theme styling, translation, saving, and input consistently.
+    private final BooleanValue seedSourceEnabled = bool("blockEspSeedSource", "seed_source", false);
+    private final BooleanValue seedOfferScan = visibleWhen(
+            bool("blockEspSeedOfferScan", "seed_offer_scan", true), seedSourceEnabled::get);
+    private final StringValue seedOverride = visibleWhen(
+            text("blockEspSeedOverride", "seed_override", ""), seedSourceEnabled::get);
+    private final NumberValue<Integer> seedRangeChunks = visibleWhen(
+            num("blockEspSeedRange", "seed_range", 6, 1, 12), seedSourceEnabled::get);
+    private final NumberValue<Integer> seedMaxPredictions = visibleWhen(
+            num("blockEspSeedMaxPredictions", "seed_max_predictions", 2048, 32, 8192), seedSourceEnabled::get);
+    private final BooleanValue seedShowUnverified = visibleWhen(
+            bool("blockEspSeedShowUnverified", "seed_show_unverified", false), seedSourceEnabled::get);
+    private final BooleanValue seedThemeColor = visibleWhen(
+            bool("blockEspSeedThemeColor", "seed_theme_color", true), seedSourceEnabled::get);
+    private final RGBAColorValue seedFillColor = visibleWhen(
+            color("blockEspSeedFillColor", "seed_fill_color", "#50BF40BF"),
+            () -> seedSourceEnabled.get() && !seedThemeColor.get());
+    private final RGBAColorValue seedLineColor = visibleWhen(
+            color("blockEspSeedLineColor", "seed_line_color", "#FFD11BF5"),
+            () -> seedSourceEnabled.get() && !seedThemeColor.get());
+    private final BooleanValue seedRespectDistance = visibleWhen(
+            bool("blockEspSeedRespectDistance", "seed_respect_distance", false), seedSourceEnabled::get);
+    private final BooleanValue seedHideObserved = visibleWhen(
+            bool("blockEspSeedHideObserved", "seed_hide_observed", true), seedSourceEnabled::get);
+    private final SeedDebrisPredictionSource seedDebris = new SeedDebrisPredictionSource(
+            seedOverride::get, seedRangeChunks::get, seedShowUnverified::get, seedOfferScan::get);
+    private volatile boolean seedSourceActive;
+
     private final BooleanValue clusterTracersValue =
             visibleWhen(bool(
                     "blockEspClusterTracers",
@@ -215,6 +253,8 @@ public class BlockESP extends Module {
 
     @Override
     public void onEnable() {
+        seedSourceActive = seedSourceEnabled.get();
+        if (seedSourceActive) seedDebris.enable();
         resetRuntimeState();
         scanContext.refresh();
         lastSearchBlocksHash = currentSearchBlocksHash();
@@ -225,6 +265,8 @@ public class BlockESP extends Module {
 
     @Override
     public void onDisable() {
+        seedDebris.disable();
+        seedSourceActive = false;
         BlockEspSodiumCandidateCollector.disable();
         resetRuntimeState();
     }
@@ -250,6 +292,15 @@ public class BlockESP extends Module {
             return;
         }
         publishFastScanSnapshot();
+
+        // Toggling the source must not clear or disturb BlockESP's observed targets.
+        boolean seedWanted = seedSourceEnabled.get();
+        if (seedSourceActive != seedWanted) {
+            if (seedWanted) seedDebris.enable();
+            else seedDebris.disable();
+            seedSourceActive = seedWanted;
+        }
+        if (seedSourceActive) seedDebris.tick();
 
         int searchBlocksHash = currentSearchBlocksHash();
         if (lastSearchBlocksHash != searchBlocksHash) {
@@ -291,6 +342,11 @@ public class BlockESP extends Module {
 
         maintainReconcileQueue();
         drainReconcileQueue("cached", RECONCILE_BUDGET_PER_TICK);
+    }
+
+    @EventHandler
+    private void onSeedPredictionPacket(PacketEvent.Receive event) {
+        if (isEnabled() && seedSourceActive) seedDebris.onPacket(event.getPacket());
     }
 
     public void acceptSodiumBlockState(int x, int y, int z, BlockState state) {
@@ -734,7 +790,65 @@ public class BlockESP extends Module {
             RenderState.lineWidth = previousLineWidth;
         }
 
+        renderSeedPredictions(renderer);
         renderBlockTracers(renderer, tickDelta);
+    }
+
+    /**
+     * Seed predictions are a separate overlay; never enter observed target caches or detection
+     * snapshots, and never claim that an unverified position contains a real block.
+     */
+    private void renderSeedPredictions(Renderer3D renderer) {
+        if (!seedSourceActive || !seedDebris.mayRender() || mc.level == null || mc.player == null) return;
+        if (mc.level.dimension() != Level.NETHER) return;
+        boolean verified = seedDebris.verified();
+        int outline;
+        int fill;
+        if (seedThemeColor.get()) {
+            // Resolve at render time so switching Spectrum 2 themes updates the overlay immediately.
+            int rgb = Theme.theme().accent() & 0x00FFFFFF;
+            outline = (verified ? 0xFF000000 : 0xB0000000) | rgb;
+            fill = (verified ? 0x50000000 : 0x28000000) | rgb;
+        } else {
+            outline = seedLineColor.getArgb();
+            fill = seedFillColor.getArgb();
+            if (!verified) {
+                outline = (outline & 0x00FFFFFF) | ((outline >>> 24) / 2 << 24);
+                fill = (fill & 0x00FFFFFF) | ((fill >>> 24) / 2 << 24);
+            }
+        }
+        FinderRender draw = FinderRender.begin(renderer, 1.0f);
+        ChunkPos center = mc.player.chunkPosition();
+        Map<Long, List<BlockPos>> results = seedDebris.predictions();
+        int radius = seedRangeChunks.get();
+        int remaining = seedMaxPredictions.get();
+        boolean limit = seedRespectDistance.get() && limitDistanceValue.get();
+        double maxDistanceSq = (double) maxDistanceValue.get() * maxDistanceValue.get();
+        Vec3 eye = limit ? mc.player.getEyePosition() : null;
+        for (int ring = 0; ring <= radius; ring++) {
+            for (int dx = -ring; dx <= ring; dx++) {
+                boolean edgeColumn = dx == -ring || dx == ring;
+                for (int dz = -ring; dz <= ring; dz += edgeColumn ? 1 : 2 * ring) {
+                    List<BlockPos> positions = results.get(ChunkPos.pack(center.x() + dx, center.z() + dz));
+                    if (positions == null) continue;
+                    for (BlockPos pos : positions) {
+                        // A loaded, observed target wins over a prediction at the same position.
+                        if (seedHideObserved.get() && renderTargets.containsKey(pos)) continue;
+                        if (limit) {
+                            double x = pos.getX() + 0.5 - eye.x;
+                            double y = pos.getY() + 0.5 - eye.y;
+                            double z = pos.getZ() + 0.5 - eye.z;
+                            if (x * x + y * y + z * z > maxDistanceSq) continue;
+                        }
+                        if (!Renderer3D.Culling.isInFrustum(new AABB(
+                                pos.getX() - 0.5, pos.getY() - 0.5, pos.getZ() - 0.5,
+                                pos.getX() + 1.5, pos.getY() + 1.5, pos.getZ() + 1.5))) continue;
+                        draw.blockBox(pos.getX(), pos.getY(), pos.getZ(), fill, outline);
+                        if (--remaining == 0) return;
+                    }
+                }
+            }
+        }
     }
 
     /**

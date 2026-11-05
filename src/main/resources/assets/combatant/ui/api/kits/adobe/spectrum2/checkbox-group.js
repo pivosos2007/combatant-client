@@ -1,5 +1,9 @@
-/* Combatant Client (GPL-3.0), Copyright (c) 2026 pivosos2007.
- * Independent Spectrum 2 CheckboxGroup using existing retained Checkbox controls. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 import { SpectrumCheckbox } from './checkbox.js';
 

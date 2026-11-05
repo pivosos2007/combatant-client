@@ -1,4 +1,11 @@
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Combatant world glow preset ABI (GLSL 330; shared by OpenGL and Vulkan compilation).
  * IDs are kept in sync with GlowSurfaces.Animation; do not change existing IDs.
  * Custom visualizations extend any preset via world_glow_custom.glsl.

@@ -190,9 +190,6 @@ enum UnifiedSettingRenderer {
                 x, ty, labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
 
         float radius = UnifiedSettingsSkin.modernMetric(5f, 5f);
-        // Keep the Expensive checkbox geometry but use the same authored Combatant gradient
-        // material as the other modern controls. The selected fill is an inset semantic accent,
-        // so the theme-authored edge remains visible instead of becoming a flat orange square.
         UnifiedSettingsSkin.drawModernControlSurface(bx, by, box, box, radius, ui.hoverAnim, ui.anim * 0.35f);
         if (ui.anim > 0.01f) {
             float inset = Math.max(0.8f, UnifiedSettingsSkin.modernMetric(1f, 1f));
@@ -558,9 +555,6 @@ enum UnifiedSettingRenderer {
         float valueY = y - UnifiedSettingsSkin.modernMetric(1f, 1f);
         float trackH = large ? UnifiedSettingsSkin.modernMetric(5.5f, 5.5f)
                 : UnifiedSettingsSkin.sliderTrackHeight();
-        // The knob is a real circle, so the authored track must stop one radius before each
-        // horizontal edge.  This keeps the marker inside both the row reveal scissor and the
-        // host viewport at min/max instead of relying on scissor bleed to hide bad geometry.
         float knobRadius = large ? UnifiedSettingsSkin.modernMetric(7.5f, 7.5f)
                 : UnifiedSettingsSkin.sliderThumbOuterRadius();
         float trackInset = knobRadius + UnifiedSettingsSkin.modernMetric(1.0f, 1.0f);
@@ -3875,8 +3869,6 @@ enum UnifiedSettingRenderer {
         ui.hexW = ui.squareW;
         ui.hexH = UnifiedSettingsSkin.modernMetric(24f, 25f);
 
-        // Modern Main/Map picker deliberately keeps the advanced RGB/rainbow controls out of the
-        // primary popover. Legacy/module surfaces still expose the full editor.
         ui.rX = ui.rY = ui.rW = ui.rH = 0f;
         ui.gX = ui.gY = ui.gW = ui.gH = 0f;
         ui.bX = ui.bY = ui.bW = ui.bH = 0f;

@@ -26,8 +26,6 @@ import combatant.client.render.engine.uniform.MeshBuilder;
 public final class FinderRender {
 
     private static final double PLATE_THICKNESS = 0.06;
-    // Tracers start a little in front of the camera, like the Tracers module, so they read as
-    // coming from the crosshair instead of from inside the player's head.
     private static final double TRACER_START_DISTANCE = 10.0;
 
     private final MeshBuilder tris;

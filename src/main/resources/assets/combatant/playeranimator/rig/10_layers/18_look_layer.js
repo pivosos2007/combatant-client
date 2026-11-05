@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // LookLayer: isolated player animation/state layer.
 (() => {
   const R=globalThis.CombatantPlayerRig;
@@ -27,7 +34,6 @@
       const x=m.lookBodyPitch*clamp(strength,0,1.25);
 
       if (Math.abs(y)>1e-4) {
-        // Curved spine rather than one rigid body yaw.
         this.rig.rotate('spine_lower',0,y*.18,0);
         this.rig.rotate('spine_mid',0,y*.29,0);
         this.rig.rotate('chest',0,y*.53,0);

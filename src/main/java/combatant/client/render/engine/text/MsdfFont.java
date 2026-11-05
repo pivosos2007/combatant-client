@@ -673,8 +673,6 @@ public final class MsdfFont implements GlyphFont {
 
             var jsonResource = rm.getResource(jsonId);
             if (jsonResource.isEmpty()) {
-                // Most bundled fonts intentionally have no MSDF variant. Absence is a normal
-                // bitmap fallback; only a present but broken MSDF bundle deserves a warning.
                 setLastError("msdf json missing: " + jsonId);
                 return null;
             }

@@ -466,9 +466,6 @@ public abstract class Setting {
 
     protected String getTranslationId() {
         if (name == null || name.isBlank()) return name;
-        // Translation keys are case-sensitive. Keep the declared SettingDef id
-        // (for example menuBackground / combatantMainMenu) instead of routing it
-        // through getId(), which intentionally lower-cases serialization ids.
         return name.replace(" ", "_");
     }
 

@@ -1,4 +1,9 @@
-/* Combatant Client (GPL-3.0). Independent Spectrum 2 badge adaptation. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 
 // Semantic colors are intentional sRGB approximations for Combatant's dark palette.
@@ -30,7 +35,6 @@ export class SpectrumBadge {
     const content=[
       SpectrumFoundation.rect(`${key}:surface`,0,0,width,height,Math.min(9,height*.3),surface,
         stroke,fillStyle==='outline'?1:0),
-      // Keep long localized labels within the badge, rather than painting over neighbors.
       ui.clip({key:`${key}:clip`,x:padding,y:0,w:Math.max(1,width-2*padding),h:height,children:[
         SpectrumFoundation.text(`${key}:label`,label,0,0,Math.max(1,width-2*padding),height,
           {size:font,strong:true,color:textColor,align:'center'})

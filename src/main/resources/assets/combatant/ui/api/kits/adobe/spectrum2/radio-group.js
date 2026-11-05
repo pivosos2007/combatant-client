@@ -1,4 +1,9 @@
-/* Combatant Client (GPL-3.0). Spectrum 2 RadioGroup, one controlled selection. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 import { SpectrumRadio } from './radio.js';
 export class SpectrumRadioGroup {

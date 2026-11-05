@@ -1,5 +1,12 @@
 #version 430 core
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(location = 0) in vec2 v_UV;
 layout(location = 1) in vec4 v_Optics;
 layout(location = 2) in float v_Fade;
@@ -35,8 +42,6 @@ void main() {
     float x = v_UV.x * 2.0 - 1.0;
     // A rounded, refracting leading bead with a short exposure-integrated taper.
     float bead = (1.0 - smoothstep(0.06, 0.40, abs(y - 0.80)));
-    // At a wide FOV the physical radius is subpixel. Preserve the visible
-    // line's pixel coverage rather than drawing a much larger refractive bead.
     float thin = 1.0 - smoothstep(0.75, 1.65, v_Optics.y);
     float radius = mix(0.20, 0.93, bead) + thin * (1.0 - bead) * 0.40;
     float horizontal = abs(x) / max(radius, 0.025);
@@ -60,8 +65,6 @@ void main() {
     vec2 invScreen = 1.0 / max(u_WindScreen.zw, vec2(1.0));
     vec3 optical;
     if (lod < 0.5 && strength > 0.45) {
-        // Only large near beads pay for modest dispersion. Never use expensive
-        // multi-refraction at the thousands of subpixel distant particles.
         vec2 uvR = clamp(screenUV + bendPixels * invScreen * 1.045, vec2(0.0), vec2(1.0));
         vec2 uvG = clamp(screenUV + bendPixels * invScreen, vec2(0.0), vec2(1.0));
         vec2 uvB = clamp(screenUV + bendPixels * invScreen * 0.96, vec2(0.0), vec2(1.0));
@@ -78,10 +81,6 @@ void main() {
     float head = bead * pow(1.0 - clamp(horizontal, 0.0, 1.0), 0.65);
     float sceneLuma = dot(optical, vec3(0.2126, 0.7152, 0.0722));
     float ambient = clamp(sceneLuma * 1.75 + 0.07, 0.08, 1.0);
-    // Refracted scene color alone is nearly invisible once alpha-blended back over
-    // the identical source color. Give the bead a distinct, directional Fresnel rim
-    // with a shaded interior, preserving scene-dependent illumination rather than
-    // additive glow. Subpixel distant drops use this cheap contrast path too.
     float asymmetricShade = (0.5 + 0.5 * x) * rim;
     float transmission = 0.73 + 0.12 * head - 0.17 * asymmetricShade;
     float reflectance = (0.16 + 0.23 * head + 0.29 * rim)

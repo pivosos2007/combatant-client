@@ -1,4 +1,11 @@
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Combatant — Google Material 3 native component port (development only).
  * Reference: https://github.com/material-components/material-web (Apache-2.0, Google LLC).
  * Implemented against Combatant UiNodes; not a Lit/DOM wrapper.
@@ -331,8 +338,6 @@ export class GoogleMaterial3 {
     // Slightly larger physical text is intentional in the Combatant preview:
     // the MSDF font metrics and game UI scale differ from CSS dp.
     if(!filled){
-      // Under the floating label only: a local notch cutout matching the host
-      // surface. Fade it with the same animation instead of swapping outlines.
       elements.push(GoogleMaterial3.shape(`${key}:notch`,11,-1,
         Math.min(width-24,Math.max(28,label.length*8.2+11)),3,0,p.surface,undefined,0,{
           fillReactive:{base:p.surface,alphaBase:0,alphaTerms:{floatingLabel:1}},

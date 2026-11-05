@@ -187,7 +187,6 @@ public class SoundESP extends Module {
 
     @Override
     public void onRender2D(GuiGraphicsExtractor ctx, float tickDelta) {
-        // Vanilla DrawContext path is intentionally not used.
     }
 
     private String resolveName(Identifier id) {

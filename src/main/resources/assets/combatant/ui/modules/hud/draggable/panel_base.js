@@ -390,7 +390,13 @@ export class HudPanelLayout {
           fontFamily: "OnestMedium", fontSize: this.fontSize(0.92),
         }),
       }),
-      ui.text({
+      ...(c(this.v.headerIconAsset, "") ? [ui.svg({
+        key: "header:icon", asset: c(this.v.headerIconAsset, ""),
+        tint: c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF")),
+        class: abs(horizontal.left, (headerH - horizontal.iconSlotW) * 0.5,
+          horizontal.iconSlotW, horizontal.iconSlotW),
+        interactive: false,
+      })] : [ui.text({
         key: "header:icon",
         text: c(this.p.headerIcon, ""),
         color: c(this.p.headerIconColor, color(this.pal, "counter", "#FFFFFFFF")),
@@ -403,7 +409,7 @@ export class HudPanelLayout {
           fontSize: this.fontSize(iconScale),
           textAlign: "center",
         }),
-      }),
+      })]),
       ui.text({
         key: "header:title",
         text: c(this.p.title, ""),

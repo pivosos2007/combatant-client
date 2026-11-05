@@ -204,8 +204,6 @@ final class DeferredDebugCompositorSource implements AutoCloseable {
         DeferredDebugView view = state.debugView();
         RhiStorageImage output = requireImage(context, DeferredResource.DEBUG_PRESENTATION);
         if (!available(context)) {
-            // DEBUG_PRESENTATION deliberately owns render-attachment usage so an unavailable source
-            // can be visualized without imposing render-attachment usage on arbitrary debug inputs.
             String reason = DeferredSmokeTestState.global().unavailableDebugResourceReason();
             RenderSystem.getDevice().createCommandEncoder().clearColorTexture(
                     output.view().texture(), new org.joml.Vector4f(1.0f, 0.0f, 1.0f, 1.0f));

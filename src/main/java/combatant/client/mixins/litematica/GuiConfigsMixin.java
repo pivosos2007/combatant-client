@@ -1,4 +1,9 @@
-/* Combatant Client, GPL-3.0. Optional entry to Spectrum workspace from native Litematica settings. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 package combatant.client.mixins.litematica;
 
 import combatant.client.features.gui.schematic.SchematicScreen;

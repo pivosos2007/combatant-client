@@ -91,8 +91,6 @@ public final class SceneVisibilityService {
         });
         if (!completed) return false;
 
-        // Large objects deliberately bypass per-section membership. There should be few of them;
-        // a single whole-bounds coarse query is preferable to hundreds/thousands of cell entries.
         return registry.visitLargeRecords(record -> {
             if (!visitedHandles.add(record.handle())) return true;
             largeRecordsConsidered++;

@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* Neutral dev component catalog. Each kit owns its own renderer and tokens. */
 import { renderGoogleMaterial3Gallery } from '../../api/kits/google/material3/gallery.js';
 import { renderGoogleMaterial3Overlay } from '../../api/kits/google/material3/overlays.js';

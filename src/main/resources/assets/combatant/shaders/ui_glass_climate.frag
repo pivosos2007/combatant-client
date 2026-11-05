@@ -97,16 +97,10 @@ vec3 combatantGlassShade(CombatantGlassContext c, vec3 color) {
     float cold = clamp(uGlassVisualParams[0].z, 0.0, 1.0);
     float snow = clamp(uGlassVisualParams[0].w, 0.0, 1.0);
     vec2 px = c.localUv * c.sizePx;
-    // Small one-sided highlights and a subdued contact edge, rather than a
-    // circular white stroke. The actual body is visible by refraction.
     color *= 1.0 - climateShadow;
     // Angular wet-surface lighting adds contrast on the nearly uniform fills
     // of compact HUD panels, without a circular glint or replacing glass blur.
     color = clamp(color + vec3(climateOpticalRelief), 0.0, 1.0);
-    // The glass body intentionally remains blurred. A bounded *difference*
-    // of clean scene samples restores readable refraction at droplet slopes
-    // without replacing the prepared blur (or its stacked-lens result) with
-    // an unblurred background. Flat pixels contribute exactly zero.
     if (climateOpticalCoverage > 0.0) {
         vec2 baseUv = clamp(c.sceneUv - climateDisplacementPx
                 / max(c.framebufferSize, vec2(1.0)), 0.001, 0.999);

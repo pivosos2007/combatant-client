@@ -120,8 +120,6 @@ public class Font implements GlyphFont {
         if (!STBTruetype.stbtt_PackBegin(packContext, bitmap, SIZE, SIZE - dynamicRows, SIZE, 1)) {
             throw new IllegalStateException("Failed to start bitmap glyph packing");
         }
-        // True subpixel oversampling rather than setting unused oversample fields in PackRange.
-        // Only the smallest atlas uses it to avoid overflowing the fixed 4096² texture.
         if (height <= 27) {
             STBTruetype.stbtt_PackSetOversampling(packContext, 2, 1);
         }

@@ -104,7 +104,6 @@ vec4 uiVoronoiStructure(vec2 physicalLocal, float sizePx, float jitter,
         opacity = seam * (0.54 + 0.19 * depth) + flank * 0.12 * depth;
         color *= 0.75 + 0.24 * light;
     }
-    // Beyond Nyquist: suppress structure rather than resolve a moire pattern.
     float spatialFilter = 1.0 - smoothstep(0.35, 0.75,
                                    max(length(dFdx(grid)), length(dFdy(grid))));
     return vec4(clamp(color, 0.0, 1.0), clamp(opacity * spatialFilter, 0.0, 1.0));

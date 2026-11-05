@@ -128,7 +128,6 @@ void main() {
     float time = u_Viewport.z * 0.55;
     float morph = smoothstep(-0.4, 0.4, sin(time * 0.3));
 
-    // Fixed origin: unlike the original fly-through, time is never added to ro.z.
     vec3 ro = vec3(0.0, 1.7, 0.0) + u_Camera.xyz;
     // Wide, distant panorama projection. Subject dolly/orbit never feeds this ray camera.
     vec3 rd = normalize(vec3(p.x * 1.58, -p.y * 1.58, 1.0));

@@ -164,11 +164,6 @@ void main() {
         float body = combatantClimateDroplets(screenPx,
                 v_Rect.zw / max(logicalScale, vec2(1e-6)),
                 rain, water, uGlassClock.x, waterNormal, trail, shine);
-        // Climate overlays used to draw an opaque-looking wet tint with alpha
-        // instead of refracting their destination. That created the bubble
-        // silhouettes and erased the underlying material's optics.
-        // The backdrop is the exact ordered current-target snapshot, including
-        // any blur or lower Liquid Glass surfaces already composed there.
         vec2 centerUv = clamp(vec2(screenPx.x / max(uScreen.x, 1.0),
                 1.0 - screenPx.y / max(uScreen.y, 1.0)), 0.001, 0.999);
         vec2 opticalPx = clamp(waterNormal * 15.0, vec2(-13.0), vec2(13.0));
@@ -316,8 +311,6 @@ void main() {
         color = iceSrgb(iceLinear(color) * mix(vec3(1.0), environment * 1.5, v_Params10.z));
         #endif
         #else
-        // A texture-free pipeline can occur during capability changes. Preserve the
-        // ice silhouette and supplied tint instead of dropping the entire primitive.
         color = mix(color, accent, 0.14 + 0.20 * edge * bevelStrength);
         #endif
     } else if (mode == 6) { // BRUSHED METAL

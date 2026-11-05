@@ -239,8 +239,6 @@ public final class PlayerModels {
             validatePng(png);
             int width = ByteBuffer.wrap(png, 16, 4).getInt();
             int height = ByteBuffer.wrap(png, 20, 4).getInt();
-            // PNG color type 6 = RGBA; color type 4 = gray+alpha. Indexed palettes
-            // require separate tRNS parsing and are intentionally rejected here.
             int colorType = png[25] & 0xff;
             if (width != height || width < 64 || width > 2048 || (width & (width - 1)) != 0
                     || (colorType != 6 && colorType != 4))
@@ -310,9 +308,6 @@ public final class PlayerModels {
                 target.combatant$setReplacementSubmitted(true);
                 return true;
             }
-            // Do not upload skinned geometry through VertexConsumer when a GPU
-            // contract is unavailable. Let the caller use the vanilla player model
-            // rather than silently doing an O(vertices) CPU replacement draw.
             return false;
         } finally { matrices.popPose(); }
     }

@@ -39,7 +39,6 @@ public abstract class PanoramaMixin {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
 
-        // Do not create PanoramaRenderState and do not enqueue the vanilla panorama overlay at all.
         MenuBackgroundRenderer.renderConfigured(mc);
         ci.cancel();
     }

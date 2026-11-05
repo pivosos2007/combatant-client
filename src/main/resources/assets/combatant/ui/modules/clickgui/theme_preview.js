@@ -83,8 +83,6 @@ function swatches(p) {
   ];
 }
 
-// The existing theme editor owns only two local, non-persistent preview toggles.
-// They are intentionally not general-purpose UI controls or new theme settings.
 function specimenControls(p, unit, a) {
   const materials = b(p.previewMaterials, false);
   const tint = alpha(c(p.accent, "#FF90BAD5"), a);

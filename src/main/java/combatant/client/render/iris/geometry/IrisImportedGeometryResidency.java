@@ -112,10 +112,6 @@ public final class IrisImportedGeometryResidency implements AutoCloseable {
             putColor(vertices, colors, vertex, primitive.vertexCount());
             put2(vertices, uv0, vertex * 2, 0.0f, 0.0f);
             vertices.putShort((short) 0).putShort((short) 0); // UV1 / overlay
-            // UV2 is the normal Iris lightmap channel. Keep imported geometry on a valid
-            // shaderpack vertex contract instead of smuggling light through matrix elements.
-            // Block light is zero, sky light is full for this first immutable residency path;
-            // dynamic per-instance light can later move to an explicit instance payload.
             vertices.putShort((short) 0).putShort((short) 240);
             putSnorm4(vertices, normals, vertex * 3, 0.0f, 1.0f, 0.0f, 0.0f);
             // Entity information remains neutral. Imported-material selection is an explicit

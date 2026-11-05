@@ -160,8 +160,6 @@ public final class VanillaBeforeTranslucentPass {
                 endColorRenderer.renderMatching(matrices, target, VanillaBeforeTranslucentPass::drawBeforeTransparency);
                 endDepthRenderer.renderMatching(matrices, target, VanillaBeforeTranslucentPass::drawBeforeTransparency);
                 rendered = true;
-                // Pre-translucent color is still composited beneath the player's
-                // transparent skin. PRE_DEPTH commands have deliberately been deferred.
                 if (combatant.client.render.iris.IrisEarlyWorldBridge.isRendering()) {
                     EarlyShockwavePass.render(combatant.client.render.iris.IrisEarlyWorldBridge.sceneTarget(), tickDelta);
                 } else {

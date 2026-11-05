@@ -133,9 +133,6 @@ public class AutoCrystal extends Module {
                     0,
                     1000
             ), breakEnabled::get);
-    // Acting on the spawn/remove packet instead of the next tick saves up to a tick per crystal.
-    // Both only fire when the last rotation sent already points at the crystal or base block, so
-    // they never add a rotation the server did not see.
     private final BooleanValue instantBreak =
             visibleWhen(bool("autocrystalInstantBreak", "instant_break", true), breakEnabled::get);
     private final BooleanValue instantPlace =

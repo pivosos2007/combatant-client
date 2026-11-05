@@ -1,4 +1,11 @@
 #version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(location = 0) in vec3 Position;
 layout(std430, binding = 3) readonly buffer RainFrame {
     mat4 u_ViewProjection;
@@ -48,9 +55,6 @@ void main() {
     float randomRadius = fract(sin(dot(center, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
     float physicalRadius = mix(0.007, 0.016, randomRadius);
     float radiusPixels = physicalRadius * abs(u_ViewProjection[1][1]) * screen.y * 0.5 / max(headClip.w, 0.1);
-    // Guarantee a rasterizable footprint at normal FOV: the fragment shader
-    // integrates the thin profile over the covered pixel instead of inflating
-    // the physical bead size or making zoomed drops oversized.
     float halfWidth = clamp(radiusPixels, 0.90, lod < 0.5 ? 4.5 : 2.0);
     float x = Position.x;
     float t = Position.y * 0.5 + 0.5;

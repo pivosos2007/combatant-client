@@ -345,9 +345,6 @@ public final class SodiumGraphicsGuiRenderer {
         if (searchWidget instanceof SodiumSearchWidgetAccess access) {
             var edit = access.combatant$getSearchBox();
             if (edit != null) {
-                // Sodium's AbstractWidget#setFocused(true) intentionally ignores mouse focus.
-                // Focus the real EditBox through the parent container so key input and caret
-                // ownership match Sodium's native search implementation.
                 searchWidget.setFocused(edit);
                 edit.setFocused(true);
             }
@@ -429,7 +426,6 @@ public final class SodiumGraphicsGuiRenderer {
                 withAlpha(mix(s.contentTop, s.accentSoft, 0.035f), 150),
                 withAlpha(s.contentBottom, 180), withAlpha(s.contentBottom, 172));
 
-        // Strong structural dividers. These intentionally read above row/subcategory hierarchy.
         drawVerticalDivider(f.root.x + NAV_W, f.root.y + BODY_Y, 2f, NAV_H, s);
         drawVerticalDivider(f.root.x + INFO_X, f.root.y + BODY_Y, 2f, NAV_H, s);
         Renderer2D.COLOR.quad(root.x, root.y + SEARCH_H, root.w, 2f,
@@ -639,8 +635,6 @@ public final class SodiumGraphicsGuiRenderer {
             return;
         }
 
-        // Fade the category hover all the way to transparent. There is deliberately no
-        // non-zero base alpha and no visibility threshold, so the tail cannot pop/clamp off.
         Renderer2D.COLOR.quad(r.x, r.y + 2f, r.w, r.h - 4f,
                 motionAlpha(s.categoryHoverLeft, h * 0.62f),
                 motionAlpha(s.categoryHoverRight, h * 0.66f),

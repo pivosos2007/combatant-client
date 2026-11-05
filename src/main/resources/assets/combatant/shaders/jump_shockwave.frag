@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 uniform sampler2D u_Texture;
 uniform sampler2D u_Depth;
 
@@ -85,8 +92,6 @@ void main() {
             max(d * farWorld.y * farWorld.y, 1.0e-8);
     float ringWidthPixels = thickness / max(worldPerPixel, 1.0e-5);
 
-    // A nearly edge-on annulus collapses to a broken horizontal line at
-    // subpixel thickness. Fade it out instead of drawing sporadic fragments.
     float footprintFade = smoothstep(0.75, 2.5, ringWidthPixels);
     float grazingFade = smoothstep(0.025, 0.085, abs(rayY));
     float edgeAA = min(0.5, max(worldPerPixel * 0.75, 1.0e-5));

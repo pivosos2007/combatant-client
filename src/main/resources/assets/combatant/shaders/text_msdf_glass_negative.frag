@@ -53,8 +53,6 @@ void main() {
     float glyphAlpha = smoothstep(-0.62, 0.54, signedPx);
     if (glyphAlpha * v_Color.a <= 0.001) discard;
 
-    // The SDF itself is the glass boundary. Derivatives give a stable screen-space edge normal,
-    // so refraction/rim stay attached to the actual glyph instead of a surrounding rectangle.
     vec2 sdfGradient = vec2(dFdx(signedPx), dFdy(signedPx));
     vec2 normal = safeNormalize(sdfGradient);
     float edgeDistance = abs(signedPx);

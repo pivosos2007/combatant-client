@@ -24,9 +24,6 @@ public enum Fonts {
     public static final List<FontFamily> FONT_FAMILIES = new ArrayList<>();
     private static final Map<FontInfo, TextRenderer> RENDERER_CACHE = new HashMap<>();
     private static final Map<String, FontFamily> FAMILY_BY_NAME = new HashMap<>();
-    // Keyed by the caller's family string exactly as passed, one slot per FontInfo.Type. Text
-    // nodes resolve their face every frame; a hit is now a single lookup instead of normalising,
-    // lower-casing and concatenating a "name|type" key each time.
     private static final Map<String, FontFace[]> FACE_CACHE = new HashMap<>();
     private static final FontInfo.Type[] FACE_TYPES = FontInfo.Type.values();
     private static final Map<String, String> NORMALIZED_CACHE = new HashMap<>();

@@ -60,8 +60,6 @@ public final class PlayerModelVisualEffects {
                 target < animation.opacity ? FADE_IN_SECONDS : FADE_OUT_SECONDS);
         if (Math.abs(animation.opacity - target) <= 0.001f) animation.opacity = target;
 
-        // Do not use the discontinuous vanilla overlay (which also changes the
-        // renderer's submission path). Attack/release instead follows wall time.
         float hitTarget = player.hurtTime > 0 ? 1.0f : 0.0f;
         animation.hit = approach(animation.hit, hitTarget, delta,
                 hitTarget > animation.hit ? HIT_ATTACK_SECONDS : HIT_RELEASE_SECONDS);

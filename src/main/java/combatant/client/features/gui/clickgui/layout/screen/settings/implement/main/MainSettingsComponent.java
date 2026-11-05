@@ -261,9 +261,6 @@ public final class MainSettingsComponent {
                 LayoutRender2D.roundedQuad(rowX, rowY, rowW, rowH, rowRadius, left, right, right, left);
             }
             if (active) {
-                // Same construction as the AltManager selection accent: the accent is a second
-                // rectangle drawn over the selected surface and clipped by that surface's round
-                // mask, rather than a detached pill floating next to the icon.
                 boolean selectedClip = ClipFunction.pushRoundedRect(rowX, rowY, rowW, rowH, rowRadius);
                 try {
                     float stripW = Math.max(2f, 2.2f * scale);

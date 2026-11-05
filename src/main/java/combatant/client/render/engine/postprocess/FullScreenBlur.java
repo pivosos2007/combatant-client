@@ -1,4 +1,9 @@
-/* Combatant Client, GPL-3.0. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 package combatant.client.render.engine.postprocess;
 
 import com.mojang.renderpearl.api.textures.GpuTextureView;

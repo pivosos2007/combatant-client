@@ -2,6 +2,13 @@
 #extension GL_ARB_separate_shader_objects : require
 
 /*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+/*
  * Shared textured-sprite materials. The source texture always supplies the
  * base color, shape and alpha. Additional lighting follows TEXEL FEATURES,
  * never a synthetic radial emission field painted onto the quad.

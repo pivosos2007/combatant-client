@@ -208,8 +208,6 @@ public final class AimAssist extends Module {
         float yawDelta = RotationUtil.angleDifference(smooth.yaw(), start.yaw());
         float pitchDelta = vertical.get() ? smooth.pitch() - start.pitch() : 0.0f;
 
-        // Correlated speed variance: the same envelope persists for several ticks,
-        // rather than choosing a new random easing factor every frame.
         float variance = randomization.get();
         if (--speedRetargetTicks <= 0) {
             speedDestination = 1.0f + variance * ThreadLocalRandom.current().nextFloat(-0.18f, 0.18f);
@@ -217,9 +215,6 @@ public final class AimAssist extends Module {
         }
         speedEnvelope = Mth.lerp(0.20f, speedEnvelope, speedDestination);
         float maxStep = maxTurnSpeed.get() * TICK_SECONDS;
-        // A user actively turning away from the suggested correction owns that
-        // axis. Re-enter gradually after the input stops instead of pulling the
-        // mouse back toward the target in a single frame.
         if (opposesManualInput(manualYaw, yawDelta)) {
             yawAssistWeight = 0.0f;
             pendingYaw = 0.0f;

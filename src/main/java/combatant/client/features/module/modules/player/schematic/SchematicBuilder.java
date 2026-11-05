@@ -1103,8 +1103,6 @@ public final class SchematicBuilder extends Module {
         missingThisTick = false;
         if (autoWalk.get() && player.onGround() && hasOpenSupport(diff, low)
                 && mover.climbBeforePlacing(player, state.placement().worldY(low))) {
-            // The gate waits for the walker to climb; when it stays idle with no plan, nothing will lift the
-            // feet, so build the layer from below rather than idle forever.
             if (mover.mode() == BuildMover.Mode.IDLE && !mover.planning()) {
                 if (++climbGateTicks >= CLIMB_GATE_TICKS) {
                     mover.allowBuildFromBelow(state.placement().worldY(low));
@@ -1147,11 +1145,6 @@ public final class SchematicBuilder extends Module {
                 }
                 if (count < MAX_CANDIDATES) {
                     candidateCells[count] = cell;
-                    // Lower layers first so blocks can lean on what is below them, then farthest first: a block
-                    // can only hide the faces of cells behind it, so placing near cells first walls off the far
-                    // ones (the corners of a ring around the player become unclickable). Within one block of
-                    // distance the cell closest to the current aim goes first, so the view sweeps instead of
-                    // jumping back and forth.
                     double distance = Math.sqrt(distSq);
                     double turn = facing.angleTo(Rotation.lookingAt(Vec3.atCenterOf(scratch), eyes));
                     candidateDistance[count] = BuildSafety.major(diff.order().order(cell), y) * 1000.0

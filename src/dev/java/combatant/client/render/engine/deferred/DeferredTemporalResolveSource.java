@@ -292,8 +292,6 @@ final class DeferredTemporalResolveSource implements AutoCloseable {
         DeferredPrimaryViewSource.FrameView current = requireCurrentView(context);
         DeferredPrimaryViewSource.FrameView previous = context.primaryView().previous();
         if (previous == null) {
-            // The condition should make this impossible. Keep the failure explicit rather than
-            // silently treating missing previous camera state as zero motion.
             throw new IllegalStateException("Readable TAA history has no previous primary view");
         }
 

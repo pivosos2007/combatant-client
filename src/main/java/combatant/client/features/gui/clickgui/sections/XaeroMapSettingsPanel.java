@@ -493,19 +493,11 @@ final class XaeroMapSettingsPanel {
         );
         if (runtime != null) {
             if (devUiKits) {
-                // The hover alpha is paint-only: update it after layout rather than
-                // forcing CachedUiScriptRuntime to remeasure the entire tree.
                 writeNavigationPatches(layout);
                 runtime.applyDynamicProps(navigationPatchProgram);
                 runtime.applyDynamicBounds(navigationPatchProgram);
                 runtime.input().updateHover(runtime.root(), mouseX, mouseY);
             }
-            // Use the same dedicated Map UI-underlay source as the chrome controls. The map
-            // background and both ordinary/direct-textured Xaero tile paths are explicitly mirrored
-            // into this target before any Map glass is emitted, so it is the authoritative optical
-            // source for UI-native glass. CURRENT_TARGET is intentionally not used here: during the
-            // deferred/clip pipeline the visible Map can still live in an intermediate attachment at
-            // the point the Browser batch is replayed, which made the snapshot resolve as black.
             Renderer2D.COLOR.withLiquidGlassSceneSource(
                     UiBackdropRequest.SceneSource.UI_UNDERLAY,
                     () -> runtime.render(new UiRenderContext(
@@ -530,12 +522,6 @@ final class XaeroMapSettingsPanel {
         float contentY = y + layout.contentY + (1.0f - contentEase) * 8.0f;
         float contentW = layout.contentWidth;
         float contentH = layout.contentHeight;
-        // Expensive authors these controls inside ~280px module frames.  In the much wider Map
-        // detail pane, letting selects/sliders stretch through the entire 800px viewport destroys
-        // their proportions.  Keep a generous single settings column while leaving the browser
-        // itself at its original 1120x720 size.
-        // Use the detail pane instead of leaving a dead third on the right.  Keep a modest
-        // gutter so long sliders/inputs still read as controls rather than full-window rules.
         float settingsW = Math.min(contentW, Math.max(660.0f, contentW * 0.90f));
         contentViewportY = contentY;
         contentViewportBottom = contentY + contentH;
@@ -1614,8 +1600,6 @@ final class XaeroMapSettingsPanel {
             return;
         }
 
-        // Keep the bar in the browser's right gutter instead of covering the settings column.
-        // The old 2.5px track sat 4px inside content and was both visually weak and intrusive.
         scrollbarW = 4.0f;
         scrollbarX = contentX + contentW + 3.0f;
         scrollbarY = contentY + 5.0f;

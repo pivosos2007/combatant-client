@@ -82,7 +82,8 @@ public final class UiRenderer {
 
                 UiRenderContext parentContext = depth == 0 ? context : tape.childContexts[depth - 1];
                 UiStyle style = node.style();
-                UiRenderContext nodeContext = parentContext.multiplyAlpha(style.opacity());
+                UiRenderContext nodeContext = parentContext.multiplyAlpha(
+                        style.opacity() * node.props().number("runtimeOpacity", 1f));
                 if (nodeContext.alpha() <= 0.001f) {
                     pc = tape.jump[pc] - 1;
                     continue;
@@ -143,8 +144,6 @@ public final class UiRenderer {
     private UiBounds animatedBounds(UiNode node) {
         UiBounds bounds = node.bounds();
         var animations = node.state().animations();
-        // Most nodes never animate their bounds: hand back the layout bounds instead of eight map lookups
-        // and a fresh UiBounds per node per frame.
         if (animations.isEmpty() && bounds.width() >= 0.0f && bounds.height() >= 0.0f) {
             return bounds;
         }

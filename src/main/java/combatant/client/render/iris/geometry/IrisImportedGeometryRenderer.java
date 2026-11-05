@@ -314,10 +314,6 @@ public final class IrisImportedGeometryRenderer {
     }
 
     private static ImportedLighting sampleLighting(net.minecraft.client.multiplayer.ClientLevel level, AABB bounds) {
-        // Sample inside the instance AABB rather than exactly on its faces. Exact min/max points
-        // frequently quantize into the supporting terrain block and make one half of a large mesh
-        // inherit ground light while the opposite half sees air/sky. Eight stable corner samples
-        // are then trilinearly interpolated per vertex by the Photon adapter.
         double sx0 = insetLow(bounds.minX, bounds.maxX);
         double sx1 = insetHigh(bounds.minX, bounds.maxX);
         double sy0 = insetLow(bounds.minY, bounds.maxY);

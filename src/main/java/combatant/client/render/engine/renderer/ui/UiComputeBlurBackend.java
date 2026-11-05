@@ -80,9 +80,6 @@ final class UiComputeBlurBackend implements AutoCloseable {
             GpuSampler currentSampler = sourceSampler;
             RhiStorageImage lastWritten = null;
 
-            // The UI source has one known producer in this path: ordinary framebuffer/UI draws
-            // are GRAPHICS, while captured-world/current-target snapshots come from a transfer copy.
-            // Use one producer-specific dependency instead of ALL_COMMANDS or several global barriers.
             RhiResourceBarrier.Stage sourceStage = producerStage != null
                     ? producerStage
                     : RhiResourceBarrier.Stage.GRAPHICS;

@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // ItemUseLayer: isolated player animation/state layer.
 (() => {
   const R=globalThis.CombatantPlayerRig;
@@ -100,8 +107,6 @@
             other==='right'?-1:1,.45,.18,k);
           this.rig.rotate(wrist(other),(-6-12*p)*k,0,(other==='right'?-5:5)*k);
         } else {
-          // Charged/aiming: item arm is the sight line and the support hand remains physically on
-          // the crossbow body rather than merely posing somewhere near the opposite shoulder.
           this.rig.rotate(upper(useArm),(-90+aimPitch)*k,(aimYaw-sign*9)*k,-sign*2*k);
           this.rig.setRotation(elbow(useArm),0,0,0);
           this.rig.setRotation(forearm(useArm),0,0,0);
@@ -136,8 +141,6 @@
         this.rig.setRotation(useArm+'_forearm_twist',0,0,0);
         this.rig.setRotation(useArm+'_wrist',0,0,0);
 
-        // Aim the visible hand a little behind/below the actual mouth. The item gets its own solved
-        // mouth socket below; wrist twist is not used to compensate for reach.
         const handX=-sign*(drinkMode?1.05:1.20)/16;
         const handY=(drinkMode?-1.25:-1.55)/16;
         const handZ=(drinkMode?-2.55:-2.75)/16;

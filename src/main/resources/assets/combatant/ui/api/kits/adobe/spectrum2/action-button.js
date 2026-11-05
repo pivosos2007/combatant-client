@@ -1,5 +1,9 @@
-/* Combatant Client (GPL-3.0), Copyright (c) 2026 pivosos2007.
- * Native Spectrum 2 ActionButton, supporting connected ActionButtonGroup geometry. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 export class SpectrumActionButton {
   static render(props={}) {

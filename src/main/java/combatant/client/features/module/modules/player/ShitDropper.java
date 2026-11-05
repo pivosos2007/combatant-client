@@ -148,7 +148,6 @@ public class ShitDropper extends Module {
             dropped++;
         }
 
-        // A refused drop is retried next tick instead of waiting out the cooldown.
         if (dropped > 0) cooldownTicks = Math.max(0, delayTicksValue.get());
     }
 

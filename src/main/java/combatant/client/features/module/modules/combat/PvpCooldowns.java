@@ -354,7 +354,6 @@ public class PvpCooldowns extends Module {
                     out.add(item);
                 }
             } catch (RuntimeException ignored) {
-                // Invalid custom item id in config: ignore this rule instead of breaking the module.
             }
         }
 

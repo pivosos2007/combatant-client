@@ -82,15 +82,23 @@ public final class ConfigServerBindings {
     public synchronized boolean toggle(ConfigProfileType type, String profileId, String address) throws IOException {
         ensureLoaded();
         String key = key(type, address);
+        String previous = bindings.get(key);
         boolean nowBound;
-        if (profileId.equals(bindings.get(key))) {
+        if (profileId.equals(previous)) {
             bindings.remove(key);
             nowBound = false;
         } else {
             bindings.put(key, profileId);
             nowBound = true;
         }
-        save();
+        try {
+            save();
+        } catch (IOException e) {
+            // A failed disk write must not leave an ephemeral binding visible in the GUI.
+            if (previous == null) bindings.remove(key);
+            else bindings.put(key, previous);
+            throw e;
+        }
         return nowBound;
     }
 
@@ -126,8 +134,9 @@ public final class ConfigServerBindings {
         if (address.isEmpty() || address.equals(appliedFor)) return;
         appliedFor = address;
         Minecraft mc = Minecraft.getInstance();
-        // The level is replaced after this event; apply once the join has settled.
-        mc.execute(() -> applyFor(address));
+        // This event is emitted at setLevel HEAD. execute() may run inline on the client
+        // thread, so schedule() is required to apply the profile after setLevel returns.
+        mc.schedule(() -> applyFor(address));
     }
 
     private void applyFor(String address) {

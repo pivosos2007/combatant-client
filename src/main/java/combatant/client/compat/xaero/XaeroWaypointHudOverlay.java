@@ -65,10 +65,6 @@ public enum XaeroWaypointHudOverlay {
     }
 
     public static boolean shouldSuppressNativeXaeroWaypoints() {
-        // Once the integration is healthy Combatant owns the visibility policy for world waypoints:
-        // when our waypoint HUD is enabled they are replaced by our renderer; when the user disables
-        // them they stay hidden instead of silently falling back to Xaero's native HUD. Runtime
-        // failures still release ownership so Xaero can act as the safety fallback.
         if (failed || System.nanoTime() < retryAfterNanos || !RuntimeGate.canRunHud()) return false;
         try {
             return xaeroSessionAvailable();

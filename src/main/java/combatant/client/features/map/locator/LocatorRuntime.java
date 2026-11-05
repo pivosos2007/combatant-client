@@ -89,8 +89,6 @@ public final class LocatorRuntime {
             long rev = revision(key, fp, reappeared);
             seen.add(key);
 
-            // A synthetic name UUID is runtime-only. Once the real UUID is known, discard the old
-            // solver state instead of allowing two independent identities for the same player.
             if (onlineResolved != null && !name.isBlank()) {
                 UUID synthetic = MapTriangulationConfig.offlineTargetUuid(name);
                 if (!synthetic.equals(onlineResolved)) HeuristicRuntime.get().clear(synthetic);

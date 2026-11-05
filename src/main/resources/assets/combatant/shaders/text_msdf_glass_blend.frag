@@ -61,8 +61,6 @@ void main() {
     float glyphAlpha = smoothstep(-0.62, 0.54, signedPx);
     if (glyphAlpha * v_Color.a <= 0.001) discard;
 
-    // The SDF itself is the glass boundary. Derivatives give a stable screen-space edge normal,
-    // so refraction/rim stay attached to the actual glyph instead of a surrounding rectangle.
     vec2 sdfGradient = vec2(dFdx(signedPx), dFdy(signedPx));
     vec2 normal = safeNormalize(sdfGradient);
     float edgeDistance = abs(signedPx);
@@ -102,8 +100,6 @@ void main() {
             uBlendTone1
     );
 
-    // Glass cues are layered after the color operator. v_Color.rgb is an animated prism control
-    // signal here; it must shape dispersion/rim response rather than behave like a flat fill.
     vec3 prismSignal = clamp(tint, 0.0, 1.0);
     float prismLuma = luminance(prismSignal);
     vec3 prismChroma = prismSignal - vec3(prismLuma);

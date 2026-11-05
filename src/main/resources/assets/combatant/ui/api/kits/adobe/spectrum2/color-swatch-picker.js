@@ -1,4 +1,9 @@
-/* Combatant Client (GPL-3.0). A selectable collection, distinct from ColorSwatch. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 import { SpectrumColorSwatchGroup } from './color-swatch-group.js';
 export class SpectrumColorSwatchPicker {

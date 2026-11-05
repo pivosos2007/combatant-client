@@ -141,8 +141,6 @@ final class DeferredHdrPostSource implements AutoCloseable {
     private Boolean lastExposureEnabled;
 
     void install(ArrayList<DeferredPassSpec> passes) {
-        // Exposure smoke override uses an explicit neutral state rather than making downstream
-        // bloom/post infer "missing exposure". Multiplier=1, EV=0 and lifecycle=valid.
         passes.add(DeferredPassSpec.builder("world.post.exposure.neutral", DeferredStage.PRE_POST_PROCESS)
                 .priority(-500)
                 .write(DeferredResource.EXPOSURE)

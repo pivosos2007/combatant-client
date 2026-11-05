@@ -212,9 +212,6 @@ public final class UiPassCompiler {
                     }
                     builder.uniform("UIBatch", uiBatch);
                 }
-                // The material primitive pipeline declares UIGlassFrame for the pointer-lit
-                // satin/metal surface. Capture-aware and mixed-item paths bind it already;
-                // direct RHI lowering must preserve the same pipeline uniform contract.
                 if (batch.type == UiBatchType.MATERIAL_PRIMITIVE
                         || batch.type == UiBatchType.MATERIAL_TEXTURED_PRIMITIVE) {
                     builder.uniform(UiGlassFrameUniforms.BLOCK_NAME,

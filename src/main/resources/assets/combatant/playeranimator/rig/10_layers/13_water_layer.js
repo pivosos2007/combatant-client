@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // WaterLayer: continuous procedural swimming/treading/crawling without baked loop seams.
 (() => {
   const R=globalThis.CombatantPlayerRig;
@@ -41,8 +48,6 @@
     swimArm(rig,'right',qR,k,slow);
     swimArm(rig,'left',qL,k,-slow*.82);
 
-    // Flutter kick is intentionally not phase-locked 1:1 to the arm stroke. This removes the
-    // obvious whole-body repetition while keeping a stable swimming cadence.
     const kickPhase=phase*1.73+Math.sin(phase*.091+seed)*.24;
     const kick=Math.sin(kickPhase), kick2=Math.sin(kickPhase+Math.PI+.16*Math.sin(phase*.067+seed));
     const kickAmp=9+15*speed;

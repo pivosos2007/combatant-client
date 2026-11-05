@@ -182,9 +182,6 @@ final class VulkanStorageBuffer implements RhiStorageBuffer {
             return;
         }
 
-        // offset==0 starts a new logical snapshot. This is the normal Combatant compute path and
-        // guarantees that descriptors recorded earlier in the same Vulkan submission keep seeing
-        // the bytes that belonged to their dispatch instead of a later CPU overwrite.
         if (destinationOffset == 0L || !uploads.hasSnapshot()) {
             beginUploadSnapshot();
         }

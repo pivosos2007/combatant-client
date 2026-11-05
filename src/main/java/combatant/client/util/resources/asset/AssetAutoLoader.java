@@ -93,9 +93,6 @@ public enum AssetAutoLoader {
             runScopedStrict(AssetLoadPhase.ACTIVATE, normalized, manager);
             return true;
         } catch (RuntimeException | Error error) {
-            // Roll back already-created resources from earlier hooks in the same scope. Keep the
-            // scope published if teardown itself fails: ownership may still be live and the caller
-            // must be able to retry authoritative cleanup instead of observing a false inactive state.
             boolean rollbackComplete = false;
             try {
                 runScopedStrict(AssetLoadPhase.DEACTIVATE, normalized, manager);

@@ -49,7 +49,6 @@ public class LightmapModifyEvent extends Event {
         state.brightness = Math.max(state.brightness, exposureFloor);
         state.nightVisionEffectIntensity = Math.max(state.nightVisionEffectIntensity, 0.10f * strength);
 
-        // Lift the generated lightmap itself, but keep vanilla color response instead of whitening it.
         state.skyFactor = Math.max(state.skyFactor, 0.55f + 0.35f * strength);
         state.blockFactor = Math.max(state.blockFactor, 1.4f + 0.25f * strength);
 

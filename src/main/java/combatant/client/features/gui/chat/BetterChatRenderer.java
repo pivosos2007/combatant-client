@@ -1289,8 +1289,6 @@ lastHoverWasOutsideSuggest = false;
         HudRenderUtil.ThemeGradient stroke = HudRenderUtil.themeAccentGradient(strokeAlpha);
         renderer.roundedRectStrokeGradient(x, y, w, h, radius, 1.0f, 0.7f, stroke.start(), stroke.end(), stroke.angleDeg());
 
-        // A small moving highlight keeps the privacy surface readable as an intentional control
-        // rather than a flat censor bar, while remaining fully theme-driven.
         float shimmer = (AnimationUtility.time(0.00022f) % 1f);
         float highlightW = Math.max(8f, w * 0.18f);
         float highlightX = x + (w + highlightW) * shimmer - highlightW;
@@ -1728,7 +1726,6 @@ lastHoverWasOutsideSuggest = false;
                     ));
                 }
                 default -> {
-                    // Dialog/page/custom events are intentionally left to vanilla click handling.
                 }
             }
         }

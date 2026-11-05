@@ -137,9 +137,6 @@ public abstract class ItemInHandRendererMixin {
 
             matrices.pushPose();
             try {
-                // Keep the user base translation outside the scripted HMI transform stack.
-                // This makes X/Y/Z stable camera-space offsets, matching Basic ViewModel behavior
-                // instead of rotating the offset axes with item-specific scripted poses.
                 viewModel.applyHmiBaseOffset(matrices);
 
                 HoldMyItems.beginHandRender(
@@ -184,9 +181,6 @@ public abstract class ItemInHandRendererMixin {
                     } else {
                         matrices.pushPose();
                         try {
-                            // 26.3 submits the prepared item render state, rather than calling
-                            // the old ItemInHandRenderer.renderItem method. Preserve HMI and
-                            // MiniItems transforms before submitting that state.
                             HoldMyItems.applyItemPose(item, matrices);
                             viewModel.applyMini(matrices, item);
                             var state = hand == InteractionHand.MAIN_HAND
@@ -311,8 +305,6 @@ public abstract class ItemInHandRendererMixin {
         if (viewModel == null || !viewModel.isActiveForHandRender()) return;
 
         if (viewModel.isHmiModeActive()) {
-            // HMI owns swings in JavaScript. This still matters for the dedicated vanilla map path,
-            // which is intentionally not replaced by the generic HMI held-item renderer above.
             ci.cancel();
             return;
         }

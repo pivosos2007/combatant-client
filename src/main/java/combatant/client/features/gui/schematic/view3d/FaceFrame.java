@@ -216,8 +216,6 @@ public final class FaceFrame {
             highY = Math.max(highY, sy);
         }
         if (highX < minX || highY < minY || lowX > maxX || lowY > maxY) return false;
-        // Retain an area estimate; sub-pixel texture tiles are rendered as their
-        // precomputed solid colour instead of flooding the UI with thousands of quads.
         float twiceArea = 0f;
         for (int c = 0; c < n; c++) {
             int a = base + c * 2, b = base + ((c + 1) % n) * 2;

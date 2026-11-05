@@ -452,8 +452,6 @@ public final class PointTracker {
             pool = candidates;
         }
 
-        // The legacy selection intentionally explores new points (KillAura).
-        // Retention-enabled consumers instead keep the previous local AABB area.
         if (pointRetention <= 0.0) {
             Vec3 reference = lastSelectedPoint != null ? lastSelectedPoint : smoothedPoint;
             List<Candidate> diversePool = filterDiverse(pool, reference, box, movingTarget);

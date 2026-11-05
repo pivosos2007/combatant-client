@@ -1,4 +1,9 @@
-/* Combatant Client (GPL-3.0). Adobe Spectrum 2 standard dialog. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 import { SpectrumButton } from './button.js';
 export class SpectrumStandardDialog {

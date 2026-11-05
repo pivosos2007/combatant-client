@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* Dev source set only. Roboto originates from googlefonts/roboto-2 (Apache-2.0). */
 package combatant.client.render.engine.text.dev;
 
@@ -5,7 +12,7 @@ import combatant.client.render.engine.text.FontInfo;
 import combatant.client.util.resources.asset.FontAsset;
 import combatant.client.util.resources.asset.FontCatalog;
 
-@FontCatalog(namespace = "combatant", root = "font")
+@FontCatalog(namespace = "combatant", root = "assets/combatant/font")
 public enum GoogleMaterialFonts {
     @FontAsset(value = "roboto_regular.ttf", family = "Roboto", type = FontInfo.Type.Regular, order = 300)
     ROBOTO_REGULAR,

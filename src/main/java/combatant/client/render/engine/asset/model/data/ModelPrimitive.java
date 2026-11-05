@@ -170,8 +170,6 @@ public final class ModelPrimitive {
         return joints != null || !morphTargets.isEmpty();
     }
 
-    // Package-private zero-copy views used by the renderer. Public getters intentionally keep
-    // their defensive-copy contract; callers outside the model package must never receive these.
     float[] positionsView() { return positions; }
     float[] normalsView() { return normals; }
     float[] tangentsView() { return tangents; }

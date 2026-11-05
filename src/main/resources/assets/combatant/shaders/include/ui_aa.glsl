@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 /* Shared analytic UI antialiasing helpers. Distances and softness are in logical pixels. */
 float pixelAa(vec2 logicalScale) {
     return max(max(logicalScale.x, logicalScale.y), 0.0001);

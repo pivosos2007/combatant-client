@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // motion:fall_second_mit/fall_second_mit
 (() => {
   const L=globalThis.RigAnimationLibrary;

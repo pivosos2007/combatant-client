@@ -1,6 +1,9 @@
-/* Combatant Client (GPL-3.0), Copyright (c) 2026 pivosos2007.
- * Spectrum 2 accordion: flat rows, thin separators and clipped disclosure.
- * Never constructs a rounded-rectangle or a background card. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 import { SpectrumFoundation } from './foundation.js';
 
 const flatQuad = (key,x,y,w,h,fill,extra={}) => ui.shape({

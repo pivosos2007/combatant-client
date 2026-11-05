@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // Grayscale glyph masks are rasterized at 4x the selected physical font size.
 // The 4x4 quadrature reconstructs one framebuffer pixel in physical-pixel
 // coordinates. Unlike a fixed four-tap atlas-space filter, it works at

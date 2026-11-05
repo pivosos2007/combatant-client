@@ -95,9 +95,6 @@ final class GlyphMaskFont implements GlyphFont {
     @Override public boolean isReady() { return !closed && (texture == null || texture.isReady()); }
     @Override public int height() { return 27; }
     @Override public boolean hasGlyph(int codePoint) { return rasterizer.hasGlyph(codePoint); }
-    // A saturated mask atlas can no longer render new runs, even if the face
-    // contains their glyph IDs. Keep measurement and drawing on the same
-    // fallback backend after saturation instead of reporting false coverage.
     @Override public boolean canShape(String text) {
         return !closed && !saturated && rasterizer.canShape(text);
     }

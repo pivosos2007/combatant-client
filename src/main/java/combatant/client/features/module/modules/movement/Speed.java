@@ -26,6 +26,7 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleListInfoProvider;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.speed.BhopInput;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
 import combatant.client.util.player.MovementUtil;
@@ -72,6 +73,11 @@ public final class Speed extends Module {
         if (mc == null || mc.player == null || mc.level == null) return;
 
         LocalPlayer player = mc.player;
+        Jesus jesus = Modules.get(Jesus.class);
+        if (jesus != null && jesus.isManagingVulcan297(player)) {
+            resetState();
+            return;
+        }
         updateAirTicks(player);
 
         switch (effectiveMode()) {
@@ -272,7 +278,9 @@ public final class Speed extends Module {
     }
 
     private boolean canSpeed(LocalPlayer player) {
+        Jesus jesus = Modules.get(Jesus.class);
         return player != null
+                && (jesus == null || !jesus.isManagingVulcan297(player))
                 && !player.isShiftKeyDown()
                 && !player.isInWater()
                 && !player.isInLava()

@@ -75,7 +75,6 @@ public final class OverworldCelestialModel implements CelestialModel {
                     attributesValid = true;
                 }
             } catch (Throwable ignored) {
-                // Explicit flag below preserves that the clock model, rather than producer attributes, was used.
             }
         }
 

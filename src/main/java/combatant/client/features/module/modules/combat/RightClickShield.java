@@ -80,7 +80,6 @@ public final class RightClickShield extends Module {
 
         if (active) {
             if (!player.getMainHandItem().is(Items.SHIELD)) {
-                // Slot changed under us (scroll, hotkey): let go instead of fighting the player.
                 deactivate();
                 return;
             }

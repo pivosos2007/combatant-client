@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(location = 0) out vec4 color;
 uniform sampler2D u_Texture;
 uniform sampler2D u_Lightmap;
@@ -19,10 +26,6 @@ layout(location = 4) in vec3 v_Normal;
 void main() {
     vec4 albedo = texture(u_Texture, v_TexCoord) * v_Color;
     if (albedo.a < 0.1) discard;
-    // Stable screen-space coverage (interleaved-gradient noise). Every layer
-    // uses the same mask for a pixel, so nearer triangles win the depth test
-    // instead of accumulating alpha from all the armor shells behind them.
-    // Keep the fully opaque case free from dither and extra texture reads.
     float opacity = clamp(u_LightCoord.z, 0.0, 1.0);
     if (opacity < 0.999) {
         vec2 pixel = floor(gl_FragCoord.xy);

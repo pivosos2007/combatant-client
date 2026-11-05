@@ -131,8 +131,6 @@ public final class DuplexRuntime implements AutoCloseable {
         if (sample == null || sample.targetUuid() == null || transport == null) return false;
         localBearings.put(sample.targetUuid(), sample);
         tryPair(sample.targetUuid());
-        // During handshake the peer intentionally ignores bearing frames. Returning false keeps
-        // the coordinator's revision dirty. On reconnect READY also replays the latest local set.
         if (state != DuplexState.READY) return false;
         return send(DuplexMessageType.BEARING_SAMPLE, DuplexPayloads.bearing(sample));
     }

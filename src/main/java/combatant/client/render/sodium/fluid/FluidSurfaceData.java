@@ -120,8 +120,6 @@ public record FluidSurfaceData(
     public boolean isTopSurface() {
         if (reversed) return false;
         if (facing != null && facing.isAligned()) {
-            // Sodium explicitly marks planar UP/DOWN/horizontal fluid faces. Trust that producer
-            // contract instead of inferring topness from its 0.001 bottom-face epsilon.
             return facing.getAlignedNormal().y() > 0.5f;
         }
 

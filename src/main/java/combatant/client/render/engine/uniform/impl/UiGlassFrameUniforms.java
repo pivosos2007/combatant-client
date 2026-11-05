@@ -77,8 +77,6 @@ public enum UiGlassFrameUniforms {
             float dtSeconds = dtMillis * 0.001f;
             float follow = 1.0f - (float) Math.exp(-dtMillis / (25.0f + VISCOSITY * 180.0f));
             float settle = 1.0f - (float) Math.exp(-dtMillis / (80.0f + VISCOSITY * 620.0f));
-            // Discard discontinuities after focus changes, instead of creating a giant
-            // pseudo-fluid impulse when the cursor jumps back into the window.
             boolean continuous = (now - lastUpdateNanos) <= 180_000_000L;
             float instantVelocityX = continuous ? (nextRawX - rawX) / dtSeconds : 0.0f;
             float instantVelocityY = continuous ? (nextRawY - rawY) / dtSeconds : 0.0f;
@@ -99,7 +97,6 @@ public enum UiGlassFrameUniforms {
                 velocityX += (0.0f - velocityX) * settle;
                 velocityY += (0.0f - velocityY) * settle;
             }
-            // Press is a short optical impulse, not a permanent bright hover state.
             pressImpulse *= (float) Math.exp(-dtMillis / 230.0f);
             if (pressed && !wasPressed) pressImpulse = 1.0f;
             wasPressed = pressed;

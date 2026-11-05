@@ -96,7 +96,6 @@ public final class AntiAFK extends Module {
             clearPending();
             return;
         }
-        // A screen means the player is there (or dead); hold the timer instead of acting under it.
         if (ClientScreen.current() != null || player.isDeadOrDying()) return;
 
         if (resetOnInput.get() && playerIsActive()) scheduler.noteActivity();

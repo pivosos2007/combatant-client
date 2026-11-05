@@ -1,6 +1,13 @@
 #version 330 core
 #extension GL_ARB_separate_shader_objects : require
 
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 // Static PBR geometry is stored once in VRAM. The draw selects each instance's
 // model transform through gl_InstanceID; no per-frame CPU vertex deformation.
 layout(location = 0) in vec3 Position;

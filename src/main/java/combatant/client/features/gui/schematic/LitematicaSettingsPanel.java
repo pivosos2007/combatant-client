@@ -1,4 +1,9 @@
-/* Combatant GPL-3.0. MaLiLib configuration state for the single Spectrum 2 Schematics runtime. */
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
 package combatant.client.features.gui.schematic;
 
 import combatant.client.automation.compat.litematica.LitematicaCompat;
@@ -27,18 +32,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * This class owns ONLY config/input state. The existing Schematics workspace.js
- * owns all visuals, hit testing, animation, clipping and scrolling. A second
- * full-screen JS runtime must not be created for Litematica's config.
- */
 public final class LitematicaSettingsPanel {
     private static final String[] GROUPS = {"generic", "visuals", "overlays", "colors", "hotkeys"};
     private static final String[] LABELS = {"General", "Visuals", "Info overlays", "Colors", "Hotkeys"};
     private static final long REFRESH_NANOS = 1_000_000_000L;
     private static final int ROW_HEIGHT = 78;
-    // The editor uses a wide two-column layout with a large HSV plane, or a
-    // stacked layout on narrow screens. Keep scroll geometry in sync with JS.
     private static final int COLOR_EXTRA_STACKED = 456;
     private static final int COLOR_EXTRA_WIDE = 274;
     private static final int CHOICE_EXTRA = 178;
@@ -127,7 +125,6 @@ public final class LitematicaSettingsPanel {
         }
         return null;
     }
-    /** Read retained scroll state rather than rebuilding every MaLiLib row on each frame. */
     public void syncViewport(UiRuntime runtime) {
         if (runtime == null) return;
         UiNode scrolling = find(runtime.root(), "lite:scroll:" + group);
@@ -137,7 +134,6 @@ public final class LitematicaSettingsPanel {
             viewportWidth = Math.max(1f, scrolling.bounds().width());
         } else scrollY = 0f;
     }
-    /** Only the active category and visible rows are serialized into the JS snapshot. */
     public Map<String,Object> snapshot() {
         LitematicaWorkspace bridge = LitematicaCompat.workspace();
         long now = System.nanoTime();
@@ -187,18 +183,11 @@ public final class LitematicaSettingsPanel {
                 "colorPresets", ei >= 0 && shown.get(ei).type().equals("color")
                         ? presetHex : List.of(),
                 "captureId", captureId, "capturePreview", captureLabel(),
-                // Do not invalidate the entire asynchronous JS tree every render frame.
-                // The pulse is observable only while an invalid option is displayed;
-                // quantize it so the worker can finish and commit each snapshot.
                 "errorPulse", errorOption.isEmpty() ? 0f :
                         .45f + .55f * (float)Math.sin((now / 100_000_000L) * (100_000_000d / 220_000_000d)));
     }
     private float measure(String value, int cursor) {
         if (value == null || value.isEmpty() || cursor <= 0) return 0f;
-        // snapshot() runs BEFORE updateInput() in SchematicPanel.renderWorkspace().
-        // Fonts.refresh() destroys cached glyph atlases, leaving old renderers with
-        // fonts == null. Resolve the current generation here instead of trusting the
-        // TextRenderer retained from the previous frame.
         long generation = Fonts.generation();
         if (textRenderer == null || textRendererGeneration != generation) {
             textRenderer = Fonts.renderer("SourceSans3", FontInfo.Type.Regular,
@@ -208,7 +197,6 @@ public final class LitematicaSettingsPanel {
         return ClickGuiRenderer.textWidth(textRenderer,
                 value.substring(0, Math.min(cursor, value.length())), 17f);
     }
-    /** Stable actions for the visible list only; no second UI runtime. */
     public void registerActions(UiRuntime runtime) {
         if (runtime == null) return;
         register(runtime, "search", () -> { filtering = true; cancelEdit(); });
@@ -271,7 +259,6 @@ public final class LitematicaSettingsPanel {
                 for (int i = 0; i < presetArgb.size(); i++) {
                     int preset = presetArgb.get(i);
                     register(runtime, "color:"+option.id()+":"+i, () -> {
-                        // Selecting a swatch only updates the live editor. No auto-commit.
                         if (editing.equals(option.id())) {
                             edit.setText(String.format(Locale.ROOT, "#%08X", preset));
                             edit.moveToEnd(); error = ""; errorOption = "";
@@ -308,7 +295,6 @@ public final class LitematicaSettingsPanel {
     private static void register(UiRuntime runtime, String name, Runnable runnable) {
         runtime.actions().register("schematic:lite-"+name, ctx -> {runnable.run();return true;});
     }
-    /** The text bridge uses the *actual laid-out* inline field, including scroll/clipping. */
     public void updateInput(float x, float y, float w, float h, TextRenderer font, UiRuntime runtime) {
         if (font == null || w <= 0 || h <= 0) return;
         textRenderer = font;
@@ -381,15 +367,11 @@ public final class LitematicaSettingsPanel {
                 edit.beginDrag(mx,shift());
                 return true;
             }
-            // Pointer focus belongs to the actual HEX rect, not the whole color
-            // row. A click on presets, a slider, or the background blurs it.
             if (editFocused) {
                 editFocused = false;
                 edit.unfocus();
                 CombatantTextInputBridge.blur(edit);
             }
-            // Do not implicitly commit a color merely because its editor lost
-            // focus. The connected action group provides explicit Apply/Cancel.
             if (editingRowBounds == null || !inside(mx,my,editingRowBounds.x(),editingRowBounds.y(),
                     editingRowBounds.width(),editingRowBounds.height())) {
                 if (expanded.equals(editing)) {
@@ -455,12 +437,6 @@ public final class LitematicaSettingsPanel {
         int rgb=(Math.round((rr+m)*255f)<<16)|(Math.round((gg+m)*255f)<<8)|Math.round((bb+m)*255f);
         edit.setText(String.format(Locale.ROOT,"#%08X",((long)a<<24)|(rgb&0xFFFFFFL)));
     }
-    /**
-     * During a color drag the JS snapshot contains the color as it was at pointer-down.
-     * Update only retained paint data and swatch-handle bounds after scroll layout;
-     * there is no Javet render or reconciliation for every pointer movement.
-     * After pointer-up, one ordinary JS snapshot persists the final editable value.
-     */
     public void paintLiveColor(UiRuntime runtime) {
         if (runtime == null || editing.isEmpty() || !expanded.equals(editing)) return;
         UiNode root = runtime.root();
@@ -530,8 +506,6 @@ public final class LitematicaSettingsPanel {
     public void mouseReleased() {
         if (draggingColorChannel.isEmpty()) return;
         draggingColorChannel=""; draggingColorBounds=null; dragStartColorValue="";
-        // Release ends pointer capture, not the color editing transaction.
-        // Apply / Enter explicitly persists the color; Escape cancels it.
     }
     private static boolean inside(float mx,float my,float x,float y,float w,float h) {
         return mx>=x && my>=y && mx<x+w && my<y+h;
@@ -586,7 +560,6 @@ public final class LitematicaSettingsPanel {
         Path previous;
         try { previous = Path.of(option.value()); }
         catch (RuntimeException ex) { previous = null; }
-        // A stale user path is not a suitable SDL initial location.
         Path start = previous != null && java.nio.file.Files.isDirectory(previous) ? previous : null;
         String section = group;
         NativeFileDialogService.pickFolder(start, Minecraft.getInstance()::schedule)
