@@ -8,7 +8,6 @@
 package combatant.client.features.playeranimator;
 
 import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
-import combatant.client.features.playeranimator.script.PlayerRigScriptContext;
 import combatant.client.features.playeranimator.script.PlayerRigScriptRuntime;
 import combatant.client.util.resources.asset.AssetLoad;
 import net.minecraft.client.player.AbstractClientPlayer;

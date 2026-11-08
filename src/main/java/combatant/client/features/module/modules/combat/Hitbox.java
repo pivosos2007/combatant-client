@@ -21,8 +21,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
-import combatant.client.config.values.*;
-import combatant.client.features.module.*;
 import combatant.client.features.module.modules.visuals.ESP;
 import combatant.client.features.relations.CategoryRules;
 import combatant.client.features.relations.CategoryType;

@@ -434,7 +434,7 @@ final class ThemeStore {
     private Themes.GradientSpec parseGradient(JsonObject map,
                                               Themes.GradientSpec fallback,
                                               int baseColor) {
-        if (map == null || map.size() == 0) return fallback;
+        if (map == null || map.isEmpty()) return fallback;
         boolean enabled = getBoolean(map, "enabled", fallback.enabled());
         int start = parseColor(map, "start", fallback.start() != 0 ? fallback.start() : baseColor);
         int end = parseColor(map, "end", fallback.end() != 0 ? fallback.end() : baseColor);

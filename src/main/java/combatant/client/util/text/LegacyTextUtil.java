@@ -125,7 +125,7 @@ public enum LegacyTextUtil {
                 char code = s.charAt(i + 1);
 
                 // flush буфер до кода
-                if (buf.length() > 0) {
+                if (!buf.isEmpty()) {
                     out.append(Component.literal(buf.toString()).setStyle(cur));
                     buf.setLength(0);
                 }

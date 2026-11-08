@@ -10,9 +10,8 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.implement.
 import combatant.client.util.text.SingleLineTextInput;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
@@ -38,7 +37,7 @@ public final class SearchComponent {
 
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         float radius = CORNER_RADIUS * scale;
-        ClickGuiRenderer.drawBlur(x, y, w, h, radius, palette.panelBlurTint(), BLUR_STRENGTH);
+        LayoutRender2D.drawBlur(x, y, w, h, radius, palette.panelBlurTint(), BLUR_STRENGTH);
         LayoutRender2D.roundedQuad(
                 x, y, w, h, radius,
                 palette.panelBgLeft(),
@@ -54,11 +53,11 @@ public final class SearchComponent {
 
         float tx = x + 4f * scale;
         float ts = 12f * scale;
-        TextRenderer font = ClickGuiRenderer.getInterRegular();
+        TextRenderer font = BuiltinFontCatalog.ONEST_REGULAR.renderer();
         String display = text.isEmpty() && !typing
-                ? ClickGuiRenderer.fitText(font, state.placeholder(), ts, Math.max(1f, DIVIDER_X * scale - 6f * scale))
+                ? LayoutRender2D.fitText(font, state.placeholder(), ts, Math.max(1f, DIVIDER_X * scale - 6f * scale))
                 : text;
-        float th = ClickGuiRenderer.textHeight(font, ts);
+        float th = LayoutRender2D.textHeight(font, ts);
         float ty = y + (h - th) * 0.5f - 0.5f * scale;
         boolean clipped = ScissorFunction.pushRaw(x + scale, y, w - 16f * scale, h);
         SingleLineTextInput editor = state.editor();
@@ -66,20 +65,20 @@ public final class SearchComponent {
             editor.render(tx, ty, w - 17f * scale, h, font, ts,
                     palette.panelText(), LayoutRender2D.alpha(Theme.theme().accent() | 0xFF000000, 0.5f), typing);
         } else {
-            ClickGuiRenderer.drawText(font, display, tx, ty, ts,
+            LayoutRender2D.drawText(font, display, tx, ty, ts,
                     typing ? palette.panelText() : palette.panelMuted(), false);
         }
         if (clipped) ScissorFunction.pop();
 
-        TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(ClickGuiRenderer.getInterRegular());
+        TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
         float iconSize = 8f * scale;
         String icon = "s";
-        float iconW = ClickGuiRenderer.textWidth(icons, icon, iconSize);
-        float iconH = ClickGuiRenderer.textHeight(icons, iconSize);
+        float iconW = LayoutRender2D.textWidth(icons, icon, iconSize);
+        float iconH = LayoutRender2D.textHeight(icons, iconSize);
         float iconX = dividerX + (w - (dividerX - x) - iconW) * 0.5f;
         float iconY = y + (h - iconH) * 0.5f - 0.35f * scale;
         int iconColor = typing ? palette.panelText() : palette.panelMuted();
-        ClickGuiRenderer.drawText(icons, icon, iconX, iconY, iconSize, iconColor, false);
+        LayoutRender2D.drawText(icons, icon, iconX, iconY, iconSize, iconColor, false);
     }
 
     public boolean click(float x, float y, float w, float h, float mx, float my, int button) {
@@ -95,7 +94,7 @@ public final class SearchComponent {
             state.setFocused(true);
             if (state.editor() != null) {
                 float scale = w / 80f;
-                state.editor().layout(x + 4f * scale, w - 17f * scale, ClickGuiRenderer.getInterRegular(), 12f * scale);
+                state.editor().layout(x + 4f * scale, w - 17f * scale, BuiltinFontCatalog.ONEST_REGULAR.renderer(), 12f * scale);
                 var window = net.minecraft.client.Minecraft.getInstance().getWindow();
                 state.editor().beginDrag(mx,
                 combatant.client.input.CombatantInput.state().isPressed(

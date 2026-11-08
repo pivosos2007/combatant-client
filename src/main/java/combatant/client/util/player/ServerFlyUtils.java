@@ -9,6 +9,7 @@ package combatant.client.util.player;
 
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.player.Abilities;
+import net.minecraft.network.protocol.game.ClientboundPlayerAbilitiesPacket;
 
 /**
  * Helpers for detecting "server-granted" creative-like flight.
@@ -20,26 +21,43 @@ import net.minecraft.world.entity.player.Abilities;
 public enum ServerFlyUtils {
     ;
 
-    /**
-     * Returns true if the server currently allows the player to fly (Creative/Spectator or server-granted fly).
-     */
+    private record Grant(LocalPlayer player, boolean mayFly, float flySpeed) { }
+
+    private static volatile Grant lastServerGrant;
+
+    /** Records only the actual clientbound abilities packet, before client-side overrides. */
+    public static void observeServerAbilities(LocalPlayer player, ClientboundPlayerAbilitiesPacket packet) {
+        if (player == null || packet == null) return;
+        lastServerGrant = new Grant(player, packet.canFly(), packet.getFlyingSpeed());
+    }
+
+    /** Unlike local Abilities.mayfly, this cannot be enabled by Flight/Abilities spoofing. */
+    public static boolean hasVerifiedServerFlight(LocalPlayer player) {
+        Grant grant = lastServerGrant;
+        return player != null && grant != null && grant.player() == player && grant.mayFly();
+    }
+
+    public static boolean hasVerifiedActiveServerFlight(LocalPlayer player) {
+        return hasVerifiedServerFlight(player)
+                && player.getAbilities().mayfly && player.getAbilities().flying;
+    }
+
+    public static float serverFlyingSpeed(LocalPlayer player) {
+        Grant grant = lastServerGrant;
+        return player != null && grant != null && grant.player() == player ? grant.flySpeed() : 0.05f;
+    }
+
+    /** Local capability check; it is NOT proof of server permission. */
     public static boolean hasServerCreativeFly(LocalPlayer player) {
         if (player == null) return false;
         Abilities ab = player.getAbilities();
-        if (ab == null) return false;
-        return ab.mayfly || player.isSpectator();
+        return ab != null && (ab.mayfly || player.isSpectator());
     }
 
-    /**
-     * Returns true if flight is allowed, but the player is not in Creative/Spectator.
-     * Useful if you specifically want to detect "server gave fly in survival-like modes".
-     */
+    /** Local capability check; it is NOT proof of server permission. */
     public static boolean hasServerGrantedFlyInSurvivalLike(LocalPlayer player) {
         if (player == null) return false;
         Abilities ab = player.getAbilities();
-        if (ab == null) return false;
-
-        if (ab.instabuild || player.isSpectator()) return false;
-        return ab.mayfly;
+        return ab != null && !ab.instabuild && !player.isSpectator() && ab.mayfly;
     }
 }

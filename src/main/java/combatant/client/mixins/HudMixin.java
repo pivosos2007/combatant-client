@@ -54,8 +54,6 @@ import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.item.IllegalItemUtil;
 import combatant.client.util.item.RarityColorUtil;
 import combatant.client.util.item.TopEnchantUtil;
-import combatant.client.util.logging.DebugLog;
-import combatant.client.util.text.TextJsonUtil;
 
 @Mixin(Hud.class)
 public abstract class HudMixin {
@@ -150,13 +148,6 @@ public abstract class HudMixin {
             cancellable = true
     )
     private void combatant$filterOverlayMessage(net.minecraft.network.chat.Component message, boolean tinted, CallbackInfo ci) {
-        if (DebugLog.serverOnly()) {
-            if (message == null) {
-            } else {
-                String raw = message.getString();
-                String json = TextJsonUtil.toJson(message);
-            }
-        }
         if (Events.BUS.hasListeners(PvpOverlayEvent.class)) {
             Events.BUS.post(new PvpOverlayEvent(message, tinted));
         }

@@ -232,7 +232,7 @@ public final class OrbitNavigator {
             if (!loaded(level, moved)) return Probe.UNSAFE;
             // Always test ground-level hazards even when contemplating a jump.
             int exposure = HazardAvoidance.exposure(level, moved);
-            if ((startHazard == 0 && exposure > 0) || exposure > startHazard) return Probe.UNSAFE;
+            if (exposure > startHazard) return Probe.UNSAFE;
             endExposure = exposure;
 
             boolean clear = level.noCollision(player, moved);

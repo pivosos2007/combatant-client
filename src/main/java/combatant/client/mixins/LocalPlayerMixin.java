@@ -33,7 +33,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PortalProcessor;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl;
@@ -51,9 +50,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
-import combatant.client.events.impl.*;
 import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.movement.*;
 import combatant.client.features.module.modules.player.LiquidInteract;
 import combatant.client.features.module.modules.player.XCarry;
 import combatant.client.features.module.modules.visuals.Freecam;
@@ -71,6 +68,15 @@ import java.util.List;
 
 @Mixin(LocalPlayer.class)
 public abstract class LocalPlayerMixin implements ILocalPlayer {
+
+    @Inject(method = "getJumpRidingScale", at = @At("RETURN"), cancellable = true)
+    private void combatant$mountJumpCharge(CallbackInfoReturnable<Float> cir) {
+        if (!Events.BUS.hasListeners(MountJumpChargeEvent.class)) return;
+        MountJumpChargeEvent event = Events.BUS.post(new MountJumpChargeEvent(
+                (LocalPlayer) (Object) this, cir.getReturnValue()));
+        float charge = event.getCharge();
+        if (Float.isFinite(charge)) cir.setReturnValue(Mth.clamp(charge, 0.0f, 1.0f));
+    }
 
     @ModifyArgs(method = "rideTick", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/entity/vehicle/boat/AbstractBoat;setInput(ZZZZ)V"))
@@ -137,12 +143,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     private Input lastInput;
     @Unique
     private boolean pendingSpoof = false;
-    @Unique
-    private int boostTicks = 0;
-    @Unique
-    private double boostX = 0, boostZ = 0;
-    @Unique
-    private boolean wasGround = true;
 
     @Unique
     private static boolean combatant$sameInput(Input a, Input b) {
@@ -338,25 +338,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         }
     }
 
-    @Inject(method = "aiStep", at = @At("HEAD"))
-    private void combatant$elytraFlyVanilla(CallbackInfo ci) {
-        LocalPlayer player = (LocalPlayer) (Object) this;
-        ElytraFly elytraFly = Modules.get(ElytraFly.class);
-        if (elytraFly == null || !elytraFly.shouldApplyVanillaHook(player)) {
-            return;
-        }
-
-        Vec3 velocity = player.getDeltaMovement();
-        Vec3 look = player.getViewVector(1.0f);
-        float pitch = player.getXRot();
-
-        velocity = velocity.scale(elytraFly.getVanillaDragFactor());
-        velocity = velocity.add(look.scale(elytraFly.getVanillaForwardBoostFactor()));
-
-        double lift = -Math.sin(Math.toRadians(pitch)) * elytraFly.getVanillaPitchLiftFactor();
-        player.setDeltaMovement(velocity.add(0.0, lift, 0.0));
-    }
-
     @Shadow
     protected abstract void sendPosition();
 
@@ -527,8 +508,14 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
     }
 
     @Unique
+    private boolean combatant$moduleFreezeRequested() {
+        if (!Events.BUS.hasListeners(PlayerFreezeQueryEvent.class)) return false;
+        return Events.BUS.post(new PlayerFreezeQueryEvent((LocalPlayer) (Object) this)).isFrozen();
+    }
+
+    @Unique
     private boolean shouldFreezeNow() {
-        if (Freeze.isActive()) return true;
+        if (combatant$moduleFreezeRequested()) return true;
         Freecam freecam = Modules.get(Freecam.class);
         if (freecam == null || !freecam.freezePlayer() || !freecam.isCameraInput()) return false;
         // Freecam keeps sending movement packets, so the server simulates every tick. Hold the player only where
@@ -667,7 +654,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
     @Inject(method = "sendPosition", at = @At("HEAD"), cancellable = true)
     private void cancelPackets(CallbackInfo ci) {
-        if (Freeze.isActive()) {
+        if (combatant$moduleFreezeRequested()) {
             ci.cancel();
         }
     }
@@ -806,122 +793,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
                 p.onGround(),
                 false   // horizontalCollision
         ));
-    }
-
-    @Inject(method = "aiStep", at = @At("TAIL"))
-    private void onCollideBoost(CallbackInfo ci) {
-
-        Speed speed = Modules.get(Speed.class);
-        if (speed == null || !speed.enabled("entity_boost"))
-            return;
-
-        LocalPlayer p = (LocalPlayer) (Object) this;
-
-        if (boostTicks > 0) {
-            boostTicks--;
-
-            Vec3 vel = p.getDeltaMovement();
-            double vx = vel.x + boostX;
-            double vz = vel.z + boostZ;
-
-            double max = 0.48;
-            double h = Math.hypot(vx, vz);
-            if (h > max) {
-                double s = max / h;
-                vx *= s;
-                vz *= s;
-            }
-
-            p.setDeltaMovement(vx, vel.y, vz);
-            return;
-        }
-
-        List<Entity> nearby = p.level().getEntities(p, p.getBoundingBox().inflate(0.15), e -> e instanceof LivingEntity);
-        if (nearby.isEmpty()) return;
-
-        Vec3 vel = p.getDeltaMovement();
-        double dirX = vel.x;
-        double dirZ = vel.z;
-
-        if (dirX == 0 && dirZ == 0) return;
-
-        double len = Math.sqrt(dirX * dirX + dirZ * dirZ);
-        if (len < 1e-5) return;
-
-        dirX /= len;
-        dirZ /= len;
-
-        double boost = speed.entityBoostStrength.get();
-
-        boostX = (dirX * boost) / 3.0;
-        boostZ = (dirZ * boost) / 3.0;
-        boostTicks = 3;
-    }
-
-    @Inject(method = "aiStep", at = @At("TAIL"))
-    private void omniLongJump(CallbackInfo ci) {
-        Speed speed = Modules.get(Speed.class);
-        if (speed == null || !speed.enabled("jump_boost")) return;
-        LocalPlayer p = (LocalPlayer) (Object) this;
-
-        boolean onGround = p.onGround();
-
-        if (p.isFallFlying()) {
-            wasGround = onGround;
-            return;
-        }
-
-        if (wasGround && !onGround && p.isSprinting() && !p.isInWater()) {
-
-            Vec2 move = p.input.getMoveVector();
-            float mx = move.x;
-            float mz = move.y;
-
-            if (mx == 0 && mz == 0) {
-                wasGround = onGround;
-                return;
-            }
-
-            float norm = Mth.sqrt(mx * mx + mz * mz);
-            mx /= norm;
-            mz /= norm;
-
-            float yaw = p.getYRot();
-            float rad = (float) Math.toRadians(yaw);
-
-            double dirX = mz * -Mth.sin(rad) + mx * Mth.cos(rad);
-            double dirZ = mz * Mth.cos(rad) + mx * Mth.sin(rad);
-
-            Vec3 vel = p.getDeltaMovement();
-            double ui = speed.jumpAcceleration.get();
-            double internal = ui * 0.832;
-            double strength = 0.33 * internal;
-
-            double vx = dirX * strength;
-            double vz = dirZ * strength;
-            double max = 0.42;
-            double h = Math.hypot(vx, vz);
-
-            if (h > max) {
-                double scale = max / h;
-                vx *= scale;
-                vz *= scale;
-            }
-
-            p.setDeltaMovement(vx, vel.y, vz);
-        }
-
-        wasGround = onGround;
-    }
-
-    @Inject(method = "modifyInput", at = @At("RETURN"), cancellable = true)
-    private void applyLegitSpeed(Vec2 input, CallbackInfoReturnable<Vec2> cir) {
-        Speed speed = Modules.get(Speed.class);
-        if (speed == null || !speed.isEnabled()) return;
-        if (!speed.enabled("legit_speed")) return;
-        Vec2 base = cir.getReturnValue();
-        float mult = speed.legitMultiplier.get();
-        cir.setReturnValue(base.scale(mult));
     }
 
     @Inject(method = "modifyInput", at = @At("RETURN"), cancellable = true)

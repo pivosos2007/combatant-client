@@ -30,7 +30,6 @@ import combatant.client.util.block.interaction.BlockInteractionPipeline.Rotation
 import combatant.client.util.finder.FinderAlerts;
 import combatant.client.util.schematic.walk.LevelWalkTerrain;
 import combatant.client.util.schematic.walk.TunnelPlanner;
-import combatant.client.util.schematic.walk.TunnelPlanner.Hazard;
 import combatant.client.util.schematic.walk.TunnelPlanner.Step;
 import combatant.client.util.schematic.walk.WalkTerrain;
 import net.minecraft.client.Minecraft;
@@ -38,7 +37,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;

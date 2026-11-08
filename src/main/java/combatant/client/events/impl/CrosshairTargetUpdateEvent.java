@@ -16,13 +16,22 @@ import combatant.client.events.Event;
 @Getter
 public final class CrosshairTargetUpdateEvent extends Event {
     private final float tickDelta;
+    private final int clickCount;
+    private final boolean held;
     @Setter
     private HitResult hitResult;
     @Setter
     private Entity targetedEntity;
 
     public CrosshairTargetUpdateEvent(float tickDelta, HitResult hitResult, Entity targetedEntity) {
+        this(tickDelta, hitResult, targetedEntity, 0, false);
+    }
+
+    public CrosshairTargetUpdateEvent(float tickDelta, HitResult hitResult, Entity targetedEntity,
+                                      int clickCount, boolean held) {
         this.tickDelta = tickDelta;
+        this.clickCount = clickCount;
+        this.held = held;
         this.hitResult = hitResult;
         this.targetedEntity = targetedEntity;
     }

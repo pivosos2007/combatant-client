@@ -42,7 +42,6 @@ import combatant.client.events.impl.AttackEntityEvent;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.hud.draggable.impl.Itemizer;
-import combatant.client.features.module.*;
 import combatant.client.features.module.modules.combat.KillAura;
 import combatant.client.features.module.modules.combat.Reach;
 import combatant.client.features.relations.CategoryService;
@@ -58,7 +57,6 @@ import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.util.combat.VulcanReachController;
 
 import java.util.List;
-import java.util.Locale;
 
 @ModuleInfo(
         id = "crosshair",

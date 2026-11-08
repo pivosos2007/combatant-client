@@ -16,7 +16,6 @@ import combatant.client.runtime.error.FailureRegistry.State;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;

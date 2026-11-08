@@ -7,7 +7,8 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.render;
 
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -17,7 +18,7 @@ public enum SettingsGlassMaterial {
     ;
 
     public static void workspace(float x, float y, float w, float h, float scale, SettingsGuiPalette palette) {
-        float lifecycleAlpha = AnimationUtility.clamp(ClickGuiRenderer.getRenderAlphaMultiplier(), 0f, 1f);
+        float lifecycleAlpha = AnimationUtility.clamp(LayoutRender2D.getRenderAlphaMultiplier(), 0f, 1f);
         workspace(x, y, w, h, 42.5f * scale, scale, palette, lifecycleAlpha, lifecycleAlpha);
     }
 
@@ -28,7 +29,7 @@ public enum SettingsGlassMaterial {
                                  float scale,
                                  SettingsGuiPalette palette,
                                  float prismProgress) {
-        float lifecycleAlpha = AnimationUtility.clamp(ClickGuiRenderer.getRenderAlphaMultiplier(), 0f, 1f);
+        float lifecycleAlpha = AnimationUtility.clamp(LayoutRender2D.getRenderAlphaMultiplier(), 0f, 1f);
         workspace(x, y, w, h, 42.5f * scale, scale, palette, lifecycleAlpha, prismProgress);
     }
 
@@ -78,7 +79,7 @@ public enum SettingsGlassMaterial {
     private static void drawBlur(float x, float y, float w, float h, float radius, float blurAlpha) {
         Renderer2D.COLOR.blurRect(
                 x, y, w, h, radius,
-                ClickGuiRenderer.clickGuiBlurQuality(),
+                LayoutRender2D.clickGuiBlurQuality(),
                 1.0f,
                 blurAlpha,
                 0xFFFFFF
@@ -114,7 +115,7 @@ public enum SettingsGlassMaterial {
     }
 
     public static void elevated(float x, float y, float w, float h, float radius, float scale, SettingsGuiPalette palette, float alpha) {
-        float lifecycleAlpha = AnimationUtility.clamp(ClickGuiRenderer.getRenderAlphaMultiplier(), 0f, 1f);
+        float lifecycleAlpha = AnimationUtility.clamp(LayoutRender2D.getRenderAlphaMultiplier(), 0f, 1f);
         float opacity = Math.max(0f, Math.min(1f, alpha)) * lifecycleAlpha;
         float blurAlpha = AnimationUtility.clamp(opacity * 1.04f, 0f, 1f);
         drawBlur(x, y, w, h, radius, blurAlpha);

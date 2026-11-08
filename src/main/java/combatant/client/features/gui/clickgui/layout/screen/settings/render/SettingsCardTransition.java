@@ -7,7 +7,8 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.render;
 
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -40,9 +41,9 @@ public enum SettingsCardTransition {
                                       SettingsGuiPalette palette) {
         float alpha = arrivalAlpha(progress);
         double previousRendererAlpha = Renderer2D.COLOR.getAlpha();
-        float previousGuiAlpha = ClickGuiRenderer.getRenderAlphaMultiplier();
+        float previousGuiAlpha = LayoutRender2D.getRenderAlphaMultiplier();
         Renderer2D.COLOR.setAlpha(previousRendererAlpha * alpha);
-        ClickGuiRenderer.setRenderAlphaMultiplier(previousGuiAlpha * alpha);
+        LayoutRender2D.setRenderAlphaMultiplier(previousGuiAlpha * alpha);
         return new CardScope(previousRendererAlpha, previousGuiAlpha);
     }
 
@@ -80,7 +81,7 @@ public enum SettingsCardTransition {
         public void close() {
             if (closed) return;
             closed = true;
-            ClickGuiRenderer.restoreRenderAlphaMultiplier(previousGuiAlpha);
+            LayoutRender2D.restoreRenderAlphaMultiplier(previousGuiAlpha);
             Renderer2D.COLOR.setAlpha(previousRendererAlpha);
         }
     }

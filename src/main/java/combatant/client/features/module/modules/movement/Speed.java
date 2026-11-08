@@ -14,8 +14,14 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.EnumValue;
-import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.BooleanMapValue;
+import combatant.client.features.gui.hud.gauges.GaugeConnect;
+import combatant.client.features.gui.hud.gauges.GaugeRegistry;
+import combatant.client.features.module.modules.movement.speed.Vulcan297ImpulseController;
+import combatant.client.features.module.modules.combat.TargetPearl;
+import combatant.client.util.player.TeleportImpulseTracker;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.events.impl.MovementInputEvent;
@@ -31,6 +37,8 @@ import combatant.client.features.module.modules.movement.speed.BhopInput;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
 import combatant.client.util.player.MovementUtil;
 
+import java.util.Map;
+
 @ModuleInfo(
         id = "speed",
         displayName = "Speed",
@@ -38,17 +46,24 @@ import combatant.client.util.player.MovementUtil;
         description = "module.speed.description")
 public final class Speed extends Module {
 
-    public final NumberValue<Float> legitMultiplier = num("legit_multiplier", 1.20f, 1.15f, 1.50f);
-    public final NumberValue<Float> jumpAcceleration = num("jump_acceleration", 1.30f, 1.00f, 1.60f);
-    public final NumberValue<Float> entityBoostStrength = num("entity_boost_strength", 0.20f, 0.05f, 0.40f);
-    private final EnumValue<Mode> mode = enumMode("mode", Mode.NCP);
+    private final EnumValue<Mode> mode = enumCommon("mode", "mode", CommonSettingSchemas.MODE,
+            Mode.VULCAN_297, Mode.values());
     private boolean lastOnGround = true;
     private int airTicks;
+    private final Vulcan297ImpulseController vulcanImpulse = new Vulcan297ImpulseController();
+    private final BooleanMapValue vulcanSources = visibleWhen(group("speedVulcan297Sources", "vulcan297_sources",
+            Map.of("pearl", true, "chorus", true, "command", true, "generic", true)),
+            () -> mode.get() == Mode.VULCAN_297);
+    private long lastTeleportSequence;
+    private LocalPlayer trackedPlayer;
+    private net.minecraft.client.multiplayer.ClientLevel trackedLevel;
+    private Mode trackedMode;
 
     @ModuleListInfoProvider
     private String moduleListDetail() {
         return switch (mode.get()) {
             case NCP -> "NCP";
+            case VULCAN_297 -> "Vulcan 2.9.7";
             case VULCAN_286 -> "Vulcan 2.86";
             case VULCAN_288 -> "Vulcan 2.88";
             case VULCAN_GROUND_286 -> "Vulcan Ground";
@@ -60,19 +75,53 @@ public final class Speed extends Module {
     @Override
     public void onEnable() {
         resetState();
+        trackedMode = mode.get();
+        Minecraft mc = Minecraft.getInstance();
+        trackedPlayer = mc.player;
+        trackedLevel = mc.level;
+        lastTeleportSequence = currentTeleportSequence();
+    }
+
+    @Override
+    public void onTick() {
+        GaugeRegistry.updateAnnotated("speed", this);
+    }
+
+    @GaugeConnect(id = "vulcan297_friction", labelKey = "hud.gauges.speed.friction",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample vulcan297FrictionGauge() {
+        boolean visible = isEnabled() && mode.get() == Mode.VULCAN_297 && vulcanImpulse.visible();
+        float fill = vulcanImpulse.available();
+        return new GaugeRegistry.Sample(fill, fill >= 0.2f, visible);
     }
 
     @Override
     public void onDisable() {
         resetState();
+        GaugeRegistry.removeOwner("speed");
     }
 
     @EventHandler
     private void onGameTick(GameTickEvent event) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.player == null || mc.level == null) return;
+        if (mc == null || mc.player == null || mc.level == null) {
+            resetState();
+            trackedPlayer = null;
+            trackedLevel = null;
+            return;
+        }
 
         LocalPlayer player = mc.player;
+        if (trackedPlayer != player || trackedLevel != mc.level || trackedMode != mode.get()) {
+            resetState();
+            trackedPlayer = player;
+            trackedLevel = mc.level;
+            trackedMode = mode.get();
+        }
+        if (mode.get() == Mode.VULCAN_297) {
+            vulcanImpulse.tick(player.tickCount);
+            consumeTeleport(player);
+        }
         Jesus jesus = Modules.get(Jesus.class);
         if (jesus != null && jesus.isManagingVulcan297(player)) {
             resetState();
@@ -81,6 +130,7 @@ public final class Speed extends Module {
         updateAirTicks(player);
 
         switch (effectiveMode()) {
+            case VULCAN_297 -> { }
             case NCP -> handleNcp(player);
             case VULCAN_286 -> handleVulcan286(player);
             case VULCAN_288 -> handleVulcan288(player);
@@ -114,6 +164,10 @@ public final class Speed extends Module {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null) return;
         if (event.getType() != MoverType.SELF) return;
+        if (effectiveMode() == Mode.VULCAN_297) {
+            handleVulcan297Move(mc.player, event);
+            return;
+        }
         if (effectiveMode() != Mode.NCP) return;
 
         LocalPlayer player = mc.player;
@@ -128,13 +182,10 @@ public final class Speed extends Module {
     @EventHandler
     private void onPacketSend(PacketEvent.Send event) {
         if (!(event.getPacket() instanceof ServerboundMovePlayerPacket packet)) return;
-
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null) return;
-
         LocalPlayer player = mc.player;
         if (!canSpeed(player)) return;
-
         switch (effectiveMode()) {
             case VULCAN_288 -> {
                 if (player.getDeltaMovement().y < 0.0) {
@@ -146,17 +197,91 @@ public final class Speed extends Module {
                     ((ServerboundMovePlayerPacketAccessor) packet).combatant$setY(packet.getY(player.getY()) + 0.005);
                 }
             }
-            default -> {
+            default -> { }
+        }
+    }
+
+    private long currentTeleportSequence() {
+        var latest = TeleportImpulseTracker.INSTANCE.latest();
+        return latest == null ? 0L : latest.sequence();
+    }
+
+    private void consumeTeleport(LocalPlayer player) {
+        var applied = TeleportImpulseTracker.INSTANCE.latest();
+        if (applied == null || applied.sequence() <= lastTeleportSequence) return;
+        lastTeleportSequence = applied.sequence();
+        if (player.tickCount < applied.tick() || player.tickCount - applied.tick() > 3) return;
+        Vulcan297ImpulseController.Source source = switch (applied.kind()) {
+            case PEARL -> vulcanSources.get("pearl") ? Vulcan297ImpulseController.Source.PEARL : null;
+            case CHORUS -> vulcanSources.get("chorus") ? Vulcan297ImpulseController.Source.CHORUS : null;
+            case COMMAND -> vulcanSources.get("command") ? Vulcan297ImpulseController.Source.TELEPORT : null;
+            case GENERIC -> vulcanSources.get("generic") ? Vulcan297ImpulseController.Source.TELEPORT : null;
+            case CORRECTION -> null;
+        };
+        if (source == null) {
+            if (applied.kind() == TeleportImpulseTracker.Kind.CORRECTION) vulcanImpulse.correction();
+            return;
+        }
+        TargetPearl targetPearl = Modules.get(TargetPearl.class);
+        Vec3 target = targetPearl != null && targetPearl.isEnabled() && targetPearl.isFrictionGuidanceEnabled()
+                ? applied.target() : null;
+        vulcanImpulse.arm(source, target);
+    }
+
+    private void handleVulcan297Move(LocalPlayer player, PlayerMoveEvent event) {
+        Vec3 current = event.getMovement();
+        Vec3 targetDirection = vulcanTargetDirection(player);
+        if (!canSpeed(player) || (!MovementUtil.isMoving() && targetDirection == null) || player.isAutoSpinAttack()) {
+            vulcanImpulse.observeUnmodified(horizontalSpeed(current), player.tickCount);
+            return;
+        }
+        double target = vulcanImpulse.prepare(horizontalSpeed(current), player.tickCount);
+        if (target <= 0.0D) return;
+
+        double now = horizontalSpeed(current);
+        Vec3 result;
+        if (targetDirection != null) {
+            Vec3 blended = targetDirection;
+            if (now > 0.05D) {
+                Vec3 previousDirection = new Vec3(current.x / now, 0.0D, current.z / now);
+                blended = previousDirection.scale(0.72D).add(targetDirection.scale(0.28D));
+                double length = Math.hypot(blended.x, blended.z);
+                if (length > 1.0E-6D) blended = blended.scale(1.0D / length);
+            }
+            result = new Vec3(blended.x * target, current.y, blended.z * target);
+        } else {
+            result = withStrafe(current, player, target, 1.0D);
+        }
+        if (now > 0.05D && targetDirection == null) {
+            double alignment = (result.x * current.x + result.z * current.z)
+                    / Math.max(1.0E-6D, horizontalSpeed(result) * now);
+            if (alignment < 0.75D) {
+                result = new Vec3(current.x / now * target, current.y, current.z / now * target);
             }
         }
+        event.setMovement(new Vec3(result.x, current.y, result.z));
+    }
+
+    private Vec3 vulcanTargetDirection(LocalPlayer player) {
+        TargetPearl pearl = Modules.get(TargetPearl.class);
+        if (pearl == null || !pearl.isEnabled() || !pearl.isFrictionGuidanceEnabled()
+                || !vulcanImpulse.active()) return null;
+        Vec3 target = TeleportImpulseTracker.INSTANCE.targetAfterLanding(player.tickCount);
+        if (target == null || player.level() == null) return null;
+        if (!player.level().hasChunkAt(net.minecraft.core.BlockPos.containing(target))) return null;
+        double dx = target.x - player.getX();
+        double dz = target.z - player.getZ();
+        double length = Math.hypot(dx, dz);
+        if (length < 0.8D || length > 24.0D || Math.abs(target.y - player.getY()) > 3.0D) return null;
+        Vec3 direction = new Vec3(dx / length, 0.0D, dz / length);
+        if (!player.level().noCollision(player, player.getBoundingBox().move(
+                direction.x * Math.min(0.7D, length), 0.0D,
+                direction.z * Math.min(0.7D, length)))) return null;
+        return direction;
     }
 
     public boolean shouldBlockOmniSprintBoost() {
         return isEnabled();
-    }
-
-    public boolean enabled(String key) {
-        return false;
     }
 
     private void handleNcp(LocalPlayer player) {
@@ -339,9 +464,12 @@ public final class Speed extends Module {
     private void resetState() {
         lastOnGround = true;
         airTicks = 0;
+        vulcanImpulse.reset();
+        lastTeleportSequence = currentTeleportSequence();
     }
 
     public enum Mode {
+        VULCAN_297,
         NCP,
         VULCAN_286,
         VULCAN_288,

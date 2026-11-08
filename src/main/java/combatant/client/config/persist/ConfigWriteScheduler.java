@@ -36,8 +36,9 @@ public final class ConfigWriteScheduler {
     private final Object lock = new Object();
     private final Object writeLock = new Object();
     private final Map<Path, Pending> pending = new HashMap<>();
+    private long nextGeneration;
 
-    private record Pending(ConfigDocument document, ScheduledFuture<?> timer) {
+    private record Pending(ConfigDocument document, ScheduledFuture<?> timer, long generation) {
     }
 
     public ConfigWriteScheduler(long debounceMs, Sink sink) {
@@ -64,8 +65,9 @@ public final class ConfigWriteScheduler {
         synchronized (lock) {
             Pending previous = pending.get(path);
             if (previous != null) previous.timer().cancel(false);
-            ScheduledFuture<?> timer = executor.schedule(() -> flushPath(path), debounceMs, TimeUnit.MILLISECONDS);
-            pending.put(path, new Pending(document, timer));
+            long generation = ++nextGeneration;
+            ScheduledFuture<?> timer = executor.schedule(() -> flushPath(path, generation), debounceMs, TimeUnit.MILLISECONDS);
+            pending.put(path, new Pending(document, timer, generation));
         }
     }
 
@@ -113,13 +115,13 @@ public final class ConfigWriteScheduler {
         }
     }
 
-    private void flushPath(Path path) {
+    private void flushPath(Path path, long generation) {
         synchronized (writeLock) {
             ConfigDocument document;
             synchronized (lock) {
-                // A timer that raced a reschedule may flush the newest document early; the newer timer then finds nothing.
-                Pending p = pending.remove(path);
-                if (p == null) return;
+                Pending p = pending.get(path);
+                if (p == null || p.generation() != generation) return;
+                pending.remove(path);
                 document = p.document();
             }
             write(path, document);

@@ -14,10 +14,9 @@ import net.minecraft.client.Minecraft;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.ModuleComponent;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingErrorView;
-import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleSubcategoryDefinition;
 import combatant.client.features.theme.Themes;
@@ -155,7 +154,7 @@ public final class ModulesMenuScreen {
     }
 
     private static float textHeight(TextRenderer renderer, float size) {
-        return ClickGuiRenderer.textHeight(renderer, size);
+        return LayoutRender2D.textHeight(renderer, size);
     }
 
     static boolean inside(float mx, float my, float x, float y, float w, float h) {
@@ -314,7 +313,7 @@ public final class ModulesMenuScreen {
         renderSearch(mouseX, mouseY);
         renderHints();
 
-        ClickGuiRenderer.flushRenderer();
+        LayoutRender2D.flushRenderer();
     }
 
     public void renderGlassPass(float alphaFactor) {
@@ -516,7 +515,7 @@ public final class ModulesMenuScreen {
 
         // Keep the original category-title row intact. Subcategories live in an added row below it.
         float titleY = panel.y + middle(textHeight(semibold, 9.0f * scale), BASE_HEADER_H * scale) + 0.5f * scale;
-        ClickGuiRenderer.drawText(semibold, panel.category.title(), panel.x + TEXT_LEFT_PADDING * scale, titleY, 9.0f * scale, text, false);
+        LayoutRender2D.drawText(semibold, panel.category.title(), panel.x + TEXT_LEFT_PADDING * scale, titleY, 9.0f * scale, text, false);
         drawCategoryIcon(panel, muted);
 
         if (panel.swap < 0.999f) {
@@ -564,7 +563,7 @@ public final class ModulesMenuScreen {
         float minItemW = 26.0f * scale;
         float horizontalTextPad = 8.0f * scale;
         for (int i = 0; i < subcategories.size(); i++) {
-            float preferred = ClickGuiRenderer.textWidth(medium, subcategories.get(i).displayName(), fontSize)
+            float preferred = LayoutRender2D.textWidth(medium, subcategories.get(i).displayName(), fontSize)
                     + horizontalTextPad * 2.0f;
             itemWidths[i] = Math.max(minItemW, preferred);
             contentW += itemWidths[i];
@@ -741,7 +740,7 @@ public final class ModulesMenuScreen {
                 float hover = hoverValues[i];
                 boolean selected = active != null && active.key().equals(subcategory.key());
                 String label = subcategory.displayName();
-                float textW = ClickGuiRenderer.textWidth(medium, label, fontSize);
+                float textW = LayoutRender2D.textWidth(medium, label, fontSize);
                 float textH = textHeight(medium, fontSize);
                 float textX = x + (itemW - textW) * 0.5f;
                 float textY = rowY + (rowH - textH) * 0.5f - 0.10f * scale;
@@ -752,7 +751,7 @@ public final class ModulesMenuScreen {
                                 withAlpha(ModulesMenuStyle.text(), alpha),
                                 0.52f + hover * 0.40f
                         );
-                ClickGuiRenderer.drawText(medium, label, textX, textY, fontSize, color, false);
+                LayoutRender2D.drawText(medium, label, textX, textY, fontSize, color, false);
             }
         } finally {
             if (clipped) ScissorFunction.pop();
@@ -824,7 +823,7 @@ public final class ModulesMenuScreen {
         float clipH = panel.h - (moduleHeaderH + SEPARATOR_H) * scale - 0.5f * scale;
 
         boolean clipped = ScissorFunction.pushRaw(panel.x, clipY, panel.w, clipH);
-        ClickGuiRenderer.flushRenderer();
+        LayoutRender2D.flushRenderer();
         float listW = Math.max(1.0f, panel.w - 7.0f * scale);
 
         float y = listY - panel.modulesSmoothScroll;
@@ -859,7 +858,7 @@ public final class ModulesMenuScreen {
                 total += MODULE_ROW_H * scale;
             }
 
-            ClickGuiRenderer.flushRenderer();
+            LayoutRender2D.flushRenderer();
             if (!panelShapeClip) {
                 // In the normal analytic mode the material has no analytic permutation, so only
                 // text/shapes enter the analytic scope. MSAA mode above keeps everything together.
@@ -870,7 +869,7 @@ public final class ModulesMenuScreen {
             // each visible module label splits otherwise compatible shape/text work into another
             // tiny mesh upload, render pass and pipeline round-trip. The complete row list shares
             // one scissor and one shape clip, so batching its foreground text preserves ordering.
-            ClickGuiRenderer.beginTextBatch();
+            LayoutRender2D.beginTextBatch();
             try {
                 y = listY - panel.modulesSmoothScroll;
                 for (ModuleComponent.CardEntry entry : entries) {
@@ -894,10 +893,10 @@ public final class ModulesMenuScreen {
                     y += MODULE_ROW_H * scale;
                 }
             } finally {
-                ClickGuiRenderer.endTextBatch();
+                LayoutRender2D.endTextBatch();
             }
         } finally {
-            ClickGuiRenderer.flushRenderer();
+            LayoutRender2D.flushRenderer();
             if (panelShapeClip) ClipFunction.pop();
         }
 
@@ -932,7 +931,7 @@ public final class ModulesMenuScreen {
         String moduleListLabel = entry.shownInModuleList() ? "[ON]" : "[OFF]";
         float moduleListTextSize = 7.2f * scale;
         float moduleListTextW = moduleListEdit
-                ? ClickGuiRenderer.textWidth(semibold, moduleListLabel, moduleListTextSize)
+                ? LayoutRender2D.textWidth(semibold, moduleListLabel, moduleListTextSize)
                 : 0.0f;
         float moduleListW = moduleListEdit ? moduleListTextW + 3.0f * scale : 0.0f;
         float checkReserve = entry.enabled() ? 18.0f * scale : 6.0f * scale;
@@ -964,7 +963,7 @@ public final class ModulesMenuScreen {
 
         if (moduleListEdit) {
             int listColor = entry.shownInModuleList() ? ModulesMenuStyle.MODULE_LIST_ON : ModulesMenuStyle.MODULE_LIST_OFF;
-            ClickGuiRenderer.drawText(semibold, moduleListLabel, moduleListX, moduleListY, moduleListTextSize, withAlpha(listColor, alpha), false);
+            LayoutRender2D.drawText(semibold, moduleListLabel, moduleListX, moduleListY, moduleListTextSize, withAlpha(listColor, alpha), false);
         }
 
         int divider = withAlpha(ModulesMenuStyle.text(), alpha * 0.02f);
@@ -986,25 +985,25 @@ public final class ModulesMenuScreen {
     ) {
         if (label == null) label = "";
         if (aliasLabel == null || aliasLabel.isBlank() || !ClickGuiSearch.hasQuery()) {
-            String visible = ClickGuiRenderer.fitText(regular, label, nameSize, maxW);
-            ClickGuiRenderer.drawText(regular, visible, x, y, nameSize, nameColor, false);
+            String visible = LayoutRender2D.fitText(regular, label, nameSize, maxW);
+            LayoutRender2D.drawText(regular, visible, x, y, nameSize, nameColor, false);
             return;
         }
 
         float gap = 3.0f * scale;
         float aliasSize = 6.15f * scale;
-        float fullNameW = ClickGuiRenderer.textWidth(regular, label, nameSize);
-        float fullAliasW = ClickGuiRenderer.textWidth(medium, aliasLabel, aliasSize);
+        float fullNameW = LayoutRender2D.textWidth(regular, label, nameSize);
+        float fullAliasW = LayoutRender2D.textWidth(medium, aliasLabel, aliasSize);
 
         if (fullNameW + gap + fullAliasW <= maxW) {
-            ClickGuiRenderer.drawText(regular, label, x, y, nameSize, nameColor, false);
+            LayoutRender2D.drawText(regular, label, x, y, nameSize, nameColor, false);
             float aliasY = y + middle(textHeight(medium, aliasSize), textHeight(regular, nameSize)) + 0.15f * scale;
             int aliasColor = mix(
                     withAlpha(ModulesMenuStyle.textFaint(), alpha),
                     withAlpha(ModulesMenuStyle.textMuted(), alpha),
                     0.28f + 0.30f * hoverAnim
             );
-            ClickGuiRenderer.drawText(medium, aliasLabel, x + fullNameW + gap, aliasY, aliasSize, aliasColor, false);
+            LayoutRender2D.drawText(medium, aliasLabel, x + fullNameW + gap, aliasY, aliasSize, aliasColor, false);
             return;
         }
 
@@ -1012,17 +1011,17 @@ public final class ModulesMenuScreen {
         // receives a bounded share of the row so it cannot crowd the normal row affordances.
         float minNameBudget = Math.min(fullNameW, Math.max(25.0f * scale, maxW * 0.56f));
         float aliasBudget = Math.min(fullAliasW, Math.min(48.0f * scale, maxW - minNameBudget - gap));
-        float aliasMinUseful = ClickGuiRenderer.textWidth(medium, "(aka x)", aliasSize);
+        float aliasMinUseful = LayoutRender2D.textWidth(medium, "(aka x)", aliasSize);
         if (aliasBudget < aliasMinUseful) {
-            String visible = ClickGuiRenderer.fitText(regular, label, nameSize, maxW);
-            ClickGuiRenderer.drawText(regular, visible, x, y, nameSize, nameColor, false);
+            String visible = LayoutRender2D.fitText(regular, label, nameSize, maxW);
+            LayoutRender2D.drawText(regular, visible, x, y, nameSize, nameColor, false);
             return;
         }
 
         float nameBudget = Math.max(12.0f * scale, maxW - gap - aliasBudget);
-        String visibleName = ClickGuiRenderer.fitText(regular, label, nameSize, nameBudget);
-        String visibleAlias = ClickGuiRenderer.fitText(medium, aliasLabel, aliasSize, aliasBudget);
-        float visibleNameW = ClickGuiRenderer.textWidth(regular, visibleName, nameSize);
+        String visibleName = LayoutRender2D.fitText(regular, label, nameSize, nameBudget);
+        String visibleAlias = LayoutRender2D.fitText(medium, aliasLabel, aliasSize, aliasBudget);
+        float visibleNameW = LayoutRender2D.textWidth(regular, visibleName, nameSize);
         float aliasY = y + middle(textHeight(medium, aliasSize), textHeight(regular, nameSize)) + 0.15f * scale;
         int aliasColor = mix(
                 withAlpha(ModulesMenuStyle.textFaint(), alpha),
@@ -1030,8 +1029,8 @@ public final class ModulesMenuScreen {
                 0.28f + 0.30f * hoverAnim
         );
 
-        ClickGuiRenderer.drawText(regular, visibleName, x, y, nameSize, nameColor, false);
-        ClickGuiRenderer.drawText(medium, visibleAlias, x + visibleNameW + gap, aliasY, aliasSize, aliasColor, false);
+        LayoutRender2D.drawText(regular, visibleName, x, y, nameSize, nameColor, false);
+        LayoutRender2D.drawText(medium, visibleAlias, x + visibleNameW + gap, aliasY, aliasSize, aliasColor, false);
     }
 
     private void renderModuleRowCheck(ModulesMenuPanel panel,
@@ -1181,7 +1180,7 @@ public final class ModulesMenuScreen {
         String text = activeHoverDescription.trim();
         if (text.isBlank()) return;
 
-        float fullTextW = ClickGuiRenderer.textWidth(comfortaa, text, fontSize);
+        float fullTextW = LayoutRender2D.textWidth(comfortaa, text, fontSize);
         float textH = textHeight(comfortaa, fontSize);
         float viewW = Math.min(maxWidth, fullTextW);
         boolean marquee = fullTextW > maxWidth + 0.5f * scale;
@@ -1340,9 +1339,9 @@ public final class ModulesMenuScreen {
         }
 
         String title = panel.selectedTitle == null ? "Settings" : panel.selectedTitle;
-        title = ClickGuiRenderer.fitText(regular, title, 8.0f * scale, panel.w - 18.0f * scale);
+        title = LayoutRender2D.fitText(regular, title, 8.0f * scale, panel.w - 18.0f * scale);
 
-        ClickGuiRenderer.drawText(
+        LayoutRender2D.drawText(
                 regular,
                 title,
                 pageX + TEXT_LEFT_PADDING * scale,
@@ -1391,17 +1390,27 @@ public final class ModulesMenuScreen {
                 float icon = 7.0f * scale;
                 Renderer2D.COLOR.svg("combatant:svg/eye", settingsX + 8.0f * scale, y + (actionH - icon) * 0.5f, icon, icon,
                         SvgRenderOptions.overrideColor(withAlpha(ModulesMenuStyle.text(), alpha)));
-                ClickGuiRenderer.drawText(
-                        medium,
-                        ClickGuiRenderer.fitText(medium, previewAction.label(),
-                                7.2f * scale, Math.max(1.0f, settingsW - 28.0f * scale)),
+                String previewLabel = previewAction.label();
+                float previewSize = 7.2f * scale;
+                float previewWidth = Math.max(1.0f, settingsW - 28.0f * scale);
+                String previewKey = panel.selected + ":" + previewAction.id();
+                boolean labelHover = hovered && inside(mouseX, mouseY, settingsX, clipY, settingsW, clipH);
+                float marqueeSeconds = -1f;
+                if (labelHover && LayoutRender2D.textWidth(medium, previewLabel, previewSize) > previewWidth + 0.5f) {
+                    long start = panel.previewMarqueeStarted.computeIfAbsent(previewKey, ignored -> System.nanoTime());
+                    marqueeSeconds = Math.max(0f, (System.nanoTime() - start) * 1e-9f);
+                } else {
+                    panel.previewMarqueeStarted.remove(previewKey);
+                }
+                LayoutRender2D.drawMarqueeText(medium, previewLabel,
                         settingsX + 19.0f * scale,
-                        y + middle(textHeight(medium, 7.2f * scale), actionH),
-                        7.2f * scale,
+                        y + middle(textHeight(medium, previewSize), actionH),
+                        previewSize, previewWidth,
                         withAlpha(ModulesMenuStyle.text(), alpha),
-                        false
-                );
+                        marqueeSeconds, 24.0f * scale, 16.0f * scale, 11.0f * scale);
                 if (hovered) SystemCursor.set(SystemCursor.CursorType.HAND);
+            } else {
+                panel.previewMarqueeStarted.remove(panel.selected + ":" + previewAction.id());
             }
             y += actionH + actionGap;
             total += actionH + actionGap;
@@ -1477,7 +1486,7 @@ public final class ModulesMenuScreen {
         float ty = searchY + middle(textHeight(regular, 8.0f * scale), searchH);
         boolean clip = ScissorFunction.pushRaw(tx, searchY, searchW - 16f * scale, searchH);
         if (ClickGuiSearch.getText().isEmpty() && !ClickGuiSearch.isActive()) {
-            ClickGuiRenderer.drawText(regular, draw, tx, ty, 8f * scale, color, false);
+            LayoutRender2D.drawText(regular, draw, tx, ty, 8f * scale, color, false);
         } else {
             ClickGuiSearch.editor().render(tx, ty, searchW - 16f * scale, searchH, regular, 8f * scale,
                     color, withAlpha(ModulesMenuStyle.themeAccent(), alpha * 0.55f), ClickGuiSearch.isActive());
@@ -1617,7 +1626,7 @@ public final class ModulesMenuScreen {
             fontGeneration = generation;
         }
         if (regular == null)
-            regular = BuiltinFontCatalog.ONEST_REGULAR.renderer(ClickGuiRenderer.getInterRegular());
+            regular = BuiltinFontCatalog.ONEST_REGULAR.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
         if (medium == null) medium = BuiltinFontCatalog.ONEST_MEDIUM.renderer(regular);
         if (semibold == null) semibold = BuiltinFontCatalog.ONEST_BOLD.renderer(medium);
         if (comfortaa == null) comfortaa = regular;

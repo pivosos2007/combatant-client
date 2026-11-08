@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.util;
 
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.module.modules.misc.NameProtect;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
@@ -39,7 +41,7 @@ public final class ClickGuiRichTextRenderer {
                             float alpha,
                             boolean shadow) {
         if (component == null || maxWidth <= 0f || alpha <= 0f) return;
-        alpha *= ClickGuiRenderer.getRenderAlphaMultiplier();
+        alpha *= LayoutRender2D.getRenderAlphaMultiplier();
         if (alpha <= 0.001f) return;
         float cursor = x;
         float remaining = maxWidth;
@@ -83,13 +85,13 @@ public final class ClickGuiRichTextRenderer {
 
     private static TextRenderer font(Style style) {
         if (style != null && style.isBold()) {
-            return BuiltinFontCatalog.ONEST_BOLD.renderer(ClickGuiRenderer.getInterMedium());
+            return BuiltinFontCatalog.ONEST_BOLD.renderer(BuiltinFontCatalog.ONEST_MEDIUM.renderer());
         }
         if (style != null && style.isItalic()) {
             // Onest has no dedicated italic builtin face; use the regular face explicitly.
-            return ClickGuiRenderer.getInterRegular();
+            return BuiltinFontCatalog.ONEST_REGULAR.renderer();
         }
-        return ClickGuiRenderer.getInterMedium();
+        return BuiltinFontCatalog.ONEST_MEDIUM.renderer();
     }
 
     private static int color(Style style, int fallbackColor, float alpha) {
@@ -117,7 +119,7 @@ public final class ClickGuiRichTextRenderer {
 
     private static float width(TextRenderer font, String text, float size) {
         if (font == null || text == null || text.isEmpty()) return 0f;
-        float scale = ClickGuiRenderer.scaleForSize(size);
+        float scale = LayoutRender2D.scaleForSize(size);
         float svgAdvance = svgGlyphSize(font, size);
         TextRenderer current = null;
         float width = 0f;
@@ -151,7 +153,7 @@ public final class ClickGuiRichTextRenderer {
 
     private static float height(TextRenderer font, float size) {
         if (font == null) return size;
-        float scale = ClickGuiRenderer.scaleForSize(size);
+        float scale = LayoutRender2D.scaleForSize(size);
         font.begin(scale, true, false);
         try {
             return (float) font.getHeight(false);
@@ -162,7 +164,7 @@ public final class ClickGuiRichTextRenderer {
 
     private static void drawString(Renderer2D renderer, TextRenderer font, String text, float x, float y, float size, int argb, boolean shadow) {
         if (font == null || text == null || text.isEmpty() || ((argb >>> 24) & 0xFF) <= 0) return;
-        float scale = ClickGuiRenderer.scaleForSize(size);
+        float scale = LayoutRender2D.scaleForSize(size);
         float svgSize = svgGlyphSize(font, size);
         float svgY = y + (height(font, size) - svgSize) * 0.5f;
         TMP.a = (argb >>> 24) & 0xFF;

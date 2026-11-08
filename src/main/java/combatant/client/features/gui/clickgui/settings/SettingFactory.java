@@ -9,7 +9,6 @@ package combatant.client.features.gui.clickgui.settings;
 
 import combatant.client.config.SettingDef;
 import combatant.client.config.values.*;
-import combatant.client.config.values.*;
 
 /**
  * Builds GUI settings from GUI-neutral SettingDef.

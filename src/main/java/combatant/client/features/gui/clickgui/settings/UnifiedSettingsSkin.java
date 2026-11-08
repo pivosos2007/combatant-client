@@ -12,9 +12,8 @@ import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.render.engine.renderer.Renderer2D;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.TextRenderer;
@@ -88,11 +87,11 @@ enum UnifiedSettingsSkin {
 
         ACCENT = accent;
         ACCENT_SOFT = withAlpha(accentSoft, 135);
-        CHECK_COLOR = ClickGuiRenderer.mixColor(TEXT_PRIMARY, accent, 0.10f);
+        CHECK_COLOR = LayoutRender2D.mixColor(TEXT_PRIMARY, accent, 0.10f);
 
-        SURFACE = withAlpha(ClickGuiRenderer.mixColor(surface, accent, 0.055f), 82);
-        SURFACE_HOVER = withAlpha(ClickGuiRenderer.mixColor(hover, accent, 0.095f), 104);
-        SURFACE_SOFT = withAlpha(ClickGuiRenderer.mixColor(surface, accent, 0.040f), 56);
+        SURFACE = withAlpha(LayoutRender2D.mixColor(surface, accent, 0.055f), 82);
+        SURFACE_HOVER = withAlpha(LayoutRender2D.mixColor(hover, accent, 0.095f), 104);
+        SURFACE_SOFT = withAlpha(LayoutRender2D.mixColor(surface, accent, 0.040f), 56);
 
         Themes.ThemeEntry entry = Theme.currentEntry();
         Themes.GradientSpec surfaceGradient = entry == null ? null : entry.surfaceGradient();
@@ -101,10 +100,10 @@ enum UnifiedSettingsSkin {
 
         SURFACE_GRADIENT_ENABLED = surfaceGradient != null && surfaceGradient.enabled();
         SURFACE_GRADIENT_START = SURFACE_GRADIENT_ENABLED
-                ? withAlpha(ClickGuiRenderer.mixColor(forceAlpha(surfaceGradient.start(), 255), accent, 0.045f), 62)
+                ? withAlpha(LayoutRender2D.mixColor(forceAlpha(surfaceGradient.start(), 255), accent, 0.045f), 62)
                 : SURFACE_SOFT;
         SURFACE_GRADIENT_END = SURFACE_GRADIENT_ENABLED
-                ? withAlpha(ClickGuiRenderer.mixColor(forceAlpha(surfaceGradient.end(), 255), accent, 0.075f), 98)
+                ? withAlpha(LayoutRender2D.mixColor(forceAlpha(surfaceGradient.end(), 255), accent, 0.075f), 98)
                 : SURFACE_HOVER;
         SURFACE_GRADIENT_ANGLE = surfaceGradient == null ? 90f : surfaceGradient.angleDeg();
 
@@ -130,7 +129,7 @@ enum UnifiedSettingsSkin {
             TEXT_PRIMARY = forceAlpha(theme.textPrimary(), 255);
             TEXT_MUTED = forceAlpha(theme.textMuted(), 218);
             TEXT_FAINT = forceAlpha(theme.textMuted(), 138);
-            CHECK_COLOR = forceAlpha(ClickGuiRenderer.mixColor(theme.textPrimary(), accent, 0.06f), 255);
+            CHECK_COLOR = forceAlpha(LayoutRender2D.mixColor(theme.textPrimary(), accent, 0.06f), 255);
 
             int neutralSurface = neutralize(surface, 0.10f);
             int neutralHover = neutralize(hover, 0.12f);
@@ -151,14 +150,14 @@ enum UnifiedSettingsSkin {
                     ? neutralize(forceAlpha(strokeGradient.end(), 255), 0.08f)
                     : neutralStroke;
 
-            MODERN_CONTROL_TOP = withAlpha(ClickGuiRenderer.mixColor(neutralSurface, authoredTop, 0.34f), 220);
-            MODERN_CONTROL_BOTTOM = withAlpha(ClickGuiRenderer.mixColor(neutralSurface, authoredBottom, 0.27f), 234);
-            MODERN_CONTROL_HOVER_TOP = withAlpha(ClickGuiRenderer.mixColor(neutralHover, authoredTop, 0.28f), 238);
-            MODERN_CONTROL_HOVER_BOTTOM = withAlpha(ClickGuiRenderer.mixColor(neutralHover, authoredBottom, 0.22f), 244);
-            MODERN_BORDER_START = withAlpha(ClickGuiRenderer.mixColor(authoredStrokeA, 0xFFFFFFFF, 0.05f), 108);
-            MODERN_BORDER_END = withAlpha(ClickGuiRenderer.mixColor(authoredStrokeB, 0xFFFFFFFF, 0.07f), 158);
-            MODERN_TRACK_TOP = withAlpha(ClickGuiRenderer.mixColor(neutralWindow, neutralSurface, 0.20f), 222);
-            MODERN_TRACK_BOTTOM = withAlpha(ClickGuiRenderer.mixColor(neutralWindow, 0xFF000000, 0.25f), 234);
+            MODERN_CONTROL_TOP = withAlpha(LayoutRender2D.mixColor(neutralSurface, authoredTop, 0.34f), 220);
+            MODERN_CONTROL_BOTTOM = withAlpha(LayoutRender2D.mixColor(neutralSurface, authoredBottom, 0.27f), 234);
+            MODERN_CONTROL_HOVER_TOP = withAlpha(LayoutRender2D.mixColor(neutralHover, authoredTop, 0.28f), 238);
+            MODERN_CONTROL_HOVER_BOTTOM = withAlpha(LayoutRender2D.mixColor(neutralHover, authoredBottom, 0.22f), 244);
+            MODERN_BORDER_START = withAlpha(LayoutRender2D.mixColor(authoredStrokeA, 0xFFFFFFFF, 0.05f), 108);
+            MODERN_BORDER_END = withAlpha(LayoutRender2D.mixColor(authoredStrokeB, 0xFFFFFFFF, 0.07f), 158);
+            MODERN_TRACK_TOP = withAlpha(LayoutRender2D.mixColor(neutralWindow, neutralSurface, 0.20f), 222);
+            MODERN_TRACK_BOTTOM = withAlpha(LayoutRender2D.mixColor(neutralWindow, 0xFF000000, 0.25f), 234);
 
             SURFACE = MODERN_CONTROL_TOP;
             SURFACE_HOVER = MODERN_CONTROL_HOVER_TOP;
@@ -171,8 +170,8 @@ enum UnifiedSettingsSkin {
 
             // Accent is still theme-synced, but remains a semantic micro-accent: slider fill,
             // tiny selected indicators and focus response. It is no longer the material itself.
-            ACCENT_GRADIENT_START = forceAlpha(ClickGuiRenderer.mixColor(accent, neutralSurface, 0.34f), 255);
-            ACCENT_GRADIENT_END = forceAlpha(ClickGuiRenderer.mixColor(accentSoft, neutralWindow, 0.44f), 255);
+            ACCENT_GRADIENT_START = forceAlpha(LayoutRender2D.mixColor(accent, neutralSurface, 0.34f), 255);
+            ACCENT_GRADIENT_END = forceAlpha(LayoutRender2D.mixColor(accentSoft, neutralWindow, 0.44f), 255);
             ACCENT_GRADIENT_ANGLE = cardGradient == null ? 45f : cardGradient.angleDeg();
         } else if (!modules()) {
             SettingsGuiPalette palette = SettingsGuiPalette.current();
@@ -185,7 +184,7 @@ enum UnifiedSettingsSkin {
             STROKE_GRADIENT_START = palette.glassEdgeStrong();
             STROKE_GRADIENT_END = palette.glassEdgeSoft();
             ACCENT_GRADIENT_START = forceAlpha(accent, 255);
-            ACCENT_GRADIENT_END = forceAlpha(ClickGuiRenderer.mixColor(accentSoft, surface, 0.28f), 255);
+            ACCENT_GRADIENT_END = forceAlpha(LayoutRender2D.mixColor(accentSoft, surface, 0.28f), 255);
         }
     }
 
@@ -302,7 +301,7 @@ enum UnifiedSettingsSkin {
 
     // One family (Onest) for every settings surface; the Inter split is gone.
     static TextRenderer fontRegular() {
-        return BuiltinFontCatalog.ONEST_REGULAR.renderer(ClickGuiRenderer.getInterRegular());
+        return BuiltinFontCatalog.ONEST_REGULAR.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
     }
 
     static TextRenderer fontMedium() {
@@ -363,19 +362,19 @@ enum UnifiedSettingsSkin {
     }
 
     static String fit(TextRenderer font, String text, float size, float width) {
-        return ClickGuiRenderer.fitText(font, text, size, Math.max(1f, width));
+        return LayoutRender2D.fitText(font, text, size, Math.max(1f, width));
     }
 
     static float textHeight(TextRenderer font, float size) {
-        return ClickGuiRenderer.textHeight(font, size);
+        return LayoutRender2D.textHeight(font, size);
     }
 
     static float textWidth(TextRenderer font, String text, float size) {
-        return ClickGuiRenderer.textWidth(font, text == null ? "" : text, size);
+        return LayoutRender2D.textWidth(font, text == null ? "" : text, size);
     }
 
     static void matte(float x, float y, float w, float h, float radius, int color) {
-        ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, color);
+        LayoutRender2D.drawRoundedRect(x, y, w, h, radius, color);
     }
 
     static int surfaceGradientStart(float alpha) {
@@ -412,7 +411,7 @@ enum UnifiedSettingsSkin {
 
     static void drawSurface(float x, float y, float w, float h, float radius, float alpha) {
         if (modernSettings()) {
-            ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, withAlpha(SURFACE_SOFT, alpha));
+            LayoutRender2D.drawRoundedRect(x, y, w, h, radius, withAlpha(SURFACE_SOFT, alpha));
             return;
         }
         if (!modules()) {
@@ -425,15 +424,15 @@ enum UnifiedSettingsSkin {
             return;
         }
         if (SURFACE_GRADIENT_ENABLED) {
-            ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, radius, surfaceGradientStart(alpha), surfaceGradientEnd(alpha), SURFACE_GRADIENT_ANGLE);
+            LayoutRender2D.drawRoundedRectGradient(x, y, w, h, radius, surfaceGradientStart(alpha), surfaceGradientEnd(alpha), SURFACE_GRADIENT_ANGLE);
         } else {
-            ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, withAlpha(SURFACE_SOFT, alpha));
+            LayoutRender2D.drawRoundedRect(x, y, w, h, radius, withAlpha(SURFACE_SOFT, alpha));
         }
     }
 
     static void drawCard(float x, float y, float w, float h, float radius, float alpha) {
         if (modernSettings()) {
-            ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, withAlpha(SURFACE_SOFT, alpha));
+            LayoutRender2D.drawRoundedRect(x, y, w, h, radius, withAlpha(SURFACE_SOFT, alpha));
             return;
         }
         if (!modules()) {
@@ -445,21 +444,21 @@ enum UnifiedSettingsSkin {
             return;
         }
         if (CARD_GRADIENT_ENABLED) {
-            ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, radius, cardGradientStart(alpha), cardGradientEnd(alpha), CARD_GRADIENT_ANGLE);
+            LayoutRender2D.drawRoundedRectGradient(x, y, w, h, radius, cardGradientStart(alpha), cardGradientEnd(alpha), CARD_GRADIENT_ANGLE);
         } else {
-            ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, withAlpha(SURFACE_SOFT, alpha));
+            LayoutRender2D.drawRoundedRect(x, y, w, h, radius, withAlpha(SURFACE_SOFT, alpha));
         }
     }
 
     static void drawAccent(float x, float y, float w, float h, float radius, float alpha) {
-        ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, radius, accentGradientStart(alpha), accentGradientEnd(alpha), ACCENT_GRADIENT_ANGLE);
+        LayoutRender2D.drawRoundedRectGradient(x, y, w, h, radius, accentGradientStart(alpha), accentGradientEnd(alpha), ACCENT_GRADIENT_ANGLE);
     }
 
     static void drawStroke(float x, float y, float w, float h, float radius, float thickness, float alpha) {
         if (STROKE_GRADIENT_ENABLED) {
-            ClickGuiRenderer.drawRoundedRectStrokeGradient(x, y, w, h, radius, thickness, strokeGradientStart(alpha), strokeGradientEnd(alpha), STROKE_GRADIENT_ANGLE);
+            LayoutRender2D.drawRoundedRectStrokeGradient(x, y, w, h, radius, thickness, strokeGradientStart(alpha), strokeGradientEnd(alpha), STROKE_GRADIENT_ANGLE);
         } else {
-            ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, radius, thickness, withAlpha(TEXT_FAINT, alpha));
+            LayoutRender2D.drawRoundedRectStroke(x, y, w, h, radius, thickness, withAlpha(TEXT_FAINT, alpha));
         }
     }
 

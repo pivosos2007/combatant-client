@@ -52,7 +52,7 @@ public final class BoxSurfaceEmitter {
             face = 3;
             position = new Vec3(lo.x + dx * u, hi.y, lo.z + dz * v);
             normal = new Vec3(0, 1, 0);
-        } else if ((pick -= areaZ) < 0.0) {
+        } else if (pick < areaZ) {
             face = 4;
             position = new Vec3(lo.x + dx * u, lo.y + dy * v, lo.z);
             normal = new Vec3(0, 0, -1);

@@ -43,7 +43,7 @@ import java.util.List;
         aliases = {"holes"},
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.holeesp.description")
-public final class HoleESP extends Module {
+public final class HoleESP extends Module implements combatant.client.features.map.info.MapInfoSource {
     private static final Direction[] HORIZONTAL = {
             Direction.NORTH,
             Direction.SOUTH,
@@ -54,6 +54,7 @@ public final class HoleESP extends Module {
     private static final int BASE_FILL_ALPHA = 60;
 
     private final Minecraft mc = Minecraft.getInstance();
+    private final BooleanValue mapInfo = bool("holeesp_map_info", "map_info", true);
 
     private final NumberValue<Integer> rangeXZ =
             num("holeesp_range_xz", "range_xz", 10, 1, 128);
@@ -98,6 +99,19 @@ public final class HoleESP extends Module {
 
         if (ticks++ % RESCAN_TICKS == 0) {
             holes = scanHoles(mc.level, mc.player.position());
+        }
+    }
+
+    @Override
+    public void collectMapInfo(combatant.client.features.map.info.MapInfoSink sink) {
+        if (!isEnabled() || !mapInfo.get() || mc.level == null || mc.player == null) return;
+        for (Hole hole : holes) {
+            BlockPos pos = hole.positions().getFirst();
+            boolean bedrock = hole.bedrock();
+            sink.add(pos.getX(), pos.getZ(), bedrock ? "bedrock" : "safe",
+                    bedrock ? net.minecraft.client.resources.language.I18n.get("gui.combatant.map.info.hole.bedrock")
+                            : net.minecraft.client.resources.language.I18n.get("gui.combatant.map.info.hole.safe"),
+                    bedrock ? Blocks.BEDROCK.asItem() : Blocks.OBSIDIAN.asItem(), hole.argb(), 1);
         }
     }
 
@@ -186,29 +200,29 @@ public final class HoleESP extends Module {
 
     private Hole resolveHole(ClientLevel level, BlockPos pos) {
         if (validIndestructible(level, pos)) {
-            return new Hole(box(pos, 1, 1), indestructibleColor.getArgb(), List.of(pos));
+            return new Hole(box(pos, 1, 1), indestructibleColor.getArgb(), List.of(pos), false);
         }
         if (validBedrock(level, pos)) {
-            return new Hole(box(pos, 1, 1), bedrockColor.getArgb(), List.of(pos));
+            return new Hole(box(pos, 1, 1), bedrockColor.getArgb(), List.of(pos), true);
         }
 
         List<BlockPos> two = twoBlockShape(level, pos);
         if (two != null) {
             if (validBedrockShape(level, two)) {
-                return new Hole(box(two), bedrockColor.getArgb(), two);
+                return new Hole(box(two), bedrockColor.getArgb(), two, true);
             }
             if (validIndestructibleShape(level, two)) {
-                return new Hole(box(two), indestructibleColor.getArgb(), two);
+                return new Hole(box(two), indestructibleColor.getArgb(), two, false);
             }
         }
 
         List<BlockPos> quad = quadShape(level, pos);
         if (quad != null) {
             if (validBedrockShape(level, quad)) {
-                return new Hole(box(quad), bedrockColor.getArgb(), quad);
+                return new Hole(box(quad), bedrockColor.getArgb(), quad, true);
             }
             if (validIndestructibleShape(level, quad)) {
-                return new Hole(box(quad), indestructibleColor.getArgb(), quad);
+                return new Hole(box(quad), indestructibleColor.getArgb(), quad, false);
             }
         }
 
@@ -514,6 +528,6 @@ public final class HoleESP extends Module {
         renderer.line(box.minX, box.minY, box.maxZ, box.minX, box.minY, box.minZ, r, g, b, a);
     }
 
-    private record Hole(AABB box, int argb, List<BlockPos> positions) {
+    private record Hole(AABB box, int argb, List<BlockPos> positions, boolean bedrock) {
     }
 }

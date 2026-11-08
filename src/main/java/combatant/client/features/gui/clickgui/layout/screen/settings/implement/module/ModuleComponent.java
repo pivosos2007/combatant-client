@@ -17,7 +17,7 @@ import combatant.client.features.module.ModuleManager;
 import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.other.StatusRender;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
@@ -156,7 +156,7 @@ public final class ModuleComponent {
             float w = columnWidth + 40f * scale;
             float h = componentHeight - 9f * scale;
 
-            if (y + h > scissorY + 1.0f * scale && scissorBottom - 1.0f * scale > y) {
+            if (y + h > scissorY + scale && scissorBottom - scale > y) {
                 CardHit hit = drawCard(entry, x, y, w, h, scale, palette);
                 hits.add(hit);
             }
@@ -250,7 +250,7 @@ public final class ModuleComponent {
                     0.0f,
                     LayoutRender2D.alpha(0xFF000000, 0.18f + 0.08f * hoverAnim)
             );
-            ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
+            LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
             LayoutRender2D.roundedQuad(
                     x, y, w, h,
                     5f * scale,
@@ -282,8 +282,8 @@ public final class ModuleComponent {
             if (failed) {
                 SettingErrorView.warning(x+w-18f*scale,y+6f*scale,10f*scale,1f);
             }
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterRegular(),
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     "• " + entry.title(),
                     x + 8.8f * scale,
                     y + 5.4f * scale,
@@ -330,9 +330,9 @@ public final class ModuleComponent {
         float textY = y + 19f * scale;
         float textX = x + DESCRIPTION_TEXT_LEFT * scale;
         float lineStep = descriptionLineStep(scale);
-        TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(ClickGuiRenderer.getInterRegular());
+        TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
 
-        ClickGuiRenderer.drawText(
+        LayoutRender2D.drawText(
                 icons,
                 "J",
                 x + DESCRIPTION_ICON_X * scale,
@@ -343,8 +343,8 @@ public final class ModuleComponent {
         );
 
         for (int i = 0; i < layout.lines().size(); i++) {
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterRegular(),
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     layout.lines().get(i),
                     textX,
                     textY + i * lineStep,
@@ -360,7 +360,7 @@ public final class ModuleComponent {
         if (label == null || label.isBlank()) {
             return new BindRect(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
         }
-        float labelW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), label, 12f * scale);
+        float labelW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), label, 12f * scale);
         float bindX = x + w - 37.5f * scale - labelW;
         float bindY = y + descHeight + 29.75f * scale;
         float bindW = labelW + 6f * scale;
@@ -379,8 +379,8 @@ public final class ModuleComponent {
                 bindX + 0.25f * scale, bindY, bindW, bindH, 3f * scale, 0.5f * scale,
                 palette.moduleBindStroke()
         );
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
+        LayoutRender2D.drawText(
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 label,
                 x + w - 34.5f * scale - labelW,
                 y + descHeight + 34f * scale,
@@ -392,8 +392,8 @@ public final class ModuleComponent {
     }
 
     private void drawNoSettingsHint(float x, float y, float descHeight, float scale, SettingsGuiPalette palette) {
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
+        LayoutRender2D.drawText(
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 ClickGuiI18n.tr("clickgui.settings.module.no_settings", "No settings"),
                 x + 10f * scale,
                 y + descHeight + 33.5f * scale,
@@ -488,7 +488,7 @@ public final class ModuleComponent {
             String word = words[i];
             if (word.isBlank()) continue;
             String candidate = current.isEmpty() ? word : current + " " + word;
-            if (ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), candidate, textSize) <= maxWidth) {
+            if (LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), candidate, textSize) <= maxWidth) {
                 current.setLength(0);
                 current.append(candidate);
                 continue;
@@ -503,9 +503,9 @@ public final class ModuleComponent {
                 }
             }
 
-            if (ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), word, textSize) > maxWidth) {
-                current.append(ClickGuiRenderer.fitText(
-                        ClickGuiRenderer.getInterRegular(), word, textSize, maxWidth));
+            if (LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), word, textSize) > maxWidth) {
+                current.append(LayoutRender2D.fitText(
+                        BuiltinFontCatalog.ONEST_REGULAR.renderer(), word, textSize, maxWidth));
             } else {
                 current.append(word);
             }
@@ -518,18 +518,18 @@ public final class ModuleComponent {
         }
 
         if (lines.isEmpty()) {
-            lines.add(ClickGuiRenderer.fitText(
-                    ClickGuiRenderer.getInterRegular(), normalized, textSize, maxWidth));
+            lines.add(LayoutRender2D.fitText(
+                    BuiltinFontCatalog.ONEST_REGULAR.renderer(), normalized, textSize, maxWidth));
         }
 
         if (truncated || lines.size() == MAX_DESCRIPTION_LINES && joinedLength(lines) < normalized.length()) {
             int last = lines.size() - 1;
             String withEllipsis = lines.get(last).replaceAll("[.\u2026]+$", "") + "…";
-            lines.set(last, ClickGuiRenderer.fitText(
-                    ClickGuiRenderer.getInterRegular(), withEllipsis, textSize, maxWidth));
+            lines.set(last, LayoutRender2D.fitText(
+                    BuiltinFontCatalog.ONEST_REGULAR.renderer(), withEllipsis, textSize, maxWidth));
         }
 
-        float lineHeight = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterRegular(), textSize);
+        float lineHeight = LayoutRender2D.textHeight(BuiltinFontCatalog.ONEST_REGULAR.renderer(), textSize);
         float height = Math.max(0f,
                 lineHeight - 3.0f * scale + (lines.size() - 1) * descriptionLineStep(scale));
         return new DescriptionLayout(List.copyOf(lines), height);
@@ -542,8 +542,8 @@ public final class ModuleComponent {
     }
 
     private float descriptionLineStep(float scale) {
-        float lineHeight = ClickGuiRenderer.textHeight(
-                ClickGuiRenderer.getInterRegular(), DESCRIPTION_TEXT_SIZE * scale);
+        float lineHeight = LayoutRender2D.textHeight(
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(), DESCRIPTION_TEXT_SIZE * scale);
         return Math.max(6.0f * scale, lineHeight - 2.5f * scale);
     }
 

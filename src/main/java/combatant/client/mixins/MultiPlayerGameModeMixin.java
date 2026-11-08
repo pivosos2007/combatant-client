@@ -17,10 +17,12 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -29,6 +31,7 @@ import combatant.client.config.values.ItemCooldownRulesValue;
 import combatant.client.events.Events;
 import combatant.client.events.impl.AttackEntityEvent;
 import combatant.client.events.impl.EventBreakBlock;
+import combatant.client.events.impl.BlockUseAttemptEvent;
 import combatant.client.features.gui.hud.draggable.impl.TargetHud;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.AttributeSwap;
@@ -46,6 +49,9 @@ import combatant.client.util.target.TargetManager;
 
 @Mixin(MultiPlayerGameMode.class)
 public class MultiPlayerGameModeMixin {
+
+    @Unique
+    private boolean combatant$blockUseHeldBlock;
 
     @Inject(method = "handleContainerInput", at = @At("HEAD"), cancellable = true)
     private void combatant$guardModuleLockedSlots(int containerId, int slot, int button,
@@ -114,6 +120,10 @@ public class MultiPlayerGameModeMixin {
     @Inject(method = "useItem", at = @At("RETURN"))
     private void onInteractItemReturn(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
         InteractionResult result = cir.getReturnValue();
+        if (player instanceof LocalPlayer localPlayer && Events.BUS.hasListeners(BlockUseAttemptEvent.class)) {
+            Events.BUS.post(new BlockUseAttemptEvent(localPlayer, hand, null, result,
+                    player.getItemInHand(hand).getItem() instanceof BlockItem));
+        }
         if (!result.consumesAction()) return;
 
         ItemStack stack = player.getItemInHand(hand);
@@ -126,13 +136,18 @@ public class MultiPlayerGameModeMixin {
     }
 
     @Inject(method = "useItemOn", at = @At("HEAD"))
-    private void onInteractBlockHead(LocalPlayer player, InteractionHand hand, BlockHitResult hit, CallbackInfoReturnable<InteractionResult> cir) {
-        // no PvP cooldown block on interactBlock
+    private void combatant$beforeBlockUse(LocalPlayer player, InteractionHand hand, BlockHitResult hit,
+                                         CallbackInfoReturnable<InteractionResult> cir) {
+        combatant$blockUseHeldBlock = player.getItemInHand(hand).getItem() instanceof BlockItem;
     }
 
     @Inject(method = "useItemOn", at = @At("RETURN"))
-    private void onInteractBlockReturn(LocalPlayer player, InteractionHand hand, BlockHitResult hit, CallbackInfoReturnable<InteractionResult> cir) {
-        // no PvP cooldown prediction on interactBlock
+    private void combatant$afterBlockUse(LocalPlayer player, InteractionHand hand, BlockHitResult hit,
+                                        CallbackInfoReturnable<InteractionResult> cir) {
+        if (!Events.BUS.hasListeners(BlockUseAttemptEvent.class)) return;
+        Events.BUS.post(new BlockUseAttemptEvent(
+                player, hand, hit,
+                cir.getReturnValue(), combatant$blockUseHeldBlock));
     }
 
     @Inject(method = "useItemOn", at = @At("HEAD"), cancellable = true)

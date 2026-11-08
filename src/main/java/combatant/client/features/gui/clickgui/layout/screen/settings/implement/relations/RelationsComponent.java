@@ -6,10 +6,12 @@
  */
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.relations;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
@@ -270,11 +272,11 @@ public final class RelationsComponent {
         feedback(wasAssigned ? "status.removed" : "status.added", wasAssigned ? "Removed: %s" : "Added: %s", name);
     }
     private static void drawText(String text, float x, float y, float size, int color, boolean medium) {
-        ClickGuiRenderer.drawText(medium ? ClickGuiRenderer.getInterMedium() : ClickGuiRenderer.getInterRegular(),
+        LayoutRender2D.drawText(medium ? BuiltinFontCatalog.ONEST_MEDIUM.renderer() : BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 text, x, y, size, color, false);
     }
     private static String fit(String text, float size, float width, boolean medium) {
-        return ClickGuiRenderer.fitText(medium ? ClickGuiRenderer.getInterMedium() : ClickGuiRenderer.getInterRegular(),
+        return LayoutRender2D.fitText(medium ? BuiltinFontCatalog.ONEST_MEDIUM.renderer() : BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 text, size, Math.max(1f, width));
     }
     private static void cardSurface(float x, float y, float w, float h, boolean selected, boolean hovered,
@@ -283,7 +285,7 @@ public final class RelationsComponent {
         int topRight = selected ? SettingsGuiPalette.mix(p.moduleCardTopStrong(), p.menuCategorySelectedRight(), .16f) : p.moduleCardTopStrong();
         int bottom = hovered ? SettingsGuiPalette.mix(p.moduleCardBottom(), p.menuCategoryHoverLeft(), .18f) : p.moduleCardBottom();
         int bottomRight = hovered ? SettingsGuiPalette.mix(p.moduleCardBottomStrong(), p.menuCategoryHoverRight(), .14f) : p.moduleCardBottomStrong();
-        ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
+        LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedQuad(x, y, w, h, 5f * scale, top, topRight, bottom, bottomRight);
     }
     private static void iconButton(Rect hit, String svg, boolean active, float mx, float my, float scale, SettingsGuiPalette p) {
@@ -300,7 +302,7 @@ public final class RelationsComponent {
         if (hover) SystemCursor.set(SystemCursor.CursorType.MOVE);
     }
     private static void pillTrack(float x, float y, float w, float h, SettingsGuiPalette p, float scale) {
-        ClickGuiRenderer.drawBlur(x, y, w, h, 4f * scale, p.panelBlurTint(), 145f / 255f);
+        LayoutRender2D.drawBlur(x, y, w, h, 4f * scale, p.panelBlurTint(), 145f / 255f);
         int a = SettingsGuiPalette.mix(p.panelPillBase(), p.panelBgLeft(), .34f);
         int b = SettingsGuiPalette.mix(p.panelPillBase(), p.panelBgRight(), .44f);
         LayoutRender2D.roundedQuad(x, y, w, h, 3.5f * scale, a, b, b, a);
@@ -331,7 +333,7 @@ public final class RelationsComponent {
             boolean hover = tabHits[i].contains(mx, my);
             float fontSize = 7.7f * scale;
             String text = fit(labels[i], fontSize, segment - 6f * scale, true);
-            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), text, fontSize);
+            float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), text, fontSize);
             drawText(text, bx + (segment - tw) / 2f, y + 3.6f * scale, fontSize,
                     i == tab.ordinal() ? p.panelText() : SettingsGuiPalette.mix(p.panelMuted(), p.panelText(), hover ? .28f : 0f), true);
             if (hover) SystemCursor.set(SystemCursor.CursorType.MOVE);
@@ -358,7 +360,7 @@ public final class RelationsComponent {
             boolean hover = viewHits[i].contains(mx, my);
             float fontSize = 7.2f * scale;
             String text = fit(labels[i], fontSize, segment - 5f * scale, true);
-            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), text, fontSize);
+            float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), text, fontSize);
             drawText(text, bx + (segment - tw) / 2f, y + 3.7f * scale, fontSize,
                     (i == 1) == onlineView ? p.panelText() : SettingsGuiPalette.mix(p.panelMuted(), p.panelText(), hover ? .28f : 0f), true);
             if (hover) SystemCursor.set(SystemCursor.CursorType.MOVE);
@@ -384,7 +386,7 @@ public final class RelationsComponent {
                     fontSize, p.panelMuted(), false);
         }
         editor.render(fieldX, bounds.y() + 4f * scale, fieldW, bounds.h() * .68f,
-                ClickGuiRenderer.getInterRegular(), fontSize, p.panelText(),
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(), fontSize, p.panelText(),
                 SettingsGuiPalette.withAlpha(p.menuCategorySelectedLeft(), 100), active);
         float divider = bounds.x() + bounds.w() - 18f * scale;
         LayoutRender2D.rectQuad(divider, bounds.y() + 2.7f * scale, .55f * scale, bounds.h() - 5.4f * scale,
@@ -428,7 +430,7 @@ public final class RelationsComponent {
             String text = enabled ? tr("heuristics.enabled", "Enabled") : tr("heuristics.disabled", "Disabled");
             float fontSize = 7.6f * scale;
             text = fit(text, fontSize, heuristicsHit.w() - 7f * scale, true);
-            float textW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), text, fontSize);
+            float textW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), text, fontSize);
             drawText(text, slotX + (control - textW) / 2f, y + 3.6f * scale, fontSize,
                     enabled ? p.panelText() : p.panelMuted(), true);
         } else if (!onlineView && slotW >= 55f * scale) {
@@ -457,7 +459,7 @@ public final class RelationsComponent {
         if (System.currentTimeMillis() < statusUntil && !status.isEmpty()) {
             float fontSize = 7.4f * scale;
             String value = fit(status, fontSize, width - 14f * scale, false);
-            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), value, fontSize);
+            float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), value, fontSize);
             drawText(value, x + width - tw - 7f * scale,
                     y + height - 9f * scale, fontSize, palette.panelText(), false);
         }
@@ -476,7 +478,7 @@ public final class RelationsComponent {
             String text = ClickGuiSearch.hasQuery() ? tr("empty.no_matches", "No matching players") :
                     onlineView ? tr("online_picker.empty", "No online players") : tr("empty.none_added", "No players added");
             float fontSize = 8.8f * scale;
-            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), text, fontSize);
+            float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), text, fontSize);
             drawText(text, r.x() + (r.w() - tw) / 2f, r.y() + r.h() * .42f, fontSize, p.panelMuted(), false);
             return;
         }

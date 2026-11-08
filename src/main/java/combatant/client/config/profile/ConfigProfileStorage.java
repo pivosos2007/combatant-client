@@ -39,7 +39,7 @@ public final class ConfigProfileStorage {
                 out.append('_');
             }
         }
-        return out.length() == 0 ? "config" : out.toString();
+        return out.isEmpty() ? "config" : out.toString();
     }
 
     public Path root() {

@@ -7,9 +7,11 @@
 
 package combatant.client.features.gui.chat;
 
+import combatant.client.util.logging.DebugLog;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.module.modules.misc.NameProtect;
 import combatant.client.util.text.GuiTextCaret;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.mixins.accessors.SuggestionWindowAccessor;
@@ -27,7 +29,6 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
-import net.minecraft.util.Util;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.features.command.CommandManager;
 import combatant.client.features.command.CommandOutput;
@@ -583,7 +584,7 @@ lastHoverWasOutsideSuggest = false;
         }
 
         if (chatOpen && hoverTip != null) {
-            captureTooltip(hoverTip, (float) mouseX + CHAT_TOOLTIP_OFFSET_X, (float) mouseY + CHAT_TOOLTIP_OFFSET_Y, ctx);
+            captureTooltip(hoverTip, mouse.rawX(), mouse.rawY(), ctx);
         }
 
         if (contextMenu.open) {
@@ -911,17 +912,16 @@ lastHoverWasOutsideSuggest = false;
         return 1f - inv * inv * inv;
     }
 
-    private static void captureTooltip(HoverTip tip, float x, float y, GuiGraphicsExtractor ctx) {
+    private static void captureTooltip(HoverTip tip, double rawX, double rawY, GuiGraphicsExtractor ctx) {
         if (tip == null || ctx == null) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return;
-        float scale = (float) mc.getWindow().getGuiScale();
-        int mx = Math.round(x / scale);
-        int my = Math.round(y / scale);
+        float guiScale = Math.max(1.0f, (float) mc.getWindow().getGuiScale());
+        int mx = Math.round((float) (rawX / guiScale) + CHAT_TOOLTIP_OFFSET_X);
+        int my = Math.round((float) (rawY / guiScale) + CHAT_TOOLTIP_OFFSET_Y);
         List<FormattedCharSequence> lines = buildOrderedTooltipLines(tip);
         if (lines.isEmpty()) return;
 
-        BetterTooltips.setTooltipScaleOverride(0.8f);
         if (tip.item() != null && !tip.item().isEmpty()) {
             BetterTooltips.captureItemTooltipOrdered(lines, DefaultTooltipPositioner.INSTANCE, mx, my, tip.item(), ctx);
         } else {
@@ -933,7 +933,6 @@ lastHoverWasOutsideSuggest = false;
     public static void renderCapturedTooltip(GuiGraphicsExtractor ctx) {
         if (!tooltipCaptured) return;
         BetterTooltips.renderTooltipWithContext(ctx);
-        BetterTooltips.resetTooltipScaleOverride();
         tooltipCaptured = false;
     }
 
@@ -1166,7 +1165,7 @@ lastHoverWasOutsideSuggest = false;
         float caretY = inputY + padY + caretLine * lineHeight;
         boolean blink = (System.currentTimeMillis() / 500L) % 2 == 0;
         if (blink) {
-            float glyphHeight = tr != null ? ClickGuiRenderer.textHeight(tr, fontSize) : fontSize;
+            float glyphHeight = tr != null ? LayoutRender2D.textHeight(tr, fontSize) : fontSize;
             float caretHeight = GuiTextCaret.height(fontSize, glyphHeight);
             drawRect(caretX, caretY + (lineHeight - caretHeight) * 0.5f,
                     GuiTextCaret.width(fontSize), caretHeight,
@@ -1495,7 +1494,7 @@ lastHoverWasOutsideSuggest = false;
             }
         } else if (button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
             if (pressed) {
-                openContextMenu(pick, mx, my, isExactGlyphHit(pick, fx, fy));
+                openContextMenu(pick, fx, fy, isExactGlyphHit(pick, fx, fy));
                 return true;
             }
         }
@@ -2275,8 +2274,11 @@ lastHoverWasOutsideSuggest = false;
     }
 
     private static MousePos resolveMouse(double rawX, double rawY) {
-        // No scaling; keep raw and framebuffer identical.
-        return new MousePos(rawX, rawY, rawX, rawY);
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return new MousePos(rawX, rawY, rawX, rawY);
+        float hudScale = combatant.client.render.engine.math.HudScale.scale(
+                mc.getWindow().getWidth(), mc.getWindow().getHeight());
+        return new MousePos(rawX, rawY, rawX / Math.max(hudScale, 0.001f), rawY / Math.max(hudScale, 0.001f));
     }
 
     public static void resetScroll() {
@@ -2469,6 +2471,8 @@ lastHoverWasOutsideSuggest = false;
             suggestCurrentSelection = idx;
             applySuggestionWindowState(suggestCurrentStart, suggestCurrentSelection);
         } catch (Exception e) {
+            DebugLog.warnOnChange("betterchat.suggestion.apply", e.toString(),
+                    "[BetterChat] Suggestion could not be applied: %s", e.toString());
         }
     }
 

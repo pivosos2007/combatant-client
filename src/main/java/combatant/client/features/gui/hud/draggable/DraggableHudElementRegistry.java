@@ -455,12 +455,6 @@ public enum DraggableHudElementRegistry {
                 combatant.client.input.InputDevice.MOUSE, combatant.client.input.InputKeys.MOUSE_MIDDLE);
 
         if (!allowDragging) {
-            if (dragging != null) {
-            }
-            if (left && !prevLeft) {
-            }
-            if (!left && prevLeft) {
-            }
             dragging = null;
             draggingWithLeft = false;
             clearSnapPreview();

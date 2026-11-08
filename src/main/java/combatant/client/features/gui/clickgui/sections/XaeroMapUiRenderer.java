@@ -7,7 +7,10 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.map.location.PlayerLocationEvent;
 import combatant.client.features.map.location.PlayerLocationEventType;
@@ -120,15 +123,15 @@ final class XaeroMapUiRenderer {
     static void drawZoom(float areaX, float areaY, float areaWidth, float areaHeight,
                          double destinationScale, SettingsGuiPalette palette) {
         String zoom = Math.round(destinationScale * 1000.0) / 1000.0 + "x";
-        float textWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), zoom, MAP_INFO_FONT_SIZE);
+        float textWidth = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), zoom, MAP_INFO_FONT_SIZE);
         float cardWidth = textWidth + MAP_INFO_PAD_X * 2.0f;
         float cardHeight = MAP_INFO_FONT_SIZE + MAP_INFO_PAD_Y * 2.0f;
         float cardX = areaX + (areaWidth - cardWidth) * 0.5f;
         float cardY = areaY + areaHeight - MAP_INFO_EDGE_INSET - cardHeight;
         Renderer2D.COLOR.roundedRect(cardX, cardY, cardWidth, cardHeight,
                 MAP_INFO_RADIUS, palette.panelBgLeft());
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getOnestMedium(), zoom,
+        LayoutRender2D.drawText(
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(), zoom,
                 cardX + MAP_INFO_PAD_X, cardY + MAP_INFO_PAD_Y,
                 MAP_INFO_FONT_SIZE, palette.panelText(), false);
     }
@@ -484,8 +487,8 @@ final class XaeroMapUiRenderer {
 
         float eased = 1.0f - (1.0f - reveal) * (1.0f - reveal) * (1.0f - reveal);
         float fontSize = 14.5f;
-        float textWidth = ClickGuiRenderer.textWidth(
-                ClickGuiRenderer.getOnestMedium(), anchor.tooltip(), fontSize);
+        float textWidth = LayoutRender2D.textWidth(
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(), anchor.tooltip(), fontSize);
 
         float height = 31.0f;
         float tip = 7.0f;
@@ -539,7 +542,7 @@ final class XaeroMapUiRenderer {
         XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(renderer,
                         tooltipShape, tint,
-                        1.0f * eased,
+                        eased,
                         1.0f * eased,
                         Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
@@ -553,7 +556,7 @@ final class XaeroMapUiRenderer {
                 anchor.enabled() ? palette.panelText() : palette.panelMuted(),
                 Math.round((anchor.enabled() ? 255.0f : 180.0f) * eased));
         float textX = opensRight ? x + tip + bodyPad : x + bodyPad;
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), anchor.tooltip(),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), anchor.tooltip(),
                 textX, y + 8.25f, fontSize, textColor, false);
     }
 
@@ -591,26 +594,26 @@ final class XaeroMapUiRenderer {
     private static void drawCardinal(String text, float centerX, float centerY,
                                      SettingsGuiPalette palette) {
         float size = 16.0f;
-        float width = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestBold(), text, size);
+        float width = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_BOLD.renderer(), text, size);
         Renderer2D.COLOR.roundedRect(centerX - width * 0.5f - 8.0f,
                 centerY - 5.0f, width + 16.0f, size + 10.0f,
                 8.0f, palette.panelBgLeft());
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), text,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_BOLD.renderer(), text,
                 centerX - width * 0.5f, centerY, size, palette.panelText(), false);
     }
 
     static void drawCoordinates(float areaX, float areaY, float areaWidth,
                                 String coordinates, float chromeBottom,
                                 SettingsGuiPalette palette) {
-        float textWidth = ClickGuiRenderer.textWidth(
-                ClickGuiRenderer.getOnestMedium(), coordinates, MAP_INFO_FONT_SIZE);
+        float textWidth = LayoutRender2D.textWidth(
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(), coordinates, MAP_INFO_FONT_SIZE);
         float cardWidth = textWidth + MAP_INFO_PAD_X * 2.0f;
         float cardHeight = MAP_INFO_FONT_SIZE + MAP_INFO_PAD_Y * 2.0f;
         float cardX = areaX + (areaWidth - cardWidth) * 0.5f;
         float cardY = Math.max(areaY + MAP_INFO_EDGE_INSET, chromeBottom + MAP_INFO_TOP_GAP);
         Renderer2D.COLOR.roundedRect(cardX, cardY, cardWidth, cardHeight,
                 MAP_INFO_RADIUS, palette.panelBgLeft());
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), coordinates,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), coordinates,
                 cardX + MAP_INFO_PAD_X, cardY + MAP_INFO_PAD_Y,
                 MAP_INFO_FONT_SIZE, palette.panelText(), false);
     }
@@ -694,7 +697,7 @@ final class XaeroMapUiRenderer {
                 .withInnerGlow(0.022f * eased, 4.2f, inner);
         XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(renderer, shell, tint,
-                        1.0f * eased, 1.0f * eased,
+                        eased, eased,
                         Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
         float contentRight = x + bodyWidth;
@@ -723,13 +726,13 @@ final class XaeroMapUiRenderer {
 
         renderer.roundedRect(headerX, y + 16.0f, 2.0f, 28.0f, 1.0f,
                 SettingsGuiPalette.withAlpha(accent, Math.round(170.0f * eased)));
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), title,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_BOLD.renderer(), title,
                 headerX + 10.0f, y + 13.0f, 16.5f, titleColor, false);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), subtitle,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), subtitle,
                 headerX + 10.0f, y + 34.0f, 11.5f, muted, false);
 
         int closeHint = SettingsGuiPalette.withAlpha(palette.panelMuted(), Math.round(155.0f * eased));
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.common.esc", "ESC"),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.common.esc", "ESC"),
                 contentRight - 35.0f, y + 21.0f, 10.5f, closeHint, false);
 
         float rowsY = y + headerHeight;
@@ -771,7 +774,7 @@ final class XaeroMapUiRenderer {
             String empty = rendered == XaeroMapSurface.Drawer.PLAYERS
                     ? tr("gui.combatant.map.drawer.targets_empty", "No targeted players")
                     : tr("gui.combatant.map.drawer.empty", "Nothing visible on this map");
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), empty,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), empty,
                     headerX + 10.0f, rowsY + 15.0f, 13.0f, muted, false);
         }
 
@@ -788,10 +791,10 @@ final class XaeroMapUiRenderer {
                         x + 18.0f + shift, rowY + 11.0f, 18.0f, 18.0f,
                         SvgRenderOptions.overrideColor(SettingsGuiPalette.withAlpha(targetColor,
                                 Math.round(235.0f * eased))));
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), target.name(),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), target.name(),
                         x + 47.0f + shift, rowY + 7.0f, 14.0f, titleColor, false);
                 String meta = targetMeta(target);
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getIosevkaRegular(), meta,
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), meta,
                         x + 47.0f + shift, rowY + 25.0f, 11.0f, muted, false);
                 boolean teleportable = exact && teleportAllowed;
                 targetHits.add(new XaeroMapSurface.TargetHit(target,
@@ -820,7 +823,7 @@ final class XaeroMapUiRenderer {
                     ? tr("gui.combatant.map.drawer.radar_contact", "Radar contact")
                     : tr("gui.combatant.map.drawer.unnamed", "Unnamed");
             int rowText = element.disabled() ? muted : titleColor;
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), name,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), name,
                     x + 47.0f + shift, rowY + 7.0f, 14.0f, rowText, false);
 
             String meta;
@@ -830,7 +833,7 @@ final class XaeroMapUiRenderer {
             } else {
                 meta = (int) element.worldX() + ", " + (int) element.worldZ();
             }
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getIosevkaRegular(), meta,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), meta,
                     x + 47.0f + shift, rowY + 25.0f, 11.0f, muted, false);
 
             hits.add(new XaeroMapSurface.ElementHit(
@@ -843,7 +846,7 @@ final class XaeroMapUiRenderer {
         String footer = rendered == XaeroMapSurface.Drawer.PLAYERS
                 ? tr("gui.combatant.map.drawer.target_hint", "LMB teleport when exact · otherwise focus")
                 : tr("gui.combatant.map.drawer.element_hint", "LMB focus · RMB actions");
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), footer,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), footer,
                 x + 17.0f, footerY + 8.0f, 10.5f, muted, false);
     }
 
@@ -949,7 +952,7 @@ final class XaeroMapUiRenderer {
                 .withInnerGlow(0.020f * eased, 4.0f, inner);
         XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(renderer, shell, tint,
-                        1.0f * eased, 1.0f * eased,
+                        eased, eased,
                         Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
         float bodyX = opensLeft ? x : x + tip;
@@ -961,10 +964,10 @@ final class XaeroMapUiRenderer {
 
         renderer.svg("circle-question-mark", left, y + 17.0f, 24.0f, 24.0f,
                 SvgRenderOptions.overrideColor(accent));
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_BOLD.renderer(),
                 tr("gui.combatant.map.help.title", "Map controls"),
                 left + 35.0f, y + 13.0f, 18.0f, text, false);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 tr("gui.combatant.map.help.subtitle", "Navigation & marker actions"),
                 left + 35.0f, y + 36.0f, 12.5f, muted, false);
 
@@ -986,9 +989,9 @@ final class XaeroMapUiRenderer {
                 Math.round(220.0f * reveal));
         int descriptionColor = SettingsGuiPalette.withAlpha(palette.panelText(),
                 Math.round(232.0f * reveal));
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getIosevkaRegular(), key,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), key,
                 x, y, 13.0f, keyColor, false);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), description,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), description,
                 x + 104.0f, y - 0.25f, 13.5f, descriptionColor, false);
     }
 
@@ -1049,7 +1052,7 @@ final class XaeroMapUiRenderer {
                 .withInnerGlow(0.020f * eased, 4.1f, inner);
         XaeroMapGlass.withMaterial(renderer, material, () ->
                 drawLiquidGlassPrimitive(renderer, shell, tint,
-                        1.0f * eased, 1.0f * eased,
+                        eased, eased,
                         Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
         int titleColor = SettingsGuiPalette.withAlpha(
@@ -1066,10 +1069,10 @@ final class XaeroMapUiRenderer {
             renderer.svg(icon, headerX, y + 16.0f, 18.0f, 18.0f,
                     SvgRenderOptions.overrideColor(
                             SettingsGuiPalette.withAlpha(accent, Math.round(220.0f * eased))));
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), primary.label(),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_BOLD.renderer(), primary.label(),
                     headerX + 27.0f, y + 13.0f, 15.5f, titleColor, false);
             if (headerCount > 1) {
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getIosevkaRegular(), entries.get(1).label(),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), entries.get(1).label(),
                         headerX + 27.0f, y + 33.0f, 11.5f, muted, false);
             }
         }
@@ -1137,7 +1140,7 @@ final class XaeroMapUiRenderer {
                 renderer.svg(entry.icon(), bodyX + 16.0f + shift, rowY + 9.0f,
                         17.0f, 17.0f, SvgRenderOptions.overrideColor(baseColor));
             }
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), entry.label(),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), entry.label(),
                     bodyX + 43.0f + shift, rowY + 9.0f, 13.5f, baseColor, false);
         }
 

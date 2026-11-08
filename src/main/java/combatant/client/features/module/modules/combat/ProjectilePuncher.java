@@ -10,7 +10,6 @@ package combatant.client.features.module.modules.combat;
 import combatant.client.util.aiming.features.processors.RotationProcessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.phys.AABB;

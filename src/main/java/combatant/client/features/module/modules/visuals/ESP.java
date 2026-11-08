@@ -1002,8 +1002,6 @@ public class ESP extends Module {
         }
 
         PoseStack matrices = new PoseStack();
-        boolean pushed = false;
-
         try (ShaderEspRenderContext.Scope ignored = ShaderEspRenderContext.enter()) {
             LevelRendererAccessor accessor = (LevelRendererAccessor) worldRenderer;
             LevelRenderState base = accessor.combatant$getWorldRenderState();
@@ -1052,7 +1050,6 @@ public class ESP extends Module {
 
             boolean standaloneDispatcher = dispatcher == shaderEspRenderDispatcher && shaderEspRenderBuffers != null;
             accessor.combatant$invokeSubmitEntities(matrices, temp, shaderEspCommandQueue);
-            pushed = true;
             try {
                 if (!combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
                         "combatant:shader-esp-mask", dispatcher, shaderEspCommandQueue,

@@ -19,14 +19,20 @@ import java.util.Map;
 public final class GaugeRegistry {
     public enum Readiness { FULL, THRESHOLD, CONTINUOUS }
     public enum Flow { FILL, DRAIN }
+    public enum Kind { BAR, MESSAGE }
 
     public record Gauge(String id, String label, float fill, Readiness readiness,
-                        float threshold, boolean ready, Flow flow, String detail) {
+                        float threshold, boolean ready, Flow flow, String detail, Kind kind) {
+        public Gauge(String id, String label, float fill, Readiness readiness,
+                     float threshold, boolean ready, Flow flow, String detail) {
+            this(id, label, fill, readiness, threshold, ready, flow, detail, Kind.BAR);
+        }
         public Gauge {
             if (id == null || id.isBlank()) throw new IllegalArgumentException("Gauge id is required");
             if (label == null || label.isBlank()) throw new IllegalArgumentException("Gauge label is required");
             readiness = readiness == null ? Readiness.CONTINUOUS : readiness;
             flow = flow == null ? Flow.FILL : flow;
+            kind = kind == null ? Kind.BAR : kind;
             fill = clamp(fill);
             threshold = readiness == Readiness.FULL ? 1f : clamp(threshold);
             detail = detail == null ? "" : detail;
@@ -94,7 +100,7 @@ public final class GaugeRegistry {
             }
             Gauge gauge = new Gauge(meta.id(), I18n.get(meta.labelKey()), sample.fill(),
                     meta.readiness(), meta.threshold(), sample.ready(),
-                    sample.flow() != null ? sample.flow() : meta.flow(), sample.detail());
+                    sample.flow() != null ? sample.flow() : meta.flow(), sample.detail(), meta.kind());
             publishSample(owner, gauge, sample.visible(), meta.hideAfterMillis());
         }
     }
@@ -118,7 +124,7 @@ public final class GaugeRegistry {
         }
         if (previous == null && LIVE.size() >= MAX_GAUGES) prune(now);
         if (previous == null && LIVE.size() >= MAX_GAUGES) return;
-        LIVE.put(key, new Live(gauge, now, until));
+        LIVE.put(key, new Live(!visible && previous != null ? previous.gauge() : gauge, now, until));
     }
 
     public static synchronized void remove(String owner, String id) {
@@ -135,7 +141,7 @@ public final class GaugeRegistry {
         for (Map.Entry<String, Live> entry : LIVE.entrySet()) {
             Gauge gauge = entry.getValue().gauge();
             out.add(new Gauge(entry.getKey(), gauge.label(), gauge.fill(),
-                    gauge.readiness(), gauge.threshold(), gauge.ready(), gauge.flow(), gauge.detail()));
+                    gauge.readiness(), gauge.threshold(), gauge.ready(), gauge.flow(), gauge.detail(), gauge.kind()));
         }
         return List.copyOf(out);
     }

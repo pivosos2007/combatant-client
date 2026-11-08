@@ -15,7 +15,7 @@ public sealed interface UiMaterialSpec permits UiSurfaceMaterialSpec, UiLiquidGl
     Family family();
 
     default boolean samplesBackdrop() {
-        return family() == Family.GLASS || family() == Family.HONEYCOMB;
+        return family() == Family.GLASS;
     }
 
     enum Family { SOLID, GLASS, HONEYCOMB }

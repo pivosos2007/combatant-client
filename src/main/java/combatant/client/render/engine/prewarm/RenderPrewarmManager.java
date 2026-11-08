@@ -7,6 +7,8 @@
 
 package combatant.client.render.engine.prewarm;
 
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.addon.ClickGuiSectionManager;
 import combatant.client.events.Events;
@@ -16,7 +18,6 @@ import combatant.client.features.gui.clickgui.picker.PickerCatalogFactory;
 import combatant.client.features.gui.clickgui.picker.PickerEntryData;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
-import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
 import combatant.client.render.engine.renderer.ui.UiPbrTextureSets;
 import combatant.client.render.engine.pipeline.UiGlassVisualPipelines;
@@ -204,15 +205,6 @@ public enum RenderPrewarmManager {
         // This runs only behind the device + published-resource lifecycle barrier.
         int materialSets = prewarmMaterialSets(event);
 
-        int menuTextures = 0;
-        Minecraft mc = Minecraft.getInstance();
-        try {
-            menuTextures = MenuBackgroundRenderer.prewarm(mc);
-        } catch (RuntimeException failure) {
-            // Optional warmup must never turn client startup into a hard failure.
-            DebugLog.warnOnce("prewarm-menu-background", "Failed to prewarm menu background resources", failure);
-        }
-
         try {
             gpuAtlasPending = !ItemBatchRenderer.prewarmUiItemAtlas();
         } catch (RuntimeException failure) {
@@ -221,8 +213,8 @@ public enum RenderPrewarmManager {
         }
 
         double elapsedMs = (System.nanoTime() - startedNs) / 1_000_000.0;
-        DebugLog.renderThread("[Combatant][Prewarm] %s: gpu phase; fonts=%d/%d svg-msdf=%d/%d menu-textures=%d/%d (%.2f ms)",
-                reason, fonts, event.fonts().size(), svg, event.svgMsdfIcons().size(), menuTextures, 4, elapsedMs);
+        DebugLog.renderThread("[Combatant][Prewarm] %s: gpu phase; fonts=%d/%d svg-msdf=%d/%d (%.2f ms)",
+                reason, fonts, event.fonts().size(), svg, event.svgMsdfIcons().size(), elapsedMs);
         DebugLog.renderThread("[Combatant][Prewarm] PBR texture sets ready=%d/%d, dynamic glass shaders=%d",
                 materialSets, event.pbrMaterials().size(), event.glassVisualShaders().size());
     }
@@ -294,7 +286,7 @@ public enum RenderPrewarmManager {
     public static void invalidateDeferred() {
         PickerCatalogFactory.invalidateAsyncCaches();
         pickerCatalogPending = true;
-        ClickGuiRenderer.invalidateFontBindings();
+        LayoutRender2D.invalidateTextCaches();
         if (gpuLifecycleReady && RenderSystem.isOnRenderThread()) {
             ItemBatchRenderer.onResourceReload();
         }

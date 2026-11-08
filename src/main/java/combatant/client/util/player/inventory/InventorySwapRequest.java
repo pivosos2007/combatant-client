@@ -20,7 +20,7 @@ public final class InventorySwapRequest {
     private final Predicate<ItemStack> predicate;
     private final InventorySearchScope scope;
     private final InventorySwapVisibility visibility;
-    private final boolean restore;
+    private final Boolean restore;
     private final InventoryActionKind actionKind;
     private final Runnable action;
 
@@ -50,7 +50,11 @@ public final class InventorySwapRequest {
     }
 
     public boolean restore() {
-        return restore;
+        return restore != null ? restore : true;
+    }
+
+    public boolean restore(boolean defaultValue) {
+        return restore != null ? restore : defaultValue;
     }
 
     public InventoryActionKind actionKind() {
@@ -64,9 +68,9 @@ public final class InventorySwapRequest {
     public static final class Builder {
         private final Predicate<ItemStack> predicate;
         private final Runnable action;
-        private InventorySearchScope scope = InventorySearchScope.FULL;
-        private InventorySwapVisibility visibility = InventorySwapVisibility.SILENT;
-        private boolean restore = true;
+        private InventorySearchScope scope;
+        private InventorySwapVisibility visibility;
+        private Boolean restore;
         private InventoryActionKind actionKind = InventoryActionKind.GENERIC;
 
         private Builder(Predicate<ItemStack> predicate, Runnable action) {
@@ -75,12 +79,12 @@ public final class InventorySwapRequest {
         }
 
         public Builder scope(InventorySearchScope scope) {
-            this.scope = scope != null ? scope : InventorySearchScope.FULL;
+            this.scope = scope;
             return this;
         }
 
         public Builder visibility(InventorySwapVisibility visibility) {
-            this.visibility = visibility != null ? visibility : InventorySwapVisibility.SILENT;
+            this.visibility = visibility;
             return this;
         }
 

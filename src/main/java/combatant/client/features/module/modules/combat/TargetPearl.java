@@ -9,6 +9,8 @@ package combatant.client.features.module.modules.combat;
 
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.BooleanMapValue;
+import combatant.client.util.player.TeleportImpulseTracker;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.RotationUpdateEvent;
 import combatant.client.features.module.Module;
@@ -48,6 +50,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Predicate;
 
@@ -74,6 +77,13 @@ public final class TargetPearl extends Module {
             num("targetPearlCooldownTicks", "cooldown_ticks", 20, 5, 60);
     private final NumberValue<Integer> simulationTicks =
             num("targetPearlSimulationTicks", "simulation_ticks", 80, 20, 160);
+
+    private final BooleanMapValue teleportOptions = group("targetPearlTeleportOptions", "teleport_options",
+            Map.of("friction_guidance", false, "require_landing", true));
+
+    public boolean isFrictionGuidanceEnabled() {
+        return teleportOptions.get("friction_guidance");
+    }
 
     private final Set<UUID> handled = new HashSet<>();
     private Candidate pending;
@@ -238,6 +248,10 @@ public final class TargetPearl extends Module {
 
         if (used) {
             handled.add(candidate.pearl().getUUID());
+            Entity owner = candidate.pearl().getOwner();
+            TeleportImpulseTracker.INSTANCE.markTargetPearl(candidate.impact(),
+                    owner == null ? null : owner.getUUID(), player.tickCount,
+                    teleportOptions.get("require_landing"));
             cooldown = cooldownTicks.get();
         }
         resetPending();

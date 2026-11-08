@@ -134,7 +134,7 @@ public final class DistributionCapabilities {
             platform = "android";
         } else if (os.startsWith("windows")) {
             platform = "windows";
-        } else if (os.equals("linux") || os.contains("linux")) {
+        } else if (os.contains("linux")) {
             platform = "linux";
         } else if (os.contains("mac") || os.contains("darwin")) {
             platform = "macos";

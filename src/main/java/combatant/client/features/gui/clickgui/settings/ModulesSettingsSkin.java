@@ -7,10 +7,11 @@
 
 package combatant.client.features.gui.clickgui.settings;
 
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
 import combatant.client.features.theme.Theme;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
@@ -41,16 +42,16 @@ enum ModulesSettingsSkin {
 
         ACCENT = forceAlpha(theme.accent(), 255);
         ACCENT_SOFT = withAlpha(theme.accentSoft(), 135);
-        CHECK_COLOR = ClickGuiRenderer.mixColor(TEXT_PRIMARY, ACCENT, 0.10f);
+        CHECK_COLOR = LayoutRender2D.mixColor(TEXT_PRIMARY, ACCENT, 0.10f);
 
         int surface = forceAlpha(theme.surface(), 255);
         int hover = forceAlpha(theme.surfaceHover(), 255);
         int accentTint = forceAlpha(theme.accent(), 255);
 
-        SURFACE = withAlpha(ClickGuiRenderer.mixColor(surface, accentTint, 0.075f), 86);
-        SURFACE_HOVER = withAlpha(ClickGuiRenderer.mixColor(hover, accentTint, 0.13f), 112);
-        SURFACE_SOFT = withAlpha(ClickGuiRenderer.mixColor(surface, accentTint, 0.055f), 62);
-        STROKE = withAlpha(ClickGuiRenderer.mixColor(theme.strokeSoft(), accentTint, 0.16f), 118);
+        SURFACE = withAlpha(LayoutRender2D.mixColor(surface, accentTint, 0.075f), 86);
+        SURFACE_HOVER = withAlpha(LayoutRender2D.mixColor(hover, accentTint, 0.13f), 112);
+        SURFACE_SOFT = withAlpha(LayoutRender2D.mixColor(surface, accentTint, 0.055f), 62);
+        STROKE = withAlpha(LayoutRender2D.mixColor(theme.strokeSoft(), accentTint, 0.16f), 118);
     }
 
     static float scale() {
@@ -129,7 +130,7 @@ enum ModulesSettingsSkin {
     }
 
     static String fit(TextRenderer font, String text, float size, float width) {
-        return ClickGuiRenderer.fitText(font, text, size, Math.max(1f, width));
+        return LayoutRender2D.fitText(font, text, size, Math.max(1f, width));
     }
 
     static void drawCheckIcon(float x, float y, float size, float activeAnim, float hoverAnim) {

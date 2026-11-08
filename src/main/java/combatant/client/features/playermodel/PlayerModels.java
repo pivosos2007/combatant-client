@@ -9,7 +9,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.PlayerModel;
 import combatant.client.features.playeranimator.PlayerRigInstance;
-import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
 import combatant.client.render.engine.asset.model.ModelRuntimeAsset;
 import combatant.client.render.engine.asset.model.io.ModelImporters;
 import combatant.client.render.engine.asset.model.material.ModelMaterialBridge;
@@ -21,7 +20,6 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.world.entity.HumanoidArm;
 import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer.ReplacementSkinCache;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import org.joml.Matrix4f;
 import net.minecraft.resources.Identifier;
 

@@ -7,13 +7,16 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.compat.xaero.XaeroIntegration;
 import combatant.client.compat.xaero.XaeroMinimapIntegration;
 import combatant.client.compat.xaero.XaeroWaypointSnapshot;
 import combatant.client.config.subsystem.MapUiConfig;
 import combatant.client.features.map.location.PlayerLocationService;
 import combatant.client.features.relations.CategoryService;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.theme.Theme;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -543,9 +546,9 @@ final class XaeroMapElements {
         if (symbol != null && !symbol.isBlank()) {
             symbol = symbol.substring(0, Math.min(2, symbol.length())).toUpperCase(java.util.Locale.ROOT);
             float symbolSize = (symbol.length() > 1 ? 11.4f : 13.2f) * scale;
-            float symbolWidth = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestBold(), symbol, symbolSize);
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getOnestBold(),
+            float symbolWidth = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_BOLD.renderer(), symbol, symbolSize);
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_BOLD.renderer(),
                     symbol,
                     cx - symbolWidth * 0.5f,
                     y + (badgeHeight - symbolSize) * 0.5f - 0.35f * scale,
@@ -792,8 +795,8 @@ final class XaeroMapElements {
     private static float styledWidth(List<TextRenderUtil.Part> parts, float size) {
         float width = 0.0f;
         for (TextRenderUtil.Part part : parts) {
-            TextRenderer font = part.bold() ? ClickGuiRenderer.getOnestBold() : ClickGuiRenderer.getOnestMedium();
-            width += ClickGuiRenderer.textWidth(font, part.text(), size);
+            TextRenderer font = part.bold() ? BuiltinFontCatalog.ONEST_BOLD.renderer() : BuiltinFontCatalog.ONEST_MEDIUM.renderer();
+            width += LayoutRender2D.textWidth(font, part.text(), size);
         }
         return width;
     }
@@ -802,9 +805,9 @@ final class XaeroMapElements {
         float cursor = x;
         for (TextRenderUtil.Part part : parts) {
             if (part.text() == null || part.text().isEmpty()) continue;
-            TextRenderer font = part.bold() ? ClickGuiRenderer.getOnestBold() : ClickGuiRenderer.getOnestMedium();
-            float width = ClickGuiRenderer.textWidth(font, part.text(), size);
-            ClickGuiRenderer.drawText(font, part.text(), cursor, y, size, part.color(), false);
+            TextRenderer font = part.bold() ? BuiltinFontCatalog.ONEST_BOLD.renderer() : BuiltinFontCatalog.ONEST_MEDIUM.renderer();
+            float width = LayoutRender2D.textWidth(font, part.text(), size);
+            LayoutRender2D.drawText(font, part.text(), cursor, y, size, part.color(), false);
             if (part.underline()) {
                 Renderer2D.COLOR.quad(cursor, y + size + 0.3f, width, 0.75f, part.color());
             }

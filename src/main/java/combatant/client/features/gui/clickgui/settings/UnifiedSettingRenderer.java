@@ -7,6 +7,10 @@
 
 package combatant.client.features.gui.clickgui.settings;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.config.values.BindMode;
@@ -52,13 +56,59 @@ enum UnifiedSettingRenderer {
         return SettingRenderContext.overlayHost();
     }
 
-    private static void renderModernLabel(String label, float x, float y, float maxW) {
+    private static final java.util.Map<Setting, LabelMarquee> LABEL_MARQUEES =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    private static final class LabelMarquee {
+        String label;
+        float width;
+        long entered;
+        boolean hovered;
+    }
+
+    private static void drawSettingLabel(Setting setting, String label, TextRenderer font,
+                                         float x, float y, float size, float maxWidth, int color,
+                                         float mx, float my, float rowX, float rowY, float rowWidth) {
+        if (label == null || label.isEmpty() || maxWidth <= 0f) return;
+        float available = Math.max(1f, maxWidth);
+        float fullWidth = UnifiedSettingsSkin.textWidth(font, label, size);
+        boolean overflow = fullWidth > available + 0.5f;
+        if (!overflow) {
+            LabelMarquee previous = LABEL_MARQUEES.get(setting);
+            if (previous != null) previous.hovered = false;
+            LayoutRender2D.drawText(font, label, x, y, size, color, false);
+            return;
+        }
+        boolean hover = UnifiedSettingsSkin.inside(mx, my, rowX, rowY,
+                rowWidth, Math.max(UnifiedSettingsSkin.textHeight(font, size), setting.getHeight()));
+        LabelMarquee state = LABEL_MARQUEES.computeIfAbsent(setting, ignored -> new LabelMarquee());
+        if (!hover) {
+            state.hovered = false;
+            LayoutRender2D.drawText(font, UnifiedSettingsSkin.fit(font, label, size, available),
+                    x, y, size, color, false);
+            return;
+        }
+        long now = System.nanoTime();
+        if (!state.hovered || !label.equals(state.label) || Math.abs(state.width - available) > 0.5f) {
+            state.entered = now;
+            state.label = label;
+            state.width = available;
+            state.hovered = true;
+        }
+        LayoutRender2D.drawMarqueeText(font, label, x, y, size, available, color,
+                Math.max(0f, (now - state.entered) * 1e-9f),
+                29f * UnifiedSettingsSkin.scale(),
+                18f * UnifiedSettingsSkin.scale(),
+                12f * UnifiedSettingsSkin.scale());
+    }
+
+    private static void renderModernLabel(Setting setting, float x, float y, float maxW, float mx, float my, float rowW) {
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
         float size = UnifiedSettingsSkin.labelSize();
         float ty = y + (UnifiedSettingsSkin.rowHeight() - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f;
-        ClickGuiRenderer.drawText(font,
-                UnifiedSettingsSkin.fit(font, label, size, Math.max(1f, maxW)),
-                x + UnifiedSettingsSkin.rowPadX(), ty, size, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, setting.getDisplayName(), font,
+                x + UnifiedSettingsSkin.rowPadX(), ty, size, maxW, UnifiedSettingsSkin.TEXT_PRIMARY,
+                mx, my, x, y, rowW);
     }
 
     private static void renderModernControlSurface(float x, float y, float w, float h, float radius,
@@ -66,11 +116,11 @@ enum UnifiedSettingRenderer {
         UnifiedSettingsSkin.drawModernControlSurface(x, y, w, h, radius, hoverAnim, focusAnim);
     }
 
-    private static void renderModernTopLabel(String label, float x, float y, float maxW) {
+    private static void renderModernTopLabel(Setting setting, float x, float y, float maxW, float mx, float my, float rowW) {
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
         float size = UnifiedSettingsSkin.labelSize();
-        ClickGuiRenderer.drawText(font, UnifiedSettingsSkin.fit(font, label, size, Math.max(1f, maxW)),
-                x, y, size, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, setting.getDisplayName(), font, x, y,
+                size, maxW, UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, rowW);
     }
 
     private static void modernSvg(String icon, float x, float y, float size, int color) {
@@ -100,7 +150,7 @@ enum UnifiedSettingRenderer {
         boolean hover = UnifiedSettingsSkin.inside(mx, my, x, y, w, layout.rowH);
         ui.hoverAnim = AnimationUtility.approach(ui.hoverAnim, hover ? 1f : 0f, dt, 12f);
 
-        TextRenderer font = modules() ? UnifiedSettingsSkin.fontRegular() : ClickGuiRenderer.getIosevkaRegular();
+        TextRenderer font = modules() ? UnifiedSettingsSkin.fontRegular() : BuiltinFontCatalog.ONEST_MEDIUM.renderer();
         float labelSize = m(18f, 6.8f);
 
         float cardX = x + m(2f, 2f);
@@ -113,7 +163,7 @@ enum UnifiedSettingRenderer {
         if (cardStrokeAnim > 0.001f) {
             int strokeA = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, Math.round(ui.hoverAnim * 82f));
             int strokeB = UnifiedSettingsSkin.accentGradientStart(ui.anim * 0.50f);
-            ClickGuiRenderer.drawRoundedRectStroke(cardX, cardY, cardW, cardH, radius, m(0.65f, 0.42f), UnifiedSettingsSkin.mix(strokeA, strokeB, Math.max(ui.anim, ui.hoverAnim * 0.28f)));
+            LayoutRender2D.drawRoundedRectStroke(cardX, cardY, cardW, cardH, radius, m(0.65f, 0.42f), UnifiedSettingsSkin.mix(strokeA, strokeB, Math.max(ui.anim, ui.hoverAnim * 0.28f)));
         }
 
         float sw = m(39f, 16f);
@@ -131,24 +181,35 @@ enum UnifiedSettingRenderer {
         int bgOnB = UnifiedSettingsSkin.accentGradientEnd(1f);
         int bgA = UnifiedSettingsSkin.mix(bgOffA, bgOnA, ui.anim);
         int bgB = UnifiedSettingsSkin.mix(bgOffB, bgOnB, ui.anim);
-        ClickGuiRenderer.drawRoundedRectGradient(sx, sy, sw, sh, sh * 0.5f, bgA, bgB, UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
-        ClickGuiRenderer.drawRoundedRectStroke(sx, sy, sw, sh, sh * 0.5f, m(0.65f, 0.42f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 50 + Math.round(ui.hoverAnim * 44f)));
+        LayoutRender2D.drawRoundedRectGradient(sx, sy, sw, sh, sh * 0.5f, bgA, bgB, UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
+        LayoutRender2D.drawRoundedRectStroke(sx, sy, sw, sh, sh * 0.5f, m(0.65f, 0.42f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 50 + Math.round(ui.hoverAnim * 44f)));
 
         float knob = sh - m(4f, 2.4f);
         float kx = sx + m(2f, 1.2f) + (sw - knob - m(4f, 2.4f)) * AnimationUtility.easeInOutCubic(ui.anim);
         float ky = sy + (sh - knob) * 0.5f;
         int knobCol = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_PRIMARY, UnifiedSettingsSkin.TEXT_MUTED, 0.18f) | 0xFF000000,
                 UnifiedSettingsSkin.CHECK_COLOR | 0xFF000000, ui.anim * 0.55f + ui.hoverAnim * 0.18f);
-        ClickGuiRenderer.drawRoundedRect(kx, ky, knob, knob, knob * 0.5f, knobCol);
+        LayoutRender2D.drawRoundedRect(kx, ky, knob, knob, knob * 0.5f, knobCol);
 
         float labelX = sx + sw + m(9f, 6f);
         int labelColor = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, 0.72f + ui.hoverAnim * 0.16f + ui.anim * 0.12f);
 
-        ClickGuiRenderer.beginTextBatch();
-        for (int i = 0; i < layout.lines.length; i++) {
-            ClickGuiRenderer.drawText(font, layout.lines[i], labelX, y + layout.labelY + i * (layout.lineH + m(2f, 0.7f)), labelSize, labelColor, false);
+        float labelW = Math.max(m(72f, 36f), w - sw - m(31f, 18f));
+        if (layout.lines.length > 0 && layout.lines[layout.lines.length - 1].endsWith("...")
+                && UnifiedSettingsSkin.inside(mx, my, x, y, w, layout.rowH)) {
+            drawSettingLabel(setting, setting.getDisplayName(), font, labelX,
+                    y + (layout.rowH - layout.lineH) * 0.5f,
+                    labelSize, labelW, labelColor, mx, my, x, y, w);
+        } else {
+            LABEL_MARQUEES.remove(setting);
+            LayoutRender2D.beginTextBatch();
+            for (int i = 0; i < layout.lines.length; i++) {
+                LayoutRender2D.drawText(font, layout.lines[i], labelX,
+                        y + layout.labelY + i * (layout.lineH + m(2f, 0.7f)),
+                        labelSize, labelColor, false);
+            }
+            LayoutRender2D.endTextBatch();
         }
-        ClickGuiRenderer.endTextBatch();
     }
 
     static void mouseClicked(BooleanSetting setting, double mx, double my, int button) {
@@ -184,10 +245,9 @@ enum UnifiedSettingRenderer {
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
         float labelSize = UnifiedSettingsSkin.labelSize();
         float ty = y + (rowH - UnifiedSettingsSkin.textHeight(font, labelSize)) * 0.5f;
-        ClickGuiRenderer.drawText(font,
-                UnifiedSettingsSkin.fit(font, setting.getDisplayName(), labelSize,
-                        Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(10f, 10f))),
-                x, ty, labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, setting.getDisplayName(), font, x, ty, labelSize,
+                Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(10f, 10f)),
+                UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
 
         float radius = UnifiedSettingsSkin.modernMetric(5f, 5f);
         UnifiedSettingsSkin.drawModernControlSurface(bx, by, box, box, radius, ui.hoverAnim, ui.anim * 0.35f);
@@ -197,7 +257,7 @@ enum UnifiedSettingRenderer {
             float innerH = Math.max(1f, box - inset * 2f);
             int selectedBg = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetHoverBg(),
                     UnifiedSettingsSkin.modernTextSecondary(), 0.09f * ui.anim);
-            ClickGuiRenderer.drawRoundedRect(bx + inset, by + inset, innerW, innerH,
+            LayoutRender2D.drawRoundedRect(bx + inset, by + inset, innerW, innerH,
                     Math.max(1f, radius - inset * 0.45f),
                     UnifiedSettingsSkin.withAlpha(selectedBg, 0.92f * ui.anim));
             float icon = UnifiedSettingsSkin.modernMetric(14f, 14f) * ui.anim;
@@ -211,7 +271,7 @@ enum UnifiedSettingRenderer {
 
     private static LayoutBoolean booleanLayout(BooleanSetting setting, float width) {
         BooleanSetting.UiState ui = setting.ui();
-        TextRenderer font = modules() ? UnifiedSettingsSkin.fontRegular() : ClickGuiRenderer.getIosevkaRegular();
+        TextRenderer font = modules() ? UnifiedSettingsSkin.fontRegular() : BuiltinFontCatalog.ONEST_MEDIUM.renderer();
         float labelSize = m(18f, 6.8f);
         float switchW = m(39f, 16f);
         String labelText = setting.getDisplayName();
@@ -221,7 +281,7 @@ enum UnifiedSettingRenderer {
         if (needsLayout) {
             float lineH = UnifiedSettingsSkin.textHeight(font, labelSize);
             float labelMaxW = Math.max(m(72f, 36f), width - switchW - m(31f, 18f));
-            var linesList = ClickGuiRenderer.wrapText(font, labelText, labelSize, labelMaxW, 2);
+            var linesList = LayoutRender2D.wrapText(font, labelText, labelSize, labelMaxW, 2);
             String[] lines = linesList.toArray(new String[0]);
             float gap = m(2f, 0.7f);
             float textBlockH = lines.length * lineH + Math.max(0, lines.length - 1) * gap;
@@ -274,19 +334,31 @@ enum UnifiedSettingRenderer {
             SystemCursor.set(SystemCursor.CursorType.RESIZE_HORIZONTAL);
         }
         ui.hoverAnim = AnimationUtility.approach(ui.hoverAnim, trackHover ? 1f : 0f, dt, 12f);
-        ui.editAnim = AnimationUtility.approach(ui.editAnim, ui.editing ? 1f : 0f, dt, 14f);
+        ui.editAnim = AnimationUtility.approach(ui.editAnim, ui.editing ? 1f : 0f, dt, ui.editing ? 22f : 30f);
+        if (!ui.editing && ui.editAnim < 0.015f) {
+            ui.exitText = "";
+            ui.exitWidth = 0f;
+        }
         ui.errorAnim = AnimationUtility.approach(ui.errorAnim, 0f, dt, 7.5f);
         if (ui.editing) ui.cursorBlink += dt * 2.3f;
         else ui.cursorBlink = 0f;
 
-        TextRenderer font = modules() ? UnifiedSettingsSkin.fontRegular() : ClickGuiRenderer.getIosevkaRegular();
+        TextRenderer font = modules() ? UnifiedSettingsSkin.fontRegular() : BuiltinFontCatalog.ONEST_MEDIUM.renderer();
         float labelSize = m(17f, 6.8f);
         float valueSize = m(17f, 6.8f);
         float textY = y + m(6f, 1.9f);
         String display = ui.editing ? ui.editBuffer : value.toDisplay();
         if (display == null) display = "";
         float valuePad = m(6f, 4f);
-        float rawValueW = UnifiedSettingsSkin.textWidth(font, display.isEmpty() ? "0" : display, valueSize) + valuePad * 2f;
+        String restingValue = value.toDisplay();
+        if (restingValue == null) restingValue = "";
+        String animatedText = ui.editing ? ui.editBuffer : ui.exitText;
+        float rawValueW = UnifiedSettingsSkin.textWidth(font,
+                display.isEmpty() ? "0" : display, valueSize) + valuePad * 2f;
+        if (ui.editAnim > 0.015f) {
+            rawValueW = Math.max(rawValueW, UnifiedSettingsSkin.textWidth(font, animatedText, valueSize) + valuePad * 2f);
+            if (!ui.editing) rawValueW = Math.max(rawValueW, ui.exitWidth);
+        }
         float valueW = Math.max(m(34f, 20f), rawValueW);
         valueW = Math.min(valueW, Math.max(m(46f, 28f), w * 0.48f));
         ui.valueX = x + w - valueW - trackPad;
@@ -312,26 +384,25 @@ enum UnifiedSettingRenderer {
         );
         int fieldStroke = UnifiedSettingsSkin.mix(fieldStrokeBase, 0xFFFF5F66, ui.errorAnim);
 
-        ClickGuiRenderer.beginTextBatch();
         String label = setting.getDisplayName();
         float labelMax = Math.max(1f, ui.valueX - trackX - m(7f, 5f));
-        ClickGuiRenderer.drawText(font, UnifiedSettingsSkin.fit(font, label, labelSize, labelMax), trackX, textY, labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
-        ClickGuiRenderer.endTextBatch();
+        drawSettingLabel(setting, label, font, trackX, textY, labelSize, labelMax,
+                UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
 
         if (fieldAnim > 0.001f || ui.errorAnim > 0.001f) {
             float lift = ui.inputFocusGlowAnim * m(1.0f, 0.45f);
             if (UnifiedSettingsSkin.SURFACE_GRADIENT_ENABLED) {
                 UnifiedSettingsSkin.drawSurface(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), fieldAnim);
             } else {
-                ClickGuiRenderer.drawRoundedRect(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), fieldBg);
+                LayoutRender2D.drawRoundedRect(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), fieldBg);
             }
             if (ui.inputFocusGlowAnim > 0.02f) {
-                ClickGuiRenderer.drawRoundedRectStrokeGradient(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), m(0.8f, 0.45f), UnifiedSettingsSkin.accentGradientStart(0.72f), UnifiedSettingsSkin.accentGradientEnd(0.72f), UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
+                LayoutRender2D.drawRoundedRectStrokeGradient(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), m(0.8f, 0.45f), UnifiedSettingsSkin.accentGradientStart(0.72f), UnifiedSettingsSkin.accentGradientEnd(0.72f), UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
             } else {
-                ClickGuiRenderer.drawRoundedRectStroke(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), m(0.7f, 0.45f), fieldStroke);
+                LayoutRender2D.drawRoundedRectStroke(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), m(0.7f, 0.45f), fieldStroke);
             }
             if (ui.errorAnim > 0.01f) {
-                ClickGuiRenderer.drawRoundedRectStroke(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), m(1.0f, 0.55f), UnifiedSettingsSkin.withAlpha(0xFFFF5F66, Math.round(170f * ui.errorAnim)));
+                LayoutRender2D.drawRoundedRectStroke(ui.valueX, ui.valueY - lift, ui.valueW, ui.valueH + lift * 2f, m(6f, 3.5f), m(1.0f, 0.55f), UnifiedSettingsSkin.withAlpha(0xFFFF5F66, Math.round(170f * ui.errorAnim)));
             }
         }
 
@@ -339,27 +410,36 @@ enum UnifiedSettingRenderer {
         ui.valueTextSize = valueSize;
         ui.valueTextPad = valuePad;
         ui.valueTextY = textBaseY;
-        String drawValue = ui.editing ? display : UnifiedSettingsSkin.fit(font, display, valueSize, ui.valueW - valuePad * 2f);
-        float drawW = UnifiedSettingsSkin.textWidth(font, drawValue, valueSize);
-        float drawX = ui.editing ? ui.valueX + valuePad : ui.valueX + ui.valueW - drawW - valuePad;
-        ui.valueTextX = drawX;
+        float inputAlpha = UnifiedSettingsSkin.clamp01(ui.editAnim);
+        String normalText = UnifiedSettingsSkin.fit(font, restingValue, valueSize, ui.valueW - valuePad * 2f);
+        float normalW = UnifiedSettingsSkin.textWidth(font, normalText, valueSize);
+        float normalX = ui.valueX + ui.valueW - normalW - valuePad;
+        float editX = ui.valueX + valuePad;
+        ui.valueTextX = ui.editing ? editX : normalX;
         boolean textClip = ScissorFunction.pushRaw(ui.valueX + valuePad * 0.65f, ui.valueY, Math.max(1f, ui.valueW - valuePad * 1.3f), ui.valueH);
-        if (ui.editing) {
-            renderInlineSelection(font, ui.editBuffer, sliderSelStart(ui), sliderSelEnd(ui), drawX, textBaseY, valueSize, ui.valueH, 0f);
+        if (inputAlpha < 0.999f) {
+            LayoutRender2D.drawText(font, normalText, normalX, textBaseY, valueSize,
+                    UnifiedSettingsSkin.withAlpha(textCol, 1f - inputAlpha), false);
         }
-        ClickGuiRenderer.drawText(font, drawValue, drawX, textBaseY, valueSize, textCol, false);
-        if (ui.editing && ((int) (ui.cursorBlink * 2f) & 1) == 0) {
+        if (inputAlpha > 0.001f && !animatedText.isEmpty()) {
+            if (ui.editing && inputAlpha > 0.35f) {
+                renderInlineSelection(font, ui.editBuffer, sliderSelStart(ui), sliderSelEnd(ui), editX, textBaseY, valueSize, ui.valueH, 0f);
+            }
+            LayoutRender2D.drawText(font, animatedText, editX, textBaseY, valueSize,
+                    UnifiedSettingsSkin.withAlpha(textCol, inputAlpha), false);
+        }
+        if (ui.editing && inputAlpha > 0.65f && ((int) (ui.cursorBlink * 2f) & 1) == 0) {
             int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
-            float cx = drawX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), valueSize) + m(0.5f, 0.3f);
-            GuiTextCaret.draw(cx, textBaseY, font, valueSize, UnifiedSettingsSkin.withAlpha(textCol, 205));
+            float cx = editX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), valueSize) + m(0.5f, 0.3f);
+            GuiTextCaret.draw(cx, textBaseY, font, valueSize, UnifiedSettingsSkin.withAlpha(textCol, inputAlpha));
         }
         if (textClip) ScissorFunction.pop();
 
         int baseTrack = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.SURFACE, UnifiedSettingsSkin.SURFACE_HOVER, 0.55f + ui.hoverAnim * 0.15f);
-        ClickGuiRenderer.drawRoundedRect(trackX, trackY, trackW, trackH, 0.6f * s(), baseTrack);
+        LayoutRender2D.drawRoundedRect(trackX, trackY, trackW, trackH, 0.6f * s(), baseTrack);
         float fillW = trackW * ui.anim;
         if (fillW > 0.5f) {
-            ClickGuiRenderer.drawGradientRect(trackX, trackY, fillW, trackH, UnifiedSettingsSkin.accentGradientStart(1f), UnifiedSettingsSkin.accentGradientEnd(1f), UnifiedSettingsSkin.accentGradientEnd(1f), UnifiedSettingsSkin.accentGradientStart(1f));
+            LayoutRender2D.drawGradientRect(trackX, trackY, fillW, trackH, UnifiedSettingsSkin.accentGradientStart(1f), UnifiedSettingsSkin.accentGradientEnd(1f), UnifiedSettingsSkin.accentGradientEnd(1f), UnifiedSettingsSkin.accentGradientStart(1f));
         }
 
         float knobW = m(2.4f, 1.2f);
@@ -368,7 +448,7 @@ enum UnifiedSettingRenderer {
         float knobY = trackY - (knobH - trackH) * 0.5f;
         int knobCol = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_PRIMARY, UnifiedSettingsSkin.TEXT_MUTED, 0.20f) | 0xFF000000,
                 UnifiedSettingsSkin.accentGradientStart(1f), 0.25f + ui.hoverAnim * 0.20f);
-        ClickGuiRenderer.drawRoundedRect(knobX, knobY, knobW, knobH, knobW * 0.5f, knobCol);
+        LayoutRender2D.drawRoundedRect(knobX, knobY, knobW, knobH, knobW * 0.5f, knobCol);
     }
 
     // ------------------------------------------------------------
@@ -581,18 +661,27 @@ enum UnifiedSettingRenderer {
         float dt = AnimationUtility.deltaTime();
         ui.hoverAnim = AnimationUtility.approach(ui.hoverAnim, trackHover ? 1f : 0f, dt, 13f);
         ui.valueHoverAnim = AnimationUtility.approach(ui.valueHoverAnim, valueHover ? 1f : 0f, dt, 13f);
-        ui.editAnim = AnimationUtility.approach(ui.editAnim, ui.editing ? 1f : 0f, dt, 14f);
+        ui.editAnim = AnimationUtility.approach(ui.editAnim, ui.editing ? 1f : 0f, dt, ui.editing ? 22f : 30f);
+        if (!ui.editing && ui.editAnim < 0.015f) {
+            ui.exitText = "";
+            ui.exitWidth = 0f;
+        }
         ui.errorAnim = AnimationUtility.approach(ui.errorAnim, 0f, dt, 7.5f);
         if (ui.editing) ui.cursorBlink += dt * 2.3f; else ui.cursorBlink = 0f;
 
-        String label = UnifiedSettingsSkin.fit(font, setting.getDisplayName(), labelSize,
-                Math.max(1f, valueX - x - UnifiedSettingsSkin.modernMetric(10f, 10f)));
         float labelY = y;
-        ClickGuiRenderer.drawText(font, label, x, labelY, labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, setting.getDisplayName(), font, x, labelY, labelSize,
+                Math.max(1f, valueX - x - UnifiedSettingsSkin.modernMetric(10f, 10f)),
+                UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
 
-        if (ui.editing) {
-            renderModernControlSurface(valueX, valueY, valueW, valueH,
-                    UnifiedSettingsSkin.modernMetric(5f, 5f), ui.valueHoverAnim, ui.editAnim);
+        if (ui.editAnim > 0.015f) {
+            LayoutRender2D.drawRoundedRect(valueX, valueY, valueW, valueH,
+                    UnifiedSettingsSkin.modernMetric(5f, 5f),
+                    UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBg(), ui.editAnim));
+            LayoutRender2D.drawRoundedRectStroke(valueX, valueY, valueW, valueH,
+                    UnifiedSettingsSkin.modernMetric(5f, 5f),
+                    UnifiedSettingsSkin.controlStroke(),
+                    UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBorderHover(), ui.editAnim));
         }
         String drawValue = ui.editing ? display : UnifiedSettingsSkin.fit(font, display, valueSize, valueW);
         float drawW = UnifiedSettingsSkin.textWidth(font, drawValue, valueSize);
@@ -627,8 +716,9 @@ enum UnifiedSettingRenderer {
         if (ui.editing) {
             renderInlineSelection(font, ui.editBuffer, sliderSelStart(ui), sliderSelEnd(ui), drawX, valueTextY, valueSize, valueH, valueY);
         }
-        ClickGuiRenderer.drawText(font, drawValue, drawX, valueTextY, valueSize, valueColor, false);
-        if (ui.editing && ((int) (ui.cursorBlink * 2f) & 1) == 0) {
+        LayoutRender2D.drawText(font, drawValue, drawX, valueTextY, valueSize,
+                UnifiedSettingsSkin.withAlpha(valueColor, ui.editing ? Math.max(0.02f, ui.editAnim) : 1f), false);
+        if (ui.editing && ui.editAnim > 0.65f && ((int) (ui.cursorBlink * 2f) & 1) == 0) {
             int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
             float cx = drawX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), valueSize);
             GuiTextCaret.draw(cx, valueTextY, font, valueSize, UnifiedSettingsSkin.modernTextBright());
@@ -642,7 +732,7 @@ enum UnifiedSettingRenderer {
         if (large) {
             // The full-length track must remain visible on dark PlayerModel panels even when
             // the value is zero; previously only the filled fraction was legible.
-            ClickGuiRenderer.drawRoundedRect(trackX, trackY, trackW, trackH, trackH * .5f,
+            LayoutRender2D.drawRoundedRect(trackX, trackY, trackW, trackH, trackH * .5f,
                     UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernTextSecondary(), 0.17f));
         }
         float fillW = Math.max(0f, trackW * ui.anim);
@@ -657,7 +747,7 @@ enum UnifiedSettingRenderer {
         // another nested control. Hover only brightens it slightly.
         int knob = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.ACCENT,
                 UnifiedSettingsSkin.modernTextBright(), ui.hoverAnim * 0.12f);
-        ClickGuiRenderer.drawCircle(cx, cy, outerR, knob);
+        LayoutRender2D.drawCircle(cx, cy, outerR, knob);
     }
 
     private static boolean sliderInteger(SliderSetting<?> setting) {
@@ -669,6 +759,9 @@ enum UnifiedSettingRenderer {
         SliderSetting.UiState ui = setting.ui();
         ui.editing = true;
         ui.dragging = false;
+        ui.editAnim = 0f;
+        ui.exitText = "";
+        ui.exitWidth = 0f;
         ui.editBuffer = String.valueOf(setting.value().get()).replace(',', '.');
         ui.editCursor = ui.editBuffer.length();
         ui.editSelection.clear();
@@ -679,6 +772,8 @@ enum UnifiedSettingRenderer {
 
     private static void cancelSliderEdit(SliderSetting<?> setting) {
         SliderSetting.UiState ui = setting.ui();
+        ui.exitText = ui.editBuffer;
+        ui.exitWidth = ui.valueW;
         ui.editing = false;
         ui.editBuffer = "";
         ui.editCursor = 0;
@@ -703,6 +798,8 @@ enum UnifiedSettingRenderer {
             else parsed = Math.round(parsed * 1000d) / 1000d;
             N next = setting.value().castToType(parsed);
             setting.value().set(next);
+            ui.exitText = ui.editBuffer;
+            ui.exitWidth = ui.valueW;
             ui.editing = false;
             ui.editBuffer = "";
             ui.editCursor = 0;
@@ -735,7 +832,7 @@ enum UnifiedSettingRenderer {
             char c = text.charAt(i);
             if (c >= '0' && c <= '9') {
                 out.append(c);
-            } else if (c == '-' && out.length() == 0) {
+            } else if (c == '-' && out.isEmpty()) {
                 out.append('-');
             } else if (!integer && (c == '.' || c == ',') && !dot) {
                 out.append('.');
@@ -757,7 +854,7 @@ enum UnifiedSettingRenderer {
 
     private static void setSliderEditCursorFromMouse(SliderSetting<?> setting, float mx, boolean shift) {
         SliderSetting.UiState ui = setting.ui();
-        TextRenderer font = modules() ? UnifiedSettingsSkin.fontRegular() : ClickGuiRenderer.getIosevkaRegular();
+        TextRenderer font = modules() ? UnifiedSettingsSkin.fontRegular() : BuiltinFontCatalog.ONEST_MEDIUM.renderer();
         int cursor = caretFromText(font, ui.editBuffer == null ? "" : ui.editBuffer, ui.valueTextSize <= 0f ? m(17f, 6.8f) : ui.valueTextSize, ui.valueTextX, mx);
         setSliderCursor(ui, cursor, shift);
     }
@@ -875,7 +972,9 @@ enum UnifiedSettingRenderer {
 
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
         float size = m(17f, 6.5f);
-        ClickGuiRenderer.drawText(font, setting.getDisplayName(), x + m(5f, 5f), y + m(4f, 1.3f), size, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, setting.getDisplayName(), font,
+                x + m(5f, 5f), y + m(4f, 1.3f), size, Math.max(1f, w - m(10f, 10f)),
+                UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
         renderOptionContainer(x + m(5f, 5f), y + m(24f, 9.7f), ui.selectW, optionContainerHeightMode(ui), false);
 
         for (ModeSetting.OptionLayout opt : ui.optionLayouts) {
@@ -886,7 +985,7 @@ enum UnifiedSettingRenderer {
             float hoverAnim = AnimationUtility.approach(ui.hoverAnims.getOrDefault(opt.getId(), 0f), hover ? 1f : 0f, 0.20f);
             ui.hoverAnims.put(opt.getId(), hoverAnim);
             int color = active ? UnifiedSettingsSkin.ACCENT : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, hoverAnim * 0.50f);
-            ClickGuiRenderer.drawText(font, opt.label(), ox, oy, size, color, false);
+            LayoutRender2D.drawText(font, opt.label(), ox, oy, size, color, false);
         }
     }
 
@@ -940,7 +1039,7 @@ enum UnifiedSettingRenderer {
         ui.baseX = x; ui.baseY = y; ui.baseW = w;
         ui.selectX = cx; ui.selectY = cy; ui.selectW = controlW; ui.selectH = controlH;
 
-        renderModernTopLabel(setting.getDisplayName(), x, y, w);
+        renderModernTopLabel(setting, x, y, w, mx, my, w);
         renderModernControlSurface(cx, cy, controlW, controlH, UnifiedSettingsSkin.controlRadius(), hoverAnim, ui.openAnim);
 
         // Rich-style structural hierarchy: a neutral icon well and a separate disclosure well.
@@ -952,8 +1051,8 @@ enum UnifiedSettingRenderer {
         float iconWellY = cy + edge;
         int wellBg = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(),
                 UnifiedSettingsSkin.modernInsetHoverBg(), hoverAnim * 0.55f);
-        ClickGuiRenderer.drawRoundedRect(iconWellX, iconWellY, well, well, wellRadius, wellBg);
-        ClickGuiRenderer.drawRoundedRectStroke(iconWellX, iconWellY, well, well, wellRadius,
+        LayoutRender2D.drawRoundedRect(iconWellX, iconWellY, well, well, wellRadius, wellBg);
+        LayoutRender2D.drawRoundedRectStroke(iconWellX, iconWellY, well, well, wellRadius,
                 Math.max(0.55f, 0.55f * s()), UnifiedSettingsSkin.modernDivider());
 
         float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
@@ -977,11 +1076,11 @@ enum UnifiedSettingRenderer {
                     UnifiedSettingsSkin.modernInsetBg(),
                     UnifiedSettingsSkin.modernInsetHoverBg(),
                     UnifiedSettingsSkin.clamp01(actionResponse));
-            ClickGuiRenderer.drawRoundedRect(actionX + actionInset, cy + actionInset,
+            LayoutRender2D.drawRoundedRect(actionX + actionInset, cy + actionInset,
                     actionW - actionInset * 2f, controlH - actionInset * 2f, wellRadius,
                     UnifiedSettingsSkin.withAlpha(actionSurface, actionFade));
         }
-        ClickGuiRenderer.drawRect(actionX, cy + UnifiedSettingsSkin.modernMetric(5f, 5f),
+        LayoutRender2D.drawRect(actionX, cy + UnifiedSettingsSkin.modernMetric(5f, 5f),
                 Math.max(0.65f, 0.65f * s()), controlH - UnifiedSettingsSkin.modernMetric(10f, 10f),
                 UnifiedSettingsSkin.modernDivider());
 
@@ -992,7 +1091,7 @@ enum UnifiedSettingRenderer {
         String selected = setting.getOptionDisplayName(setting.selectedId());
         String draw = UnifiedSettingsSkin.fit(font, selected, size, textMax);
         float ty = cy + (controlH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f;
-        ClickGuiRenderer.drawText(font, draw, textX, ty, size, UnifiedSettingsSkin.modernTextSecondary(), false);
+        LayoutRender2D.drawText(font, draw, textX, ty, size, UnifiedSettingsSkin.modernTextSecondary(), false);
 
         float arrow = UnifiedSettingsSkin.modernMetric(12f, 12f);
         float ax = actionX + (actionW - arrow) * 0.5f;
@@ -1053,7 +1152,10 @@ enum UnifiedSettingRenderer {
 
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
         float size = m(17f, 6.5f);
-        ClickGuiRenderer.drawText(font, setting.getDisplayName(), x + m(5f, 5f), y + m(4f, 1.7f), size, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, setting.getDisplayName(), font,
+                x + m(5f, 5f), y + m(4f, 1.7f), size,
+                Math.max(1f, w - m(10f, 10f)), UnifiedSettingsSkin.TEXT_PRIMARY,
+                mx, my, x, y, w);
         renderOptionContainer(x + m(6f, 6f), y + m(24f, 9.7f), Math.max(1f, containerWidth(ui.optionLayouts)), optionContainerHeightGroup(ui), false);
 
         for (GroupSetting.OptionLayout opt : ui.optionLayouts) {
@@ -1068,12 +1170,12 @@ enum UnifiedSettingRenderer {
             float indicator = m(6f, 4.5f);
             float indicatorX = ox;
             float indicatorY = oy + (m(16f, 8f) - indicator) * 0.5f - m(1f, 0.4f);
-            ClickGuiRenderer.drawRoundedRect(indicatorX, indicatorY, indicator, indicator, m(1.5f, 1f),
+            LayoutRender2D.drawRoundedRect(indicatorX, indicatorY, indicator, indicator, m(1.5f, 1f),
                     active ? UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT, 210) : UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 52));
             if (active) UnifiedSettingsSkin.checkIcon(indicatorX + m(0.5f, 0.3f), indicatorY + m(0.5f, 0.3f), Math.max(1f, indicator - m(1f, 0.6f)), activeAnim, hoverAnim);
             int color = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, 0.72f + hoverAnim * 0.28f);
             color = UnifiedSettingsSkin.mix(color, UnifiedSettingsSkin.ACCENT, activeAnim);
-            ClickGuiRenderer.drawText(font, opt.label(), ox + indicator + m(3f, 2f), oy, size, color, false);
+            LayoutRender2D.drawText(font, opt.label(), ox + indicator + m(3f, 2f), oy, size, color, false);
         }
     }
 
@@ -1127,8 +1229,8 @@ enum UnifiedSettingRenderer {
         ui.selectW = controlW;
         ui.selectH = controlH;
 
-        renderModernLabel(setting.getDisplayName(), x, y,
-                Math.max(1f, cx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)));
+        renderModernLabel(setting, x, y,
+                Math.max(1f, cx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)), mx, my, w);
         renderModernControlSurface(cx, cy, controlW, controlH, UnifiedSettingsSkin.controlRadius(), hoverAnim, ui.openAnim);
 
         float edge = UnifiedSettingsSkin.modernMetric(4f, 4f);
@@ -1136,10 +1238,10 @@ enum UnifiedSettingRenderer {
         float wellRadius = Math.max(2f, UnifiedSettingsSkin.controlRadius() - UnifiedSettingsSkin.modernMetric(2f, 2f));
         float iconWellX = cx + edge;
         float iconWellY = cy + edge;
-        ClickGuiRenderer.drawRoundedRect(iconWellX, iconWellY, well, well, wellRadius,
+        LayoutRender2D.drawRoundedRect(iconWellX, iconWellY, well, well, wellRadius,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(),
                         UnifiedSettingsSkin.modernInsetHoverBg(), hoverAnim * 0.55f));
-        ClickGuiRenderer.drawRoundedRectStroke(iconWellX, iconWellY, well, well, wellRadius,
+        LayoutRender2D.drawRoundedRectStroke(iconWellX, iconWellY, well, well, wellRadius,
                 Math.max(0.55f, 0.55f * s()), UnifiedSettingsSkin.modernDivider());
 
         float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
@@ -1169,11 +1271,11 @@ enum UnifiedSettingRenderer {
                     UnifiedSettingsSkin.modernInsetBg(),
                     UnifiedSettingsSkin.modernInsetHoverBg(),
                     UnifiedSettingsSkin.clamp01(actionResponse));
-            ClickGuiRenderer.drawRoundedRect(actionX + actionInset, cy + actionInset,
+            LayoutRender2D.drawRoundedRect(actionX + actionInset, cy + actionInset,
                     actionW - actionInset * 2f, controlH - actionInset * 2f, wellRadius,
                     UnifiedSettingsSkin.withAlpha(actionSurface, actionFade));
         }
-        ClickGuiRenderer.drawRect(actionX, cy + UnifiedSettingsSkin.modernMetric(5f, 5f),
+        LayoutRender2D.drawRect(actionX, cy + UnifiedSettingsSkin.modernMetric(5f, 5f),
                 Math.max(0.65f, 0.65f * s()), controlH - UnifiedSettingsSkin.modernMetric(10f, 10f),
                 UnifiedSettingsSkin.modernDivider());
 
@@ -1185,13 +1287,13 @@ enum UnifiedSettingRenderer {
         float countH = UnifiedSettingsSkin.modernMetric(17f, 17f);
         float countX = actionX - UnifiedSettingsSkin.modernMetric(6f, 6f) - countW;
         float countY = cy + (controlH - countH) * 0.5f;
-        ClickGuiRenderer.drawRoundedRect(countX, countY, countW, countH, countH * 0.5f,
+        LayoutRender2D.drawRoundedRect(countX, countY, countW, countH, countH * 0.5f,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(),
                         UnifiedSettingsSkin.modernInsetHoverBg(), selectedCount > 0 ? 0.38f : 0.14f));
-        ClickGuiRenderer.drawRoundedRectStroke(countX, countY, countW, countH, countH * 0.5f,
+        LayoutRender2D.drawRoundedRectStroke(countX, countY, countW, countH, countH * 0.5f,
                 Math.max(0.5f, 0.5f * s()), UnifiedSettingsSkin.modernDivider());
         float countTextW = UnifiedSettingsSkin.textWidth(font, countText, countSize);
-        ClickGuiRenderer.drawText(font, countText, countX + (countW - countTextW) * 0.5f,
+        LayoutRender2D.drawText(font, countText, countX + (countW - countTextW) * 0.5f,
                 countY + (countH - UnifiedSettingsSkin.textHeight(font, countSize)) * 0.5f,
                 countSize, selectedCount > 0 ? UnifiedSettingsSkin.modernTextSecondary() : UnifiedSettingsSkin.TEXT_MUTED, false);
 
@@ -1199,7 +1301,7 @@ enum UnifiedSettingRenderer {
         float textMax = Math.max(1f, countX - UnifiedSettingsSkin.modernMetric(7f, 7f) - textX);
         String summary = groupSummary(setting, font, size, textMax);
         float ty = cy + (controlH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f;
-        ClickGuiRenderer.drawText(font, summary, textX, ty, size,
+        LayoutRender2D.drawText(font, summary, textX, ty, size,
                 summary.equals("None") ? UnifiedSettingsSkin.TEXT_MUTED : UnifiedSettingsSkin.TEXT_PRIMARY, false);
 
         float arrow = UnifiedSettingsSkin.modernMetric(12f, 12f);
@@ -1242,14 +1344,13 @@ enum UnifiedSettingRenderer {
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
         float size = m(17f, 6.5f);
         float maxW = Math.max(1f, width - m(10f, 10f));
-        float offsetX = 0f, offsetY = 0f, maxRowW = 0f;
+        float offsetX = 0f, offsetY = 0f;
         Set<String> alive = new HashSet<>();
         for (String id : setting.value().getAll().keySet()) {
             if (!setting.isOptionVisible(id)) continue;
             String label = setting.getOptionDisplayName(id);
             float tw = UnifiedSettingsSkin.textWidth(font, label, size) + m(13f, 9f);
             if (offsetX + tw >= maxW && offsetX > 0f) {
-                maxRowW = Math.max(maxRowW, offsetX);
                 offsetX = 0f;
                 offsetY += m(16f, 8f);
             }
@@ -1257,7 +1358,6 @@ enum UnifiedSettingRenderer {
             offsetX += tw;
             alive.add(id);
         }
-        maxRowW = Math.max(maxRowW, offsetX);
         ui.cachedHeight = m(45f, 22f) + offsetY;
         ui.lastLayoutW = width;
         ui.layoutOptionCount = count;
@@ -1326,7 +1426,8 @@ enum UnifiedSettingRenderer {
         if (ui.editing) ui.cursorBlink += dt * 2.2f;
         else ui.cursorBlink = 0f;
 
-        ClickGuiRenderer.drawText(font, UnifiedSettingsSkin.fit(font, setting.getDisplayName(), labelSize, fw), fx, y + m(5f, 2.5f), labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, setting.getDisplayName(), font, fx, y + m(5f, 2.5f), labelSize,
+                fw, UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
         float fieldAnim = Math.max(ui.hoverAnim * 0.65f, ui.focusAnim);
         int bg = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.mix(UnifiedSettingsSkin.SURFACE_SOFT, UnifiedSettingsSkin.SURFACE_HOVER, fieldAnim), 56 + Math.round(fieldAnim * 42f));
         int stroke = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 58), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT, 155), ui.focusAnim);
@@ -1334,9 +1435,9 @@ enum UnifiedSettingRenderer {
         if (UnifiedSettingsSkin.SURFACE_GRADIENT_ENABLED) {
             UnifiedSettingsSkin.drawSurface(fx, fy, fw, fh, m(5f, 3.5f), 0.55f + fieldAnim * 0.32f);
         } else {
-            ClickGuiRenderer.drawRoundedRect(fx, fy, fw, fh, m(5f, 3.5f), bg);
+            LayoutRender2D.drawRoundedRect(fx, fy, fw, fh, m(5f, 3.5f), bg);
         }
-        ClickGuiRenderer.drawRoundedRectStroke(fx, fy, fw, fh, m(5f, 3.5f), m(0.7f, 0.45f), stroke);
+        LayoutRender2D.drawRoundedRectStroke(fx, fy, fw, fh, m(5f, 3.5f), m(0.7f, 0.45f), stroke);
 
         String text = ui.editing ? ui.editBuffer : (value == null ? "" : value);
         String placeholder = "text...";
@@ -1347,7 +1448,7 @@ enum UnifiedSettingRenderer {
         modernSvg("pencil", iconX, iconY, iconSize,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, ui.hoverAnim * 0.28f));
         float dividerX = iconX + iconSize + m(5f, 3f);
-        ClickGuiRenderer.drawRect(dividerX, fy + m(4f, 2.5f), Math.max(0.6f, m(0.7f, 0.35f)),
+        LayoutRender2D.drawRect(dividerX, fy + m(4f, 2.5f), Math.max(0.6f, m(0.7f, 0.35f)),
                 fh - m(8f, 5f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 92));
         float textX = dividerX + m(6f, 3.5f);
         float textY = fy + (fh - UnifiedSettingsSkin.textHeight(font, fieldSize)) * 0.5f - m(0.2f, 0.15f);
@@ -1362,7 +1463,7 @@ enum UnifiedSettingRenderer {
         boolean clip = ScissorFunction.pushRaw(textX, fy, clipW, fh);
         if (ui.editing) {
             renderInlineSelection(font, ui.editBuffer, textSelStart(ui), textSelEnd(ui), drawX, textY, fieldSize, fh, fy);
-            ClickGuiRenderer.drawText(font, ui.editBuffer, drawX, textY, fieldSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+            LayoutRender2D.drawText(font, ui.editBuffer, drawX, textY, fieldSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
             if (((int) (ui.cursorBlink * 2f) & 1) == 0) {
                 int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
                 float cx = drawX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), fieldSize) + m(0.5f, 0.3f);
@@ -1371,7 +1472,7 @@ enum UnifiedSettingRenderer {
         } else {
             boolean empty = text.isBlank();
             String draw = empty ? placeholder : UnifiedSettingsSkin.fit(font, text, fieldSize, fw - pad * 2f);
-            ClickGuiRenderer.drawText(font, draw, textX, textY, fieldSize, empty ? UnifiedSettingsSkin.TEXT_FAINT : UnifiedSettingsSkin.TEXT_PRIMARY, false);
+            LayoutRender2D.drawText(font, draw, textX, textY, fieldSize, empty ? UnifiedSettingsSkin.TEXT_FAINT : UnifiedSettingsSkin.TEXT_PRIMARY, false);
         }
         if (clip) ScissorFunction.pop();
     }
@@ -1520,10 +1621,10 @@ enum UnifiedSettingRenderer {
         if (ui.editing) ui.cursorBlink += dt * 2.2f; else ui.cursorBlink = 0f;
 
         if (stacked) {
-            renderModernTopLabel(setting.getDisplayName(), x, y, w);
+            renderModernTopLabel(setting, x, y, w, mx, my, w);
         } else {
-            renderModernLabel(setting.getDisplayName(), x, y,
-                    Math.max(1f, fx - x - UnifiedSettingsSkin.modernMetric(10f, 10f)));
+            renderModernLabel(setting, x, y,
+                    Math.max(1f, fx - x - UnifiedSettingsSkin.modernMetric(10f, 10f)), mx, my, w);
         }
         renderModernControlSurface(fx, fy, fieldW, fieldH, UnifiedSettingsSkin.controlRadius(), ui.hoverAnim, ui.focusAnim);
 
@@ -1534,7 +1635,7 @@ enum UnifiedSettingRenderer {
         modernSvg("pencil", iconX, iconY, icon,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.modernTextSecondary(), ui.hoverAnim));
         float dividerX = iconX + icon + UnifiedSettingsSkin.modernMetric(6f, 6f);
-        ClickGuiRenderer.drawRect(dividerX, fy + UnifiedSettingsSkin.modernMetric(5f, 5f),
+        LayoutRender2D.drawRect(dividerX, fy + UnifiedSettingsSkin.modernMetric(5f, 5f),
                 Math.max(0.8f, 0.8f * s()), fieldH - UnifiedSettingsSkin.modernMetric(10f, 10f),
                 UnifiedSettingsSkin.modernControlBorderHover());
 
@@ -1553,7 +1654,7 @@ enum UnifiedSettingRenderer {
         boolean clip = ScissorFunction.pushRaw(textX, fy, clipW, fieldH);
         if (ui.editing) {
             renderInlineSelection(font, ui.editBuffer, textSelStart(ui), textSelEnd(ui), drawX, textY, size, fieldH, fy);
-            ClickGuiRenderer.drawText(font, ui.editBuffer, drawX, textY, size, UnifiedSettingsSkin.modernTextSecondary(), false);
+            LayoutRender2D.drawText(font, ui.editBuffer, drawX, textY, size, UnifiedSettingsSkin.modernTextSecondary(), false);
             if (((int) (ui.cursorBlink * 2f) & 1) == 0) {
                 int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
                 float cx = drawX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), size);
@@ -1562,7 +1663,7 @@ enum UnifiedSettingRenderer {
         } else {
             boolean empty = text.isBlank();
             String draw = empty ? "..." : UnifiedSettingsSkin.fit(font, text, size, clipW);
-            ClickGuiRenderer.drawText(font, draw, textX, textY, size,
+            LayoutRender2D.drawText(font, draw, textX, textY, size,
                     empty ? UnifiedSettingsSkin.TEXT_MUTED : UnifiedSettingsSkin.modernTextSecondary(), false);
         }
         if (clip) ScissorFunction.pop();
@@ -1715,7 +1816,7 @@ enum UnifiedSettingRenderer {
         float editW = Math.max(m(36f, 28f), UnifiedSettingsSkin.textWidth(font, "Edit", small) + m(12f, 12f));
         float labelX = x + m(5f, 5f);
         float labelMax = Math.max(m(50f, 34f), w - editW - m(22f, 16f));
-        java.util.List<String> labelLines = ClickGuiRenderer.wrapText(font, setting.getDisplayName(), labelSize, labelMax, 2);
+        java.util.List<String> labelLines = LayoutRender2D.wrapText(font, setting.getDisplayName(), labelSize, labelMax, 2);
         if (labelLines.isEmpty()) labelLines = java.util.List.of(setting.getDisplayName());
         float lineH = UnifiedSettingsSkin.textHeight(font, labelSize);
         float lineGap = m(2f, 0.7f);
@@ -1730,8 +1831,17 @@ enum UnifiedSettingRenderer {
         boolean hover = UnifiedSettingsSkin.inside(mx, my, bx, by, editW, bh);
         ui.moduleHoverAnim = AnimationUtility.approach(ui.moduleHoverAnim, hover ? 1f : 0f, AnimationUtility.deltaTime(), 13f);
         float labelY = y + (rowH - textBlockH) * 0.5f;
-        for (int i = 0; i < labelLines.size(); i++) {
-            ClickGuiRenderer.drawText(font, labelLines.get(i), labelX, labelY + i * (lineH + lineGap), labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        boolean truncatedLabel = labelLines.get(labelLines.size() - 1).endsWith("...");
+        if (truncatedLabel && UnifiedSettingsSkin.inside(mx, my, x, y, w, rowH)) {
+            drawSettingLabel(setting, setting.getDisplayName(), font, labelX,
+                    y + (rowH - lineH) * 0.5f, labelSize, labelMax,
+                    UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
+        } else {
+            LABEL_MARQUEES.remove(setting);
+            for (int i = 0; i < labelLines.size(); i++) {
+                LayoutRender2D.drawText(font, labelLines.get(i), labelX,
+                        labelY + i * (lineH + lineGap), labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+            }
         }
         renderChipButton(bx, by, editW, bh, "Edit", ui.moduleHoverAnim, false);
     }
@@ -1760,7 +1870,8 @@ enum UnifiedSettingRenderer {
         if (ui.editing) ui.cursorBlink += dt * 2.2f;
         else ui.cursorBlink = 0f;
 
-        ClickGuiRenderer.drawText(font, UnifiedSettingsSkin.fit(font, label, labelSize, fieldW), fieldX, labelY, labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, label, font, fieldX, labelY, labelSize,
+                fieldW, UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
         float fieldAnim = Math.max(ui.fieldHoverAnim * 0.65f, ui.fieldFocusAnim);
         int bg = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.mix(UnifiedSettingsSkin.SURFACE_SOFT, UnifiedSettingsSkin.SURFACE_HOVER, fieldAnim), 56 + Math.round(fieldAnim * 42f));
         int stroke = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 58), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT, 155), ui.fieldFocusAnim);
@@ -1768,9 +1879,9 @@ enum UnifiedSettingRenderer {
         if (UnifiedSettingsSkin.SURFACE_GRADIENT_ENABLED) {
             UnifiedSettingsSkin.drawSurface(fieldX, fieldY, fieldW, fieldH, m(5f, 3.5f), 0.55f + fieldAnim * 0.32f);
         } else {
-            ClickGuiRenderer.drawRoundedRect(fieldX, fieldY, fieldW, fieldH, m(5f, 3.5f), bg);
+            LayoutRender2D.drawRoundedRect(fieldX, fieldY, fieldW, fieldH, m(5f, 3.5f), bg);
         }
-        ClickGuiRenderer.drawRoundedRectStroke(fieldX, fieldY, fieldW, fieldH, m(5f, 3.5f), m(0.7f, 0.45f), stroke);
+        LayoutRender2D.drawRoundedRectStroke(fieldX, fieldY, fieldW, fieldH, m(5f, 3.5f), m(0.7f, 0.45f), stroke);
 
         String current = firstTextListEntry(setting);
         String text = ui.editing ? ui.editBuffer : current;
@@ -1782,7 +1893,7 @@ enum UnifiedSettingRenderer {
         boolean clip = ScissorFunction.pushRaw(textX, fieldY, Math.max(1f, fieldW - pad * 2f), fieldH);
         if (ui.editing) {
             renderInlineSelection(font, ui.editBuffer, textListSelStart(ui), textListSelEnd(ui), textX, textY, fieldSize, fieldH, fieldY);
-            ClickGuiRenderer.drawText(font, ui.editBuffer, textX, textY, fieldSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+            LayoutRender2D.drawText(font, ui.editBuffer, textX, textY, fieldSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
             if (((int) (ui.cursorBlink * 2f) & 1) == 0) {
                 int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
                 float cx = textX + UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), fieldSize) + m(0.5f, 0.3f);
@@ -1791,7 +1902,7 @@ enum UnifiedSettingRenderer {
         } else {
             boolean empty = text.isBlank();
             String draw = empty ? placeholder : UnifiedSettingsSkin.fit(font, text, fieldSize, fieldW - pad * 2f);
-            ClickGuiRenderer.drawText(font, draw, textX, textY, fieldSize, empty ? UnifiedSettingsSkin.TEXT_FAINT : UnifiedSettingsSkin.TEXT_PRIMARY, false);
+            LayoutRender2D.drawText(font, draw, textX, textY, fieldSize, empty ? UnifiedSettingsSkin.TEXT_FAINT : UnifiedSettingsSkin.TEXT_PRIMARY, false);
         }
         if (clip) ScissorFunction.pop();
     }
@@ -1958,9 +2069,9 @@ enum UnifiedSettingRenderer {
         ui.lastButtonH = buttonH;
 
         if (stacked) {
-            renderModernTopLabel(setting.getDisplayName(), x, y, w);
+            renderModernTopLabel(setting, x, y, w, mx, my, w);
         } else {
-            renderModernLabel(setting.getDisplayName(), x, y, Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)));
+            renderModernLabel(setting, x, y, Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)), mx, my, w);
         }
         renderModernControlSurface(bx, by, buttonW, buttonH, UnifiedSettingsSkin.controlRadius(), ui.moduleHoverAnim, 0f);
 
@@ -1971,7 +2082,7 @@ enum UnifiedSettingRenderer {
         modernSvg(iconName, ix, iy, icon, iconColor);
         float textX = ix + icon + iconGap;
         float textY = by + (buttonH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f;
-        ClickGuiRenderer.drawText(font, action, textX, textY, size,
+        LayoutRender2D.drawText(font, action, textX, textY, size,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernTextSecondary(), UnifiedSettingsSkin.modernTextBright(), ui.moduleHoverAnim), false);
         float ax = bx + buttonW - pad - arrow;
         float ay = by + (buttonH - arrow) * 0.5f;
@@ -1999,7 +2110,7 @@ enum UnifiedSettingRenderer {
         float small = m(11.5f, 5.7f);
         float editW = Math.max(m(36f, 28f), UnifiedSettingsSkin.textWidth(font, "Edit", small) + m(12f, 12f));
         float labelMax = Math.max(m(50f, 34f), width - editW - m(22f, 16f));
-        java.util.List<String> labelLines = ClickGuiRenderer.wrapText(font, setting.getDisplayName(), labelSize, labelMax, 2);
+        java.util.List<String> labelLines = LayoutRender2D.wrapText(font, setting.getDisplayName(), labelSize, labelMax, 2);
         int lines = Math.max(1, labelLines.size());
         float lineH = UnifiedSettingsSkin.textHeight(font, labelSize);
         float textBlockH = lines * lineH + Math.max(0, lines - 1) * m(2f, 0.7f);
@@ -2108,10 +2219,10 @@ enum UnifiedSettingRenderer {
         String pending = ClickGuiRenderer.getPendingBindDisplay();
         String display = ui.waiting ? (pending == null ? "..." : pending) : setting.getValue().get();
         if (modern()) {
-            renderModernBindBase(setting.getDisplayName(), display, null, ui.waiting, x, y, w, mx, my, ui);
+            renderModernBindBase(setting, display, null, ui.waiting, x, y, w, mx, my, ui);
             return;
         }
-        renderBindBase(setting.getDisplayName(), display, null, ui.waiting, x, y, w, mx, my, ui);
+        renderBindBase(setting, display, null, ui.waiting, x, y, w, mx, my, ui);
     }
 
     // ------------------------------------------------------------
@@ -2138,10 +2249,10 @@ enum UnifiedSettingRenderer {
         String display = ui.waiting ? (pending == null ? "..." : pending) : setting.get();
         String modeText = setting.mode() == BindMode.HOLD ? "Hold" : "Press";
         if (modern()) {
-            renderModernBindBase(setting.getDisplayName(), display, modeText, ui.waiting, x, y, w, mx, my, ui);
+            renderModernBindBase(setting, display, modeText, ui.waiting, x, y, w, mx, my, ui);
             return;
         }
-        renderBindBase(setting.getDisplayName(), display, modeText, ui.waiting, x, y, w, mx, my, ui);
+        renderBindBase(setting, display, modeText, ui.waiting, x, y, w, mx, my, ui);
     }
 
     static void mouseClicked(FunctionBindSetting setting, double mx, double my, int button) {
@@ -2158,7 +2269,7 @@ enum UnifiedSettingRenderer {
         return bindHeight(setting.ui().lastW, setting.getDisplayName(), setting.get(), modeText);
     }
 
-    private static void renderModernBindBase(String label, String display, String modeText, boolean waiting,
+    private static void renderModernBindBase(Setting setting, String display, String modeText, boolean waiting,
                                              float x, float y, float w, float mx, float my, Object uiObj) {
         float rowH = UnifiedSettingsSkin.rowHeight();
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
@@ -2177,10 +2288,10 @@ enum UnifiedSettingRenderer {
         float hoverAnim = bindHoverAnim(uiObj, hover);
         float waitAnim = bindWaitAnim(uiObj, waiting);
 
-        renderModernLabel(label, x, y, Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)));
+        renderModernLabel(setting, x, y, Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)), mx, my, w);
         renderModernControlSurface(bx, by, boxW, boxH, UnifiedSettingsSkin.controlRadius(), hoverAnim, waitAnim);
         if (waiting) {
-            ClickGuiRenderer.drawRoundedRectStroke(bx, by, boxW, boxH, UnifiedSettingsSkin.controlRadius(),
+            LayoutRender2D.drawRoundedRectStroke(bx, by, boxW, boxH, UnifiedSettingsSkin.controlRadius(),
                     Math.max(0.8f, 0.8f * s()), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT, 220));
         }
 
@@ -2195,14 +2306,14 @@ enum UnifiedSettingRenderer {
         float ty = by + (boxH - UnifiedSettingsSkin.textHeight(font, valueSize)) * 0.5f;
         int valueColor = waiting ? UnifiedSettingsSkin.ACCENT
                 : value.equalsIgnoreCase("NONE") ? UnifiedSettingsSkin.TEXT_MUTED : UnifiedSettingsSkin.TEXT_PRIMARY;
-        ClickGuiRenderer.drawText(font, fitted, textX, ty, valueSize, valueColor, false);
+        LayoutRender2D.drawText(font, fitted, textX, ty, valueSize, valueColor, false);
 
         if (modeText != null && !modeText.isBlank()) {
             float modeSize = UnifiedSettingsSkin.modernMetric(11f, 11f);
             float mw = UnifiedSettingsSkin.textWidth(font, modeText, modeSize);
             float mxLabel = bx - UnifiedSettingsSkin.modernMetric(8f, 8f) - mw;
             float myLabel = y + (rowH - UnifiedSettingsSkin.textHeight(font, modeSize)) * 0.5f;
-            ClickGuiRenderer.drawText(font, modeText, mxLabel, myLabel, modeSize, UnifiedSettingsSkin.TEXT_FAINT, false);
+            LayoutRender2D.drawText(font, modeText, mxLabel, myLabel, modeSize, UnifiedSettingsSkin.TEXT_FAINT, false);
         }
 
         if (uiObj instanceof KeyBindSetting.UiState ui) {
@@ -2214,7 +2325,8 @@ enum UnifiedSettingRenderer {
         }
     }
 
-    private static void renderBindBase(String label, String display, String modeText, boolean waiting, float x, float y, float w, float mx, float my, Object uiObj) {
+    private static void renderBindBase(Setting setting, String display, String modeText, boolean waiting, float x, float y, float w, float mx, float my, Object uiObj) {
+        String label = setting.getDisplayName();
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
         float size = m(17f, 7.0f);
         float small = m(11.5f, 5.7f);
@@ -2263,7 +2375,7 @@ enum UnifiedSettingRenderer {
         if (hoverAnim > 0.001f || waitAnim > 0.001f) {
             int strokeA = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, Math.round(hoverAnim * 72f));
             int strokeB = UnifiedSettingsSkin.accentGradientStart(waitAnim * 0.70f);
-            ClickGuiRenderer.drawRoundedRectStroke(cardX, cardY, cardW, cardH, cardRadius, m(0.65f, 0.42f), UnifiedSettingsSkin.mix(strokeA, strokeB, Math.max(waitAnim, hoverAnim * 0.28f)));
+            LayoutRender2D.drawRoundedRectStroke(cardX, cardY, cardW, cardH, cardRadius, m(0.65f, 0.42f), UnifiedSettingsSkin.mix(strokeA, strokeB, Math.max(waitAnim, hoverAnim * 0.28f)));
         }
 
         float labelY = y + (nextLine ? nextLineLabelY : (rowH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f);
@@ -2282,7 +2394,8 @@ enum UnifiedSettingRenderer {
         }
 
         int labelColor = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, 0.72f + hoverAnim * 0.18f + waitAnim * 0.10f);
-        ClickGuiRenderer.drawText(font, UnifiedSettingsSkin.fit(font, label, size, Math.max(1f, labelMax)), cardX + pad, labelY, size, labelColor, false);
+        drawSettingLabel(setting, label, font, cardX + pad, labelY, size,
+                Math.max(1f, labelMax), labelColor, mx, my, x, y, w);
         if (modeW > 0f) renderSmallModeChip(modeX, modeY, modeW, chipH, modeText, small, hoverAnim, waitAnim);
 
         float chipInset = m(0.8f, 0.45f);
@@ -2293,13 +2406,13 @@ enum UnifiedSettingRenderer {
         float chipRadius = Math.max(0f, m(6f, 4f) - chipInset);
         if (waiting) {
             UnifiedSettingsSkin.drawAccent(chipDrawX, chipDrawY, chipDrawW, chipDrawH, chipRadius, 0.62f + hoverAnim * 0.18f);
-            ClickGuiRenderer.drawRoundedRectStrokeGradient(chipDrawX, chipDrawY, chipDrawW, chipDrawH, chipRadius, m(0.75f, 0.45f), UnifiedSettingsSkin.accentGradientStart(0.92f), UnifiedSettingsSkin.accentGradientEnd(0.92f), UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
+            LayoutRender2D.drawRoundedRectStrokeGradient(chipDrawX, chipDrawY, chipDrawW, chipDrawH, chipRadius, m(0.75f, 0.45f), UnifiedSettingsSkin.accentGradientStart(0.92f), UnifiedSettingsSkin.accentGradientEnd(0.92f), UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
         } else {
             UnifiedSettingsSkin.drawSurface(chipDrawX, chipDrawY, chipDrawW, chipDrawH, chipRadius, none ? 0.30f + hoverAnim * 0.12f : 0.46f + hoverAnim * 0.16f);
             int chipStroke = none
                     ? UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, Math.round(34f + hoverAnim * 36f))
                     : UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT, Math.round(48f + hoverAnim * 54f));
-            ClickGuiRenderer.drawRoundedRectStroke(chipDrawX, chipDrawY, chipDrawW, chipDrawH, chipRadius, m(0.65f, 0.42f), chipStroke);
+            LayoutRender2D.drawRoundedRectStroke(chipDrawX, chipDrawY, chipDrawW, chipDrawH, chipRadius, m(0.65f, 0.42f), chipStroke);
         }
 
         float contentX = chipX + chipPad;
@@ -2316,7 +2429,7 @@ enum UnifiedSettingRenderer {
         if (rawTextW > contentW + 0.5f) {
             drawBindMarquee(font, displayText, contentX, textY, rawTextW, contentW, size, valueColor);
         } else {
-            ClickGuiRenderer.drawText(font, displayText, textX, textY, size, valueColor, false);
+            LayoutRender2D.drawText(font, displayText, textX, textY, size, valueColor, false);
         }
         if (textClip) ScissorFunction.pop();
 
@@ -2376,12 +2489,12 @@ enum UnifiedSettingRenderer {
         float dh = Math.max(1f, h - inset * 2f);
         float radius = Math.max(0f, m(6f, 4f) - inset);
         int bg = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.SURFACE_SOFT, UnifiedSettingsSkin.SURFACE_HOVER, 0.45f + hoverAnim * 0.25f + waitAnim * 0.20f);
-        ClickGuiRenderer.drawRoundedRect(dx, dy, dw, dh, radius, bg);
-        ClickGuiRenderer.drawRoundedRectStroke(dx, dy, dw, dh, radius, m(0.55f, 0.35f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, Math.round(34f + hoverAnim * 24f + waitAnim * 30f)));
+        LayoutRender2D.drawRoundedRect(dx, dy, dw, dh, radius, bg);
+        LayoutRender2D.drawRoundedRectStroke(dx, dy, dw, dh, radius, m(0.55f, 0.35f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, Math.round(34f + hoverAnim * 24f + waitAnim * 30f)));
         String fitted = UnifiedSettingsSkin.fit(font, text, size, Math.max(1f, w - m(6f, 6f)));
         float tw = UnifiedSettingsSkin.textWidth(font, fitted, size);
         int color = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, waitAnim * 0.35f + hoverAnim * 0.15f);
-        ClickGuiRenderer.drawText(font, fitted, x + (w - tw) * 0.5f, y + (h - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f, size, color, false);
+        LayoutRender2D.drawText(font, fitted, x + (w - tw) * 0.5f, y + (h - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f, size, color, false);
     }
 
     private static float bindHeight(float lastW, String label, String display, String modeText) {
@@ -2440,8 +2553,10 @@ enum UnifiedSettingRenderer {
         float previewH = m(16f, 10f);
         float previewX = x + w - previewW - m(5f, 5f);
         float previewY = y + (colorHeaderH() - previewH) * 0.5f;
-        String label = UnifiedSettingsSkin.fit(font, setting.getDisplayName(), labelSize, Math.max(1f, previewX - x - m(12f, 12f)));
-        ClickGuiRenderer.drawText(font, label, x + m(7f, 7f), y + (colorHeaderH() - UnifiedSettingsSkin.textHeight(font, labelSize)) * 0.5f, labelSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        drawSettingLabel(setting, setting.getDisplayName(), font, x + m(7f, 7f),
+                y + (colorHeaderH() - UnifiedSettingsSkin.textHeight(font, labelSize)) * 0.5f,
+                labelSize, Math.max(1f, previewX - x - m(12f, 12f)),
+                UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
         renderColorPreview(previewX, previewY, previewW, previewH, value.getArgb(), m(3f, 3f));
         ui.previewGlowAnim = AnimationUtility.approach(ui.previewGlowAnim, ui.editing ? 1f : UnifiedSettingsSkin.inside(mx, my, previewX, previewY, previewW, previewH) ? 0.55f : 0f, 0.20f);
 
@@ -2710,7 +2825,7 @@ enum UnifiedSettingRenderer {
                 AnimationUtility.deltaTime(),
                 13f);
 
-        renderModernTopLabel(setting.getDisplayName(), x, y, w);
+        renderModernTopLabel(setting, x, y, w, mx, my, w);
         renderModernControlSurface(barX, barY, barW, barH, UnifiedSettingsSkin.controlRadius(),
                 hover ? 1f : 0f, open ? 1f : 0f);
 
@@ -2719,8 +2834,8 @@ enum UnifiedSettingRenderer {
         float previewX = barX + pad;
         float previewY = barY + pad;
         float previewRadius = Math.min(UnifiedSettingsSkin.controlRadius() - UnifiedSettingsSkin.controlStroke(), preview * 0.28f);
-        ClickGuiRenderer.drawRoundedRect(previewX, previewY, preview, preview, previewRadius, value.getArgb());
-        ClickGuiRenderer.drawRoundedRectStroke(previewX, previewY, preview, preview, previewRadius,
+        LayoutRender2D.drawRoundedRect(previewX, previewY, preview, preview, previewRadius, value.getArgb());
+        LayoutRender2D.drawRoundedRectStroke(previewX, previewY, preview, preview, previewRadius,
                 UnifiedSettingsSkin.controlStroke(),
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBorderHover(), 150));
 
@@ -2733,7 +2848,7 @@ enum UnifiedSettingRenderer {
         float rightReserve = UnifiedSettingsSkin.modernMetric(28f, 28f);
         float textMaxW = Math.max(1f, barX + barW - rightReserve - textX);
         float textY = barY + (barH - UnifiedSettingsSkin.textHeight(font, textSize)) * 0.5f;
-        ClickGuiRenderer.drawText(font,
+        LayoutRender2D.drawText(font,
                 UnifiedSettingsSkin.fit(font, hex, textSize, textMaxW),
                 textX, textY, textSize,
                 UnifiedSettingsSkin.modernTextSecondary(), false);
@@ -2855,7 +2970,7 @@ enum UnifiedSettingRenderer {
     }
 
     private static void renderColorPreview(float x, float y, float w, float h, int color, float radius) {
-        ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, color);
+        LayoutRender2D.drawRoundedRect(x, y, w, h, radius, color);
     }
 
     private static void renderColorSquare(ColorSetting.UiState ui, float y) {
@@ -2865,16 +2980,16 @@ enum UnifiedSettingRenderer {
         boolean clip = ClipFunction.pushRoundedRect(ui.squareX, y, ui.squareW, ui.squareH, radius);
         if (clip) {
             try {
-                ClickGuiRenderer.drawGradientRect(ui.squareX, y, ui.squareW, ui.squareH, left, right, right, left);
-                ClickGuiRenderer.drawGradientRect(ui.squareX, y, ui.squareW, ui.squareH, 0x00FFFFFF, 0x00FFFFFF, 0xFF000000, 0xFF000000);
+                LayoutRender2D.drawGradientRect(ui.squareX, y, ui.squareW, ui.squareH, left, right, right, left);
+                LayoutRender2D.drawGradientRect(ui.squareX, y, ui.squareW, ui.squareH, 0x00FFFFFF, 0x00FFFFFF, 0xFF000000, 0xFF000000);
             } finally {
                 ClipFunction.pop();
             }
         } else {
-            ClickGuiRenderer.drawRoundedRectGradient(ui.squareX, y, ui.squareW, ui.squareH, radius, left, right, 0f);
-            ClickGuiRenderer.drawRoundedRectGradient(ui.squareX, y, ui.squareW, ui.squareH, radius, 0x00FFFFFF, 0xFF000000, 90f);
+            LayoutRender2D.drawRoundedRectGradient(ui.squareX, y, ui.squareW, ui.squareH, radius, left, right, 0f);
+            LayoutRender2D.drawRoundedRectGradient(ui.squareX, y, ui.squareW, ui.squareH, radius, 0x00FFFFFF, 0xFF000000, 90f);
         }
-        ClickGuiRenderer.drawRoundedRectStroke(ui.squareX, y, ui.squareW, ui.squareH, radius, m(0.65f, 0.45f), 0x3AFFFFFF);
+        LayoutRender2D.drawRoundedRectStroke(ui.squareX, y, ui.squareW, ui.squareH, radius, m(0.65f, 0.45f), 0x3AFFFFFF);
     }
 
     private static void renderHueBar(ColorSetting.UiState ui, float slide) {
@@ -2886,7 +3001,7 @@ enum UnifiedSettingRenderer {
             try {
                 for (int i = 0; i < steps; i++) {
                     float h = i / Math.max(1f, ui.hueH - 1f);
-                    ClickGuiRenderer.drawRect(ui.hueX, y + i, ui.hueW, 1.05f, hsbToArgb(h, 1f, 1f, 255));
+                    LayoutRender2D.drawRect(ui.hueX, y + i, ui.hueW, 1.05f, hsbToArgb(h, 1f, 1f, 255));
                 }
             } finally {
                 ClipFunction.pop();
@@ -2895,16 +3010,16 @@ enum UnifiedSettingRenderer {
             float cap = Math.min(radius, ui.hueH * 0.5f);
             float innerY = y + cap;
             float innerH = Math.max(0f, ui.hueH - cap * 2f);
-            ClickGuiRenderer.drawCircle(ui.hueX + ui.hueW * 0.5f, y + cap, cap, hsbToArgb(0f, 1f, 1f, 255));
-            ClickGuiRenderer.drawCircle(ui.hueX + ui.hueW * 0.5f, y + ui.hueH - cap, cap, hsbToArgb(1f, 1f, 1f, 255));
+            LayoutRender2D.drawCircle(ui.hueX + ui.hueW * 0.5f, y + cap, cap, hsbToArgb(0f, 1f, 1f, 255));
+            LayoutRender2D.drawCircle(ui.hueX + ui.hueW * 0.5f, y + ui.hueH - cap, cap, hsbToArgb(1f, 1f, 1f, 255));
             int innerSteps = Math.max(1, Math.round(innerH));
             for (int i = 0; i < innerSteps; i++) {
                 float yy = innerY + i;
                 float h = (yy - y) / Math.max(1f, ui.hueH);
-                ClickGuiRenderer.drawRect(ui.hueX, yy, ui.hueW, 1.05f, hsbToArgb(h, 1f, 1f, 255));
+                LayoutRender2D.drawRect(ui.hueX, yy, ui.hueW, 1.05f, hsbToArgb(h, 1f, 1f, 255));
             }
         }
-        ClickGuiRenderer.drawRoundedRectStroke(ui.hueX, y, ui.hueW, ui.hueH, radius, m(0.65f, 0.45f), 0x3AFFFFFF);
+        LayoutRender2D.drawRoundedRectStroke(ui.hueX, y, ui.hueW, ui.hueH, radius, m(0.65f, 0.45f), 0x3AFFFFFF);
     }
 
     private static void renderAlphaBar(ColorSetting.UiState ui, float slide) {
@@ -2915,7 +3030,7 @@ enum UnifiedSettingRenderer {
         if (clip) {
             try {
                 renderCheckerCells(ui.alphaX, y, ui.alphaW, ui.alphaH, m(3f, 3f));
-                ClickGuiRenderer.drawGradientRect(ui.alphaX, y, ui.alphaW, ui.alphaH,
+                LayoutRender2D.drawGradientRect(ui.alphaX, y, ui.alphaW, ui.alphaH,
                         withAlpha(rgb, 255), withAlpha(rgb, 255), withAlpha(rgb, 0), withAlpha(rgb, 0));
             } finally {
                 ClipFunction.pop();
@@ -2924,10 +3039,10 @@ enum UnifiedSettingRenderer {
             // Safe fallback: checker never reaches the rounded corners, while the color layer still
             // owns the final capsule silhouette. No rectangular scissor masquerading as a mask.
             renderChecker(ui.alphaX, y, ui.alphaW, ui.alphaH, m(3f, 3f), radius);
-            ClickGuiRenderer.drawRoundedRectGradient(ui.alphaX, y, ui.alphaW, ui.alphaH, radius,
+            LayoutRender2D.drawRoundedRectGradient(ui.alphaX, y, ui.alphaW, ui.alphaH, radius,
                     withAlpha(rgb, 255), withAlpha(rgb, 0), 90f);
         }
-        ClickGuiRenderer.drawRoundedRectStroke(ui.alphaX, y, ui.alphaW, ui.alphaH, radius, m(0.65f, 0.45f), 0x3AFFFFFF);
+        LayoutRender2D.drawRoundedRectStroke(ui.alphaX, y, ui.alphaW, ui.alphaH, radius, m(0.65f, 0.45f), 0x3AFFFFFF);
     }
 
     private static void renderRgbBars(ColorSetting.UiState ui, boolean hasAlpha, float slide) {
@@ -2950,17 +3065,17 @@ enum UnifiedSettingRenderer {
     private static void renderRgbBar(String label, float x, float y, float w, float h, int c0, int c1, float progress, int value) {
         TextRenderer font = UnifiedSettingsSkin.fontLight();
         float size = m(11f, 5.5f);
-        ClickGuiRenderer.drawText(font, label, x, y - m(0.3f, 0.3f), size, UnifiedSettingsSkin.TEXT_MUTED, false);
+        LayoutRender2D.drawText(font, label, x, y - m(0.3f, 0.3f), size, UnifiedSettingsSkin.TEXT_MUTED, false);
         float bx = x + m(8f, 8f);
         float bw = Math.max(1f, w - m(16f, 8f));
-        ClickGuiRenderer.drawGradientRect(bx, y, bw, h, c0, c1, c1, c0);
+        LayoutRender2D.drawGradientRect(bx, y, bw, h, c0, c1, c1, c0);
         float px = bx + UnifiedSettingsSkin.clamp01(progress) * bw;
-        ClickGuiRenderer.drawRoundedRect(px - m(1f, 1f), y - m(1f, 1f), m(2f, 2f), h + m(2f, 2f), m(1f, 1f), UnifiedSettingsSkin.TEXT_PRIMARY);
+        LayoutRender2D.drawRoundedRect(px - m(1f, 1f), y - m(1f, 1f), m(2f, 2f), h + m(2f, 2f), m(1f, 1f), UnifiedSettingsSkin.TEXT_PRIMARY);
         String valueText = Integer.toString(Math.max(0, Math.min(255, value)));
         float valueSize = m(10.5f, 5.2f);
         float valueX = x + w + m(3f, 3f);
         float valueY = y + (h - UnifiedSettingsSkin.textHeight(font, valueSize)) * 0.5f - m(0.2f, 0.15f);
-        ClickGuiRenderer.drawText(font, valueText, valueX, valueY, valueSize, UnifiedSettingsSkin.TEXT_MUTED, false);
+        LayoutRender2D.drawText(font, valueText, valueX, valueY, valueSize, UnifiedSettingsSkin.TEXT_MUTED, false);
     }
 
     private static void renderColorPresets(ColorSetting.UiState ui, ColorValue value, float mx, float my, float slide) {
@@ -3008,7 +3123,7 @@ enum UnifiedSettingRenderer {
         if (UnifiedSettingsSkin.STROKE_GRADIENT_ENABLED) {
             UnifiedSettingsSkin.drawStroke(ui.presetListX, listY, ui.presetListW, listH, m(6f, 4f), m(0.65f, 0.42f), 0.32f * reveal);
         } else {
-            ClickGuiRenderer.drawRoundedRectStroke(ui.presetListX, listY, ui.presetListW, listH, m(6f, 4f), m(0.65f, 0.42f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, Math.round(58f * reveal)));
+            LayoutRender2D.drawRoundedRectStroke(ui.presetListX, listY, ui.presetListW, listH, m(6f, 4f), m(0.65f, 0.42f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, Math.round(58f * reveal)));
         }
 
         int cols = Math.max(1, (int) Math.floor((ui.presetListW - pad * 2f - m(7f, 5f)) / (swatch + gap)));
@@ -3040,8 +3155,8 @@ enum UnifiedSettingRenderer {
             ui.presetScrollbarHandleY = ui.presetScrollbarY + (ui.presetScrollbarH - ui.presetScrollbarHandleH) * (ui.presetsScroll / Math.max(1f, ui.presetsMaxScroll));
             boolean barHover = UnifiedSettingsSkin.inside(mx, my, ui.presetScrollbarX - m(3f, 2f), ui.presetScrollbarY, ui.presetScrollbarW + m(6f, 4f), ui.presetScrollbarH) || ui.presetsScrollbarDragging;
             ui.presetsScrollbarHoverAnim = AnimationUtility.approach(ui.presetsScrollbarHoverAnim, barHover ? 1f : 0f, dt, 14f);
-            ClickGuiRenderer.drawRoundedRect(ui.presetScrollbarX, ui.presetScrollbarY, ui.presetScrollbarW, ui.presetScrollbarH, ui.presetScrollbarW * 0.5f, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 42));
-            ClickGuiRenderer.drawRoundedRect(ui.presetScrollbarX, ui.presetScrollbarHandleY, ui.presetScrollbarW, ui.presetScrollbarHandleH, ui.presetScrollbarW * 0.5f, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 95 + Math.round(65f * ui.presetsScrollbarHoverAnim)));
+            LayoutRender2D.drawRoundedRect(ui.presetScrollbarX, ui.presetScrollbarY, ui.presetScrollbarW, ui.presetScrollbarH, ui.presetScrollbarW * 0.5f, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 42));
+            LayoutRender2D.drawRoundedRect(ui.presetScrollbarX, ui.presetScrollbarHandleY, ui.presetScrollbarW, ui.presetScrollbarHandleH, ui.presetScrollbarW * 0.5f, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 95 + Math.round(65f * ui.presetsScrollbarHoverAnim)));
             if (ui.presetsScrollbarDragging) {
                 updatePresetScrollbarDrag(ui, my);
             }
@@ -3055,8 +3170,8 @@ enum UnifiedSettingRenderer {
         if (alphaContext || ((color >>> 24) & 0xFF) < 255) {
             renderChecker(x, y, size, size, m(3f, 2f), m(3f, 2f));
         }
-        ClickGuiRenderer.drawRoundedRect(x, y, size, size, m(3f, 2f), color);
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, size, size, m(3f, 2f), m(0.7f, 0.45f), stroke);
+        LayoutRender2D.drawRoundedRect(x, y, size, size, m(3f, 2f), color);
+        LayoutRender2D.drawRoundedRectStroke(x, y, size, size, m(3f, 2f), m(0.7f, 0.45f), stroke);
     }
 
     private static int presetDisplayColor(ColorValue value, int argb) {
@@ -3077,15 +3192,15 @@ enum UnifiedSettingRenderer {
         int stroke = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 62), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT, 150), active);
         stroke = UnifiedSettingsSkin.mix(stroke, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 120), hover * 0.35f);
         if (UnifiedSettingsSkin.STROKE_GRADIENT_ENABLED || ui.presetsExpanded) {
-            ClickGuiRenderer.drawRoundedRectStrokeGradient(x, y, w, h, m(5f, 4f), m(0.7f, 0.45f), UnifiedSettingsSkin.accentGradientStart(0.58f + active * 0.20f), UnifiedSettingsSkin.accentGradientEnd(0.58f + active * 0.20f), UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
+            LayoutRender2D.drawRoundedRectStrokeGradient(x, y, w, h, m(5f, 4f), m(0.7f, 0.45f), UnifiedSettingsSkin.accentGradientStart(0.58f + active * 0.20f), UnifiedSettingsSkin.accentGradientEnd(0.58f + active * 0.20f), UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
         } else {
-            ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, m(5f, 4f), m(0.7f, 0.45f), stroke);
+            LayoutRender2D.drawRoundedRectStroke(x, y, w, h, m(5f, 4f), m(0.7f, 0.45f), stroke);
         }
 
         float sepW = m(0.7f, 0.45f);
         int sep = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 55 + Math.round(35f * hover));
-        ClickGuiRenderer.drawRect(ui.savePresetX, y + m(3f, 2f), sepW, h - m(6f, 4f), sep);
-        ClickGuiRenderer.drawRect(ui.deletePresetX, y + m(3f, 2f), sepW, h - m(6f, 4f), sep);
+        LayoutRender2D.drawRect(ui.savePresetX, y + m(3f, 2f), sepW, h - m(6f, 4f), sep);
+        LayoutRender2D.drawRect(ui.deletePresetX, y + m(3f, 2f), sepW, h - m(6f, 4f), sep);
 
         renderPresetActionIcon("folder-closed", ui.presetToggleX, y, ui.presetToggleW, h, ui.presetsToggleHoverAnim, ui.presetsExpanded);
         renderPresetActionIcon("heart-plus", ui.savePresetX, y, ui.savePresetW, h, ui.savePresetHoverAnim, false);
@@ -3111,8 +3226,8 @@ enum UnifiedSettingRenderer {
         else ui.hexCursorBlink = 0f;
         int bg = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.mix(UnifiedSettingsSkin.SURFACE_SOFT, UnifiedSettingsSkin.SURFACE_HOVER, ui.hexAnim), 58 + Math.round(35f * ui.hexAnim));
         int stroke = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 70), 0xFFFF5F66, ui.hexErrorAnim);
-        ClickGuiRenderer.drawRoundedRect(ui.hexX, y, ui.hexW, ui.hexH, m(5f, 3f), bg);
-        ClickGuiRenderer.drawRoundedRectStroke(ui.hexX, y, ui.hexW, ui.hexH, m(5f, 3f), m(0.7f, 0.45f), stroke);
+        LayoutRender2D.drawRoundedRect(ui.hexX, y, ui.hexW, ui.hexH, m(5f, 3f), bg);
+        LayoutRender2D.drawRoundedRectStroke(ui.hexX, y, ui.hexW, ui.hexH, m(5f, 3f), m(0.7f, 0.45f), stroke);
         int icon = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 185);
         Renderer2D.COLOR.svg("brush", ui.hexX + m(5f, 3f), y + (ui.hexH - m(9f, 6f)) * 0.5f, m(9f, 6f), m(9f, 6f),
                 SvgRenderOptions.overrideColor(icon));
@@ -3121,7 +3236,7 @@ enum UnifiedSettingRenderer {
         String text = ui.hexFocused ? ui.hexBuffer : displayHex(value, value.supportsAlpha());
         String label = "HEX";
         float tx = ui.hexX + m(18f, 12f);
-        ClickGuiRenderer.drawText(font, label, tx, y + (ui.hexH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f, size, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 175), false);
+        LayoutRender2D.drawText(font, label, tx, y + (ui.hexH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f, size, UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 175), false);
         float labelW = UnifiedSettingsSkin.textWidth(font, label, size) + m(5f, 4f);
         int textColor = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_PRIMARY, 0xFFFF7777, ui.hexErrorAnim);
         float textX = tx + labelW;
@@ -3132,7 +3247,7 @@ enum UnifiedSettingRenderer {
         String draw = prefix + text;
         if (ui.hexFocused) {
             renderInlineSelection(font, text, hexSelStart(ui), hexSelEnd(ui), textX + UnifiedSettingsSkin.textWidth(font, prefix, size), textY, size, ui.hexH, y);
-            ClickGuiRenderer.drawText(font, draw, textX, textY, size, textColor, false);
+            LayoutRender2D.drawText(font, draw, textX, textY, size, textColor, false);
             if (((int) (ui.hexCursorBlink * 2f) & 1) == 0) {
                 int cursor = Math.max(0, Math.min(ui.hexCursor, ui.hexBuffer.length()));
                 float cx = textX + UnifiedSettingsSkin.textWidth(font, prefix + ui.hexBuffer.substring(0, cursor), size) + m(0.5f, 0.3f);
@@ -3140,27 +3255,27 @@ enum UnifiedSettingRenderer {
             }
         } else {
             String display = "#" + UnifiedSettingsSkin.fit(font, text, size, textClipW);
-            ClickGuiRenderer.drawText(font, display, textX, textY, size, textColor, false);
+            LayoutRender2D.drawText(font, display, textX, textY, size, textColor, false);
         }
         if (hexClip) ScissorFunction.pop();
         float preview = ui.hexH - m(5f, 3f);
         float px = ui.hexX + ui.hexW - preview - m(3f, 2f);
         renderChecker(px, y + (ui.hexH - preview) * 0.5f, preview, preview, m(3f, 2f), m(3f, 2f));
-        ClickGuiRenderer.drawRoundedRect(px, y + (ui.hexH - preview) * 0.5f, preview, preview, m(3f, 2f), value.getArgb());
+        LayoutRender2D.drawRoundedRect(px, y + (ui.hexH - preview) * 0.5f, preview, preview, m(3f, 2f), value.getArgb());
     }
 
     private static void renderColorMarkers(ColorSetting.UiState ui, boolean hasAlpha, float slide) {
         float sbX = ui.squareX + ui.saturation * ui.squareW;
         float sbY = ui.squareY + slide + (1f - ui.brightness) * ui.squareH;
-        ClickGuiRenderer.drawCircle(sbX, sbY, m(4f, 4f), 0xFF000000);
-        ClickGuiRenderer.drawCircle(sbX, sbY, m(3f, 3f), 0xFFFFFFFF);
+        LayoutRender2D.drawCircle(sbX, sbY, m(4f, 4f), 0xFF000000);
+        LayoutRender2D.drawCircle(sbX, sbY, m(3f, 3f), 0xFFFFFFFF);
         float hueY = ui.hueY + slide + ui.hue * Math.max(1f, ui.hueH - 1f);
-        ClickGuiRenderer.drawCircle(ui.hueX + ui.hueW * 0.5f, hueY, m(4f, 4f), 0xFF000000);
-        ClickGuiRenderer.drawCircle(ui.hueX + ui.hueW * 0.5f, hueY, m(3f, 3f), 0xFFFFFFFF);
+        LayoutRender2D.drawCircle(ui.hueX + ui.hueW * 0.5f, hueY, m(4f, 4f), 0xFF000000);
+        LayoutRender2D.drawCircle(ui.hueX + ui.hueW * 0.5f, hueY, m(3f, 3f), 0xFFFFFFFF);
         if (hasAlpha) {
             float alphaY = ui.alphaY + slide + (1f - ui.alpha / 255f) * Math.max(1f, ui.alphaH - 1f);
-            ClickGuiRenderer.drawCircle(ui.alphaX + ui.alphaW * 0.5f, alphaY, m(4f, 4f), 0xFF000000);
-            ClickGuiRenderer.drawCircle(ui.alphaX + ui.alphaW * 0.5f, alphaY, m(3f, 3f), 0xFFFFFFFF);
+            LayoutRender2D.drawCircle(ui.alphaX + ui.alphaW * 0.5f, alphaY, m(4f, 4f), 0xFF000000);
+            LayoutRender2D.drawCircle(ui.alphaX + ui.alphaW * 0.5f, alphaY, m(3f, 3f), 0xFFFFFFFF);
         }
     }
 
@@ -3317,9 +3432,9 @@ enum UnifiedSettingRenderer {
         String s = clean.toString();
         try {
             if (s.length() == 3) {
-                int r = Integer.parseInt(s.substring(0, 1) + s.substring(0, 1), 16);
-                int g = Integer.parseInt(s.substring(1, 2) + s.substring(1, 2), 16);
-                int b = Integer.parseInt(s.substring(2, 3) + s.substring(2, 3), 16);
+                int r = Character.digit(s.charAt(0), 16) * 17;
+                int g = Character.digit(s.charAt(1), 16) * 17;
+                int b = Character.digit(s.charAt(2), 16) * 17;
                 return 0xFF000000 | (r << 16) | (g << 8) | b;
             }
             if (s.length() == 6) {
@@ -3348,7 +3463,7 @@ enum UnifiedSettingRenderer {
             char c = text.charAt(i);
             if (isHexChar(c)) insert.append(Character.toUpperCase(c));
         }
-        if (insert.length() == 0) {
+        if (insert.isEmpty()) {
             ui.hexErrorAnim = 1f;
             return;
         }
@@ -3715,19 +3830,19 @@ enum UnifiedSettingRenderer {
                 int bg = selected
                         ? UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(), UnifiedSettingsSkin.modernInsetHoverBg(), 0.55f + ha * 0.20f)
                         : UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlHoverBg(), Math.round(155f * ha));
-                ClickGuiRenderer.drawRoundedRect(px + pad, iy + UnifiedSettingsSkin.modernMetric(2f, 2f),
+                LayoutRender2D.drawRoundedRect(px + pad, iy + UnifiedSettingsSkin.modernMetric(2f, 2f),
                         pw - pad * 2f, itemH - UnifiedSettingsSkin.modernMetric(4f, 4f),
                         UnifiedSettingsSkin.modernMetric(6f, 6f), bg);
             }
 
             float rcx = px + textPad + radio * 0.5f;
             float rcy = iy + itemH * 0.5f;
-            ClickGuiRenderer.drawCircle(rcx, rcy, radio * 0.5f,
+            LayoutRender2D.drawCircle(rcx, rcy, radio * 0.5f,
                     UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernControlBorder(), UnifiedSettingsSkin.modernTextSecondary(), selected ? 0.46f : ha * 0.22f));
-            ClickGuiRenderer.drawCircle(rcx, rcy, Math.max(1f, radio * 0.5f - UnifiedSettingsSkin.modernMetric(1.6f, 1.6f)),
+            LayoutRender2D.drawCircle(rcx, rcy, Math.max(1f, radio * 0.5f - UnifiedSettingsSkin.modernMetric(1.6f, 1.6f)),
                     UnifiedSettingsSkin.modernInsetBg());
             if (selected) {
-                ClickGuiRenderer.drawCircle(rcx, rcy, radio * 0.22f, UnifiedSettingsSkin.accentGradientStart(0.88f));
+                LayoutRender2D.drawCircle(rcx, rcy, radio * 0.22f, UnifiedSettingsSkin.accentGradientStart(0.88f));
             }
 
             String label = setting.getOptionDisplayName(id);
@@ -3736,7 +3851,7 @@ enum UnifiedSettingRenderer {
                     : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.modernTextSecondary(), ha);
             float textX = px + textPad + radio + UnifiedSettingsSkin.modernMetric(8f, 8f);
             float textMax = Math.max(1f, pw - (textX - px) - textPad);
-            ClickGuiRenderer.drawText(font, UnifiedSettingsSkin.fit(font, label, size, textMax),
+            LayoutRender2D.drawText(font, UnifiedSettingsSkin.fit(font, label, size, textMax),
                     textX, ty, size, color, false);
         }
         if (contentClip) ScissorFunction.pop();
@@ -3792,15 +3907,15 @@ enum UnifiedSettingRenderer {
                 int rowBg = selected
                         ? UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(), UnifiedSettingsSkin.modernInsetHoverBg(), 0.42f + ha * 0.22f)
                         : UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlHoverBg(), Math.round(145f * ha));
-                ClickGuiRenderer.drawRoundedRect(px + pad, iy + UnifiedSettingsSkin.modernMetric(2f, 2f),
+                LayoutRender2D.drawRoundedRect(px + pad, iy + UnifiedSettingsSkin.modernMetric(2f, 2f),
                         pw - pad * 2f, itemH - UnifiedSettingsSkin.modernMetric(4f, 4f),
                         UnifiedSettingsSkin.modernMetric(6f, 6f), rowBg);
             }
             float checkX = px + textPad;
             float checkY = iy + (itemH - check) * 0.5f;
-            ClickGuiRenderer.drawRoundedRect(checkX, checkY, check, check, UnifiedSettingsSkin.modernMetric(4f, 4f),
+            LayoutRender2D.drawRoundedRect(checkX, checkY, check, check, UnifiedSettingsSkin.modernMetric(4f, 4f),
                     UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(), UnifiedSettingsSkin.modernInsetHoverBg(), ha * 0.28f + sa * 0.16f));
-            ClickGuiRenderer.drawRoundedRectStroke(checkX, checkY, check, check, UnifiedSettingsSkin.modernMetric(4f, 4f),
+            LayoutRender2D.drawRoundedRectStroke(checkX, checkY, check, check, UnifiedSettingsSkin.modernMetric(4f, 4f),
                     Math.max(0.65f, 0.65f * s()),
                     UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernControlBorder(), UnifiedSettingsSkin.modernTextSecondary(), sa * 0.34f + ha * 0.12f));
             if (sa > 0.02f) {
@@ -3813,7 +3928,7 @@ enum UnifiedSettingRenderer {
             float ty = iy + (itemH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f;
             int color = selected ? UnifiedSettingsSkin.modernTextBright()
                     : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.modernTextSecondary(), ha);
-            ClickGuiRenderer.drawText(font,
+            LayoutRender2D.drawText(font,
                     UnifiedSettingsSkin.fit(font, setting.getOptionDisplayName(id), size, pw - textPad * 3f - check),
                     checkX + check + UnifiedSettingsSkin.modernMetric(8f, 8f), ty, size, color, false);
         }
@@ -3896,10 +4011,10 @@ enum UnifiedSettingRenderer {
             float x1 = i == segments - 1 ? ui.hueX + ui.hueW : x0 + segW + 0.5f;
             int c0 = hsbToArgb(i / 6f, 1f, 1f, 255);
             int c1 = hsbToArgb((i + 1) / 6f, 1f, 1f, 255);
-            ClickGuiRenderer.drawGradientRect(x0, ui.hueY, Math.max(1f, x1 - x0), ui.hueH, c0, c1, c1, c0);
+            LayoutRender2D.drawGradientRect(x0, ui.hueY, Math.max(1f, x1 - x0), ui.hueH, c0, c1, c1, c0);
         }
         if (clip) ClipFunction.pop();
-        ClickGuiRenderer.drawRoundedRectStroke(ui.hueX, ui.hueY, ui.hueW, ui.hueH, radius,
+        LayoutRender2D.drawRoundedRectStroke(ui.hueX, ui.hueY, ui.hueW, ui.hueH, radius,
                 UnifiedSettingsSkin.controlStroke(),
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBorderHover(), 130));
     }
@@ -3910,16 +4025,16 @@ enum UnifiedSettingRenderer {
         boolean clip = ClipFunction.pushRoundedRect(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, radius);
         if (clip) {
             renderCheckerCells(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, UnifiedSettingsSkin.modernMetric(4f, 4f));
-            ClickGuiRenderer.drawGradientRect(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH,
+            LayoutRender2D.drawGradientRect(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH,
                     withAlpha(rgb, 0), withAlpha(rgb, 255), withAlpha(rgb, 255), withAlpha(rgb, 0));
             ClipFunction.pop();
         } else {
             renderChecker(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH,
                     UnifiedSettingsSkin.modernMetric(4f, 4f), radius);
-            ClickGuiRenderer.drawRoundedRectGradient(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, radius,
+            LayoutRender2D.drawRoundedRectGradient(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, radius,
                     withAlpha(rgb, 0), withAlpha(rgb, 255), 0f);
         }
-        ClickGuiRenderer.drawRoundedRectStroke(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, radius,
+        LayoutRender2D.drawRoundedRectStroke(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, radius,
                 UnifiedSettingsSkin.controlStroke(),
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBorderHover(), 130));
     }
@@ -3929,19 +4044,19 @@ enum UnifiedSettingRenderer {
         float inner = UnifiedSettingsSkin.modernMetric(3f, 3f);
         float sbX = ui.squareX + ui.saturation * ui.squareW;
         float sbY = ui.squareY + (1f - ui.brightness) * ui.squareH;
-        ClickGuiRenderer.drawCircle(sbX, sbY, outer, 0xD9000000);
-        ClickGuiRenderer.drawCircle(sbX, sbY, inner, 0xFFFFFFFF);
+        LayoutRender2D.drawCircle(sbX, sbY, outer, 0xD9000000);
+        LayoutRender2D.drawCircle(sbX, sbY, inner, 0xFFFFFFFF);
 
         float hueX = ui.hueX + ui.hue * ui.hueW;
         float hueY = ui.hueY + ui.hueH * 0.5f;
-        ClickGuiRenderer.drawCircle(hueX, hueY, outer, 0xD9000000);
-        ClickGuiRenderer.drawCircle(hueX, hueY, inner, 0xFFFFFFFF);
+        LayoutRender2D.drawCircle(hueX, hueY, outer, 0xD9000000);
+        LayoutRender2D.drawCircle(hueX, hueY, inner, 0xFFFFFFFF);
 
         if (hasAlpha) {
             float alphaX = ui.alphaX + (ui.alpha / 255f) * ui.alphaW;
             float alphaY = ui.alphaY + ui.alphaH * 0.5f;
-            ClickGuiRenderer.drawCircle(alphaX, alphaY, outer, 0xD9000000);
-            ClickGuiRenderer.drawCircle(alphaX, alphaY, inner, 0xFFFFFFFF);
+            LayoutRender2D.drawCircle(alphaX, alphaY, outer, 0xD9000000);
+            LayoutRender2D.drawCircle(alphaX, alphaY, inner, 0xFFFFFFFF);
         }
     }
 
@@ -3963,11 +4078,11 @@ enum UnifiedSettingRenderer {
             float py = ui.presetY + (ui.presetH - swatch) * 0.5f;
             int color = presetDisplayColor(value, presets.get(i));
             boolean hover = UnifiedSettingsSkin.inside(mx, my, px, py, swatch, swatch);
-            ClickGuiRenderer.drawCircle(px + swatch * 0.5f, py + swatch * 0.5f,
+            LayoutRender2D.drawCircle(px + swatch * 0.5f, py + swatch * 0.5f,
                     swatch * 0.5f + (hover ? UnifiedSettingsSkin.modernMetric(0.75f, 0.75f) : 0f), color);
             if ((current & (value.supportsAlpha() ? 0xFFFFFFFF : 0x00FFFFFF))
                     == (color & (value.supportsAlpha() ? 0xFFFFFFFF : 0x00FFFFFF))) {
-                ClickGuiRenderer.drawCircle(px + swatch * 0.5f, py + swatch * 0.5f,
+                LayoutRender2D.drawCircle(px + swatch * 0.5f, py + swatch * 0.5f,
                         Math.max(1f, swatch * 0.18f), 0xFFFFFFFF);
             }
         }
@@ -4065,9 +4180,9 @@ enum UnifiedSettingRenderer {
     private static void drawModernSelectPopupChrome(float x, float y, float w, float h, float reveal) {
         drawModernPopupShadow(x, y, w, h, reveal * 0.84f);
         float radius = UnifiedSettingsSkin.popupRadius();
-        ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius,
+        LayoutRender2D.drawRoundedRect(x, y, w, h, radius,
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernPopupBg(), Math.round(255f * reveal)));
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, radius,
+        LayoutRender2D.drawRoundedRectStroke(x, y, w, h, radius,
                 UnifiedSettingsSkin.controlStroke(),
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBorder(), Math.round(255f * reveal)));
     }
@@ -4079,14 +4194,14 @@ enum UnifiedSettingRenderer {
 
     private static void drawModernPopupShadow(float x, float y, float w, float h, float reveal) {
         int shadow = UnifiedSettingsSkin.withAlpha(0xFF000000, Math.round(92f * reveal));
-        ClickGuiRenderer.drawRoundedRect(x - m(2f, 1.5f), y - m(2f, 1.5f), w + m(4f, 3f), h + m(4f, 3f),
+        LayoutRender2D.drawRoundedRect(x - m(2f, 1.5f), y - m(2f, 1.5f), w + m(4f, 3f), h + m(4f, 3f),
                 UnifiedSettingsSkin.popupRadius() + m(2f, 1.5f), shadow);
     }
 
     private static void drawModernPopupBody(float x, float y, float w, float h, float reveal) {
-        ClickGuiRenderer.drawRoundedRect(x, y, w, h, UnifiedSettingsSkin.popupRadius(),
+        LayoutRender2D.drawRoundedRect(x, y, w, h, UnifiedSettingsSkin.popupRadius(),
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernPopupBg(), Math.round(252f * reveal)));
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, UnifiedSettingsSkin.popupRadius(),
+        LayoutRender2D.drawRoundedRectStroke(x, y, w, h, UnifiedSettingsSkin.popupRadius(),
                 UnifiedSettingsSkin.controlStroke(),
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBorder(), Math.round(255f * reveal)));
     }
@@ -4169,7 +4284,7 @@ enum UnifiedSettingRenderer {
         float x1 = textX + UnifiedSettingsSkin.textWidth(font, text.substring(0, b), size);
         float h = Math.max(m(8f, 5f), UnifiedSettingsSkin.textHeight(font, size) + m(3f, 2f));
         float y = fieldY > 0f ? fieldY + (fieldH - h) * 0.5f : textY - m(1.5f, 0.7f);
-        ClickGuiRenderer.drawRoundedRect(x0, y, Math.max(m(1f, 0.7f), x1 - x0), h, m(2f, 1.5f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT, 92));
+        LayoutRender2D.drawRoundedRect(x0, y, Math.max(m(1f, 0.7f), x1 - x0), h, m(2f, 1.5f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT, 92));
     }
 
     private static void renderRainbowChipButton(float x, float y, float w, float h, float hoverAnim, boolean active) {
@@ -4179,17 +4294,17 @@ enum UnifiedSettingRenderer {
         int c2 = hsbToArgb((t + 0.36f) % 1f, 0.80f, 1.0f, active ? 215 : 96 + Math.round(hoverAnim * 38f));
         int c3 = hsbToArgb((t + 0.54f) % 1f, 0.80f, 1.0f, active ? 205 : 92 + Math.round(hoverAnim * 34f));
         if (active) {
-            ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, m(4f, 4f), c0, c2, 25f + t * 360f);
-            ClickGuiRenderer.drawRoundedRect(x, y, w, h, m(4f, 4f), UnifiedSettingsSkin.withAlpha(0xFF000000, 18 - Math.round(hoverAnim * 6f)));
-            ClickGuiRenderer.drawRoundedRectStrokeGradient(x, y, w, h, m(4f, 4f), m(0.8f, 0.45f), c0, c2, 25f + t * 360f);
+            LayoutRender2D.drawRoundedRectGradient(x, y, w, h, m(4f, 4f), c0, c2, 25f + t * 360f);
+            LayoutRender2D.drawRoundedRect(x, y, w, h, m(4f, 4f), UnifiedSettingsSkin.withAlpha(0xFF000000, 18 - Math.round(hoverAnim * 6f)));
+            LayoutRender2D.drawRoundedRectStrokeGradient(x, y, w, h, m(4f, 4f), m(0.8f, 0.45f), c0, c2, 25f + t * 360f);
         } else {
             int bg = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.SURFACE_SOFT, UnifiedSettingsSkin.SURFACE_HOVER, hoverAnim * 0.75f);
-            ClickGuiRenderer.drawRoundedRect(x, y, w, h, m(4f, 4f), UnifiedSettingsSkin.withAlpha(bg, 70 + Math.round(hoverAnim * 42f)));
+            LayoutRender2D.drawRoundedRect(x, y, w, h, m(4f, 4f), UnifiedSettingsSkin.withAlpha(bg, 70 + Math.round(hoverAnim * 42f)));
             if (hoverAnim > 0.02f) {
-                ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, m(4f, 4f), UnifiedSettingsSkin.withAlpha(c0, Math.round(52f * hoverAnim)), UnifiedSettingsSkin.withAlpha(c2, Math.round(52f * hoverAnim)), 25f + t * 360f);
-                ClickGuiRenderer.drawRoundedRectStrokeGradient(x, y, w, h, m(4f, 4f), m(0.7f, 0.45f), UnifiedSettingsSkin.withAlpha(c0, 80 + Math.round(96f * hoverAnim)), UnifiedSettingsSkin.withAlpha(c2, 80 + Math.round(96f * hoverAnim)), 25f + t * 360f);
+                LayoutRender2D.drawRoundedRectGradient(x, y, w, h, m(4f, 4f), UnifiedSettingsSkin.withAlpha(c0, Math.round(52f * hoverAnim)), UnifiedSettingsSkin.withAlpha(c2, Math.round(52f * hoverAnim)), 25f + t * 360f);
+                LayoutRender2D.drawRoundedRectStrokeGradient(x, y, w, h, m(4f, 4f), m(0.7f, 0.45f), UnifiedSettingsSkin.withAlpha(c0, 80 + Math.round(96f * hoverAnim)), UnifiedSettingsSkin.withAlpha(c2, 80 + Math.round(96f * hoverAnim)), 25f + t * 360f);
             } else {
-                ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, m(4f, 4f), m(0.7f, 0.45f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 72));
+                LayoutRender2D.drawRoundedRectStroke(x, y, w, h, m(4f, 4f), m(0.7f, 0.45f), UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 72));
             }
         }
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
@@ -4198,7 +4313,7 @@ enum UnifiedSettingRenderer {
         float tw = UnifiedSettingsSkin.textWidth(font, label, size);
         float ty = y + (h - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f - m(0.2f, 0.2f);
         int labelColor = active ? UnifiedSettingsSkin.TEXT_PRIMARY : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, hoverAnim * 0.62f);
-        ClickGuiRenderer.drawText(font, label, x + Math.max(m(2f, 2f), (w - tw) * 0.5f), ty, size, labelColor, false);
+        LayoutRender2D.drawText(font, label, x + Math.max(m(2f, 2f), (w - tw) * 0.5f), ty, size, labelColor, false);
     }
 
     private static void renderChipButton(float x, float y, float w, float h, String label, float hoverAnim, boolean active) {
@@ -4212,15 +4327,15 @@ enum UnifiedSettingRenderer {
             UnifiedSettingsSkin.drawStroke(x, y, w, h, radius, m(0.7f, 0.45f), 0.28f + hoverAnim * 0.25f);
         } else {
             int bg = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.SURFACE_SOFT, UnifiedSettingsSkin.SURFACE_HOVER, hoverAnim * 0.72f);
-            ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, bg);
-            ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, radius, m(0.7f, 0.45f),
+            LayoutRender2D.drawRoundedRect(x, y, w, h, radius, bg);
+            LayoutRender2D.drawRoundedRectStroke(x, y, w, h, radius, m(0.7f, 0.45f),
                     UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_FAINT, 58 + Math.round(hoverAnim * 65f)));
         }
         float size = Math.min(m(13f, 6f), Math.max(m(10f, 4.8f), (w - m(4f, 4f)) / Math.max(1f, label.length()) * 1.45f));
         float tw = UnifiedSettingsSkin.textWidth(font, label, size);
         float ty = y + (h - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f - m(0.2f, 0.2f);
         int color = active ? UnifiedSettingsSkin.ACCENT : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.TEXT_PRIMARY, 0.68f + hoverAnim * 0.32f);
-        ClickGuiRenderer.drawText(font, label, x + Math.max(m(2f, 2f), (w - tw) * 0.5f), ty, size, color, false);
+        LayoutRender2D.drawText(font, label, x + Math.max(m(2f, 2f), (w - tw) * 0.5f), ty, size, color, false);
     }
 
     private static void renderChecker(float x, float y, float w, float h, float cell, float radius) {
@@ -4233,19 +4348,19 @@ enum UnifiedSettingRenderer {
             }
         } else {
             int light = 0xFFE7E7E7;
-            ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, light);
+            LayoutRender2D.drawRoundedRect(x, y, w, h, radius, light);
             float inset = Math.max(0.75f, Math.min(radius * 0.55f, Math.min(w, h) * 0.22f));
             float iw = Math.max(0f, w - inset * 2f);
             float ih = Math.max(0f, h - inset * 2f);
             if (iw > 0.5f && ih > 0.5f) renderCheckerCells(x + inset, y + inset, iw, ih, cell);
         }
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, radius, m(0.55f, 0.4f), 0x30000000);
+        LayoutRender2D.drawRoundedRectStroke(x, y, w, h, radius, m(0.55f, 0.4f), 0x30000000);
     }
 
     private static void renderCheckerCells(float x, float y, float w, float h, float cell) {
         int light = 0xFFE7E7E7;
         int dark = 0xFF777777;
-        ClickGuiRenderer.drawRect(x, y, w, h, light);
+        LayoutRender2D.drawRect(x, y, w, h, light);
         float safeCell = Math.max(1f, cell);
         int cols = Math.max(1, (int) Math.ceil(w / safeCell));
         int rows = Math.max(1, (int) Math.ceil(h / safeCell));
@@ -4254,22 +4369,22 @@ enum UnifiedSettingRenderer {
                 if (((row + col) & 1) == 0) continue;
                 float cx = x + col * safeCell;
                 float cy = y + row * safeCell;
-                ClickGuiRenderer.drawRect(cx, cy, Math.min(safeCell, x + w - cx), Math.min(safeCell, y + h - cy), dark);
+                LayoutRender2D.drawRect(cx, cy, Math.min(safeCell, x + w - cx), Math.min(safeCell, y + h - cy), dark);
             }
         }
     }
 
     private static float calculateTextBoxHeight(TextRenderer font, String text, float size, float maxW) {
         String safe = text == null || text.isEmpty() ? " " : text;
-        int lines = Math.max(1, ClickGuiRenderer.wrapText(font, safe, size, maxW, 6).size());
+        int lines = Math.max(1, LayoutRender2D.wrapText(font, safe, size, maxW, 6).size());
         return m(5f, 5f) + lines * UnifiedSettingsSkin.textHeight(font, size) + Math.max(0, lines - 1) * m(1f, 1f);
     }
 
     private static void drawWrappedText(TextRenderer font, String text, float x, float y, float size, float maxW, int color, int maxLines) {
-        java.util.List<String> lines = ClickGuiRenderer.wrapText(font, text == null ? "" : text, size, maxW, maxLines);
+        java.util.List<String> lines = LayoutRender2D.wrapText(font, text == null ? "" : text, size, maxW, maxLines);
         float cy = y;
         for (String line : lines) {
-            ClickGuiRenderer.drawText(font, line, x, cy, size, color, false);
+            LayoutRender2D.drawText(font, line, x, cy, size, color, false);
             cy += UnifiedSettingsSkin.textHeight(font, size) + m(1f, 1f);
         }
     }
@@ -4290,14 +4405,14 @@ enum UnifiedSettingRenderer {
 
         if (text == null || text.isEmpty()) return;
         if (speed <= 0.0f) {
-            ClickGuiRenderer.drawText(font, text, x, y, fontSize, color, false);
+            LayoutRender2D.drawText(font, text, x, y, fontSize, color, false);
             return;
         }
 
         float cycleDistance = fullWidth + gap;
         float cycleTime = pauseSec + cycleDistance / speed;
         if (cycleTime <= 0.0f) {
-            ClickGuiRenderer.drawText(font, text, x, y, fontSize, color, false);
+            LayoutRender2D.drawText(font, text, x, y, fontSize, color, false);
             return;
         }
 
@@ -4309,10 +4424,10 @@ enum UnifiedSettingRenderer {
             offset = -(t - pauseSec) * speed;
         }
 
-        ClickGuiRenderer.drawText(font, text, x + offset, y, fontSize, color, false);
+        LayoutRender2D.drawText(font, text, x + offset, y, fontSize, color, false);
 
         if (cycleDistance > viewWidth * 0.5f) {
-            ClickGuiRenderer.drawText(font, text, x + offset + cycleDistance, y, fontSize, color, false);
+            LayoutRender2D.drawText(font, text, x + offset + cycleDistance, y, fontSize, color, false);
         }
     }
 

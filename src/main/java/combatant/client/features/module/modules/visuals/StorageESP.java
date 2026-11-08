@@ -64,7 +64,7 @@ import java.util.Map;
         aliases = {"ChestESP", "ContainerESP", "StorageFinder"},
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.storageesp.description")
-public final class StorageESP extends ShaderBoxModule {
+public final class StorageESP extends ShaderBoxModule implements combatant.client.features.map.info.MapInfoSource {
 
     private static final double INSET = 1.0 / 16.0;
     private static final double CHEST_HEIGHT = 14.0 / 16.0;
@@ -94,6 +94,7 @@ public final class StorageESP extends ShaderBoxModule {
         super(RenderMode.BOX, RenderMode.BOX, RenderMode.OUTLINE, RenderMode.FILL);
     }
 
+    private final BooleanValue mapInfo = bool("map_info", true);
     private final NumberValue<Integer> maxDistance = num("max_distance", 96, 8, 512);
     private final NumberValue<Integer> lineWidth = num("line_width", 2, 1, 6);
     private final BooleanValue dimOpened = bool("dim_opened", true);
@@ -257,6 +258,25 @@ public final class StorageESP extends ShaderBoxModule {
                 };
                 draw.box(found.box, fill, line);
                 if (tracers.get(found.kind).get()) draw.tracer(center, base);
+            }
+        }
+    }
+
+    @Override
+    public void collectMapInfo(combatant.client.features.map.info.MapInfoSink sink) {
+        if (!isEnabled() || !mapInfo.get() || mc.level == null || mc.player == null) return;
+        double maxSq = (double) maxDistance.get() * maxDistance.get();
+        for (List<Found> chunk : scanner.results().values()) {
+            for (Found found : chunk) {
+                if (!enabled.get(found.kind).get() || mc.player.distanceToSqr(found.box.getCenter()) > maxSq) continue;
+                BlockPos pos = BlockPos.of(found.pos);
+                net.minecraft.world.level.block.Block block = mc.level.getBlockState(pos).getBlock();
+                int color = found.kind == Kind.SHULKER && shulkerDyeColor.get() && found.dye != 0
+                        ? found.dye : colors.get(found.kind).getArgb();
+                if (dimOpened.get() && (opened.contains(found.pos) || (found.partner != Long.MIN_VALUE && opened.contains(found.partner)))) {
+                    color = scaleAlpha(color, openedOpacity.get() / 100.0f);
+                }
+                sink.add(pos.getX(), pos.getZ(), found.kind.id, block.getName().getString(), block.asItem(), color, 1);
             }
         }
     }

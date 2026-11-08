@@ -20,7 +20,6 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ProjectileItem;
-import net.minecraft.world.item.SplashPotionItem;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LanternBlock;
 
@@ -199,7 +198,7 @@ public final class HmiContextFactory {
                 item.builtInRegistryHolder().tags().map(tag -> tag.location().toString()).toList(),
                 item instanceof BlockItem,
                 Block.byItem(item) instanceof LanternBlock,
-                item instanceof SplashPotionItem || item instanceof ProjectileItem
+                item instanceof ProjectileItem
         );
     }
 

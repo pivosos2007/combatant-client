@@ -9,8 +9,6 @@ package combatant.client.features.gui.clickgui.layout.screen.modules;
 
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.settings.Setting;
-import combatant.client.features.gui.clickgui.settings.SettingErrorView;
-import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.features.gui.clickgui.settings.SettingRenderContext;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -56,6 +54,7 @@ final class ModulesMenuPanel {
     boolean settingsScrollbarDragging;
     float settingsScrollbarDragOffset;
     final List<PreviewHit> previewHits = new ArrayList<>();
+    final Map<String, Long> previewMarqueeStarted = new HashMap<>();
 
     record PreviewHit(String actionId, float x, float y, float w, float h) {}
 
@@ -112,6 +111,7 @@ final class ModulesMenuPanel {
         subcategoryContentAnim = 1.0f;
         subcategoryDirection = 1;
         previewHits.clear();
+        previewMarqueeStarted.clear();
     }
 
     void update() {
@@ -348,6 +348,7 @@ final class ModulesMenuPanel {
                 if (resolved == null) return true;
 
                 selected = resolved.getId();
+                previewMarqueeStarted.clear();
                 selectedTitle = resolved.title();
                 selectedSettings.clear();
                 selectedSettings.addAll(resolved.settings());
@@ -486,6 +487,7 @@ final class ModulesMenuPanel {
 
     private void closeSettings() {
         selected = null;
+        previewMarqueeStarted.clear();
         selectedSettings.clear();
         settingsScroll = 0.0f;
         settingsSmoothScroll = 0.0f;

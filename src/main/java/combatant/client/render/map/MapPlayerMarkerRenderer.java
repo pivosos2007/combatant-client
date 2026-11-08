@@ -6,9 +6,12 @@
  */
 package combatant.client.render.map;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.account.SkinManager;
 import com.mojang.authlib.GameProfile;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.helpers.PlayerHeadRenderer;
@@ -139,7 +142,7 @@ public final class MapPlayerMarkerRenderer {
 
         float markerTop = centerY - (size + (hovered ? 2.0f : 0.0f)) * 0.5f;
         float textSize = Math.max(10.0f, Math.min(11.2f, size * 0.375f));
-        float textW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), name, textSize);
+        float textW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), name, textSize);
         float dot = 3.0f;
         float gap = 4.0f;
         float padLeft = 5.0f;
@@ -154,7 +157,7 @@ public final class MapPlayerMarkerRenderer {
         Renderer2D.COLOR.circle(labelX + padLeft + dot * 0.5f,
                 labelY + labelH * 0.5f, dot * 0.5f,
                 withAlpha(accentArgb, (hovered ? 1.0f : 0.88f) * alpha));
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), name,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), name,
                 labelX + padLeft + dot + gap,
                 labelY + 1.95f,
                 textSize,

@@ -7,8 +7,9 @@
 
 package combatant.client.features.gui.clickgui.settings;
 
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.SystemCursor;
 
@@ -235,32 +236,32 @@ enum SettingRendererBridge {
             float veilY = y + inset;
             float veilW = Math.max(1.0f, w - inset * 2.0f);
             float veilH = Math.max(1.0f, h - inset * 2.0f);
-            ClickGuiRenderer.drawRoundedRect(veilX, veilY, veilW, veilH, radius, hovered ? 0x71070809 : 0x59070809);
+            LayoutRender2D.drawRoundedRect(veilX, veilY, veilW, veilH, radius, hovered ? 0x71070809 : 0x59070809);
 
             TextRenderer textFont = UnifiedSettingsSkin.fontMedium();
             float textSize = UnifiedSettingsSkin.modernMetric(11.0f, 11.0f);
             float iconSize = UnifiedSettingsSkin.modernMetric(13.0f, 13.0f);
             TextRenderer iconFont = BuiltinFontCatalog.ICONS.renderer(textFont);
             float rightPad = UnifiedSettingsSkin.modernMetric(7.0f, 7.0f);
-            float iconW = ClickGuiRenderer.textWidth(iconFont, ICON_WARN, iconSize);
+            float iconW = LayoutRender2D.textWidth(iconFont, ICON_WARN, iconSize);
             float reasonMax = Math.max(24.0f, Math.min(w * 0.42f, w - iconW - rightPad * 3.0f));
             String fitted = UnifiedSettingsSkin.fit(textFont, reason, textSize, reasonMax);
-            float tw = ClickGuiRenderer.textWidth(textFont, fitted, textSize);
-            float ty = y + (h - ClickGuiRenderer.textHeight(textFont, textSize)) * 0.5f;
+            float tw = LayoutRender2D.textWidth(textFont, fitted, textSize);
+            float ty = y + (h - LayoutRender2D.textHeight(textFont, textSize)) * 0.5f;
             float tx = x + w - rightPad - tw;
-            float iy = y + (h - ClickGuiRenderer.textHeight(iconFont, iconSize)) * 0.5f;
+            float iy = y + (h - LayoutRender2D.textHeight(iconFont, iconSize)) * 0.5f;
             float ix = tx - iconW - UnifiedSettingsSkin.modernMetric(4.0f, 4.0f);
             int color = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, hovered ? 245 : 205);
-            ClickGuiRenderer.drawText(iconFont, ICON_WARN, ix, iy, iconSize, color, false);
-            ClickGuiRenderer.drawText(textFont, fitted, tx, ty, textSize, color, false);
+            LayoutRender2D.drawText(iconFont, ICON_WARN, ix, iy, iconSize, color, false);
+            LayoutRender2D.drawText(textFont, fitted, tx, ty, textSize, color, false);
             return;
         }
 
         float inset = UnifiedSettingsSkin.metric(2.0f, 2.0f);
         float radius = UnifiedSettingsSkin.metric(7.0f, 4.5f);
         int veil = hovered ? 0x7A050607 : 0x63050607;
-        ClickGuiRenderer.drawRoundedRect(x + inset, y + inset, Math.max(1.0f, w - inset * 2.0f), Math.max(1.0f, h - inset * 2.0f), radius, veil);
-        ClickGuiRenderer.drawRoundedRectStroke(
+        LayoutRender2D.drawRoundedRect(x + inset, y + inset, Math.max(1.0f, w - inset * 2.0f), Math.max(1.0f, h - inset * 2.0f), radius, veil);
+        LayoutRender2D.drawRoundedRectStroke(
                 x + inset,
                 y + inset,
                 Math.max(1.0f, w - inset * 2.0f),
@@ -280,17 +281,17 @@ enum SettingRendererBridge {
         float pillW = Math.max(1.0f, w - UnifiedSettingsSkin.metric(14.0f, 8.0f));
         int pillA = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.SURFACE_HOVER, hovered ? 170 : 132);
         int pillB = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.ACCENT_SOFT, hovered ? 112 : 78);
-        ClickGuiRenderer.drawRoundedRectGradient(pillX, pillY, pillW, pillH, pillH * 0.5f, pillA, pillB, UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
+        LayoutRender2D.drawRoundedRectGradient(pillX, pillY, pillW, pillH, pillH * 0.5f, pillA, pillB, UnifiedSettingsSkin.ACCENT_GRADIENT_ANGLE);
 
-        float iconY = pillY + (pillH - ClickGuiRenderer.textHeight(iconFont, iconSize)) * 0.5f - UnifiedSettingsSkin.metric(0.2f, 0.1f);
+        float iconY = pillY + (pillH - LayoutRender2D.textHeight(iconFont, iconSize)) * 0.5f - UnifiedSettingsSkin.metric(0.2f, 0.1f);
         int iconColor = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.accentGradientStart(1.0f), hovered ? 255 : 220);
-        ClickGuiRenderer.drawText(iconFont, ICON_WARN, pillX + UnifiedSettingsSkin.metric(5.0f, 3.0f), iconY, iconSize, iconColor, false);
+        LayoutRender2D.drawText(iconFont, ICON_WARN, pillX + UnifiedSettingsSkin.metric(5.0f, 3.0f), iconY, iconSize, iconColor, false);
 
         float textX = pillX + UnifiedSettingsSkin.metric(22.0f, 11.0f);
         float textMax = Math.max(1.0f, pillX + pillW - textX - UnifiedSettingsSkin.metric(5.0f, 3.0f));
         String fitted = UnifiedSettingsSkin.fit(textFont, reason, textSize, textMax);
-        float textY = pillY + (pillH - ClickGuiRenderer.textHeight(textFont, textSize)) * 0.5f - UnifiedSettingsSkin.metric(0.2f, 0.1f);
+        float textY = pillY + (pillH - LayoutRender2D.textHeight(textFont, textSize)) * 0.5f - UnifiedSettingsSkin.metric(0.2f, 0.1f);
         int textColor = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_PRIMARY, hovered ? 245 : 215);
-        ClickGuiRenderer.drawText(textFont, fitted, textX, textY, textSize, textColor, false);
+        LayoutRender2D.drawText(textFont, fitted, textX, textY, textSize, textColor, false);
     }
 }

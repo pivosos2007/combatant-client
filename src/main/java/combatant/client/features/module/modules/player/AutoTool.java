@@ -12,8 +12,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -122,7 +120,6 @@ public class AutoTool extends Module {
                     BlockPos pos = accessor.combatant$getCurrentBreakingPos();
                     if (pos != null) {
                         equip(findBestHotbarTool(pos));
-                        return;
                     }
                 }
             } else if (weaponOnAttack.get()

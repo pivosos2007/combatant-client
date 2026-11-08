@@ -62,23 +62,20 @@ final class UiScriptWorkerPool {
         boolean scheduled = true;
         for (int lane = 0; lane < LANES; lane++) {
             int index = lane;
-            boolean accepted = false;
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-            do {
-                accepted = submit(lane, () -> {
+            ThreadPoolExecutor executor = EXECUTORS[lane];
+            executor.prestartCoreThread();
+            boolean accepted;
+            try {
+                accepted = executor.getQueue().offer(() -> {
                     for (UiScriptEngine engine : OWNED_ENGINES.get(index)) {
                         try { engine.close(); } catch (Throwable ignored) {}
                     }
                     OWNED_ENGINES.get(index).clear();
-                });
-                if (accepted || System.nanoTime() >= deadline) break;
-                try {
-                    Thread.sleep(1);
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            } while (true);
+                }, 10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                accepted = false;
+            }
             scheduled &= accepted;
         }
         for (ThreadPoolExecutor executor : EXECUTORS) executor.shutdown();

@@ -264,7 +264,7 @@ public enum ParticleClassCatalog {
         StringBuilder label = new StringBuilder(localName.length() + 8);
         for (String part : nested) {
             if (part == null || part.isBlank()) continue;
-            if (label.length() > 0) label.append(" · ");
+            if (!label.isEmpty()) label.append(" · ");
             label.append(humanize(part));
         }
         return label.length() == 0 ? className : label.toString();

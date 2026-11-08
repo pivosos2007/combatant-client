@@ -7,6 +7,7 @@
 
 package combatant.client.mixins;
 
+import combatant.client.util.player.ServerFlyUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -146,6 +147,8 @@ public abstract class ClientPacketListenerMixin {
 
     @Inject(method = "handlePlayerAbilities", at = @At("HEAD"), cancellable = true)
     private void combatant$flightAbilities(ClientboundPlayerAbilitiesPacket packet, CallbackInfo ci) {
+        // Always observe the real server grant, including when Flight/Abilities is enabled.
+        ServerFlyUtils.observeServerAbilities(Minecraft.getInstance().player, packet);
         Flight flight = Modules.get(Flight.class);
         if (flight == null || !flight.isEnabled()) return;
         if (flight.onReceiveAbilities(packet)) {

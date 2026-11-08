@@ -315,9 +315,10 @@ public final class CbpDatFile implements Closeable {
             crc.update(noCrc);
             try (ByteArrayOutputStream complete = new ByteArrayOutputStream(HEADER_SIZE)) {
                 complete.write(noCrc);
-                DataOutputStream crcOut = new DataOutputStream(complete);
-                crcOut.writeInt((int) crc.getValue());
-                crcOut.flush();
+                try (DataOutputStream crcOut = new DataOutputStream(complete)) {
+                    crcOut.writeInt((int) crc.getValue());
+                    crcOut.flush();
+                }
                 bytes = complete.toByteArray();
             }
         }

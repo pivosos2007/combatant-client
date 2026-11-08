@@ -5,9 +5,12 @@
  */
 package combatant.client.features.gui.clickgui.settings;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.config.ConfigPaths;
 import combatant.client.config.ConfigurationRootManager;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.features.theme.Theme;
 import combatant.client.input.InputKeys;
@@ -27,7 +30,6 @@ import net.minecraft.util.Util;
 
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Path;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -106,7 +108,7 @@ public final class ConfigurationDirectorySetting extends Setting {
         if (pending) props.put("hint", I18n.get("config.directory.pendingHint"));
         float height = getHeight();
         runtime = scripts.bakeTracked(moduleHandle, moduleHandle.module(), "configuration-directory",
-                width, height, ClickGuiRenderer.getOnestMedium(),
+                width, height, BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 x, y, width, height, () -> props);
         if (runtime == null) return;
         runtime.actions().register("configdir:change", action -> { chooseDirectory(); return true; });
@@ -114,11 +116,11 @@ public final class ConfigurationDirectorySetting extends Setting {
         runtime.actions().register("configdir:confirm", action -> { confirm(); return true; });
         runtime.actions().register("configdir:cancel", action -> { proposed = null; error = ""; return true; });
         runtime.actions().register("configdir:cancel-pending", action -> { cancelPending(); return true; });
-        ClickGuiRenderer.flushRenderer();
-        runtime.render(new UiRenderContext(Renderer2D.COLOR, ClickGuiRenderer.getOnestMedium(),
+        LayoutRender2D.flushRenderer();
+        runtime.render(new UiRenderContext(Renderer2D.COLOR, BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 null, 0f, UiProjectionMode.CURRENT, 1f),
                 () -> runtime.input().updateHover(runtime.root(), mouseX, mouseY));
-        ClickGuiRenderer.flushRenderer();
+        LayoutRender2D.flushRenderer();
     }
 
     private static String color(int argb) { return String.format("#%08X", argb); }

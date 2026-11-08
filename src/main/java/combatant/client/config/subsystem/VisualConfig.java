@@ -11,6 +11,7 @@ import combatant.client.config.SettingDef;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.RGBColorValue;
 import combatant.client.render.iris.IrisAaIntegration;
 import combatant.client.render.iris.IrisAaOwner;
 
@@ -21,8 +22,26 @@ public final class VisualConfig extends SubsystemConfig {
     public static final VisualConfig INSTANCE = new VisualConfig();
 
     private final BooleanValue combatantMainMenu = bool("combatantMainMenu", true);
-    private final ModeValue menuBackground = mode("menuBackground", "png", "png", "aurora", "waves");
     private final BooleanValue menuClockShowSeconds = bool("menuClockShowSeconds", false);
+    private final ModeValue menuHoneycombPalette = mode("menuHoneycombPalette", "theme", "theme", "custom");
+    private final BooleanValue menuHoneycombGrid = bool("menuHoneycombGrid", true);
+    private final BooleanValue menuHoneycombCursorGlow = bool("menuHoneycombCursorGlow", true);
+    private final BooleanValue menuHoneycombAmbient = bool("menuHoneycombAmbient", true);
+    private final BooleanValue menuFluidEnabled = bool("menuFluidEnabled", true);
+    private final BooleanValue menuFluidRainbow = bool("menuFluidRainbow", false);
+    private final NumberValue<Double> menuGridIntensity = number("menuGridIntensity", 1.0, 0.0, 2.5);
+    private final NumberValue<Double> menuCursorIntensity = number("menuCursorIntensity", 1.0, 0.0, 2.5);
+    private final NumberValue<Double> menuAmbientIntensity = number("menuAmbientIntensity", 1.0, 0.0, 2.5);
+    private final NumberValue<Double> menuHoneycombBloom = number("menuHoneycombBloom", 1.0, 0.0, 2.0);
+    private final NumberValue<Double> menuFluidIntensity = number("menuFluidIntensity", 1.0, 0.0, 2.5);
+    private final NumberValue<Double> menuFluidSize = number("menuFluidSize", 1.0, 0.5, 2.5);
+    private final NumberValue<Double> menuFluidVorticity = number("menuFluidVorticity", 1.0, 0.0, 2.5);
+    private final NumberValue<Double> menuFluidBloom = number("menuFluidBloom", 0.9, 0.0, 2.5);
+    private final ModeValue menuFluidQuality = mode("menuFluidQuality", "high", "balanced", "high", "ultra");
+    private final RGBColorValue menuGridColor = value(new RGBColorValue("menuGridColor", "#895A30"));
+    private final RGBColorValue menuGlowColor = value(new RGBColorValue("menuGlowColor", "#F2D65B"));
+    private final RGBColorValue menuFluidColor = value(new RGBColorValue("menuFluidColor", "#BB61B0"));
+
     /** Canonical world anti-aliasing owner. MSAA and TAA are mutually exclusive. */
     private final ModeValue antialiasing3d = mode("antialiasing3d", "off", "off", "msaa", "taa");
     // Legacy source key is retained only to migrate old mainconfig values once.
@@ -49,14 +68,44 @@ public final class VisualConfig extends SubsystemConfig {
         return combatantMainMenu.get();
     }
 
-    public String getMenuBackgroundMode() {
-        String mode = menuBackground.get();
-        return mode != null ? mode : "png";
-    }
-
     public boolean isMenuClockShowSeconds() {
         return menuClockShowSeconds.get();
     }
+
+    public ModeValue menuHoneycombPaletteValue() { return menuHoneycombPalette; }
+    public BooleanValue menuHoneycombGridValue() { return menuHoneycombGrid; }
+    public BooleanValue menuHoneycombCursorGlowValue() { return menuHoneycombCursorGlow; }
+    public BooleanValue menuHoneycombAmbientValue() { return menuHoneycombAmbient; }
+    public BooleanValue menuFluidEnabledValue() { return menuFluidEnabled; }
+    public BooleanValue menuFluidRainbowValue() { return menuFluidRainbow; }
+    public NumberValue<Double> menuGridIntensityValue() { return menuGridIntensity; }
+    public NumberValue<Double> menuCursorIntensityValue() { return menuCursorIntensity; }
+    public NumberValue<Double> menuAmbientIntensityValue() { return menuAmbientIntensity; }
+    public NumberValue<Double> menuHoneycombBloomValue() { return menuHoneycombBloom; }
+    public NumberValue<Double> menuFluidIntensityValue() { return menuFluidIntensity; }
+    public NumberValue<Double> menuFluidSizeValue() { return menuFluidSize; }
+    public NumberValue<Double> menuFluidVorticityValue() { return menuFluidVorticity; }
+    public NumberValue<Double> menuFluidBloomValue() { return menuFluidBloom; }
+    public ModeValue menuFluidQualityValue() { return menuFluidQuality; }
+    public RGBColorValue menuGridColorValue() { return menuGridColor; }
+    public RGBColorValue menuGlowColorValue() { return menuGlowColor; }
+    public RGBColorValue menuFluidColorValue() { return menuFluidColor; }
+    public boolean menuCustomColors() { return "custom".equals(menuHoneycombPalette.get()); }
+    public boolean menuFluidEnabled() { return menuFluidEnabled.get(); }
+    public boolean menuGridEnabled() { return menuHoneycombGrid.get(); }
+    public boolean menuCursorGlowEnabled() { return menuHoneycombCursorGlow.get(); }
+    public boolean menuAmbientGlowEnabled() { return menuHoneycombAmbient.get(); }
+    public float menuGridIntensity() { return menuGridIntensity.get().floatValue(); }
+    public float menuCursorIntensity() { return menuCursorIntensity.get().floatValue(); }
+    public float menuAmbientIntensity() { return menuAmbientIntensity.get().floatValue(); }
+    public float menuHoneycombBloom() { return menuHoneycombBloom.get().floatValue(); }
+    public float menuFluidIntensity() { return menuFluidIntensity.get().floatValue(); }
+    public float menuFluidSize() { return menuFluidSize.get().floatValue(); }
+    public float menuFluidVorticity() { return menuFluidVorticity.get().floatValue(); }
+    public float menuFluidBloom() { return menuFluidBloom.get().floatValue(); }
+    public String menuFluidQuality() { return menuFluidQuality.get(); }
+    public boolean menuFluidRainbow() { return menuFluidRainbow.get(); }
+
 
     public String getAntialiasing3dMode() {
         String value = antialiasing3d.get();
@@ -158,7 +207,6 @@ public final class VisualConfig extends SubsystemConfig {
                 SettingDef.number(taaSharpeningIntensity)
                         .visibleWhen(() -> isTaaSelected() && taaSharpen.get()),
                 SettingDef.bool(combatantMainMenu),
-                SettingDef.mode(menuBackground).visibleWhen(combatantMainMenu::get),
                 SettingDef.bool(menuClockShowSeconds),
                 SettingDef.bool(modernSodiumGui),
                 SettingDef.bool(modernIrisGui)

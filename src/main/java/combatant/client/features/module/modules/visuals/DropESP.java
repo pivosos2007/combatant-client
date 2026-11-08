@@ -23,7 +23,6 @@ import net.minecraft.world.item.Rarity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.SettingDef;
-import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.gui.hud.HudRenderSpace;
 import combatant.client.features.module.HudPhase;

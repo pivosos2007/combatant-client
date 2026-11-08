@@ -30,7 +30,7 @@ final class VulkanStorageUploadRing {
         int slot = Math.floorMod(submit, owners.length);
         if (submit != activeSubmit) {
             long previous = owners[slot];
-            if (previous != Long.MIN_VALUE && previous > completedSubmit) {
+            if (previous > completedSubmit) {
                 throw new IllegalStateException("Storage buffer submit ring would overwrite in-flight data: slot="
                         + slot + " owner=" + previous + " completed=" + completedSubmit + " current=" + submit);
             }

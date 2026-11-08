@@ -22,13 +22,9 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.common.CommonSettingSchemas;
-import combatant.client.config.values.*;
-import combatant.client.features.gui.clickgui.settings.TextListSetting;
-import combatant.client.features.module.*;
 import combatant.client.features.module.modules.misc.DefineTarget;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.renderer.Renderer3D;
-import combatant.client.util.block.*;
 import combatant.client.util.block.bed.BedBlockUtil;
 import combatant.client.util.block.bed.BedwarsTeamColorUtil;
 import combatant.client.util.block.bed.SelfBedMode;
@@ -43,13 +39,14 @@ import java.util.concurrent.ConcurrentHashMap;
         displayName = "BedwarsESP",
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.bedwarsesp.description")
-public class BedwarsESP extends Module {
+public class BedwarsESP extends Module implements combatant.client.features.map.info.MapInfoSource {
 //todo не доделан
 
     private static final int SECTION_SCAN_BUDGET_PER_TICK = 4;
     private static final int SECTION_SCAN_REFRESH_TICKS = 40;
 
     private final Minecraft mc = Minecraft.getInstance();
+    private final BooleanValue mapInfo = bool("bedwars_esp_map_info", "map_info", true);
     private final WorldSectionBlockScanner sectionScanner = new WorldSectionBlockScanner();
 
     private final EnumValue<BlockScanMode> modeValue =
@@ -216,7 +213,7 @@ public class BedwarsESP extends Module {
     private static int emphasizeAlpha(int argb) {
         int alpha = (argb >>> 24) & 0xFF;
         int nextAlpha = Math.max(alpha, 170);
-        return (argb & 0x00FFFFFF) | (Math.min(255, nextAlpha) << 24);
+        return (argb & 0x00FFFFFF) | (nextAlpha << 24);
     }
 
     private static void addFilledBox(Renderer3D renderer, AABB box, int argb) {
@@ -837,6 +834,26 @@ public class BedwarsESP extends Module {
     }
 
     private record FaceKey(BlockPos pos, net.minecraft.core.Direction face) {
+    }
+
+    @Override
+    public void collectMapInfo(combatant.client.features.map.info.MapInfoSink sink) {
+        if (!isEnabled() || !mapInfo.get() || mc.level == null || mc.player == null) return;
+        boolean limited = limitDistanceValue.get();
+        double maxSq = (double) maxDistanceValue.get() * maxDistanceValue.get();
+        DefineTarget defineTarget = Modules.get(DefineTarget.class);
+        boolean teams = defineTarget != null && defineTarget.useBedwarsTeamColors();
+        for (BedRenderTarget bed : renderTargets.values()) {
+            if (bed.bedParts().isEmpty()) continue;
+            BlockPos pos = bed.bedParts().getFirst();
+            if (limited && pos.distToCenterSqr(mc.player.getX(), mc.player.getY(), mc.player.getZ()) > maxSq) continue;
+            if (!BedBlockUtil.isBed(mc.level.getBlockState(pos))) continue;
+            int color = bed.self() ? selfBedColor.getArgb() : otherBedColor.getArgb();
+            if (teams && bed.teamColorRgb() != -1) color = BedwarsTeamColorUtil.replaceRgb(color, bed.teamColorRgb());
+            sink.add(pos.getX(), pos.getZ(), bed.self() ? "self_bed" : "bed",
+                    bed.self() ? net.minecraft.client.resources.language.I18n.get("gui.combatant.map.info.bedwars.own")
+                            : net.minecraft.client.resources.language.I18n.get("gui.combatant.map.info.bedwars.bed"), mc.level.getBlockState(pos).getBlock().asItem(), color, 1);
+        }
     }
 
     private record FaceMarker(AABB box) {

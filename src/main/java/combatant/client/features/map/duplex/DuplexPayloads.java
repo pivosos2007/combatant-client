@@ -15,10 +15,9 @@ public final class DuplexPayloads {
     private DuplexPayloads() {}
 
     public static byte[] bearing(DuplexBearingSample sample) {
-        try {
-            ByteArrayOutputStream bytes=new ByteArrayOutputStream(64);
-            DataOutputStream out=new DataOutputStream(bytes);
-            writeUuid(out,sample.targetUuid());
+        try (ByteArrayOutputStream bytes = new ByteArrayOutputStream(64);
+             DataOutputStream out = new DataOutputStream(bytes)) {
+            writeUuid(out, sample.targetUuid());
             out.writeDouble(sample.observerX());
             out.writeDouble(sample.observerZ());
             out.writeDouble(sample.bearingRadians());
@@ -26,45 +25,56 @@ public final class DuplexPayloads {
             out.writeLong(sample.sourceRevision());
             out.flush();
             return bytes.toByteArray();
-        } catch(IOException e){ throw new IllegalStateException(e); }
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public static DuplexBearingSample readBearing(byte[] payload) {
-        try {
-            DataInputStream in=new DataInputStream(new ByteArrayInputStream(payload));
-            DuplexBearingSample sample=new DuplexBearingSample(readUuid(in),in.readDouble(),in.readDouble(),
-                    in.readDouble(),in.readLong(),in.readLong());
-            if(in.available()!=0) throw new IllegalArgumentException("Trailing bearing payload bytes");
+        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload))) {
+            DuplexBearingSample sample = new DuplexBearingSample(readUuid(in), in.readDouble(), in.readDouble(),
+                    in.readDouble(), in.readLong(), in.readLong());
+            if (in.available() != 0) throw new IllegalArgumentException("Trailing bearing payload bytes");
             return sample;
-        } catch(IOException e){ throw new IllegalArgumentException("Invalid bearing payload",e); }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Invalid bearing payload", e);
+        }
     }
 
     public static byte[] text(String... values) {
-        try {
-            ByteArrayOutputStream bytes=new ByteArrayOutputStream();
-            DataOutputStream out=new DataOutputStream(bytes);
+        if (values.length > 255) throw new IllegalArgumentException("Too many text fields");
+        try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+             DataOutputStream out = new DataOutputStream(bytes)) {
             out.writeByte(values.length);
-            for(String value:values){
-                byte[] raw=(value==null?"":value).getBytes(StandardCharsets.UTF_8);
-                if(raw.length>1024) throw new IllegalArgumentException("Text field too large");
-                out.writeShort(raw.length); out.write(raw);
+            for (String value : values) {
+                byte[] raw = (value == null ? "" : value).getBytes(StandardCharsets.UTF_8);
+                if (raw.length > 1024) throw new IllegalArgumentException("Text field too large");
+                out.writeShort(raw.length);
+                out.write(raw);
             }
-            out.flush(); return bytes.toByteArray();
-        } catch(IOException e){ throw new IllegalStateException(e); }
+            out.flush();
+            return bytes.toByteArray();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public static String[] readText(byte[] payload) {
-        try {
-            DataInputStream in=new DataInputStream(new ByteArrayInputStream(payload));
-            int count=in.readUnsignedByte();
-            String[] values=new String[count];
-            for(int i=0;i<count;i++){
-                int len=in.readUnsignedShort();
-                values[i]=new String(in.readNBytes(len),StandardCharsets.UTF_8);
+        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload))) {
+            int count = in.readUnsignedByte();
+            String[] values = new String[count];
+            for (int i = 0; i < count; i++) {
+                int len = in.readUnsignedShort();
+                if (len > 1024) throw new IllegalArgumentException("Text field too large");
+                byte[] raw = new byte[len];
+                in.readFully(raw);
+                values[i] = new String(raw, StandardCharsets.UTF_8);
             }
-            if(in.available()!=0) throw new IllegalArgumentException("Trailing text payload bytes");
+            if (in.available() != 0) throw new IllegalArgumentException("Trailing text payload bytes");
             return values;
-        } catch(IOException e){ throw new IllegalArgumentException("Invalid text payload",e); }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Invalid text payload", e);
+        }
     }
 
     private static void writeUuid(DataOutput out,UUID id)throws IOException{

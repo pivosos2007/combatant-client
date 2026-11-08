@@ -15,6 +15,7 @@ import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.aiming.features.processors.RotationProcessor;
 import combatant.client.util.player.BreakSpeedUtil;
 import combatant.client.util.player.inventory.InventorySwap;
+import combatant.client.mixins.accessors.MinecraftAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -59,8 +60,26 @@ public final class BlockInteractionPipeline {
     private Object aimingOwner;
     private BlockPos aimingPos;
     private BlockAimResolver.Aim aimingPoint;
+    private Object inputOwner;
 
     private BlockInteractionPipeline() {
+    }
+
+    public Object inputOwner() {
+        return inputOwner;
+    }
+
+    public void useBlockInput(Object owner, BlockHitResult hit) {
+        if (owner == null || hit == null || inputOwner != null) return;
+        HitResult previous = mc.hitResult;
+        inputOwner = owner;
+        try {
+            mc.hitResult = hit;
+            ((MinecraftAccessor) mc).combatant$startUseItem();
+        } finally {
+            mc.hitResult = previous;
+            inputOwner = null;
+        }
     }
 
     /**

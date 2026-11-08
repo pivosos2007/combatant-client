@@ -13,10 +13,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ScissorFunction;
@@ -78,7 +77,7 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
     }
 
     private static String fit(TextRenderer font, String text, float size, float width) {
-        return ClickGuiRenderer.fitText(font, text == null ? "" : text, size, Math.max(1f, width));
+        return LayoutRender2D.fitText(font, text == null ? "" : text, size, Math.max(1f, width));
     }
 
     private static boolean inside(double mx, double my, float x, float y, float w, float h) {
@@ -253,9 +252,9 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
 
         TextRenderer titleFont = UnifiedSettingsSkin.fontSemibold();
         float titleSize = 18f;
-        ClickGuiRenderer.drawText(titleFont, ClickGuiI18n.tr("clickgui.pvp_rules.selected_rule", "Selected rule"),
+        LayoutRender2D.drawText(titleFont, ClickGuiI18n.tr("clickgui.pvp_rules.selected_rule", "Selected rule"),
                 x + PANEL_PAD, y + 11f, titleSize, UnifiedSettingsSkin.TEXT_PRIMARY, false);
-        ClickGuiRenderer.drawText(UnifiedSettingsSkin.fontRegular(),
+        LayoutRender2D.drawText(UnifiedSettingsSkin.fontRegular(),
                 ClickGuiI18n.tr("clickgui.pvp_rules.subtitle", "Configure local PvP cooldown behavior"), x + PANEL_PAD, y + 30f,
                 10.5f, UnifiedSettingsSkin.TEXT_MUTED, false);
         float dividerY = y + 47f;
@@ -352,8 +351,8 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
         float buttonH = 22f;
         float buttonX = x + w - PANEL_PAD - buttonW;
         float buttonY = y + 69f;
-        ClickGuiRenderer.drawText(titleFont, fit(titleFont, name, 15f, buttonX - textX - 10f), textX, y + 60f, 15f, UnifiedSettingsSkin.TEXT_PRIMARY, false);
-        ClickGuiRenderer.drawText(font, fit(font, itemId, small, buttonX - textX - 10f), textX, y + 80f, small, UnifiedSettingsSkin.TEXT_MUTED, false);
+        LayoutRender2D.drawText(titleFont, fit(titleFont, name, 15f, buttonX - textX - 10f), textX, y + 60f, 15f, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        LayoutRender2D.drawText(font, fit(font, itemId, small, buttonX - textX - 10f), textX, y + 80f, small, UnifiedSettingsSkin.TEXT_MUTED, false);
 
         Action action = hasRule ? Action.REMOVE_RULE : Action.ADD_RULE;
         String label = hasRule ? "Remove" : "Add";
@@ -366,10 +365,10 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
         String line1 = "Select an item on the left.";
         String line2 = "A grid click only focuses it; rule creation is explicit.";
         float size = 12f;
-        float lineH = ClickGuiRenderer.textHeight(font, size) + 4f;
+        float lineH = LayoutRender2D.textHeight(font, size) + 4f;
         float top = y + h * 0.5f - lineH;
-        ClickGuiRenderer.drawText(font, line1, x + PANEL_PAD, top, size, UnifiedSettingsSkin.TEXT_MUTED, false);
-        ClickGuiRenderer.drawText(font, fit(font, line2, size, w - PANEL_PAD * 2f), x + PANEL_PAD, top + lineH, size, UnifiedSettingsSkin.TEXT_MUTED, false);
+        LayoutRender2D.drawText(font, line1, x + PANEL_PAD, top, size, UnifiedSettingsSkin.TEXT_MUTED, false);
+        LayoutRender2D.drawText(font, fit(font, line2, size, w - PANEL_PAD * 2f), x + PANEL_PAD, top + lineH, size, UnifiedSettingsSkin.TEXT_MUTED, false);
     }
 
     private void drawMissingRuleHint(float x, float y, float w, float h) {
@@ -377,23 +376,23 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
         String line1 = "No cooldown rule for this item.";
         String line2 = "Press Add to create one, then configure it below.";
         float size = 12f;
-        float lineH = ClickGuiRenderer.textHeight(font, size) + 4f;
+        float lineH = LayoutRender2D.textHeight(font, size) + 4f;
         float top = y + HEADER_H + 14f;
-        ClickGuiRenderer.drawText(font, line1, x + PANEL_PAD, top, size, UnifiedSettingsSkin.TEXT_MUTED, false);
-        ClickGuiRenderer.drawText(font, fit(font, line2, size, w - PANEL_PAD * 2f), x + PANEL_PAD, top + lineH, size, UnifiedSettingsSkin.TEXT_MUTED, false);
+        LayoutRender2D.drawText(font, line1, x + PANEL_PAD, top, size, UnifiedSettingsSkin.TEXT_MUTED, false);
+        LayoutRender2D.drawText(font, fit(font, line2, size, w - PANEL_PAD * 2f), x + PANEL_PAD, top + lineH, size, UnifiedSettingsSkin.TEXT_MUTED, false);
     }
 
     private void chip(float x, float y, float w, float h, String text, boolean hover, boolean destructive) {
         int bg = destructive ? UnifiedSettingsSkin.withAlpha(0xFFFF5555, 32) : UnifiedSettingsSkin.ACCENT_SOFT;
         int stroke = destructive ? UnifiedSettingsSkin.withAlpha(0xFFFF7777, 120) : UnifiedSettingsSkin.ACCENT;
         if (hover) bg = UnifiedSettingsSkin.mix(bg, UnifiedSettingsSkin.SURFACE_HOVER, 0.45f);
-        ClickGuiRenderer.drawRoundedRect(x, y, w, h, 4f, bg);
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, 4f, 0.35f, stroke);
+        LayoutRender2D.drawRoundedRect(x, y, w, h, 4f, bg);
+        LayoutRender2D.drawRoundedRectStroke(x, y, w, h, 4f, 0.35f, stroke);
         TextRenderer font = UnifiedSettingsSkin.fontRegular();
         float size = 10.5f;
-        float tw = ClickGuiRenderer.textWidth(font, text, size);
-        float th = ClickGuiRenderer.textHeight(font, size);
-        ClickGuiRenderer.drawText(font, text, x + (w - tw) * 0.5f, y + (h - th) * 0.5f, size, UnifiedSettingsSkin.TEXT_PRIMARY, false);
+        float tw = LayoutRender2D.textWidth(font, text, size);
+        float th = LayoutRender2D.textHeight(font, size);
+        LayoutRender2D.drawText(font, text, x + (w - tw) * 0.5f, y + (h - th) * 0.5f, size, UnifiedSettingsSkin.TEXT_PRIMARY, false);
     }
 
     private void drawDetailScrollbar(float panelX, float contentY, float panelW, float contentH) {
@@ -402,7 +401,7 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
         float trackX = panelX + panelW - PANEL_PAD - DETAIL_SCROLLBAR_W;
         float trackY = contentY + 1f;
         float trackH = Math.max(1f, contentH - 2f);
-        ClickGuiRenderer.drawRoundedRect(
+        LayoutRender2D.drawRoundedRect(
                 trackX,
                 trackY,
                 DETAIL_SCROLLBAR_W,
@@ -415,7 +414,7 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
         float thumbH = Math.max(18f, trackH * ratio);
         float thumbRange = Math.max(1f, trackH - thumbH);
         float thumbY = trackY + thumbRange * (detailScroll / Math.max(1f, detailMaxScroll));
-        ClickGuiRenderer.drawRoundedRect(
+        LayoutRender2D.drawRoundedRect(
                 trackX,
                 thumbY,
                 DETAIL_SCROLLBAR_W,
@@ -595,9 +594,6 @@ public final class CooldownRulesSetting extends TextListSetting implements Picke
 
         void commit() {
             if (rules == null || !rules.containsRule(itemId)) return;
-            ItemCooldownRulesValue.Rule current = rules.getRule(itemId);
-            if (current == null) current = rules.getDefaultRule(itemId);
-
             ItemCooldownRulesValue.Rule next = new ItemCooldownRulesValue.Rule(
                     enabledValue.get(),
                     secondsValue.get(),

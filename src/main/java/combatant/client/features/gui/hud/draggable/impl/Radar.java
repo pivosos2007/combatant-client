@@ -308,7 +308,7 @@ public final class Radar extends DraggableHudElement {
 
     private void appendField(StringBuilder out, Field field, Player player) {
         if (field == null || field == Field.NONE) return;
-        if (out.length() > 0) out.append(' ');
+        if (!out.isEmpty()) out.append(' ');
         switch (field) {
             case HP -> {
                 int hp = (int) Math.ceil(PlayerHealthResolver.totalHealth(player));

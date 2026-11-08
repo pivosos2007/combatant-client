@@ -12,6 +12,8 @@ import combatant.client.features.theme.Theme;
 import combatant.client.config.values.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipPositioner;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTextTooltip;
@@ -22,23 +24,19 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemContainerContents;
+import combatant.client.util.screen.ClientScreen;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
-import org.joml.Vector2ic;
 import combatant.client.config.SettingDef;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
-import combatant.client.features.gui.hud.script.ScriptedTooltipPanel;
 import combatant.client.render.engine.core.ViewportContext;
-import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.renderer.Renderer2D;
-import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
-import combatant.client.render.engine.text.TextRenderer;
+import combatant.client.render.engine.renderer.ui.UiBlurResources;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;
 import combatant.client.mixins.accessors.ClientTextTooltipAccessor;
-import combatant.client.util.item.TopEnchantUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,7 +50,6 @@ public final class BetterTooltips extends AbstractHudElement {
     public static final String GROUP_TOOLTIP_ITEMS = "vanilla_tooltip_items";
     public static final String GROUP_SHULKER_PREVIEW = "vanilla_shulker_preview";
     private static final int TOOLTIP_BG_ALPHA = 0xEE;
-    private static final float TOOLTIP_VISUAL_SCALE = 0.43448275f;
     private static final int SHULKER_HINT_COLOR = 0xFFFFAA00;
     private static final float SHULKER_BG_RADIUS = 1.5f;
     private static final float SHULKER_BG_SOFTNESS = 0.45f;
@@ -70,36 +67,31 @@ public final class BetterTooltips extends AbstractHudElement {
     private static ItemStack LAST_TOOLTIP_STACK;
     private static GuiGraphicsExtractor TOOLTIP_CTX;
     private static float TOOLTIP_SCALE_OVERRIDE = 1.0f;
+    private static long tooltipRenderedFrameId = Long.MIN_VALUE;
     private static PreviewLayout SHULKER_CACHE;
     private static int SHULKER_CACHE_SIGNATURE;
     private static float SHULKER_CACHE_PAD;
     private static float SHULKER_CACHE_SLOT_SIZE;
     private static float SHULKER_CACHE_SLOT_GAP;
     private static boolean SHULKER_CACHE_HAS_ITEMS;
-    private final BooleanValue itemTooltipEnabled = bool("item_tooltip", true);
-    private final BooleanValue shulkerPreviewEnabled = bool("shulker_preview", true);
-    private final BooleanValue itemInfoColorize = bool("item_info_colorize", true);
-    /* Dedicated ids prevent obsolete tooltip-panel values from altering this palette. */
-    private final NumberValue<Integer> tooltipBgAlpha =
-            num("tooltip_surface_alpha", "tooltip_bg_alpha", 255, 0, 255);
-    private final NumberValue<Integer> tooltipGradientStrength =
-            num("tooltip_theme_gradient_mix", "theme_gradient_strength", 0, 0, 250);
-    private final NumberValue<Integer> tooltipStrokeAlpha =
-            num("tooltip_panel_stroke_alpha", "stroke_alpha", 255, 0, 255);
-    private final NumberValue<Integer> tooltipShadowAlpha =
-            num("tooltip_panel_shadow_alpha", "shadow_alpha", 255, 0, 255);
-    private final NumberValue<Integer> tooltipHeaderAlpha =
-            num("tooltip_header_alpha", "tooltip_header_tint_alpha", 255, 0, 255);
-    private final NumberValue<Integer> tooltipDividerAlpha =
-            num("tooltip_divider_layer_alpha", "tooltip_divider_alpha", 255, 0, 255);
-    private final NumberValue<Integer> tooltipGradientAngleOffset =
-            num("tooltip_gradient_angle_offset", "tooltip_gradient_angle_offset", 0, -180, 180);
-    private final ItemIdSetValue topIgnore = registerTopIgnore();
+    private final BooleanValue itemTooltipEnabled = bool("bt_items_enabled", true);
+    private final BooleanValue itemInfoColorize = bool("bt_item_info_colors", true);
+    private final BooleanValue rareModelEnabled = bool("bt_rare_model", true);
+    private final NumberValue<Float> modelRotationSpeed = num("bt_model_rotation", 1.0f, 0.0f, 4.0f);
+    private final NumberValue<Float> rarityGlow = num("bt_rarity_fresnel", 0.75f, 0.0f, 1.0f);
+    private final NumberValue<Float> genericScale = num("bt_generic_scale", 0.68f, 0.5f, 1.5f);
+    private final NumberValue<Float> itemScale = num("bt_item_scale", 0.68f, 0.5f, 1.5f);
+    private final NumberValue<Float> guiBlur = num("bt_gui_blur", 1.0f, 0.0f, 1.0f);
+    private final NumberValue<Float> itemBlur = num("bt_item_blur", 1.0f, 0.0f, 1.0f);
+    private final NumberValue<Float> guiDarkness = num("bt_gui_darkness", 0.76f, 0.0f, 1.0f);
+    private final NumberValue<Float> itemDarkness = num("bt_item_darkness", 0.76f, 0.0f, 1.0f);
+    private boolean lastPresentedItem;
+    private final BooleanValue shulkerPreviewEnabled = bool("bt_shulker_preview", true);
     private final NumberValue<Float> shulkerPreviewSlotSize =
-            visibleWhen(num("shulker_slot_size", 18.0f, 12.0f, 24.0f), this::isShulkerPreviewEnabled);
+            visibleWhen(num("bt_shulker_slot", 18.0f, 12.0f, 24.0f), this::isShulkerPreviewEnabled);
     private final KeyBindValue shulkerPreviewHold =
-            visibleWhen(bind("shulker_preview_hold", "LEFT_SHIFT", BindMode.HOLD), this::isShulkerPreviewEnabled);
-    private final ScriptedTooltipPanel tooltipPanel = new ScriptedTooltipPanel("better_tooltips");
+            visibleWhen(bind("bt_shulker_hold", "LEFT_SHIFT", BindMode.HOLD), this::isShulkerPreviewEnabled);
+    private final BetterTooltipPresentation presentation = new BetterTooltipPresentation();
     private BetterTooltips() {
         super("vanilla_tooltips", "Tooltips", "hud.static.vanilla_tooltips.description", true);
     }
@@ -150,12 +142,6 @@ public final class BetterTooltips extends AbstractHudElement {
         TOOLTIP_CTX = ctx;
     }
 
-    /**
-     * Central GuiGraphicsExtractor tooltip entry. Every vanilla scheduling overload funnels through
-     * setTooltipForNextFrameInternal(), so widget-local tooltip hacks are unnecessary.
-     *
-     * @return true when Combatant owns/suppresses the vanilla deferred tooltip.
-     */
     public static boolean captureTooltipComponents(List<ClientTooltipComponent> components,
                                                    ClientTooltipPositioner positioner,
                                                    int mouseX, int mouseY,
@@ -168,9 +154,6 @@ public final class BetterTooltips extends AbstractHudElement {
             return false;
         }
         if (components == null || components.isEmpty()) return false;
-
-        // Preserve vanilla replaceExisting semantics even though Combatant no longer creates
-        // GuiGraphicsExtractor.deferredTooltip.
         if (hasTooltip() && !replaceExisting) return true;
 
         List<FormattedCharSequence> lines = new ArrayList<>(components.size());
@@ -184,10 +167,7 @@ public final class BetterTooltips extends AbstractHudElement {
             }
         }
         if (lines.isEmpty()) return false;
-
-        // Combatant item previews, including shulkers, suppress vanilla visual components. For non-item custom
-        // component tooltips, keep vanilla as a safety fallback until a semantic adapter exists.
-        if (hasNonText && !item) return false;
+        if (hasNonText) return false;
 
         setDrawContext(ctx);
         if (item) {
@@ -212,12 +192,6 @@ public final class BetterTooltips extends AbstractHudElement {
         return stack;
     }
 
-    /**
-     * ItemStack#getTooltipLines is also queried by code that never schedules an item tooltip.
-     * The fallback stack therefore cannot be trusted by identity/timing alone. Only promote a
-     * generic GuiGraphics tooltip to ITEM context when its first visible text line is the
-     * producing stack's hover name. Explicit item-tooltip overloads do not need this heuristic.
-     */
     public static boolean matchesItemTooltip(List<ClientTooltipComponent> components, ItemStack stack) {
         if (components == null || components.isEmpty() || stack == null || stack.isEmpty()) return false;
         String expected = stack.getHoverName().getString();
@@ -236,7 +210,13 @@ public final class BetterTooltips extends AbstractHudElement {
     }
 
     public static void renderTooltip() {
-        if (!hasTooltip()) return;
+        long frameId = UiBlurResources.currentFrameId();
+        if (frameId != Long.MIN_VALUE && tooltipRenderedFrameId == frameId) return;
+        tooltipRenderedFrameId = frameId;
+        if (RuntimeGate.isPanic()) {
+            INSTANCE.presentation.clear();
+            return;
+        }
         renderTooltipInternal(
                 TOOLTIP_LINES,
                 TOOLTIP_POSITIONER,
@@ -265,99 +245,39 @@ public final class BetterTooltips extends AbstractHudElement {
                                               int mouseX, int mouseY) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
-
-        PreviewLayout preview = buildShulkerPreviewLayout();
-        boolean previewOpen = preview != null;
-        List<TooltipLine> finalLines = prepareTooltipLines(lines, previewOpen);
-        if (finalLines == null || finalLines.isEmpty()) {
-            finalLines = List.of(new TooltipLine(" ", 0));
+        Screen currentScreen = ClientScreen.current(mc);
+        PreviewLayout preview = hasTooltip() ? buildShulkerPreviewLayout() : null;
+        BetterTooltipPresentation.Input input = null;
+        if (lines != null && !lines.isEmpty()) {
+            boolean item = TOOLTIP_STACK != null && !TOOLTIP_STACK.isEmpty();
+            List<TooltipLine> finalLines = prepareTooltipLines(lines, preview != null);
+            ArrayList<BetterTooltipPresentation.Line> converted = new ArrayList<>(finalLines.size());
+            for (TooltipLine line : finalLines) {
+                converted.add(new BetterTooltipPresentation.Line(line.text(), line.color()));
+            }
+            float anchorX = mouseX;
+            float anchorY = mouseY;
+            long anchorKey = ((long) System.identityHashCode(currentScreen) << 32)
+                    ^ (item ? 0x12A57EL : converted.hashCode());
+            input = new BetterTooltipPresentation.Input(converted,
+                    item ? TOOLTIP_STACK : ItemStack.EMPTY,
+                    item, anchorX, anchorY, anchorKey,
+                    preview != null ? preview.width : 0.0f,
+                    preview != null ? preview.height : 0.0f,
+                    currentScreen);
         }
-
-        ArrayList<ScriptedTooltipPanel.Line> scriptLines = new ArrayList<>(finalLines.size());
-        for (TooltipLine line : finalLines) {
-            scriptLines.add(new ScriptedTooltipPanel.Line(line.text(), line.color()));
+        BetterTooltips module = INSTANCE;
+        if (input != null) module.lastPresentedItem = input.item();
+        boolean itemStyle = module.lastPresentedItem;
+        float scale = (itemStyle ? module.itemScale.get() : module.genericScale.get()) * TOOLTIP_SCALE_OVERRIDE;
+        BetterTooltipPresentation.Result rendered = module.presentation.render(mc, TOOLTIP_CTX,
+                input, scale,
+                itemStyle ? module.itemBlur.get() : module.guiBlur.get(),
+                itemStyle ? module.itemDarkness.get() : module.guiDarkness.get(),
+                module.rarityGlow.get(), module.rareModelEnabled.get(), module.modelRotationSpeed.get());
+        if (preview != null && rendered.footerVisible()) {
+            renderShulkerPreview(preview, Math.round(rendered.footerX()), Math.round(rendered.footerY()));
         }
-
-        float visualScale = TOOLTIP_VISUAL_SCALE * TOOLTIP_SCALE_OVERRIDE;
-        float screenLimit = Math.max(40.0f, mc.getWindow().getGuiScaledWidth() - 32.0f);
-        float maxContentWidth = Math.max(160.0f * visualScale,
-                Math.min(360.0f * visualScale, screenLimit));
-        float footerW = preview != null ? preview.width : 0.0f;
-        float footerH = preview != null ? preview.height : 0.0f;
-
-        TextRenderer fallback = TextRenderer.get();
-        ScriptedTooltipPanel.Prepared prepared = INSTANCE.tooltipPanel.prepare(
-                mc,
-                fallback,
-                scriptLines,
-                visualScale,
-                tooltipRasterDetailScale(mc),
-                maxContentWidth,
-                footerW,
-                footerH,
-                1.0f,
-                INSTANCE.tooltipStyle(),
-                TOOLTIP_STACK != null && !TOOLTIP_STACK.isEmpty()
-                        ? ScriptedTooltipPanel.Context.ITEM
-                        : ScriptedTooltipPanel.Context.GENERIC
-        );
-        if (prepared == null) return;
-
-        int totalW = Math.max(1, (int) Math.ceil(prepared.width()));
-        int totalH = Math.max(1, (int) Math.ceil(prepared.height()));
-        int x = mouseX;
-        int y = mouseY;
-        if (positioner != null) {
-            Vector2ic pos = positioner.positionTooltip(
-                    mc.getWindow().getGuiScaledWidth(),
-                    mc.getWindow().getGuiScaledHeight(),
-                    mouseX, mouseY,
-                    totalW, totalH
-            );
-            x = pos.x();
-            y = pos.y();
-        }
-
-        ViewportContext.beginScaled(TOOLTIP_CTX);
-        ScriptedTooltipPanel.Rendered rendered;
-        try {
-            rendered = INSTANCE.tooltipPanel.render(
-                    mc,
-                    prepared,
-                    Renderer2D.COLOR,
-                    fallback,
-                    TOOLTIP_CTX,
-                    0.0f,
-                    x,
-                    y,
-                    UiProjectionMode.CURRENT
-            );
-        } finally {
-            ViewportContext.end(TOOLTIP_CTX);
-        }
-
-        if (preview != null && rendered != null && rendered.footerBounds().height() > 0.0f) {
-            int previewX = Math.round(rendered.footerBounds().x());
-            int previewY = Math.round(rendered.footerBounds().y());
-            renderShulkerPreview(preview, previewX, previewY);
-        }
-    }
-
-
-    /**
-     * BetterTooltips renders in vanilla SCALED projection, where one logical unit is
-     * multiplied by the current GUI scale in framebuffer pixels. ItemPreview renders
-     * in Combatant UNSCALED_LOGICAL projection instead. Compensate only raster-detail
-     * widths (stroke etc.) so the tooltip outline has the same framebuffer thickness
-     * as the ItemPreview outline instead of growing with GUI scale.
-     */
-    private static float tooltipRasterDetailScale(Minecraft mc) {
-        if (mc == null || mc.getWindow() == null) return 1.0f;
-        int fbw = Math.max(1, mc.getWindow().getWidth());
-        int fbh = Math.max(1, mc.getWindow().getHeight());
-        float hudScale = Math.max(0.01f, HudScale.scale(fbw, fbh));
-        float guiScale = Math.max(1.0f, (float) mc.getWindow().getGuiScale());
-        return hudScale / guiScale;
     }
 
     private static String plainText(FormattedCharSequence line) {
@@ -420,7 +340,7 @@ public final class BetterTooltips extends AbstractHudElement {
 
     private static String buildShulkerHint() {
         String bind = INSTANCE.getShulkerPreviewBind();
-        return "<<" + bind + ">> показать содержимое";
+        return Component.translatable("combatant.tooltip.shulker.hold", bind).getString();
     }
 
     private static boolean isShulkerMoreLine(String text) {
@@ -555,6 +475,7 @@ public final class BetterTooltips extends AbstractHudElement {
         int border = SHULKER_SLOT_BORDER;
 
         float scale = ViewportContext.getScaleFactor();
+        ViewportContext.ProjectionMode previousProjection = ViewportContext.activeMode();
 
         ViewportContext.beginUnscaled(TOOLTIP_CTX);
         Renderer2D.COLOR.begin();
@@ -582,12 +503,9 @@ public final class BetterTooltips extends AbstractHudElement {
             }
         }
         Renderer2D.COLOR.render();
-        ViewportContext.end(TOOLTIP_CTX);
+        restoreTooltipProjection(previousProjection);
 
         if (TOOLTIP_CTX == null) return;
-
-        // Slot geometry uses raw framebuffer coordinates, so item icons use the same
-        // projection and scale to remain centered in the grid.
         ViewportContext.beginUnscaled(TOOLTIP_CTX);
         Renderer2D.COLOR.begin();
         float offset = (preview.slotSize - 16f) * 0.5f;
@@ -598,7 +516,7 @@ public final class BetterTooltips extends AbstractHudElement {
                 for (int col = 0; col < preview.cols; col++) {
                     if (index >= preview.stacks.size()) {
                         Renderer2D.COLOR.render();
-                        ViewportContext.end(TOOLTIP_CTX);
+                        restoreTooltipProjection(previousProjection);
                         return;
                     }
                     ItemStack stack = preview.stacks.get(index);
@@ -614,7 +532,15 @@ public final class BetterTooltips extends AbstractHudElement {
                 }
             }
             Renderer2D.COLOR.render();
-            ViewportContext.end(TOOLTIP_CTX);
+            restoreTooltipProjection(previousProjection);
+        }
+    }
+
+    private static void restoreTooltipProjection(ViewportContext.ProjectionMode mode) {
+        switch (mode) {
+            case LOGICAL -> ViewportContext.beginUnscaledLogical(TOOLTIP_CTX);
+            case UNSCALED -> ViewportContext.beginUnscaled(TOOLTIP_CTX);
+            default -> ViewportContext.end(TOOLTIP_CTX);
         }
     }
 
@@ -668,44 +594,23 @@ public final class BetterTooltips extends AbstractHudElement {
         switch (group) {
             case TOOLTIP_GUI -> {
                 defs.add(enabledSettingDef());
-                addTooltipVisualSettings(defs);
+                addGenericSettings(defs);
             }
             case TOOLTIP_ITEMS -> {
-                add(defs, itemTooltipEnabled, itemInfoColorize, topIgnore);
-                addTooltipVisualSettings(defs);
+                addItemSettings(defs);
             }
             case SHULKER_PREVIEW -> addShulkerPreviewSettings(defs);
         }
         return defs;
     }
 
-    private ItemIdSetValue registerTopIgnore() {
-        ItemIdSetValue value = TopEnchantUtil.ignoreValue();
-        return declareSetting(value, SettingDef.textList(value));
+    private void addGenericSettings(List<SettingDef> defs) {
+        add(defs, genericScale, guiBlur, guiDarkness);
     }
 
-    private void addTooltipVisualSettings(List<SettingDef> defs) {
-        add(defs,
-                tooltipBgAlpha,
-                tooltipGradientStrength,
-                tooltipStrokeAlpha,
-                tooltipShadowAlpha,
-                tooltipHeaderAlpha,
-                tooltipDividerAlpha,
-                tooltipGradientAngleOffset
-        );
-    }
-
-    private ScriptedTooltipPanel.Style tooltipStyle() {
-        return new ScriptedTooltipPanel.Style(
-                tooltipBgAlpha.get(),
-                tooltipGradientStrength.get(),
-                tooltipStrokeAlpha.get(),
-                tooltipShadowAlpha.get(),
-                tooltipHeaderAlpha.get(),
-                tooltipDividerAlpha.get(),
-                tooltipGradientAngleOffset.get()
-        );
+    private void addItemSettings(List<SettingDef> defs) {
+        add(defs, itemTooltipEnabled, itemScale, itemBlur, itemDarkness, rareModelEnabled,
+                modelRotationSpeed, rarityGlow, itemInfoColorize);
     }
 
     private void addShulkerPreviewSettings(List<SettingDef> defs) {

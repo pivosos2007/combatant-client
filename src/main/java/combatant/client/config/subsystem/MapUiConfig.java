@@ -23,6 +23,18 @@ public final class MapUiConfig extends SubsystemConfig {
     private final ModeValue arrowColorMode = mode("arrowColorMode", "Theme", "Theme", "Custom");
     private final RGBColorValue arrowCustomColor = value(new RGBColorValue("arrowCustomColor", "#F5F8FC"));
     private final BooleanValue advancedPlayerMarkers = bool("advancedPlayerMarkers", false);
+    // Map information panels are presentation-only. Each ESP controls its own source visibility.
+    private final BooleanValue mapInfoEnabled = bool("mapInfoEnabled", true);
+    private final BooleanValue mapInfoIcons = bool("mapInfoIcons", true);
+    private final BooleanValue mapInfoSources = bool("mapInfoSources", true);
+    private final BooleanValue mapInfoChunkHighlights = bool("mapInfoChunkHighlights", true);
+    private final NumberValue<Integer> mapInfoHighlightIntensity = number("mapInfoHighlightIntensity", 65, 0, 100);
+    private final NumberValue<Integer> mapInfoBackground = number("mapInfoBackground", 100, 30, 100);
+    private final NumberValue<Integer> mapInfoCardWidth = number("mapInfoCardWidth", 176, 128, 320);
+    private final NumberValue<Integer> mapInfoRows = number("mapInfoRows", 5, 1, 16);
+    private final NumberValue<Integer> mapInfoClusterPixels = number("mapInfoClusterPixels", 176, 72, 360);
+    private final NumberValue<Integer> mapInfoMaxCards = number("mapInfoMaxCards", 60, 8, 180);
+
     private final BooleanValue hudEnabled = bool("hudEnabled", true);
     private final BooleanValue hudWaypointMarkers = bool("hudWaypointMarkers", true);
     private final BooleanValue hudPlayerMarkers = bool("hudPlayerMarkers", true);
@@ -63,6 +75,28 @@ public final class MapUiConfig extends SubsystemConfig {
         int color = isCustomArrowColor() ? arrowCustomColor.getArgb() : Theme.theme().accent();
         return 0xFF000000 | (color & 0x00FFFFFF);
     }
+
+    public boolean mapInfoEnabled() { return mapInfoEnabled.get(); }
+    public boolean mapInfoIcons() { return mapInfoIcons.get(); }
+    public boolean mapInfoSources() { return mapInfoSources.get(); }
+    public boolean mapInfoChunkHighlights() { return mapInfoChunkHighlights.get(); }
+    public int mapInfoHighlightIntensity() { return mapInfoHighlightIntensity.get(); }
+    public int mapInfoBackground() { return mapInfoBackground.get(); }
+    public int mapInfoCardWidth() { return mapInfoCardWidth.get(); }
+    public int mapInfoRows() { return mapInfoRows.get(); }
+    public int mapInfoClusterPixels() { return mapInfoClusterPixels.get(); }
+    public int mapInfoMaxCards() { return mapInfoMaxCards.get(); }
+
+    public BooleanValue mapInfoEnabledValue() { return mapInfoEnabled; }
+    public BooleanValue mapInfoIconsValue() { return mapInfoIcons; }
+    public BooleanValue mapInfoSourcesValue() { return mapInfoSources; }
+    public BooleanValue mapInfoChunkHighlightsValue() { return mapInfoChunkHighlights; }
+    public NumberValue<Integer> mapInfoHighlightIntensityValue() { return mapInfoHighlightIntensity; }
+    public NumberValue<Integer> mapInfoBackgroundValue() { return mapInfoBackground; }
+    public NumberValue<Integer> mapInfoCardWidthValue() { return mapInfoCardWidth; }
+    public NumberValue<Integer> mapInfoRowsValue() { return mapInfoRows; }
+    public NumberValue<Integer> mapInfoClusterPixelsValue() { return mapInfoClusterPixels; }
+    public NumberValue<Integer> mapInfoMaxCardsValue() { return mapInfoMaxCards; }
 
     public boolean advancedPlayerMarkers() {
         return advancedPlayerMarkers.get();
@@ -135,6 +169,18 @@ public final class MapUiConfig extends SubsystemConfig {
                 SettingDef.colorNoAlpha("arrowCustomColor", arrowCustomColor)
                         .visibleWhen(this::isCustomArrowColor),
                 SettingDef.bool("advancedPlayerMarkers", advancedPlayerMarkers),
+                SettingDef.bool("mapInfoEnabled", mapInfoEnabled),
+                SettingDef.bool("mapInfoIcons", mapInfoIcons).visibleWhen(this::mapInfoEnabled),
+                SettingDef.bool("mapInfoSources", mapInfoSources).visibleWhen(this::mapInfoEnabled),
+                SettingDef.bool("mapInfoChunkHighlights", mapInfoChunkHighlights).visibleWhen(this::mapInfoEnabled),
+                SettingDef.number("mapInfoHighlightIntensity", mapInfoHighlightIntensity)
+                        .visibleWhen(() -> mapInfoEnabled() && mapInfoChunkHighlights()),
+                SettingDef.number("mapInfoBackground", mapInfoBackground).visibleWhen(this::mapInfoEnabled),
+                SettingDef.number("mapInfoCardWidth", mapInfoCardWidth).visibleWhen(this::mapInfoEnabled),
+                SettingDef.number("mapInfoRows", mapInfoRows).visibleWhen(this::mapInfoEnabled),
+                SettingDef.number("mapInfoClusterPixels", mapInfoClusterPixels).visibleWhen(this::mapInfoEnabled),
+                SettingDef.number("mapInfoMaxCards", mapInfoMaxCards).visibleWhen(this::mapInfoEnabled),
+
                 SettingDef.bool("hudEnabled", hudEnabled),
                 SettingDef.bool("hudWaypointMarkers", hudWaypointMarkers)
                         .visibleWhen(this::hudEnabled),

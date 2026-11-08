@@ -38,13 +38,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
 import combatant.client.events.impl.CrosshairTargetUpdateEvent;
+import combatant.client.events.impl.BlockPlacementInputEvent;
 import combatant.client.events.impl.WorldChangeEvent;
 import combatant.client.features.gui.chat.BetterChatStoreManager;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.Timer;
 import combatant.client.features.module.modules.movement.EntityControl;
-import combatant.client.features.module.modules.player.NoDelay;
+import combatant.client.mixins.accessors.KeyMappingAccessor;
+import combatant.client.util.block.interaction.BlockInteractionPipeline;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import combatant.client.features.module.modules.player.NoInteract;
 import combatant.client.features.module.modules.visuals.Freecam;
 import combatant.client.features.module.modules.visuals.ViewModel;
@@ -65,6 +70,9 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
 
     @Unique
     private GameConfig combatant$gameConfig;
+
+    @Unique
+    private int combatant$useClickCount;
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void combatant$captureGameConfig(GameConfig config, CallbackInfo ci) {
@@ -100,23 +108,45 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
     }
 
     @Inject(method = "startUseItem", at = @At("HEAD"), cancellable = true)
-    private void fastThrow(CallbackInfo ci) {
-        NoDelay noDelay = Modules.get(NoDelay.class);
-        if (noDelay != null && noDelay.handleFastUse()) {
-            ci.cancel();
-            return;
+    private void combatant$placementInput(CallbackInfo ci) {
+        Minecraft mc = Minecraft.getInstance();
+        int clicks = combatant$useClickCount;
+        combatant$useClickCount = 0;
+        if (Events.BUS.hasListeners(BlockPlacementInputEvent.class)) {
+            BlockPlacementInputEvent event = Events.BUS.post(new BlockPlacementInputEvent(
+                    clicks, mc.options.keyUse.isDown(), mc.hitResult,
+                    BlockInteractionPipeline.INSTANCE.inputOwner()));
+            if (event.isCancelled()) {
+                ci.cancel();
+                return;
+            }
         }
-
         AutoBow autoBow = Modules.get(AutoBow.class);
         if (autoBow != null && autoBow.shouldCancelVanillaDoItemUse()) {
             ci.cancel();
         }
     }
 
+    @WrapOperation(method = "startUseItem", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/multiplayer/MultiPlayerGameMode;useItemOn(Lnet/minecraft/client/player/LocalPlayer;Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/phys/BlockHitResult;)Lnet/minecraft/world/InteractionResult;"))
+    private InteractionResult combatant$routeBlockInput(MultiPlayerGameMode gameMode, LocalPlayer player,
+            InteractionHand hand, BlockHitResult hit, Operation<InteractionResult> original) {
+        BlockInteractionPipeline pipeline = BlockInteractionPipeline.INSTANCE;
+        Object owner = pipeline.inputOwner();
+        return owner == null ? original.call(gameMode, player, hand, hit)
+                : pipeline.useOnBlock(owner, player, hand, -1, 0, hit, false);
+    }
+
     @WrapOperation(method = "handleKeybinds",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/KeyMapping;consumeClick()Z"))
     private boolean combatant$protectOffhandKey(KeyMapping key, Operation<Boolean> original) {
         Minecraft mc = Minecraft.getInstance();
+        if (key == mc.options.keyUse) {
+            int count = ((KeyMappingAccessor) key).combatant$getClickCount();
+            boolean consumed = original.call(key);
+            combatant$useClickCount = consumed ? count : 0;
+            return consumed;
+        }
         if (key == mc.options.keySwapOffhand
                 && InventorySlotLocks.isLocked(InventorySlotLocks.OFFHAND)) {
             original.call(key); // drain the pressed key, but do not send the vanilla swap packet
@@ -322,7 +352,9 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         CrosshairTargetUpdateEvent event = new CrosshairTargetUpdateEvent(
                 tickDelta,
                 mc.hitResult,
-                mc.crosshairPickEntity
+                mc.crosshairPickEntity,
+                ((KeyMappingAccessor) mc.options.keyUse).combatant$getClickCount(),
+                mc.options.keyUse.isDown()
         );
         Events.BUS.post(event);
         mc.hitResult = event.getHitResult();

@@ -16,7 +16,6 @@ import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.rhi.blit.RhiCopyRequest;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;

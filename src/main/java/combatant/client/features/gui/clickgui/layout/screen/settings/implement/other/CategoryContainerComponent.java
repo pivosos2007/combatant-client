@@ -10,7 +10,7 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.implement.
 import combatant.client.features.gui.clickgui.layout.screen.settings.MenuScreen;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.category.CategoryComponent;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 
 import java.util.ArrayList;
 import java.util.List;

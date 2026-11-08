@@ -10,6 +10,7 @@ package combatant.client.mixins;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,9 +21,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
+import combatant.client.events.impl.PlayerCollisionRestitutionEvent;
 import combatant.client.events.impl.PlayerMoveEvent;
+import combatant.client.events.impl.PlayerEffectMoveEvent;
+import combatant.client.events.impl.ElytraTravelEvent;
 import combatant.client.events.impl.PlayerStepSuccessEvent;
 import combatant.client.events.impl.PlayerVelocityStrafe;
 import combatant.client.events.impl.VehicleMoveEvent;
@@ -69,6 +72,26 @@ public abstract class EntityMixin implements IEntity {
         return trails;
     }
 
+    // Minecraft 26.3 applies block bounce impulses inside Entity collision restitution.
+    // Keep the mixin generic: consumers decide which block/state should modify the final velocity.
+    @Inject(method = "restituteMovementAfterCollisions", at = @At("TAIL"))
+    private void combatant$afterCollisionRestitution(BlockState state, boolean xCollision,
+                                                     boolean zCollision, Vec3 attemptedMovement,
+                                                     CallbackInfo ci) {
+        Entity self = (Entity) (Object) this;
+        if (!(self instanceof LocalPlayer player)
+                || !Events.BUS.hasListeners(PlayerCollisionRestitutionEvent.class)) return;
+
+        Vec3 velocity = self.getDeltaMovement();
+        PlayerCollisionRestitutionEvent event = Events.BUS.post(new PlayerCollisionRestitutionEvent(
+                player, state, xCollision, zCollision, self.verticalCollisionBelow,
+                attemptedMovement, velocity));
+        Vec3 adjustedVelocity = event.getVelocity();
+        if (adjustedVelocity != null && !adjustedVelocity.equals(velocity)) {
+            self.setDeltaMovement(adjustedVelocity);
+        }
+    }
+
     @Inject(method = "move", at = @At("HEAD"))
     private void combatant$cacheMoveType(MoverType type, Vec3 movement, CallbackInfo ci) {
         combatant$lastMoveType = type;
@@ -83,13 +106,39 @@ public abstract class EntityMixin implements IEntity {
     @ModifyVariable(method = "move", at = @At("HEAD"), argsOnly = true, index = 2)
     private Vec3 combatant$onMove(Vec3 movement) {
         Entity self = (Entity) (Object) this;
-        if (!(self instanceof LocalPlayer)) return combatant$onVehicleMove(self, movement);
-        if (!Events.BUS.hasListeners(PlayerMoveEvent.class)) return movement;
+        if (!(self instanceof LocalPlayer player)) return combatant$onVehicleMove(self, movement);
 
-        PlayerMoveEvent event = new PlayerMoveEvent(combatant$lastMoveType, movement);
-        Events.BUS.post(event);
-        Vec3 out = event.getMovement();
-        return out != null ? out : movement;
+        Vec3 out = movement;
+        if (Events.BUS.hasListeners(PlayerMoveEvent.class)) {
+            PlayerMoveEvent event = Events.BUS.post(new PlayerMoveEvent(combatant$lastMoveType, out));
+            if (event.getMovement() != null) out = event.getMovement();
+        }
+        if (combatant$lastMoveType == MoverType.SELF && !player.isPassenger()
+                && !player.isFallFlying() && Events.BUS.hasListeners(PlayerEffectMoveEvent.class)) {
+            PlayerEffectMoveEvent.EffectType effect = player.hasEffect(MobEffects.LEVITATION)
+                    ? PlayerEffectMoveEvent.EffectType.LEVITATION : player.hasEffect(MobEffects.SLOW_FALLING)
+                    ? PlayerEffectMoveEvent.EffectType.SLOW_FALLING : null;
+            if (effect != null) {
+                PlayerEffectMoveEvent event = Events.BUS.post(new PlayerEffectMoveEvent(player, effect, out));
+                Vec3 adjusted = event.getMovement();
+                if (adjusted != null && Double.isFinite(adjusted.x)
+                        && Double.isFinite(adjusted.y) && Double.isFinite(adjusted.z)) {
+                    if (!adjusted.equals(out)) player.setDeltaMovement(adjusted);
+                    out = adjusted;
+                }
+            }
+        }
+        if (combatant$lastMoveType == MoverType.SELF && player.isFallFlying()
+                && Events.BUS.hasListeners(ElytraTravelEvent.class)) {
+            ElytraTravelEvent event = Events.BUS.post(new ElytraTravelEvent(player, out));
+            Vec3 velocity = event.getVelocity();
+            if (velocity != null && Double.isFinite(velocity.x)
+                    && Double.isFinite(velocity.y) && Double.isFinite(velocity.z)) {
+                if (!velocity.equals(out)) player.setDeltaMovement(velocity);
+                out = velocity;
+            }
+        }
+        return out;
     }
 
     @Unique

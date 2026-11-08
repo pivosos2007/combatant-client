@@ -323,7 +323,7 @@ final class TabListModel {
             }
 
             boolean whitespace = Character.isWhitespace(cp);
-            if (whitespace && token.length() > 0 && !isWhitespaceToken(token)) {
+            if (whitespace && !token.isEmpty() && !isWhitespaceToken(token)) {
                 appendStyledToken(mc, out, current, token.toString(), style, maxVanillaWidth);
                 token.setLength(0);
             } else if (!whitespace && token.length() > 0 && isWhitespaceToken(token)) {
@@ -336,7 +336,7 @@ final class TabListModel {
     }
 
     private static boolean isWhitespaceToken(StringBuilder token) {
-        if (token == null || token.length() == 0) return false;
+        if (token == null || token.isEmpty()) return false;
         for (int i = 0; i < token.length(); ) {
             int cp = token.codePointAt(i);
             if (!Character.isWhitespace(cp)) return false;

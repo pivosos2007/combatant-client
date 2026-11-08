@@ -27,7 +27,6 @@ import combatant.client.util.render.ArrowPlacement;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
-import combatant.client.features.module.*;
 import combatant.client.features.relations.CategoryService;
 import combatant.client.mixininterface.IEntity;
 import combatant.client.render.engine.animation.AnimationUtility;

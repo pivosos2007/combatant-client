@@ -148,7 +148,7 @@ public final class ChestStealer extends Module {
         Set<String> ids = filterItems.get();
         if (ids == null || ids.isEmpty()) return true;
         boolean listed = ids.contains(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
-        return mode == FilterMode.WHITELIST ? listed : !listed;
+        return (mode == FilterMode.WHITELIST) == listed;
     }
 
     private static int value(ItemStack stack) {

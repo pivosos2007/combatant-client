@@ -68,8 +68,9 @@ public enum CombatRotationModeUtil {
         double centerX = (box.minX + box.maxX) * 0.5;
         double centerY = (box.minY + box.maxY) * 0.5;
         double centerZ = (box.minZ + box.maxZ) * 0.5;
-        double lowerY = box.minY + Math.min(0.25, Math.max(0.0, (box.maxY - box.minY) * 0.25));
-        double upperY = box.maxY - Math.min(0.25, Math.max(0.0, (box.maxY - box.minY) * 0.25));
+        double verticalInset = Math.min(0.25, Math.max(0.0, (box.maxY - box.minY) * 0.25));
+        double lowerY = box.minY + verticalInset;
+        double upperY = box.maxY - verticalInset;
 
         return isVisiblePointInRange(eyes, clampToBox(eyes, box), maxDistanceSq)
                 || isVisiblePointInRange(eyes, new Vec3(centerX, centerY, centerZ), maxDistanceSq)

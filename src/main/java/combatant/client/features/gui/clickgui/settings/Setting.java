@@ -20,9 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
-import java.util.function.BooleanSupplier;
 import combatant.client.runtime.error.ErrorHandler;
-import combatant.client.runtime.error.FailureRegistry.Failure;
 
 public abstract class Setting {
 

@@ -12,6 +12,8 @@ import combatant.client.config.values.BindMode;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.KeyBindValue;
 import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
+import combatant.client.features.gui.hud.gauges.GaugeConnect;
+import combatant.client.features.gui.hud.gauges.GaugeRegistry;
 import combatant.client.events.impl.PacketEvent;
 import net.minecraft.network.protocol.game.ClientboundMoveVehiclePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
@@ -19,7 +21,10 @@ import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
+import combatant.client.events.impl.MountJumpChargeEvent;
 import combatant.client.events.impl.VehicleMoveEvent;
+import combatant.client.events.impl.VehicleGroundStateEvent;
+import combatant.client.util.player.VehicleFallGroundController;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -35,6 +40,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.animal.equine.AbstractHorse;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -79,10 +85,13 @@ public final class EntityControl extends Module {
     private final EnumValue<BoatSteering> boatSteering = enumSetting("entityControlBoatSteering", "boat_steering",
             BoatSteering.CAMERA, BoatSteering.values());
     private final BooleanValue boatItems = bool("entityControlBoatItems", "boat_items", true);
+    private final BooleanValue noFall = visibleWhen(
+            bool("entityControlNoFall", "no_fall", false), () -> mode.get() == Mode.VULCAN);
+    private final VehicleFallGroundController fallGroundController = new VehicleFallGroundController();
     private final NumberValue<Double> boatSpeed = visibleWhen(
             num("entityControlBoatSpeed", "boat_speed", 0.48D, 0.0D, 5.0D),
             () -> mode.get() == Mode.NORMAL && boatSteering.get() != BoatSteering.VANILLA);
-    private final FunctionBindSetting boatBoostKey = action("boat_boost_key",
+    private final FunctionBindSetting boostKey = action("boost_key",
             new KeyBindValue("entityControlBoatBoostKey", "NONE"), BindMode.HOLD);
     private final EnumValue<AnimalWater> animalWater = enumSetting("entityControlAnimalWater", "animal_water",
             AnimalWater.SURFACE, AnimalWater.values());
@@ -106,9 +115,57 @@ public final class EntityControl extends Module {
     private boolean previousJumpDown;
     private boolean pendingWaterJump;
     private int waterJumpCooldown;
+    private Entity chargedHorse;
+    private int horseChargeTicks;
+    private int horseChargeLastTick = Integer.MIN_VALUE;
+    private boolean horseJumpHeld;
+    private int horseReleaseTick = Integer.MIN_VALUE;
+
+    @Override
+    public void onTick() {
+        GaugeRegistry.updateAnnotated("entitycontrol", this);
+        LocalPlayer player = mc.player;
+        Entity vehicle = player == null ? null : player.getVehicle();
+        if (mode.get() != Mode.VULCAN || !(vehicle instanceof AbstractHorse)
+                || vehicle.getControllingPassenger() != player) {
+            chargedHorse = null;
+            horseChargeTicks = 0;
+            horseChargeLastTick = Integer.MIN_VALUE;
+            horseJumpHeld = false;
+            horseReleaseTick = Integer.MIN_VALUE;
+            return;
+        }
+        if (chargedHorse != vehicle) {
+            chargedHorse = vehicle;
+            horseChargeTicks = 0;
+            horseChargeLastTick = Integer.MIN_VALUE;
+            horseJumpHeld = false;
+            horseReleaseTick = Integer.MIN_VALUE;
+        }
+        boolean down = mc.options.keyJump.isDown();
+        if (down && horseChargeLastTick != player.tickCount) {
+            horseChargeTicks = horseJumpHeld ? Math.min(20, horseChargeTicks + 1) : 1;
+            horseChargeLastTick = player.tickCount;
+        }
+        if (!down && horseJumpHeld) horseReleaseTick = player.tickCount;
+        else if (!down && horseReleaseTick != player.tickCount) horseChargeTicks = 0;
+        horseJumpHeld = down;
+    }
+
+    @EventHandler
+    private void onMountJumpCharge(MountJumpChargeEvent event) {
+        LocalPlayer player = event.getPlayer();
+        if (mode.get() != Mode.VULCAN || mc.player != player
+                || !(player.getVehicle() instanceof AbstractHorse horse)
+                || horse.getControllingPassenger() != player || chargedHorse != horse) return;
+        if (horseChargeTicks == 0 || event.getCharge() <= 0.0f) return;
+        float charge = (float) (0.12D + 0.88D * (1.0D - Math.exp(-horseChargeTicks / 2.6D)));
+        event.setCharge(Math.max(event.getCharge(), charge));
+    }
 
     @Override
     public void onDisable() {
+        GaugeRegistry.removeOwner("entitycontrol");
         trackedBoat = null;
         previousBoatHorizontal = null;
         trackedAnimal = null;
@@ -117,10 +174,16 @@ public final class EntityControl extends Module {
         mountSpeedBuffer = 0.0D;
         mountCorrectionTicks = 0;
         resetBoatHeuristics();
+        fallGroundController.reset();
         trackedBoatTick = Integer.MIN_VALUE;
         previousJumpDown = false;
         pendingWaterJump = false;
         waterJumpCooldown = 0;
+        chargedHorse = null;
+        horseChargeTicks = 0;
+        horseChargeLastTick = Integer.MIN_VALUE;
+        horseJumpHeld = false;
+        horseReleaseTick = Integer.MIN_VALUE;
     }
 
     public boolean useBoatStrafing(LocalPlayer player, AbstractBoat boat) {
@@ -140,8 +203,59 @@ public final class EntityControl extends Module {
                 && (!(vehicle instanceof AbstractBoat) || boatMotionEnabled());
     }
 
+    @GaugeConnect(id = "entity_speed", labelKey = "hud.gauges.entitycontrol.entity_speed",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample entitySpeedGauge() {
+        return bufferSample(boatEntitySpeedBuffer, activeBoat());
+    }
+
+    @GaugeConnect(id = "boat_fly_horizontal", labelKey = "hud.gauges.entitycontrol.boat_horizontal",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample boatHorizontalGauge() {
+        return bufferSample(boatHorizontalBuffer, activeBoat());
+    }
+
+    @GaugeConnect(id = "boat_fly_ascent", labelKey = "hud.gauges.entitycontrol.boat_ascent",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample boatAscentGauge() {
+        return bufferSample(boatVerticalBuffer, activeBoat());
+    }
+
+    @GaugeConnect(id = "boat_fly_hover", labelKey = "hud.gauges.entitycontrol.boat_hover",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample boatHoverGauge() {
+        return bufferSample(boatHoverBuffer, activeBoat());
+    }
+
+    @GaugeConnect(id = "mount_speed", labelKey = "hud.gauges.entitycontrol.mount_speed",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample mountSpeedGauge() {
+        return bufferSample(mountSpeedBuffer, activeMount());
+    }
+
+    private GaugeRegistry.Sample bufferSample(double used, boolean visible) {
+        float available = (float) (1.0D - Mth.clamp(used / VULCAN_BOAT_BUFFER_LIMIT, 0.0D, 1.0D));
+        return new GaugeRegistry.Sample(available, used + 1.0D <= VULCAN_BOAT_BURST_BUDGET,
+                visible, GaugeRegistry.Flow.DRAIN, "");
+    }
+
+    private boolean activeBoat() {
+        LocalPlayer player = mc.player;
+        return isEnabled() && mode.get() == Mode.VULCAN && boatMotionEnabled() && player != null
+                && player.getVehicle() instanceof AbstractBoat boat
+                && boat.getControllingPassenger() == player;
+    }
+
+    private boolean activeMount() {
+        LocalPlayer player = mc.player;
+        return isEnabled() && mode.get() == Mode.VULCAN && player != null
+                && player.getVehicle() != null
+                && !(player.getVehicle() instanceof AbstractBoat)
+                && player.getVehicle().getControllingPassenger() == player;
+    }
+
     private boolean boostRequested() {
-        return "NONE".equalsIgnoreCase(boatBoostKey.get()) || isActionHeld("boat_boost_key");
+        return "NONE".equalsIgnoreCase(boostKey.get()) || isActionHeld("boost_key");
     }
 
     private boolean boatMotionEnabled() {
@@ -166,6 +280,7 @@ public final class EntityControl extends Module {
         if (mode.get() != Mode.VULCAN || player == null || player.getVehicle() == null) return;
         if (event.getPacket() instanceof ClientboundMoveVehiclePacket
                 || event.getPacket() instanceof ClientboundPlayerPositionPacket) {
+            fallGroundController.reset();
             if (player.getVehicle() instanceof AbstractBoat) {
                 boatEntitySpeedBuffer = Math.max(boatEntitySpeedBuffer, VULCAN_BOAT_BURST_BUDGET);
                 boatHorizontalBuffer = Math.max(boatHorizontalBuffer, VULCAN_BOAT_BURST_BUDGET);
@@ -174,6 +289,27 @@ public final class EntityControl extends Module {
                 mountSpeedBuffer = VULCAN_BOAT_BURST_BUDGET;
                 mountCorrectionTicks = 60;
             }
+        }
+    }
+
+    @EventHandler
+    private void onVehicleGroundState(VehicleGroundStateEvent event) {
+        if (mode.get() != Mode.VULCAN || !noFall.get()) {
+            fallGroundController.reset();
+            return;
+        }
+        LocalPlayer player = mc.player;
+        Entity mount = event.getVehicle();
+        if (player == null || player.getVehicle() != mount
+                || mount.getControllingPassenger() != player
+                || !(mount instanceof LivingEntity)
+                || mount.isInWater() || mount.isInLava()) {
+            fallGroundController.reset();
+            return;
+        }
+        if (fallGroundController.shouldSpoof(mount, mount.getY(), mount.fallDistance,
+                event.isOnGround())) {
+            event.setOnGround(true);
         }
     }
 

@@ -41,6 +41,19 @@ The decoder uses **JglTF 2.0.4** by Marco Hutter (`de.javagl`) under the MIT Lic
 
 The dev source set contains Khronos **BoxVertexColors.glb** as a tiny importer smoke fixture. The asset is CC0/public domain and is not part of release resources. The intended full PBR/Photon validation fixture is Khronos **BoomBox** (CC0), loaded externally/dev-only because it is substantially larger.
 
+## Accurate Block Placement: Reborn
+
+The accurate placement state machine in NoDelay is adapted from **Accurate Block
+Placement: Reborn**, commit `f9f1acfbb58add990ca43b778a700a4eacda38ea`, by
+**schwar, KadTheHunter, Flourick and Clayborn**, under the MIT License.
+The port uses Combatant's event bus, block interaction pipeline and rotation manager.
+Source comparison, adaptations and validation limits are recorded in `ABP_PARITY.md` and `ABP_VALIDATION.md`.
+
+Upstream: https://github.com/KadTheHunter/AccurateBlockPlacement-Reborn
+
+The original copyright and license are retained verbatim in
+`THIRD_PARTY_LICENSES/AccurateBlockPlacement-Reborn-MIT.txt` and included in the jar.
+
 ## Other acknowledged upstream work
 
 - **MediaPlayerInfo** by Redstonecrafter0: modified Java/native port under AGPL-3.0-only in `java/combatant/client/util/media/**`.

@@ -22,7 +22,6 @@ import combatant.client.render.engine.core.policy.DepthProvider;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.depth.EntityDepthLayer;
 import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
-import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
@@ -134,14 +133,12 @@ public final class WorldPassCompiler {
         GpuMeshHandle uploaded = null;
         MeshBuilder drawMesh = mesh;
         RenderPipeline drawPipeline = command.pipeline();
-        boolean temporaryMesh = false;
         try {
             if (WorldWideLineMeshCompiler.shouldExpand(command)) {
                 MeshBuilder wideMesh = WorldWideLineMeshCompiler.compile(command);
                 if (wideMesh != null) {
                     drawMesh = wideMesh;
                     drawPipeline = WorldWideLineMeshCompiler.widePipeline(command.pipeline());
-                    temporaryMesh = true;
                 }
             }
             if (drawMesh.getIndicesCount() <= 0) {

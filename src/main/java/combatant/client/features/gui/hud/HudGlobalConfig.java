@@ -9,7 +9,6 @@ package combatant.client.features.gui.hud;
 
 import combatant.client.config.*;
 import combatant.client.config.values.ConfigValue;
-import combatant.client.config.*;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.render.engine.math.HudScale;

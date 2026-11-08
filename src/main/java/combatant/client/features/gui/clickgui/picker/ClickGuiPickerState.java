@@ -17,7 +17,7 @@ import net.minecraft.util.Util;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
 import combatant.client.features.gui.clickgui.settings.PickerDetailOwner;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
@@ -192,7 +192,7 @@ public final class ClickGuiPickerState {
 
         if (inside(mx, my, searchX, searchY, SEARCH_W, SEARCH_H)) {
             listening = true;
-            TextRenderer textFont = ClickGuiRenderer.getInterRegular();
+            TextRenderer textFont = BuiltinFontCatalog.ONEST_REGULAR.renderer();
             float fontSize = 7.5f * SCALE;
             search.layout(searchX + 4f * SCALE, SEARCH_W - 19f * SCALE, textFont, fontSize);
             search.beginDrag(mx, false);
@@ -338,8 +338,8 @@ public final class ClickGuiPickerState {
                 palette.menuLineStrong()
         );
 
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
+        LayoutRender2D.drawText(
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 title,
                 windowX + PADDING,
                 windowY + 7f * SCALE,
@@ -349,8 +349,8 @@ public final class ClickGuiPickerState {
         );
 
         String count = ClickGuiI18n.tr("clickgui.picker.selected_count", "%s selected", owner.getValueSet().size());
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
+        LayoutRender2D.drawText(
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 count,
                 windowX + PADDING,
                 windowY + 15.5f * SCALE,
@@ -387,8 +387,8 @@ public final class ClickGuiPickerState {
         float x2 = closeX + CLOSE_SIZE - pad;
         float y2 = closeY + CLOSE_SIZE - pad;
         int c = hover ? theme.accent() : palette.panelText();
-        ClickGuiRenderer.drawLine(x1, y1, x2, y2, c);
-        ClickGuiRenderer.drawLine(x2, y1, x1, y2, c);
+        LayoutRender2D.drawLine(x1, y1, x2, y2, c);
+        LayoutRender2D.drawLine(x2, y1, x1, y2, c);
     }
 
     private void drawFilterPill(float mx, float my, SettingsGuiPalette palette, Themes.Theme theme) {
@@ -435,13 +435,13 @@ public final class ClickGuiPickerState {
                 3f * SCALE, 0.20f * SCALE,
                 SettingsGuiPalette.withAlpha(theme.accentSoft(), 135));
 
-        TextRenderer font = ClickGuiRenderer.getInterRegular();
+        TextRenderer font = BuiltinFontCatalog.ONEST_REGULAR.renderer();
         float textSize = 7.2f * SCALE;
         String allText = ClickGuiI18n.tr("clickgui.picker.all_short", "All");
         String selectedText = ClickGuiI18n.tr("clickgui.picker.selected", "Selected");
-        float allW = ClickGuiRenderer.textWidth(font, allText, textSize);
-        float selectedW = ClickGuiRenderer.textWidth(font, selectedText, textSize);
-        float textY = filterY + (FILTER_H - ClickGuiRenderer.textHeight(font, textSize)) * 0.5f;
+        float allW = LayoutRender2D.textWidth(font, allText, textSize);
+        float selectedW = LayoutRender2D.textWidth(font, selectedText, textSize);
+        float textY = filterY + (FILTER_H - LayoutRender2D.textHeight(font, textSize)) * 0.5f;
 
         int allColor = showAll
                 ? palette.panelText()
@@ -451,8 +451,8 @@ public final class ClickGuiPickerState {
                 : SettingsGuiPalette.mix(palette.panelMuted(), palette.panelText(), 0.22f * selectedFilterHoverAnim);
         float allCenter = filterX + pad + half * 0.5f;
         float selectedCenter = filterX + pad + half + half * 0.5f;
-        ClickGuiRenderer.drawText(font, allText, allCenter - allW * 0.5f, textY, textSize, allColor, false);
-        ClickGuiRenderer.drawText(font, selectedText, selectedCenter - selectedW * 0.5f, textY, textSize, selColor, false);
+        LayoutRender2D.drawText(font, allText, allCenter - allW * 0.5f, textY, textSize, allColor, false);
+        LayoutRender2D.drawText(font, selectedText, selectedCenter - selectedW * 0.5f, textY, textSize, selColor, false);
     }
 
     private void drawSearchField(float mx, float my, SettingsGuiPalette palette, Themes.Theme theme) {
@@ -462,15 +462,15 @@ public final class ClickGuiPickerState {
         int bgL = palette.panelBgLeft();
         int bgR = palette.panelBgRight();
         if (hover) {
-            bgL = ClickGuiRenderer.mixColor(bgL, palette.panelPillActive(), 0.18f);
-            bgR = ClickGuiRenderer.mixColor(bgR, palette.panelPillActive(), 0.18f);
+            bgL = LayoutRender2D.mixColor(bgL, palette.panelPillActive(), 0.18f);
+            bgR = LayoutRender2D.mixColor(bgR, palette.panelPillActive(), 0.18f);
         }
         if (active) {
-            bgL = ClickGuiRenderer.mixColor(bgL, theme.accentSoft(), 0.16f);
-            bgR = ClickGuiRenderer.mixColor(bgR, theme.accentSoft(), 0.16f);
+            bgL = LayoutRender2D.mixColor(bgL, theme.accentSoft(), 0.16f);
+            bgR = LayoutRender2D.mixColor(bgR, theme.accentSoft(), 0.16f);
         }
 
-        ClickGuiRenderer.drawBlur(searchX, searchY, SEARCH_W, SEARCH_H, 3f * SCALE, palette.panelBlurTint(), 105f / 255f);
+        LayoutRender2D.drawBlur(searchX, searchY, SEARCH_W, SEARCH_H, 3f * SCALE, palette.panelBlurTint(), 105f / 255f);
         LayoutRender2D.roundedQuad(
                 searchX,
                 searchY,
@@ -501,28 +501,28 @@ public final class ClickGuiPickerState {
                 SettingsGuiPalette.withAlpha(palette.panelMuted(), 95)
         );
 
-        TextRenderer font = ClickGuiRenderer.getInterRegular();
+        TextRenderer font = BuiltinFontCatalog.ONEST_REGULAR.renderer();
         float textSize = 7.5f * SCALE;
         boolean empty = search.text().isEmpty();
         String shown = empty && !active ? ClickGuiI18n.tr("clickgui.picker.search", "Search") : search.text();
         int color = empty && !active ? palette.panelMuted() : palette.panelText();
-        float textY = searchY + (SEARCH_H - ClickGuiRenderer.textHeight(font, textSize)) * 0.5f;
+        float textY = searchY + (SEARCH_H - LayoutRender2D.textHeight(font, textSize)) * 0.5f;
         float textX = searchX + 4f * SCALE;
         boolean clipped = ScissorFunction.pushRaw(textX, searchY + SCALE, Math.max(1f, dividerX - textX - 1.5f * SCALE), SEARCH_H - 2f * SCALE);
-        if (empty && !active) ClickGuiRenderer.drawText(font, shown, textX, textY, textSize, color, false);
+        if (empty && !active) LayoutRender2D.drawText(font, shown, textX, textY, textSize, color, false);
         else search.render(textX, textY, dividerX - textX - 1.5f * SCALE, SEARCH_H, font, textSize,
                 color, SettingsGuiPalette.withAlpha(theme.accent(), 115), active);
         if (clipped) ScissorFunction.pop();
 
-        TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(ClickGuiRenderer.getInterRegular());
+        TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
         String icon = "s";
         float iconSize = 8f * SCALE;
-        float iconW = ClickGuiRenderer.textWidth(icons, icon, iconSize);
-        float iconH = ClickGuiRenderer.textHeight(icons, iconSize);
+        float iconW = LayoutRender2D.textWidth(icons, icon, iconSize);
+        float iconH = LayoutRender2D.textHeight(icons, iconSize);
         float iconX = dividerX + ((searchX + SEARCH_W) - dividerX - iconW) * 0.5f;
         float iconY = searchY + (SEARCH_H - iconH) * 0.5f - 0.35f * SCALE;
         int iconColor = active ? palette.panelText() : palette.panelMuted();
-        ClickGuiRenderer.drawText(icons, icon, iconX, iconY, iconSize, iconColor, false);
+        LayoutRender2D.drawText(icons, icon, iconX, iconY, iconSize, iconColor, false);
     }
 
     private void drawGrid(float mx, float my, SettingsGuiPalette palette, Themes.Theme theme) {
@@ -542,7 +542,7 @@ public final class ClickGuiPickerState {
         float stepY = CARD_H + CARD_GAP;
         float iconScale = 1.65f * SCALE;
         float iconPx = 16f * iconScale;
-        TextRenderer font = ClickGuiRenderer.getInterRegular();
+        TextRenderer font = BuiltinFontCatalog.ONEST_REGULAR.renderer();
         float nameSize = 6.15f * SCALE;
         boolean hasHoveredCard = false;
 
@@ -575,12 +575,12 @@ public final class ClickGuiPickerState {
                     205
             );
             if (isSelected) {
-                left = ClickGuiRenderer.mixColor(left, theme.accentSoft(), 0.14f);
-                right = ClickGuiRenderer.mixColor(right, theme.accentSoft(), 0.26f);
+                left = LayoutRender2D.mixColor(left, theme.accentSoft(), 0.14f);
+                right = LayoutRender2D.mixColor(right, theme.accentSoft(), 0.26f);
             }
             if (hover) {
-                left = ClickGuiRenderer.mixColor(left, palette.moduleCardTopStrong(), 0.40f);
-                right = ClickGuiRenderer.mixColor(right, palette.moduleCardBottomStrong(), 0.42f);
+                left = LayoutRender2D.mixColor(left, palette.moduleCardTopStrong(), 0.40f);
+                right = LayoutRender2D.mixColor(right, palette.moduleCardBottomStrong(), 0.42f);
             }
 
             LayoutRender2D.roundedQuad(
@@ -631,8 +631,8 @@ public final class ClickGuiPickerState {
                 TextRenderer bold = interBold();
                 float qSize = 13f * SCALE;
                 String q = "?";
-                float qW = ClickGuiRenderer.textWidth(bold, q, qSize);
-                float qH = ClickGuiRenderer.textHeight(bold, qSize);
+                float qW = LayoutRender2D.textWidth(bold, q, qSize);
+                float qH = LayoutRender2D.textHeight(bold, qSize);
                 float iconAreaTop = cardY + 3.5f * SCALE;
                 float iconAreaBottom = lineY - SCALE;
                 float qX = cardX + (CARD_W - qW) * 0.5f;
@@ -640,7 +640,7 @@ public final class ClickGuiPickerState {
                 int qColor = isSelected
                         ? SettingsGuiPalette.withAlpha(palette.moduleTitleText(), 210)
                         : SettingsGuiPalette.withAlpha(palette.panelMuted(), 190);
-                ClickGuiRenderer.drawText(bold, q, qX, qY, qSize, qColor, false);
+                LayoutRender2D.drawText(bold, q, qX, qY, qSize, qColor, false);
             }
 
             float textMaxW = CARD_W - 10f * SCALE;
@@ -666,8 +666,8 @@ public final class ClickGuiPickerState {
         ClickGuiRenderer.endPickerIconScissor();
 
         if (visible.isEmpty()) {
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterRegular(),
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     catalogLoading && showAll
                             ? ClickGuiI18n.tr("clickgui.picker.loading", "Loading...")
                             : showAll
@@ -736,16 +736,16 @@ public final class ClickGuiPickerState {
 
     private void drawCardLabel(TextRenderer font, String label, float cardX, float textY, float maxW, float size, int color, boolean hover) {
         String text = label == null ? "" : label;
-        float fullW = ClickGuiRenderer.textWidth(font, text, size);
+        float fullW = LayoutRender2D.textWidth(font, text, size);
         if (!hover || fullW <= maxW + 0.5f * SCALE) {
-            String shown = ClickGuiRenderer.fitText(font, text, size, maxW);
-            float shownW = ClickGuiRenderer.textWidth(font, shown, size);
-            ClickGuiRenderer.drawText(font, shown, cardX + 5f * SCALE, textY, size, color, false);
+            String shown = LayoutRender2D.fitText(font, text, size, maxW);
+            float shownW = LayoutRender2D.textWidth(font, shown, size);
+            LayoutRender2D.drawText(font, shown, cardX + 5f * SCALE, textY, size, color, false);
             return;
         }
 
         float clipX = cardX + 5f * SCALE;
-        float textH = Math.max(1f, ClickGuiRenderer.textHeight(font, size));
+        float textH = Math.max(1f, LayoutRender2D.textHeight(font, size));
         boolean clipped = ScissorFunction.pushRaw(clipX, textY - SCALE, maxW, textH + 2f * SCALE);
         float elapsed = Math.max(0f, (Util.getMillis() - hoveredCardStartMs) / 1000f);
         float cycleDistance = fullW + MARQUEE_GAP;
@@ -753,9 +753,9 @@ public final class ClickGuiPickerState {
         float t = elapsed % cycleTime;
         float offset = t <= MARQUEE_PAUSE_SEC ? 0f : -(t - MARQUEE_PAUSE_SEC) * MARQUEE_SPEED;
 
-        ClickGuiRenderer.drawText(font, text, clipX + offset, textY, size, color, false);
+        LayoutRender2D.drawText(font, text, clipX + offset, textY, size, color, false);
         if (cycleDistance > maxW * 0.5f) {
-            ClickGuiRenderer.drawText(font, text, clipX + offset + cycleDistance, textY, size, color, false);
+            LayoutRender2D.drawText(font, text, clipX + offset + cycleDistance, textY, size, color, false);
         }
         if (clipped) ScissorFunction.pop();
     }
@@ -941,15 +941,15 @@ public final class ClickGuiPickerState {
         if (interBold != null) return interBold;
         FontFamily family = Fonts.getFamily("Inter");
         if (family == null) {
-            interBold = ClickGuiRenderer.getInterRegular();
+            interBold = BuiltinFontCatalog.ONEST_REGULAR.renderer();
             return interBold;
         }
         FontFace face = family.get(FontInfo.Type.Bold);
         if (face == null) {
-            interBold = ClickGuiRenderer.getInterRegular();
+            interBold = BuiltinFontCatalog.ONEST_REGULAR.renderer();
             return interBold;
         }
-        interBold = Fonts.renderer(face, ClickGuiRenderer.getInterRegular());
+        interBold = Fonts.renderer(face, BuiltinFontCatalog.ONEST_REGULAR.renderer());
         return interBold;
     }
 

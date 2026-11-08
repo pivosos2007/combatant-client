@@ -271,7 +271,8 @@ public enum AnimatedRenderColors {
 
     private static int skyRainbowRgb(int speed, int index) {
         int angle = (int) ((System.currentTimeMillis() / Math.max(1, speed) + index) % 360);
-        float hue = ((angle %= 360) / 360.0f) < 0.5f ? -(angle / 360.0f) : (angle / 360.0f);
+        float hue = angle / 360.0f;
+        hue = hue < 0.5f ? -hue : hue;
         return FULL_ALPHA | (Color.HSBtoRGB(hue, 0.5f, 1.0f) & 0x00FFFFFF);
     }
 

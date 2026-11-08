@@ -732,16 +732,6 @@ public final class Triangulator extends DraggableHudElement {
             );
         }
 
-        if (!result.ready()) {
-            return new DisplayState(
-                    "Low correlation",
-                    String.format(Locale.ROOT, "X %d  Z %d", Math.round(result.x()), Math.round(result.z())),
-                    String.format(Locale.ROOT, "Err %.1fb  Min angle %.1fВ°", result.rmse(), result.minPairAngleDeg()),
-                    formatPercent(result.confidence()),
-                    uiWarn
-            );
-        }
-
         return new DisplayState(
                 "Solved",
                 formatCoordinateLine(result.x(), result.z()),

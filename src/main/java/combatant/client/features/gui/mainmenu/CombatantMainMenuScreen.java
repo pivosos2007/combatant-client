@@ -18,7 +18,6 @@ import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
-import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiPaint;
 import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
@@ -42,6 +41,7 @@ import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
 import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
@@ -101,6 +101,7 @@ public final class CombatantMainMenuScreen extends Screen {
     private float cachedGridWidth = -1f;
     private float cachedGridHeight = -1f;
     private MainMenuBackdrop.GridLayout gridLayout;
+    private final MainMenuVisualPanel visualPanel = new MainMenuVisualPanel();
 
     public CombatantMainMenuScreen() {
         super(Component.literal("Combatant"));
@@ -130,6 +131,13 @@ public final class CombatantMainMenuScreen extends Screen {
         String month = tr("screen.combatant.main_menu.date.month."
                 + date.getMonth().name().toLowerCase(Locale.ROOT));
         return tr("screen.combatant.main_menu.date.format", weekday, month, date.getDayOfMonth());
+    }
+
+    @Override
+    public void removed() {
+        visualPanel.close();
+        MainMenuBackdrop.release();
+        super.removed();
     }
 
     @Override
@@ -177,17 +185,18 @@ public final class CombatantMainMenuScreen extends Screen {
         updateAnimations(deltaTime);
 
         try {
-            renderBackgroundTexture();
             ViewportContext.beginUnscaledLogical(context);
 
             Renderer2D.COLOR.begin();
+            MainMenuBackdrop.renderBase(fixedWidth, fixedHeight);
             if (opacity > 0.005f) {
-                renderBackgroundBlur(opacity);
+                MainMenuBackdrop.renderSmoke(fixedWidth, fixedHeight, opacity, fixedMouseX, fixedMouseY);
                 renderHoneycombMatrix(opacity, fixedMouseX, fixedMouseY);
                 renderButtons(opacity);
                 renderStaticClock(opacity);
                 renderAuthWarning(context, opacity);
                 renderFooter(opacity);
+                visualPanel.render(fixedWidth, fixedHeight, opacity, fixedMouseX, fixedMouseY, gridLayout, deltaTime);
             }
             Renderer2D.COLOR.render();
         } catch (RuntimeException throwable) {
@@ -213,6 +222,7 @@ public final class CombatantMainMenuScreen extends Screen {
         float opacity = easeOutCubic(getMenuProgress(Util.getMillis()));
         float mx = toFixedX((float) click.x());
         float my = toFixedY((float) click.y());
+        if (canInteract(opacity) && visualPanel.click(mx, my, click.button())) return true;
 
         AccountEntry warningAccount = getAuthWarningAccount();
         if (warningAccount != null && minecraft != null && canInteract(opacity)
@@ -233,7 +243,33 @@ public final class CombatantMainMenuScreen extends Screen {
             switchToVanillaTitleScreen(null);
             return true;
         }
+        combatant.client.input.InputKey uiKey =
+                combatant.client.input.minecraft.MinecraftInputAdapter.key(input);
+        combatant.client.input.InputModifiers uiModifiers =
+                combatant.client.input.minecraft.MinecraftInputAdapter.modifiers(input);
+        if (visualPanel.key(uiKey.physicalKey(), uiKey.shortcutKey(), uiModifiers.mask())) return true;
         return input.key() == combatant.client.input.InputKeys.ESCAPE || super.keyPressed(input);
+    }
+
+    @Override
+    public boolean charTyped(CharacterEvent input) {
+        int point = input.codepoint();
+        if (Character.isBmpCodePoint(point) && visualPanel.character((char)point, 0)) return true;
+        return super.charTyped(input);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent click) {
+        updateUiMetrics();
+        return visualPanel.release(toFixedX((float)click.x()), toFixedY((float)click.y()), click.button())
+                || super.mouseReleased(click);
+    }
+
+    @Override
+    public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+        updateUiMetrics();
+        return visualPanel.scroll(toFixedX((float)x), toFixedY((float)y), vertical)
+                || super.mouseScrolled(x, y, horizontal, vertical);
     }
 
     @Override
@@ -244,14 +280,6 @@ public final class CombatantMainMenuScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
-    }
-
-    private void renderBackgroundTexture() {
-        MenuBackgroundRenderer.renderConfigured(minecraft);
-    }
-
-    private void renderBackgroundBlur(float opacity) {
-        MainMenuBackdrop.renderBlur(fixedWidth, fixedHeight, opacity);
     }
 
     private void renderHoneycombMatrix(float opacity, float mouseX, float mouseY) {
@@ -413,7 +441,7 @@ public final class CombatantMainMenuScreen extends Screen {
                                 Math.round(opacity * 224f)), 0f, 0f));
         Renderer2D.COLOR.primitiveStroke(panel,
                 UiPaint.solid(withAlpha(accent, Math.round(opacity * (116f + hover * 72f)))),
-                UiStroke.of(1.0f * MENU_SCALE));
+                UiStroke.of(MENU_SCALE));
 
         float headX = bounds.x + 8f * MENU_SCALE;
         float headY = bounds.y + (bounds.h - AUTH_WARNING_HEAD) * 0.5f;

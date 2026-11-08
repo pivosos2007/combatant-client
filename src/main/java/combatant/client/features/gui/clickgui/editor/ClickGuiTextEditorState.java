@@ -7,9 +7,10 @@
 
 package combatant.client.features.gui.clickgui.editor;
 
-import net.minecraft.client.Minecraft;
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.helpers.SystemCursor;
@@ -157,8 +158,7 @@ public final class ClickGuiTextEditorState {
 
     public void insertChar(char c) {
         if (Character.isISOControl(c)) return;
-        if (deleteSelection()) {
-        }
+        deleteSelection();
         buffer.insert(caret, c);
         caret++;
         selection.clear();
@@ -169,8 +169,7 @@ public final class ClickGuiTextEditorState {
 
     public void insertNewline() {
         if (singleLine) return;
-        if (deleteSelection()) {
-        }
+        deleteSelection();
         buffer.insert(caret, '\n');
         caret++;
         selection.clear();
@@ -260,10 +259,8 @@ public final class ClickGuiTextEditorState {
             end = clamp(end, 0, buffer.length());
             if (end > start) {
                 ClipboardUtil.copy(buffer.substring(start, end));
-                return;
             }
         }
-
     }
 
     public void cutSelection() {
@@ -299,12 +296,12 @@ public final class ClickGuiTextEditorState {
 
         int accent = theme().accent();
         int accentSoft = theme().accentSoft();
-        int rootTop = ClickGuiRenderer.mixColor(theme().windowBg(), theme().surface(), 0.22f);
-        int rootBottom = ClickGuiRenderer.mixColor(theme().windowBg(), 0xFF000000, 0.16f);
-        int editorTop = ClickGuiRenderer.mixColor(theme().surface(), theme().surfaceHover(), 0.18f);
-        int editorBottom = ClickGuiRenderer.mixColor(theme().surface(), theme().windowBg(), 0.34f);
-        int strokeA = ClickGuiRenderer.mixColor(theme().strokeSoft(), accentSoft, 0.12f);
-        int strokeB = ClickGuiRenderer.mixColor(theme().windowStroke(), accent, 0.08f);
+        int rootTop = LayoutRender2D.mixColor(theme().windowBg(), theme().surface(), 0.22f);
+        int rootBottom = LayoutRender2D.mixColor(theme().windowBg(), 0xFF000000, 0.16f);
+        int editorTop = LayoutRender2D.mixColor(theme().surface(), theme().surfaceHover(), 0.18f);
+        int editorBottom = LayoutRender2D.mixColor(theme().surface(), theme().windowBg(), 0.34f);
+        int strokeA = LayoutRender2D.mixColor(theme().strokeSoft(), accentSoft, 0.12f);
+        int strokeB = LayoutRender2D.mixColor(theme().windowStroke(), accent, 0.08f);
 
         LayoutRender2D.roundedSoftShadow(modalX, modalY, WIDTH, HEIGHT, 12f, 18f, 0.24f, 0x72000000);
         LayoutRender2D.roundedQuad(modalX, modalY, WIDTH, HEIGHT, 12f,
@@ -314,13 +311,13 @@ public final class ClickGuiTextEditorState {
                 LayoutRender2D.alpha(strokeA, 0.82f), LayoutRender2D.alpha(strokeB, 0.92f),
                 LayoutRender2D.alpha(strokeB, 0.72f), LayoutRender2D.alpha(strokeA, 0.66f));
 
-        TextRenderer titleFont = ClickGuiRenderer.getInterMedium();
-        TextRenderer textFont = ClickGuiRenderer.getIosevkaRegular();
+        TextRenderer titleFont = BuiltinFontCatalog.ONEST_MEDIUM.renderer();
+        TextRenderer textFont = BuiltinFontCatalog.ONEST_MEDIUM.renderer();
         float titleSize = 16f;
         float icon = 15f;
         Renderer2D.COLOR.svg(singleLine ? "pencil" : "clipboard", modalX + PADDING, modalY + 13f, icon, icon,
-                SvgRenderOptions.overrideColor(ClickGuiRenderer.mixColor(theme().textMuted(), accent, 0.48f)));
-        ClickGuiRenderer.drawText(titleFont, title, modalX + PADDING + icon + 8f, modalY + 12f,
+                SvgRenderOptions.overrideColor(LayoutRender2D.mixColor(theme().textMuted(), accent, 0.48f)));
+        LayoutRender2D.drawText(titleFont, title, modalX + PADDING + icon + 8f, modalY + 12f,
                 titleSize, theme().textPrimary(), false);
 
         String[] lines = buffer.toString().split("\n", -1);
@@ -328,7 +325,7 @@ public final class ClickGuiTextEditorState {
         for (String line : lines) if (!line.isBlank()) entryCount++;
         String subtitle = singleLine ? "Single-line value"
                 : entryCount + (entryCount == 1 ? " entry" : " entries") + "  ·  one entry per line";
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), subtitle, modalX + PADDING, modalY + 34f,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), subtitle, modalX + PADDING, modalY + 34f,
                 11.5f, LayoutRender2D.alpha(theme().textMuted(), 0.88f), false);
 
         LayoutRender2D.rectQuad(modalX + PADDING, modalY + 50f, WIDTH - PADDING * 2f, 0.6f,
@@ -367,9 +364,9 @@ public final class ClickGuiTextEditorState {
             String line = lines[idx];
             if (!singleLine) {
                 String number = Integer.toString(idx + 1);
-                float nw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), number, 10.5f);
-                float ny = lineTop + (LINE_H - ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), 10.5f)) * 0.5f;
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), number,
+                float nw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), number, 10.5f);
+                float ny = lineTop + (LINE_H - LayoutRender2D.textHeight(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), 10.5f)) * 0.5f;
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), number,
                         textX + TEXT_PADDING + gutter - 10f - nw, ny, 10.5f,
                         LayoutRender2D.alpha(theme().textMuted(), 0.52f), false);
             }
@@ -381,15 +378,15 @@ public final class ClickGuiTextEditorState {
                 if (selB > selA) {
                     int colA = selA - globalOffset;
                     int colB = selB - globalOffset;
-                    float x0 = viewX + ClickGuiRenderer.textWidth(textFont, safeSubstring(line, 0, colA), fontSize);
-                    float x1 = viewX + ClickGuiRenderer.textWidth(textFont, safeSubstring(line, 0, colB), fontSize);
+                    float x0 = viewX + LayoutRender2D.textWidth(textFont, safeSubstring(line, 0, colA), fontSize);
+                    float x1 = viewX + LayoutRender2D.textWidth(textFont, safeSubstring(line, 0, colB), fontSize);
                     LayoutRender2D.roundedQuad(x0, lineTop + 1f, Math.max(1f, x1 - x0), LINE_H - 2f, 3f,
                             LayoutRender2D.alpha(accentSoft, 0.46f), LayoutRender2D.alpha(accent, 0.38f),
                             LayoutRender2D.alpha(accent, 0.30f), LayoutRender2D.alpha(accentSoft, 0.38f));
                 }
             }
-            float drawY = lineTop + (LINE_H - ClickGuiRenderer.textHeight(textFont, fontSize)) * 0.5f;
-            ClickGuiRenderer.drawText(textFont, line, viewX, drawY, fontSize, theme().textPrimary(), false);
+            float drawY = lineTop + (LINE_H - LayoutRender2D.textHeight(textFont, fontSize)) * 0.5f;
+            LayoutRender2D.drawText(textFont, line, viewX, drawY, fontSize, theme().textPrimary(), false);
             lineTop += LINE_H;
             globalOffset += line.length();
             if (idx < lines.length - 1) globalOffset++;
@@ -398,10 +395,10 @@ public final class ClickGuiTextEditorState {
         int[] caretPos = caretLineAndColumn(lines, caret);
         float caretLineTop = viewY + caretPos[0] * LINE_H;
         String caretLine = caretPos[0] < lines.length ? lines[caretPos[0]] : "";
-        float caretOffsetX = ClickGuiRenderer.textWidth(textFont, safeSubstring(caretLine, 0, caretPos[1]), fontSize);
+        float caretOffsetX = LayoutRender2D.textWidth(textFont, safeSubstring(caretLine, 0, caretPos[1]), fontSize);
         float cx = viewX + caretOffsetX;
         if (AnimationUtility.blink(500L)) {
-            float drawY = caretLineTop + (LINE_H - ClickGuiRenderer.textHeight(textFont, fontSize)) * 0.5f;
+            float drawY = caretLineTop + (LINE_H - LayoutRender2D.textHeight(textFont, fontSize)) * 0.5f;
             GuiTextCaret.draw(cx, drawY, textFont, fontSize, theme().textPrimary());
         }
         if (clipped) ScissorFunction.pop();
@@ -439,12 +436,12 @@ public final class ClickGuiTextEditorState {
     private void renderFooterButton(float x, float y, float w, float h, String iconName, String label,
                                     boolean hover, boolean primary) {
         int accent = theme().accent();
-        int base = primary ? ClickGuiRenderer.mixColor(theme().surface(), accent, 0.42f) : theme().surface();
-        int top = hover ? ClickGuiRenderer.mixColor(base, theme().surfaceHover(), 0.55f) : base;
-        int bottom = ClickGuiRenderer.mixColor(top, theme().windowBg(), primary ? 0.16f : 0.28f);
+        int base = primary ? LayoutRender2D.mixColor(theme().surface(), accent, 0.42f) : theme().surface();
+        int top = hover ? LayoutRender2D.mixColor(base, theme().surfaceHover(), 0.55f) : base;
+        int bottom = LayoutRender2D.mixColor(top, theme().windowBg(), primary ? 0.16f : 0.28f);
         LayoutRender2D.roundedQuad(x, y, w, h, 7f,
                 LayoutRender2D.alpha(top, primary ? 0.98f : 0.90f),
-                LayoutRender2D.alpha(ClickGuiRenderer.mixColor(top, accent, primary ? 0.18f : 0.04f), primary ? 0.98f : 0.90f),
+                LayoutRender2D.alpha(LayoutRender2D.mixColor(top, accent, primary ? 0.18f : 0.04f), primary ? 0.98f : 0.90f),
                 LayoutRender2D.alpha(bottom, 0.96f), LayoutRender2D.alpha(bottom, 0.94f));
         LayoutRender2D.roundedStrokeQuad(x, y, w, h, 7f, 1f,
                 LayoutRender2D.alpha(theme().strokeSoft(), 0.52f),
@@ -457,9 +454,9 @@ public final class ClickGuiTextEditorState {
         Renderer2D.COLOR.svg(iconName, tx, iy, iconSize, iconSize,
                 SvgRenderOptions.overrideColor(primary ? theme().textPrimary() : theme().textMuted()));
         float size = 12.5f;
-        float ty = y + (h - ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), size)) * 0.5f;
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), label, tx + iconSize + 6f, ty, size,
-                primary ? theme().textPrimary() : ClickGuiRenderer.mixColor(theme().textMuted(), theme().textPrimary(), hover ? 0.62f : 0.34f), false);
+        float ty = y + (h - LayoutRender2D.textHeight(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), size)) * 0.5f;
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), label, tx + iconSize + 6f, ty, size,
+                primary ? theme().textPrimary() : LayoutRender2D.mixColor(theme().textMuted(), theme().textPrimary(), hover ? 0.62f : 0.34f), false);
     }
 
     private float gutterWidth() {
@@ -514,12 +511,12 @@ public final class ClickGuiTextEditorState {
 
     private int columnForX(String line, float relX) {
         if (line == null || line.isEmpty()) return 0;
-        TextRenderer tr = ClickGuiRenderer.getIosevkaRegular();
+        TextRenderer tr = BuiltinFontCatalog.ONEST_MEDIUM.renderer();
         float size = 15f;
         float acc = 0f;
         for (int i = 0; i < line.length(); i++) {
             String ch = String.valueOf(line.charAt(i));
-            float w = ClickGuiRenderer.textWidth(tr, ch, size);
+            float w = LayoutRender2D.textWidth(tr, ch, size);
             if (acc + w * 0.5f >= relX) return i;
             acc += w;
         }
@@ -529,8 +526,7 @@ public final class ClickGuiTextEditorState {
     private void insertText(String text) {
         if (text == null || text.isEmpty()) return;
         String insert = singleLine ? normalizeSingleLine(text) : text;
-        if (deleteSelection()) {
-        }
+        deleteSelection();
         buffer.insert(caret, insert);
         caret += insert.length();
         selection.clear();
@@ -594,16 +590,16 @@ public final class ClickGuiTextEditorState {
             scroll = clamp(scroll, minScrollY, 0f);
         }
 
-        TextRenderer tr = ClickGuiRenderer.getIosevkaRegular();
+        TextRenderer tr = BuiltinFontCatalog.ONEST_MEDIUM.renderer();
         float size = 15f;
         float visibleW = Math.max(1f, textW - TEXT_PADDING * 2f - gutterWidth());
         float caretOffsetX = 0f;
         if (lines.length > 0 && caretPos[0] >= 0 && caretPos[0] < lines.length) {
-            caretOffsetX = ClickGuiRenderer.textWidth(tr, safeSubstring(lines[caretPos[0]], 0, caretPos[1]), size);
+            caretOffsetX = LayoutRender2D.textWidth(tr, safeSubstring(lines[caretPos[0]], 0, caretPos[1]), size);
         }
         float maxWidth = 0f;
         for (String line : lines) {
-            float w = ClickGuiRenderer.textWidth(tr, line, size);
+            float w = LayoutRender2D.textWidth(tr, line, size);
             if (w > maxWidth) maxWidth = w;
         }
         float maxScrollX = Math.max(0f, maxWidth - visibleW);

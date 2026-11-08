@@ -138,7 +138,6 @@ final class UiPathGeometry {
                 }
             } else {
                 int slots = Math.max(count, Math.round(props.number("historySlots", count)));
-                slots = Math.max(2, slots);
                 int firstSlot = Math.max(0, slots - count);
                 for (int i = 0; i < count; i++) {
                     int slot = firstSlot + i;
@@ -177,7 +176,6 @@ final class UiPathGeometry {
             }
         } else {
             int slots = Math.max(count, Math.round(props.number("historySlots", count)));
-            slots = Math.max(2, slots);
             int firstSlot = Math.max(0, slots - count);
             for (int i = 0; i < count; i++) {
                 int slot = firstSlot + i;

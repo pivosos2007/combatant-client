@@ -89,16 +89,21 @@ public final class FinderRender {
     public void verticalRing(Vec3 center, double radius, boolean alongX, int argb) {
         if (radius <= 0.0 || alpha(argb) == 0) return;
         int segments = Math.max(32, Math.min(128, (int) Math.ceil(radius * 5.0)));
-        for (int i = 0; i < segments; i++) {
-            double a = Math.PI * 2.0 * i / segments;
-            double b = Math.PI * 2.0 * (i + 1) / segments;
+        double previousSin = 0.0;
+        double previousCos = 1.0;
+        for (int i = 1; i <= segments; i++) {
+            double angle = Math.PI * 2.0 * i / segments;
+            double nextSin = Math.sin(angle);
+            double nextCos = Math.cos(angle);
             if (alongX) {
-                line(center.x + Math.cos(a) * radius, center.y + Math.sin(a) * radius, center.z,
-                        center.x + Math.cos(b) * radius, center.y + Math.sin(b) * radius, center.z, argb);
+                line(center.x + previousCos * radius, center.y + previousSin * radius, center.z,
+                        center.x + nextCos * radius, center.y + nextSin * radius, center.z, argb);
             } else {
-                line(center.x, center.y + Math.sin(a) * radius, center.z + Math.cos(a) * radius,
-                        center.x, center.y + Math.sin(b) * radius, center.z + Math.cos(b) * radius, argb);
+                line(center.x, center.y + previousSin * radius, center.z + previousCos * radius,
+                        center.x, center.y + nextSin * radius, center.z + nextCos * radius, argb);
             }
+            previousSin = nextSin;
+            previousCos = nextCos;
         }
     }
 

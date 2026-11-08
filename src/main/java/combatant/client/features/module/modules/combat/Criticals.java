@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.combat;
 
 import combatant.client.util.combat.AttackUtil;
+import combatant.client.util.combat.SprintController;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -23,6 +24,7 @@ import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
@@ -36,10 +38,13 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.Flight;
-import combatant.client.features.module.modules.movement.Timer;
+import combatant.client.util.time.TimerController;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
 import combatant.client.util.click.ClickScheduler;
 import combatant.client.util.target.TargetManager;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @ModuleInfo(
         id = "criticals",
@@ -52,6 +57,10 @@ public final class Criticals extends Module {
     private static final int JUMP_CRIT_LEAD_TICKS = 4;
     private static final int VULCAN_297_JUMP_RECOVERY_TICKS = 8;
     private static final int VULCAN_297_LANDING_RECOVERY_TICKS = 2;
+    private static final String VULCAN_MAIN = "main";
+    private static final String VULCAN_EXEMPTS = "exempts";
+    private static final String EXEMPT_SLOW_FALLING = "slow_falling";
+    private static final String EXEMPT_LEVITATION = "levitation";
     private final Minecraft mc = Minecraft.getInstance();
     private final EnumValue<Mode> mode =
             enumMode(
@@ -98,7 +107,7 @@ public final class Criticals extends Module {
                     4.0f,
                     1.0f,
                     6.0f
-            ), () -> mode.get() == Mode.JUMP || usesSprintStopTargeting());
+            ), () -> mode.get() == Mode.JUMP || mode.get() == Mode.NO_GROUND || usesSprintStopTargeting());
     private final BooleanValue optimizeForCooldown =
             visibleWhen(bool(
                     "optimize_for_cooldown",
@@ -110,7 +119,8 @@ public final class Criticals extends Module {
                     "can_be_seen",
                     "can_be_seen",
                     true
-            ), () -> mode.get() == Mode.JUMP || mode.get() == Mode.TIMER || usesSprintStopTargeting());
+            ), () -> mode.get() == Mode.JUMP || mode.get() == Mode.TIMER
+                    || mode.get() == Mode.NO_GROUND || usesSprintStopTargeting());
     private final EnumValue<PacketMode> packetMode =
             visibleWhen(enumMode(
                     "packet_mode",
@@ -139,6 +149,20 @@ public final class Criticals extends Module {
                     0.0f,
                     10.0f
             ), () -> mode.get() == Mode.TIMER);
+    private final BooleanMapValue vulcan297Modes = visibleWhen(group(
+            "criticalsVulcan297Modes", "vulcan297_modes", Map.of(VULCAN_MAIN, true, VULCAN_EXEMPTS, true)),
+            () -> mode.get() == Mode.VULCAN_297);
+    private final BooleanMapValue vulcan297Exempts = visibleWhen(group(
+            "criticalsVulcan297Exempts", "vulcan297_exempts", vulcan297ExemptDefaults()),
+            () -> mode.get() == Mode.VULCAN_297 && vulcan297Modes.get(VULCAN_EXEMPTS));
+
+    private static Map<String, Boolean> vulcan297ExemptDefaults() {
+        Map<String, Boolean> defaults = new LinkedHashMap<>();
+        defaults.put(EXEMPT_SLOW_FALLING, true);
+        defaults.put(EXEMPT_LEVITATION, true);
+        return defaults;
+    }
+
     private Mode killAuraModeOverride;
     private SelectionMode killAuraSelectionOverride;
     private boolean adjustNextJump;
@@ -159,7 +183,7 @@ public final class Criticals extends Module {
         lastJumpInputAge = -1;
         resetVulcan297State();
         resetPreparedAttack();
-        Timer.clearExternalTickTimer();
+        TimerController.clear(Criticals.class);
     }
 
     @Override
@@ -169,7 +193,7 @@ public final class Criticals extends Module {
         lastJumpInputAge = -1;
         resetVulcan297State();
         resetPreparedAttack();
-        Timer.clearExternalTickTimer();
+        TimerController.clear(Criticals.class);
     }
 
     public void setKillAuraOverrides(Mode modeOverride, SelectionMode selectionOverride) {
@@ -187,14 +211,18 @@ public final class Criticals extends Module {
         if (!isEnabled()) return;
 
         if (getMode() == Mode.TIMER) {
+            LocalPlayer player = currentPlayer();
             Entity target = getTargetInRange(timerRange.get());
-            if (target != null && wouldDoCriticalHit(shouldAttemptCritWhileSprinting())) {
-                Timer.setExternalTickTimer(timerSpeed.get());
+            if (player != null && target != null && !player.onGround()
+                    && player.getDeltaMovement().y <= 0.0
+                    && allowsCriticalHit(false)) {
+                TimerController.requestTimerSpeed(timerSpeed.get(),
+                        TimerController.IMPORTANT_FOR_USAGE_1, Criticals.class, 2);
             } else {
-                Timer.clearExternalTickTimer();
+                TimerController.clear(Criticals.class);
             }
         } else {
-            Timer.clearExternalTickTimer();
+            TimerController.clear(Criticals.class);
         }
 
         updateVulcan297State(currentPlayer());
@@ -202,20 +230,22 @@ public final class Criticals extends Module {
 
     @EventHandler
     private void onMovementInput(MovementInputEvent event) {
-        if (!isEnabled() || getMode() != Mode.JUMP) return;
+        if (!isEnabled()) return;
+        Mode active = getMode();
+        if (active != Mode.JUMP && active != Mode.TIMER && active != Mode.NO_GROUND) return;
 
         LocalPlayer player = currentPlayer();
         if (player == null) return;
-        Entity target = getTargetInRange();
+        float range = naturalCriticalRange();
+        Entity target = getTargetInRange(range);
 
-        if (target != null && shouldAutoJumpCrit(target) && player.onGround()) {
+        if (player.onGround() && !event.isJump() && target != null
+                && shouldAutoPrepareNaturalCrit(target, range)) {
             event.setJump(true);
-            adjustNextJump = true;
+            if (active == Mode.JUMP) adjustNextJump = true;
         }
 
-        if (event.isJump()) {
-            lastJumpInputAge = player.tickCount;
-        }
+        if (event.isJump()) lastJumpInputAge = player.tickCount;
     }
 
     @EventHandler
@@ -263,13 +293,13 @@ public final class Criticals extends Module {
         return switch (getSelectionMode()) {
             case IGNORE -> true;
             case SMART -> switch (getMode()) {
-                case PACKET, NO_GROUND, VULCAN_297 -> canDoCriticalHit(true, ignoreSprint);
-                case JUMP, TIMER -> !shouldWaitForCrit(target, true);
+                case PACKET, VULCAN_297 -> canDoModeCriticalHit(ignoreSprint);
+                case JUMP, TIMER, NO_GROUND -> !shouldWaitForCrit(target, true);
                 case OFF -> true;
             };
             case ALWAYS -> switch (getMode()) {
-                case PACKET, NO_GROUND, VULCAN_297 -> canDoCriticalHit(true, ignoreSprint);
-                case JUMP, TIMER -> wouldDoCriticalHit(ignoreSprint);
+                case PACKET, VULCAN_297 -> canDoModeCriticalHit(ignoreSprint);
+                case JUMP, TIMER, NO_GROUND -> wouldDoCriticalHit(ignoreSprint);
                 case OFF -> true;
             };
         };
@@ -308,7 +338,7 @@ public final class Criticals extends Module {
         LocalPlayer player = currentPlayer();
         if (player == null) return false;
 
-        if (getMode() == Mode.JUMP && getSelectionMode() != SelectionMode.IGNORE && canUseJumpCriticalState(target)) {
+        if (usesNaturalCriticalState() && getSelectionMode() != SelectionMode.IGNORE && canUseJumpCriticalState(target)) {
             if (player.onGround()) return false;
             if (player.getDeltaMovement().y > 0.0) return false;
             if (clicker != null && !clicker.willClickAt(2) && player.fallDistance <= 0.0f) return false;
@@ -337,23 +367,27 @@ public final class Criticals extends Module {
 
         boolean ignoreSprint = ignoreSprintAfterReset || shouldAttemptCritWhileSprinting();
         if (canUseKillAuraJumpCriticalState(target)) {
-            if (selection == SelectionMode.ALWAYS) {
-                return isNaturalCriticalReady(ignoreSprint);
-            }
-            if (selection == SelectionMode.SMART
-                    && player.onGround()
-                    && hasJumpIntent(player)
-                    && shouldForceJumpCrit(target)) {
-                return false;
-            }
-            if (shouldHoldKillAuraForNaturalCrit(player, ignoreSprint)) {
-                return isNaturalCriticalReady(ignoreSprint);
+            if (selection == SelectionMode.ALWAYS) return isNaturalCriticalReady(ignoreSprint);
+            if (selection == SelectionMode.SMART) {
+                if (player.onGround()) {
+                    // A queued jump must complete before the attack. Timer/NoGround
+                    // explicitly initiate their own real jump as part of preparation.
+                    if (getMode() != Mode.JUMP || hasJumpIntent(player) || shouldForceJumpCrit(target)) {
+                        return false;
+                    }
+                }
+                if (player.getDeltaMovement().y > 0.0) return false;
+                if (shouldHoldKillAuraForNaturalCrit(player, ignoreSprint)) {
+                    return isNaturalCriticalReady(ignoreSprint);
+                }
             }
         }
 
         return switch (selection) {
-            case SMART -> !shouldWaitForCrit(target, true);
-            case ALWAYS -> wouldDoCriticalHit(ignoreSprint);
+            case SMART -> getMode() == Mode.JUMP || getMode() == Mode.TIMER || getMode() == Mode.NO_GROUND
+                    ? !shouldWaitForCrit(target, true) : true;
+            case ALWAYS -> usesNaturalCriticalState()
+                    ? isNaturalCriticalReady(ignoreSprint) : canDoModeCriticalHit(ignoreSprint);
             case IGNORE -> true;
         };
     }
@@ -383,9 +417,18 @@ public final class Criticals extends Module {
         if (getMode() == Mode.PACKET && canDoCriticalHit(true, shouldAttemptCritWhileSprinting())) {
             performPacketCritical(mc, player, target);
         } else if (getMode() == Mode.VULCAN_297
-                && canDoCriticalHit(true, shouldAttemptCritWhileSprinting())
                 && canPerformVulcan297Critical(player)) {
-            performVulcan297Critical(mc, player);
+            if (!canDoCriticalHit(true, true)) return;
+            // The server does not grant criticals while sprinting. Reset the
+            // server sprint state before the movement/attack packet sequence.
+            if (SprintController.INSTANCE.isServerSprinting(player)) {
+                AttackUtil.sendStopSprinting(mc, player);
+            }
+            // Real descending movement with a selected effect needs no extra
+            // out-of-order position packets. The standard path uses the original pair.
+            if (!isVulcan297ExemptActive(player) || player.onGround()) {
+                performVulcan297Critical(mc, player);
+            }
         }
     }
 
@@ -398,7 +441,13 @@ public final class Criticals extends Module {
         if (!isEnabled()) return;
 
         if (getMode() == Mode.NO_GROUND && event.getPacket() instanceof ServerboundMovePlayerPacket move) {
-            ((ServerboundMovePlayerPacketAccessor) move).combatant$setOnGround(false);
+            LocalPlayer player = currentPlayer();
+            // Never spoof permanent airborne state while standing still: it
+            // desynchronizes fall distance and trips GroundSpoof. On landing,
+            // allow a genuine grounded packet to resynchronize the server.
+            if (player != null && (!player.onGround() || lastJumpInputAge == player.tickCount)) {
+                ((ServerboundMovePlayerPacketAccessor) move).combatant$setOnGround(false);
+            }
         }
     }
 
@@ -435,9 +484,9 @@ public final class Criticals extends Module {
         if (player.onClimbable() || player.isNoGravity()) return false;
         if (player.getAbilities().flying) return false;
         if (player.isUsingItem()) return false;
-        if (player.hasEffect(MobEffects.BLINDNESS)
-                || player.hasEffect(MobEffects.LEVITATION)
-                || player.hasEffect(MobEffects.SLOW_FALLING)) return false;
+        if (player.hasEffect(MobEffects.BLINDNESS)) return false;
+        if ((player.hasEffect(MobEffects.LEVITATION) || player.hasEffect(MobEffects.SLOW_FALLING))
+                && !isVulcan297ExemptActive(player)) return false;
         if (!ignoreOnGround && player.onGround()) return false;
         AABB box = player.getBoundingBox();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -471,6 +520,11 @@ public final class Criticals extends Module {
                 && (!player.isSprinting() || ignoreSprint);
     }
 
+    private boolean canDoModeCriticalHit(boolean ignoreSprint) {
+        if (!canDoCriticalHit(true, ignoreSprint)) return false;
+        return getMode() != Mode.VULCAN_297 || canPerformVulcan297Critical(currentPlayer());
+    }
+
     public boolean wouldDoCriticalHit(boolean ignoreSprint) {
         LocalPlayer player = currentPlayer();
         if (player == null) return false;
@@ -501,11 +555,12 @@ public final class Criticals extends Module {
     public boolean shouldWaitForCrit(Entity target, boolean ignoreState) {
         LocalPlayer player = currentPlayer();
         if (player == null || target == null) return false;
-        if (!ignoreState && (!isEnabled() || getMode() != Mode.JUMP)) return false;
+        if (!ignoreState && (!isEnabled() || !usesNaturalCriticalState())) return false;
         if (player.isFallFlying()) return false;
         if (!allowsCriticalHit(false) || player.getDeltaMovement().y < -0.08) return false;
         if (player.fallDistance > 0.0f) return false;
-        if (player.distanceToSqr(target) > jumpRange.get() * jumpRange.get()) return false;
+        float range = naturalCriticalRange();
+        if (player.distanceToSqr(target) > range * range) return false;
 
         return player.getDeltaMovement().y > 0.0
                 && player.getAttackStrengthScale(0.5f) > 0.9f;
@@ -549,15 +604,16 @@ public final class Criticals extends Module {
     }
 
     private boolean usesNaturalCriticalState() {
-        return getMode() == Mode.JUMP || getMode() == Mode.TIMER;
+        return getMode() == Mode.JUMP || getMode() == Mode.TIMER || getMode() == Mode.NO_GROUND;
     }
 
     private boolean shouldForceJumpCrit(Entity target) {
         LocalPlayer player = currentPlayer();
         if (player == null || target == null) return false;
-        if (getMode() != Mode.JUMP) return false;
+        if (!usesNaturalCriticalState()) return false;
         if (!allowsCriticalHit(true)) return false;
-        if (player.distanceToSqr(target) > jumpRange.get() * jumpRange.get()) return false;
+        float range = naturalCriticalRange();
+        if (player.distanceToSqr(target) > range * range) return false;
         if (canBeSeen.get() && !hasCachedLineOfSight(player, target)) return false;
         return !optimizeForCooldown.get() || !shouldWaitForJump();
     }
@@ -570,8 +626,8 @@ public final class Criticals extends Module {
         if (target == null) return false;
         boolean ignoreSprint = shouldAttemptCritWhileSprinting();
         return switch (getMode()) {
-            case PACKET, NO_GROUND, VULCAN_297 -> canDoCriticalHit(true, ignoreSprint);
-            case JUMP, TIMER -> getTargetInRange() != null;
+            case PACKET, VULCAN_297 -> canDoCriticalHit(true, ignoreSprint);
+            case JUMP, TIMER, NO_GROUND -> getTargetInRange(naturalCriticalRange()) != null;
             case OFF -> false;
         };
     }
@@ -579,22 +635,31 @@ public final class Criticals extends Module {
     private boolean canUseJumpCriticalState(Entity target) {
         LocalPlayer player = currentPlayer();
         if (player == null || target == null) return false;
-        if (getMode() != Mode.JUMP) return false;
-        if (!allowsCriticalHit(true)) return false;
-        if (player.distanceToSqr(target) > jumpRange.get() * jumpRange.get()) return false;
+        if (!usesNaturalCriticalState() || !allowsCriticalHit(true)) return false;
+        float range = naturalCriticalRange();
+        if (player.distanceToSqr(target) > range * range) return false;
         return !canBeSeen.get() || hasCachedLineOfSight(player, target);
     }
 
     private boolean canUseKillAuraJumpCriticalState(Entity target) {
         LocalPlayer player = currentPlayer();
         if (player == null || target == null) return false;
-        if (!allowsCriticalHit(true)) return false;
-        if (player.distanceToSqr(target) > jumpRange.get() * jumpRange.get()) return false;
+        if (!usesNaturalCriticalState() || !allowsCriticalHit(true)) return false;
+        float range = naturalCriticalRange();
+        if (player.distanceToSqr(target) > range * range) return false;
         return !canBeSeen.get() || hasCachedLineOfSight(player, target);
     }
 
-    private boolean shouldAutoJumpCrit(Entity target) {
-        if (!shouldForceJumpCrit(target)) return false;
+    private float naturalCriticalRange() {
+        return getMode() == Mode.TIMER ? timerRange.get() : jumpRange.get();
+    }
+
+    private boolean shouldAutoPrepareNaturalCrit(Entity target, float range) {
+        LocalPlayer player = currentPlayer();
+        if (player == null || target == null || !player.onGround() || !allowsCriticalHit(true)) return false;
+        if (player.distanceToSqr(target) > range * range) return false;
+        if (canBeSeen.get() && !hasCachedLineOfSight(player, target)) return false;
+        if (getMode() == Mode.JUMP && optimizeForCooldown.get() && shouldWaitForJump()) return false;
 
         KillAura killAura = Modules.get(KillAura.class);
         if (killAura == null || !killAura.isEnabled()) return true;
@@ -692,9 +757,22 @@ public final class Criticals extends Module {
     }
 
     private boolean canPerformVulcan297Critical(LocalPlayer player) {
-        if (player == null || !player.onGround()) return false;
-        if (vulcan297JumpRecoveryTicks > 0) return false;
-        return vulcan297LandingRecoveryTicks <= 0;
+        if (player == null || vulcan297JumpRecoveryTicks > 0) return false;
+        if (isVulcan297ExemptActive(player)) {
+            // Slow Falling/Levitation are explicit exemptions for some movement
+            // checks, not for Criticals A/B. Only use real falling movement.
+            if (player.onGround()) return vulcan297LandingRecoveryTicks <= 0;
+            return player.fallDistance > 0.0f && player.getDeltaMovement().y < 0.0;
+        }
+        return vulcan297Modes.get(VULCAN_MAIN)
+                && player.onGround() && vulcan297LandingRecoveryTicks <= 0;
+    }
+
+    private boolean isVulcan297ExemptActive(LocalPlayer player) {
+        if (getMode() != Mode.VULCAN_297 || player == null
+                || !vulcan297Modes.get(VULCAN_EXEMPTS)) return false;
+        return (vulcan297Exempts.get(EXEMPT_SLOW_FALLING) && player.hasEffect(MobEffects.SLOW_FALLING))
+                || (vulcan297Exempts.get(EXEMPT_LEVITATION) && player.hasEffect(MobEffects.LEVITATION));
     }
 
     private void sendCriticalPacket(LocalPlayer player, double yOffset, boolean onGround) {

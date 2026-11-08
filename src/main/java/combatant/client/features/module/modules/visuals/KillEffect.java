@@ -35,7 +35,6 @@ import combatant.client.mixins.accessors.ClientLevelAccessor;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.TextureStorage;
 import combatant.client.render.engine.color.ColorUtils;
-import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.postprocess.FullScreenBlur;

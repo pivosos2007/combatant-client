@@ -26,7 +26,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.features.gui.chat.BetterChatRenderer;
 import combatant.client.features.gui.chat.BetterChatSearch;
 import combatant.client.features.gui.chat.BetterChatStoreManager;
-import combatant.client.features.gui.clickgui.*;
 import combatant.client.features.gui.hud.draggable.impl.BetterChat;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.mixins.accessors.ChatScreenAccessor;

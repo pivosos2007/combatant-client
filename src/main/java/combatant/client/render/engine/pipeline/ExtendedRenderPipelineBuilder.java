@@ -178,7 +178,7 @@ public class ExtendedRenderPipelineBuilder {
     }
 
     public ExtendedRenderPipelineBuilder withCull(boolean cull) {
-        delegate.withCull(isUiCanvasPipeline() ? false : cull);
+        delegate.withCull(!isUiCanvasPipeline() && cull);
         return this;
     }
 

@@ -1,0 +1,66 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_Advected;
+layout(binding = 1, rgba16f) writeonly uniform image2D u_State;
+layout(binding = 3) uniform sampler2D u_Pressure;
+layout(std430, binding = 2) readonly buffer MenuSmokeParams {
+    vec4 screen;
+    vec4 mouse;
+    vec4 motion;
+    vec4 accent;
+    vec4 soft;
+    vec4 cold;
+    vec4 warm;
+    vec4 sources[48];
+    vec4 sourceProps[48];
+} u_Smoke;
+
+float pressureAt(ivec2 p, ivec2 size) {
+    return texelFetch(u_Pressure, clamp(p, ivec2(0), size - 1), 0).r;
+}
+
+void wallResponse(inout vec2 v, vec2 sourceVelocity, float distance,
+                  vec2 inwardNormal, float tangentSeed, float wallEnergy) {
+    float incident = max(-dot(sourceVelocity, inwardNormal), 0.0);
+    if (incident <= 0.0001) return;
+    float weight = exp(-distance * distance / 11.0);
+    float impulse = incident * weight * (1.02 + min(wallEnergy, 2.0) * 0.23 + incident * 0.38);
+    vec2 tangent = vec2(-inwardNormal.y, inwardNormal.x);
+    float slide = dot(v, tangent);
+    float direction = sign(slide + 0.018 * sin(tangentSeed * 0.089));
+    v += inwardNormal * impulse * 1.58 + tangent * direction * impulse * 1.02;
+}
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_State);
+    if (any(greaterThanEqual(p, size))) return;
+    vec4 field = texelFetch(u_Advected, p, 0);
+    vec2 gradient = vec2(pressureAt(p + ivec2(1, 0), size)
+                       - pressureAt(p - ivec2(1, 0), size),
+                         pressureAt(p + ivec2(0, 1), size)
+                       - pressureAt(p - ivec2(0, 1), size));
+    field.xy -= gradient * 0.5 / vec2(size);
+    if (p.x <= 5) {
+        vec4 wall = texelFetch(u_Advected, ivec2(0, p.y), 0);
+        wallResponse(field.xy, wall.xy, float(p.x), vec2(1.0, 0.0), float(p.y), wall.z);
+    }
+    if (p.x >= size.x - 6) {
+        vec4 wall = texelFetch(u_Advected, ivec2(size.x - 1, p.y), 0);
+        wallResponse(field.xy, wall.xy, float(size.x - 1 - p.x), vec2(-1.0, 0.0), float(p.y), wall.z);
+    }
+    if (p.y <= 5) {
+        vec4 wall = texelFetch(u_Advected, ivec2(p.x, 0), 0);
+        wallResponse(field.xy, wall.xy, float(p.y), vec2(0.0, 1.0), float(p.x), wall.z);
+    }
+    if (p.y >= size.y - 6) {
+        vec4 wall = texelFetch(u_Advected, ivec2(p.x, size.y - 1), 0);
+        wallResponse(field.xy, wall.xy, float(size.y - 1 - p.y), vec2(0.0, -1.0), float(p.x), wall.z);
+    }
+    if (p.x == 0) field.x = max(field.x, 0.0);
+    if (p.x == size.x - 1) field.x = min(field.x, 0.0);
+    if (p.y == 0) field.y = max(field.y, 0.0);
+    if (p.y == size.y - 1) field.y = min(field.y, 0.0);
+    field.xy = clamp(field.xy, vec2(-1.55), vec2(1.55));
+    imageStore(u_State, p, field);
+}

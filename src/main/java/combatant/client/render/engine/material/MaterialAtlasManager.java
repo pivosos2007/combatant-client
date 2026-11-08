@@ -122,23 +122,24 @@ public final class MaterialAtlasManager {
 
                 MaterialSurfaceDescriptor descriptor = MaterialRegistry.global().resolveAtlas(sprite);
                 PreparedSprite prepared = prepareSprite(resources, sprite, descriptor, baseState);
-                usableBySprite.put(sprite.contents().name(), prepared.usableMask());
-                if (prepared.usableMask() == 0) {
-                    prepared.close();
-                    continue;
-                }
+                boolean retained = false;
+                try {
+                    usableBySprite.put(sprite.contents().name(), prepared.usableMask());
+                    if (prepared.usableMask() == 0) continue;
 
-                FrameSample initial = prepared.sample(baseState);
-                blit(initial.albedo(), albedoImage, sprite.getX(), sprite.getY());
-                blit(initial.normalHeight(), normalHeightImage, sprite.getX(), sprite.getY());
-                blit(initial.surface(), surfaceImage, sprite.getX(), sprite.getY());
-                blit(initial.specular(), specularImage, sprite.getX(), sprite.getY());
-                initial.close();
+                    try (FrameSample initial = prepared.sample(baseState)) {
+                        blit(initial.albedo(), albedoImage, sprite.getX(), sprite.getY());
+                        blit(initial.normalHeight(), normalHeightImage, sprite.getX(), sprite.getY());
+                        blit(initial.surface(), surfaceImage, sprite.getX(), sprite.getY());
+                        blit(initial.specular(), specularImage, sprite.getX(), sprite.getY());
+                    }
 
-                if (baseState != null && prepared.timeline() != null) {
-                    animated.add(new AnimatedBinding(sprite, baseState, prepared));
-                } else {
-                    prepared.close();
+                    if (baseState != null && prepared.timeline() != null) {
+                        animated.add(new AnimatedBinding(sprite, baseState, prepared));
+                        retained = true;
+                    }
+                } finally {
+                    if (!retained) prepared.close();
                 }
             }
 
@@ -221,20 +222,25 @@ public final class MaterialAtlasManager {
         GpuTexture texture = RenderSystem.getDevice().createTexture(
                 label, USAGE, GpuFormat.RGBA8_UNORM, image.getWidth(), image.getHeight(), 1, mipLevels
         );
-        NativeImage level = copyImage(image);
         try {
-            for (int mip = 0; mip < mipLevels; mip++) {
-                RenderSystem.getDevice().createCommandEncoder().writeToTexture(texture, level, mip, 0, 0, 0);
-                if (mip + 1 < mipLevels) {
-                    NativeImage next = downsample(level, kind);
-                    level.close();
-                    level = next;
+            NativeImage level = copyImage(image);
+            try {
+                for (int mip = 0; mip < mipLevels; mip++) {
+                    RenderSystem.getDevice().createCommandEncoder().writeToTexture(texture, level, mip, 0, 0, 0);
+                    if (mip + 1 < mipLevels) {
+                        NativeImage next = downsample(level, kind);
+                        level.close();
+                        level = next;
+                    }
                 }
+            } finally {
+                level.close();
             }
-        } finally {
-            level.close();
+            return new AtlasTexture(texture, RenderSystem.getDevice().createTextureView(texture), mipLevels, kind);
+        } catch (Throwable error) {
+            try { texture.close(); } catch (Throwable closeError) { error.addSuppressed(closeError); }
+            throw error;
         }
-        return new AtlasTexture(texture, RenderSystem.getDevice().createTextureView(texture), mipLevels, kind);
     }
 
     /** Uploads the exact vanilla animation state to every companion mip, not just level zero. */
@@ -258,26 +264,42 @@ public final class MaterialAtlasManager {
 
     private static NativeImage copyImage(NativeImage source) {
         NativeImage copy = new NativeImage(source.getWidth(), source.getHeight(), false);
-        source.copyRect(copy, 0, 0, 0, 0, source.getWidth(), source.getHeight(), false, false);
-        return copy;
+        try {
+            source.copyRect(copy, 0, 0, 0, 0, source.getWidth(), source.getHeight(), false, false);
+            return copy;
+        } catch (Throwable error) {
+            copy.close();
+            throw error;
+        }
     }
 
     private static NativeImage downsample(NativeImage source, MipKind kind) {
-        int width = Math.max(1, source.getWidth() >> 1);
-        int height = Math.max(1, source.getHeight() >> 1);
+        int sourceWidth = source.getWidth();
+        int sourceHeight = source.getHeight();
+        int width = Math.max(1, sourceWidth >> 1);
+        int height = Math.max(1, sourceHeight >> 1);
         NativeImage out = new NativeImage(width, height, false);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int p0 = source.getPixel(Math.min(source.getWidth() - 1, x * 2), Math.min(source.getHeight() - 1, y * 2));
-                int p1 = source.getPixel(Math.min(source.getWidth() - 1, x * 2 + 1), Math.min(source.getHeight() - 1, y * 2));
-                int p2 = source.getPixel(Math.min(source.getWidth() - 1, x * 2), Math.min(source.getHeight() - 1, y * 2 + 1));
-                int p3 = source.getPixel(Math.min(source.getWidth() - 1, x * 2 + 1), Math.min(source.getHeight() - 1, y * 2 + 1));
-                out.setPixel(x, y, kind == MipKind.NORMAL_HEIGHT
-                        ? averageNormalHeight(p0, p1, p2, p3)
-                        : averageArgb(p0, p1, p2, p3));
+        try {
+            for (int y = 0; y < height; y++) {
+                int y0 = Math.min(sourceHeight - 1, y * 2);
+                int y1 = Math.min(sourceHeight - 1, y * 2 + 1);
+                for (int x = 0; x < width; x++) {
+                    int x0 = Math.min(sourceWidth - 1, x * 2);
+                    int x1 = Math.min(sourceWidth - 1, x * 2 + 1);
+                    int p0 = source.getPixel(x0, y0);
+                    int p1 = source.getPixel(x1, y0);
+                    int p2 = source.getPixel(x0, y1);
+                    int p3 = source.getPixel(x1, y1);
+                    out.setPixel(x, y, kind == MipKind.NORMAL_HEIGHT
+                            ? averageNormalHeight(p0, p1, p2, p3)
+                            : averageArgb(p0, p1, p2, p3));
+                }
             }
+            return out;
+        } catch (Throwable error) {
+            out.close();
+            throw error;
         }
-        return out;
     }
 
     private static int averageArgb(int a, int b, int c, int d) {
@@ -291,14 +313,19 @@ public final class MaterialAtlasManager {
 
     private static int averageNormalHeight(int a, int b, int c, int d) {
         float x = 0.0f, y = 0.0f, z = 0.0f;
-        int[] pixels = {a, b, c, d};
-        int h = 0;
-        for (int pixel : pixels) {
-            x += red(pixel) / 127.5f - 1.0f;
-            y += green(pixel) / 127.5f - 1.0f;
-            z += blue(pixel) / 127.5f - 1.0f;
-            h += alpha(pixel);
-        }
+        x += red(a) / 127.5f - 1.0f;
+        y += green(a) / 127.5f - 1.0f;
+        z += blue(a) / 127.5f - 1.0f;
+        x += red(b) / 127.5f - 1.0f;
+        y += green(b) / 127.5f - 1.0f;
+        z += blue(b) / 127.5f - 1.0f;
+        x += red(c) / 127.5f - 1.0f;
+        y += green(c) / 127.5f - 1.0f;
+        z += blue(c) / 127.5f - 1.0f;
+        x += red(d) / 127.5f - 1.0f;
+        y += green(d) / 127.5f - 1.0f;
+        z += blue(d) / 127.5f - 1.0f;
+        int h = alpha(a) + alpha(b) + alpha(c) + alpha(d);
         float inv = 1.0f / (float)Math.sqrt(Math.max(1.0e-8f, x * x + y * y + z * z));
         return argb(
                 (h + 2) / 4,
@@ -318,7 +345,11 @@ public final class MaterialAtlasManager {
         BaseAnimation base = loadBaseAnimation(resources, spriteId, frameWidth, frameHeight, sprite.isAnimated());
 
         EnumMap<MaterialTextureSemantic, NativeImage> loaded = new EnumMap<>(MaterialTextureSemantic.class);
-        int usableMask = 0;
+        NativeImage albedo = null;
+        NativeImage normalHeight = null;
+        NativeImage surface = null;
+        NativeImage specular = null;
+        boolean transferred = false;
         try {
             for (Map.Entry<MaterialTextureSemantic, Identifier> entry : descriptor.textures().asMap().entrySet()) {
                 Optional<Resource> resource = resources.getResource(entry.getValue());
@@ -342,10 +373,10 @@ public final class MaterialAtlasManager {
                 loaded.put(entry.getKey(), image);
             }
 
-            NativeImage albedo = new NativeImage(base.sheetWidth(), base.sheetHeight(), false);
-            NativeImage normalHeight = new NativeImage(base.sheetWidth(), base.sheetHeight(), false);
-            NativeImage surface = new NativeImage(base.sheetWidth(), base.sheetHeight(), false);
-            NativeImage specular = new NativeImage(base.sheetWidth(), base.sheetHeight(), false);
+            albedo = new NativeImage(base.sheetWidth(), base.sheetHeight(), false);
+            normalHeight = new NativeImage(base.sheetWidth(), base.sheetHeight(), false);
+            surface = new NativeImage(base.sheetWidth(), base.sheetHeight(), false);
+            specular = new NativeImage(base.sheetWidth(), base.sheetHeight(), false);
 
             int declared = descriptor.gpuPresenceMask8();
             for (int y = 0; y < base.sheetHeight(); y++) {
@@ -358,16 +389,27 @@ public final class MaterialAtlasManager {
                 }
             }
 
-            usableMask = usableMask(loaded, declared);
+            int usableMask = usableMask(loaded, declared);
             if (sprite.isAnimated() && base.timeline() == null) {
                 usableMask = 0;
             }
-            return new PreparedSprite(
+            PreparedSprite result = new PreparedSprite(
                     base.timeline(), frameWidth, frameHeight, base.sheetWidth(), base.sheetHeight(),
                     albedo, normalHeight, surface, specular, usableMask
             );
+            transferred = true;
+            return result;
         } finally {
-            for (NativeImage image : loaded.values()) image.close();
+            try {
+                for (NativeImage image : loaded.values()) image.close();
+            } finally {
+                if (!transferred) {
+                    if (albedo != null) albedo.close();
+                    if (normalHeight != null) normalHeight.close();
+                    if (surface != null) surface.close();
+                    if (specular != null) specular.close();
+                }
+            }
         }
     }
 
@@ -536,8 +578,13 @@ public final class MaterialAtlasManager {
 
     private static NativeImage filled(int width, int height, int color) {
         NativeImage image = new NativeImage(width, height, false);
-        image.fillRect(0, 0, width, height, color);
-        return image;
+        try {
+            image.fillRect(0, 0, width, height, color);
+            return image;
+        } catch (Throwable error) {
+            image.close();
+            throw error;
+        }
     }
 
     private static void blit(NativeImage source, NativeImage target, int dstX, int dstY) {
@@ -549,32 +596,37 @@ public final class MaterialAtlasManager {
                                      int frameWidth, int frameHeight, int sheetWidth, int sheetHeight,
                                      int subFrame) {
         NativeImage output = new NativeImage(frameWidth, frameHeight, false);
-        if (timeline == null) {
-            sheet.copyRect(output, 0, 0, 0, 0, frameWidth, frameHeight, false, false);
-            return output;
-        }
-        int sequence = Math.floorMod(sequenceFrame, timeline.frames().size());
-        FrameInfo current = timeline.frames().get(sequence);
-        FrameInfo next = timeline.frames().get((sequence + 1) % timeline.frames().size());
-        int currentX = (current.index() % timeline.columns()) * frameWidth;
-        int currentY = (current.index() / timeline.columns()) * frameHeight;
-        float blend = timeline.interpolate()
-                ? Math.max(0.0f, Math.min(1.0f, subFrame / (float) Math.max(1, current.time())))
-                : 0.0f;
-        int nextX = (next.index() % timeline.columns()) * frameWidth;
-        int nextY = (next.index() / timeline.columns()) * frameHeight;
-        for (int y = 0; y < frameHeight; y++) {
-            for (int x = 0; x < frameWidth; x++) {
-                int a = sheet.getPixel(Math.min(sheetWidth - 1, currentX + x), Math.min(sheetHeight - 1, currentY + y));
-                if (blend <= 0.0f || current.index() == next.index()) {
-                    output.setPixel(x, y, a);
-                } else {
-                    int b = sheet.getPixel(Math.min(sheetWidth - 1, nextX + x), Math.min(sheetHeight - 1, nextY + y));
-                    output.setPixel(x, y, lerpArgb(a, b, blend));
+        try {
+            if (timeline == null) {
+                sheet.copyRect(output, 0, 0, 0, 0, frameWidth, frameHeight, false, false);
+                return output;
+            }
+            int sequence = Math.floorMod(sequenceFrame, timeline.frames().size());
+            FrameInfo current = timeline.frames().get(sequence);
+            FrameInfo next = timeline.frames().get((sequence + 1) % timeline.frames().size());
+            int currentX = (current.index() % timeline.columns()) * frameWidth;
+            int currentY = (current.index() / timeline.columns()) * frameHeight;
+            float blend = timeline.interpolate()
+                    ? Math.max(0.0f, Math.min(1.0f, subFrame / (float) Math.max(1, current.time())))
+                    : 0.0f;
+            int nextX = (next.index() % timeline.columns()) * frameWidth;
+            int nextY = (next.index() / timeline.columns()) * frameHeight;
+            for (int y = 0; y < frameHeight; y++) {
+                for (int x = 0; x < frameWidth; x++) {
+                    int a = sheet.getPixel(Math.min(sheetWidth - 1, currentX + x), Math.min(sheetHeight - 1, currentY + y));
+                    if (blend <= 0.0f || current.index() == next.index()) {
+                        output.setPixel(x, y, a);
+                    } else {
+                        int b = sheet.getPixel(Math.min(sheetWidth - 1, nextX + x), Math.min(sheetHeight - 1, nextY + y));
+                        output.setPixel(x, y, lerpArgb(a, b, blend));
+                    }
                 }
             }
+            return output;
+        } catch (Throwable error) {
+            output.close();
+            throw error;
         }
-        return output;
     }
 
     private static int lerpArgb(int a, int b, float t) {
@@ -670,12 +722,17 @@ public final class MaterialAtlasManager {
                 sequence = accessor.combatant$getFrame();
                 subFrame = accessor.combatant$getSubFrame();
             }
-            return new FrameSample(
-                    frame(albedo, timeline, sequence, frameWidth, frameHeight, sheetWidth, sheetHeight, subFrame),
-                    frame(normalHeight, timeline, sequence, frameWidth, frameHeight, sheetWidth, sheetHeight, subFrame),
-                    frame(surface, timeline, sequence, frameWidth, frameHeight, sheetWidth, sheetHeight, subFrame),
-                    frame(specular, timeline, sequence, frameWidth, frameHeight, sheetWidth, sheetHeight, subFrame)
-            );
+            NativeImage[] layers = new NativeImage[4];
+            try {
+                layers[0] = frame(albedo, timeline, sequence, frameWidth, frameHeight, sheetWidth, sheetHeight, subFrame);
+                layers[1] = frame(normalHeight, timeline, sequence, frameWidth, frameHeight, sheetWidth, sheetHeight, subFrame);
+                layers[2] = frame(surface, timeline, sequence, frameWidth, frameHeight, sheetWidth, sheetHeight, subFrame);
+                layers[3] = frame(specular, timeline, sequence, frameWidth, frameHeight, sheetWidth, sheetHeight, subFrame);
+                return new FrameSample(layers[0], layers[1], layers[2], layers[3]);
+            } catch (Throwable error) {
+                for (NativeImage layer : layers) if (layer != null) layer.close();
+                throw error;
+            }
         }
 
         @Override

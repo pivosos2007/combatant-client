@@ -54,11 +54,7 @@ public enum EnvironmentMovementController {
     }
 
     public static boolean shouldPreserveHoneySlide(Entity entity) {
-        if (isNoStunHoneyEnabled()) {
-            return true;
-        }
-
-        return false;
+        return isNoStunHoneyEnabled();
     }
 
     private static boolean isNoStunHoneyEnabled() {

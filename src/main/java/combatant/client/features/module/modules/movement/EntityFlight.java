@@ -18,6 +18,8 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
+import combatant.client.features.gui.hud.gauges.GaugeConnect;
+import combatant.client.features.gui.hud.gauges.GaugeRegistry;
 import combatant.client.util.player.VehicleMotion;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -52,14 +54,19 @@ public final class EntityFlight extends Module {
     private int lastTick = Integer.MIN_VALUE;
     private int airborneTicks;
     private int unsupportedTicks;
+    private int boatFloatingTicks;
     private int launchTicks;
+    private int lastMountPulseTick = Integer.MIN_VALUE;
+    private int mountVerticalInput;
     private int correctionTicks;
-    private int cycle;
     private double ascentBuffer;
     private double hoverBuffer;
     private double lastVertical = Double.NaN;
     private double horizontalBuffer;
     private double holdAltitude = Double.NaN;
+    private double lastVehicleHeight = Double.NaN;
+    private double measuredVertical;
+    private boolean ownsHorizontal;
     private boolean flightStarted;
 
     @Override
@@ -69,7 +76,62 @@ public final class EntityFlight extends Module {
 
     @Override
     public void onDisable() {
+        GaugeRegistry.removeOwner("entityflight");
         resetState(null);
+    }
+
+    @Override
+    public void onTick() {
+        LocalPlayer player = mc.player;
+        if (trackedVehicle != null && (player == null
+                || player.getVehicle() != trackedVehicle
+                || trackedVehicle.getControllingPassenger() != player)) resetState(null);
+        if (player != null && player.getVehicle() != null
+                && player.getVehicle().getControllingPassenger() == player
+                && trackedVehicle != player.getVehicle()) resetState(player.getVehicle());
+        GaugeRegistry.updateAnnotated("entityflight", this);
+    }
+
+    @GaugeConnect(id = "ascent", labelKey = "hud.gauges.entityflight.ascent",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = .2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample ascentGauge() {
+        double limit = trackedVehicle instanceof AbstractBoat ? BOAT_ASCENT_LIMIT : MOUNT_ASCENT_LIMIT;
+        return bufferSample(ascentBuffer, limit,
+                activeFlight());
+    }
+
+    @GaugeConnect(id = "hover", labelKey = "hud.gauges.entityflight.hover",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = .2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample hoverGauge() {
+        return bufferSample(hoverBuffer, HOVER_LIMIT,
+                activeFlight());
+    }
+
+    @GaugeConnect(id = "horizontal", labelKey = "hud.gauges.entityflight.horizontal",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = .2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample horizontalGauge() {
+        return bufferSample(horizontalBuffer, HOVER_LIMIT,
+                activeFlight() && !sharedHorizontalMotion());
+    }
+
+    private GaugeRegistry.Sample bufferSample(double used, double limit, boolean visible) {
+        float available = (float) (1.0D - Mth.clamp(used / limit, 0.0D, 1.0D));
+        return new GaugeRegistry.Sample(available, used + BUFFER_RESERVE <= limit,
+                visible, GaugeRegistry.Flow.DRAIN, "");
+    }
+
+    private boolean activeFlight() {
+        LocalPlayer player = mc.player;
+        return isEnabled() && mode.get() == Mode.VULCAN && player != null
+                && player.getVehicle() != null
+                && player.getVehicle().getControllingPassenger() == player;
+    }
+
+    private boolean sharedHorizontalMotion() {
+        LocalPlayer player = mc.player;
+        EntityControl control = Modules.get(EntityControl.class);
+        return player != null && player.getVehicle() != null
+                && control != null && control.providesVulcanMotion(player.getVehicle());
     }
 
     public boolean controlsBoat(LocalPlayer player, AbstractBoat boat) {
@@ -89,14 +151,19 @@ public final class EntityFlight extends Module {
         lastTick = Integer.MIN_VALUE;
         airborneTicks = 0;
         unsupportedTicks = 0;
+        boatFloatingTicks = 0;
         launchTicks = 0;
+        lastMountPulseTick = Integer.MIN_VALUE;
+        mountVerticalInput = 0;
         correctionTicks = 0;
-        cycle = 0;
         ascentBuffer = 0.0D;
         hoverBuffer = 0.0D;
         horizontalBuffer = 0.0D;
         holdAltitude = Double.NaN;
         lastVertical = Double.NaN;
+        lastVehicleHeight = Double.NaN;
+        measuredVertical = 0.0D;
+        ownsHorizontal = false;
         flightStarted = false;
     }
 
@@ -106,13 +173,15 @@ public final class EntityFlight extends Module {
                 || mc.player.getVehicle() == null) return;
         if (event.getPacket() instanceof ClientboundMoveVehiclePacket
                 || event.getPacket() instanceof ClientboundPlayerPositionPacket) {
-            correctionTicks = 60;
+            correctionTicks = 16;
             ascentBuffer = Math.max(ascentBuffer, MOUNT_ASCENT_LIMIT - BUFFER_RESERVE);
             hoverBuffer = Math.max(hoverBuffer, HOVER_LIMIT - BUFFER_RESERVE);
             horizontalBuffer = Math.max(horizontalBuffer, HOVER_LIMIT - BUFFER_RESERVE);
             holdAltitude = Double.NaN;
-            flightStarted = false;
+            lastMountPulseTick = Integer.MIN_VALUE;
+            mountVerticalInput = 0;
             launchTicks = 0;
+            lastVehicleHeight = Double.NaN;
         }
     }
 
@@ -139,6 +208,7 @@ public final class EntityFlight extends Module {
         EntityControl control = Modules.get(EntityControl.class);
         boolean sharedHorizontal = control != null && control.providesVulcanMotion(vehicle)
                 && mode.get() == Mode.VULCAN;
+        ownsHorizontal = !sharedHorizontal;
         boolean boat = vehicle instanceof AbstractBoat;
         boolean inWater = vehicle.isInWater();
         boolean onGround = vehicle.onGround();
@@ -147,8 +217,11 @@ public final class EntityFlight extends Module {
         boolean airborne = !onGround && !inWater && !atSurface;
         boolean newTick = lastTick != vehicle.tickCount;
         if (newTick) {
+            measuredVertical = Double.isFinite(lastVehicleHeight)
+                    ? Mth.clamp(vehicle.getY() - lastVehicleHeight, -1.2D, 1.2D)
+                    : original.y;
+            lastVehicleHeight = vehicle.getY();
             lastTick = vehicle.tickCount;
-            cycle++;
             if (correctionTicks > 0) correctionTicks--;
             airborneTicks = airborne ? airborneTicks + 1 : 0;
             unsupportedTicks = onGround || atSurface ? 0 : unsupportedTicks + 1;
@@ -193,6 +266,8 @@ public final class EntityFlight extends Module {
                 if (onGround && launchTicks == 0) {
                     flightStarted = false;
                     holdAltitude = Double.NaN;
+                    lastMountPulseTick = Integer.MIN_VALUE;
+                    mountVerticalInput = 0;
                 }
                 if (!flightStarted && y > 0.13D && unsupportedTicks <= 3) {
                     flightStarted = true;
@@ -201,16 +276,40 @@ public final class EntityFlight extends Module {
                 }
                 if (flightStarted && launchTicks > 0) {
                     if (newTick) launchTicks--;
-                    if (launchTicks == 0 || y <= 0.03D && launchTicks <= 8) {
-                        holdAltitude = vehicle.getY() + Math.max(0.0D, y);
+                    if (downward || launchTicks == 0 || y <= 0.03D && launchTicks <= 8) {
+                        holdAltitude = vehicle.getY() + (downward ? -0.15D : Math.max(0.0D, y));
                         launchTicks = 0;
                     }
-                } else if (flightStarted || atSurface) {
+                }
+                if (flightStarted && launchTicks == 0 || atSurface) {
+                    int verticalInput = upward ? 1 : downward ? -1 : 0;
+                    if (verticalInput == 0 && mountVerticalInput != 0 && flightStarted)
+                        holdAltitude = vehicle.getY();
+                    mountVerticalInput = verticalInput;
                     y = vulcanVertical(vehicle, y, surfaceDistance, false, upward, downward, newTick);
+                    if (flightStarted && airborne && unsupportedTicks >= 26)
+                        y = sustainedMountMotion(vehicle, y, upward, downward);
                 }
             }
         } else if (atSurface && !upward && !downward) {
             y = surfaceMotion(y, surfaceDistance, boat);
+        }
+
+        if (mode.get() == Mode.VULCAN && airborne) {
+            if (boat) {
+                if (boatFloatingTicks >= 12 || hoverBuffer >= 2.5D
+                        && y > -0.05D && Double.isFinite(lastVertical)
+                        && Math.abs(y - lastVertical) < 0.025D) {
+                    y = Math.min(y, -0.085D);
+                    boatFloatingTicks = 0;
+                }
+                if (upward && ascentBuffer + BUFFER_RESERVE >= BOAT_ASCENT_LIMIT)
+                    y = Math.min(y, -0.06D);
+            }
+        }
+        if (boat && newTick && mode.get() == Mode.VULCAN) {
+            if (!airborne || y < -0.03125D) boatFloatingTicks = 0;
+            else boatFloatingTicks++;
         }
 
         Vec3 changed = new Vec3(x, y, z);
@@ -241,64 +340,93 @@ public final class EntityFlight extends Module {
             holdAltitude = Double.NaN;
             return surfaceMotion(originalY, surfaceDistance, boat);
         }
+        if (vehicle.onGround() && !upward) {
+            holdAltitude = Double.NaN;
+            flightStarted = false;
+            return Math.min(0.0D, originalY);
+        }
+        boolean landing = downward && !vehicle.onGround()
+                && !vehicle.level().noCollision(vehicle, vehicle.getBoundingBox().move(0.0D, -0.20D, 0.0D));
+        if (landing) {
+            holdAltitude = Double.NaN;
+            flightStarted = false;
+            return Math.min(-0.065D, originalY);
+        }
 
         if (Double.isNaN(holdAltitude)) holdAltitude = vehicle.getY();
         if (newTick) {
-            if (upward) holdAltitude += boat ? 0.15D : 0.11D;
-            if (downward) holdAltitude -= boat ? 0.16D : 0.12D;
+            if (upward && (!boat || ascentBuffer < 2.0D))
+                holdAltitude = Math.max(holdAltitude + (boat ? 0.55D : 0.12D),
+                        vehicle.getY() + (boat ? 0.55D : 0.10D));
+            else if (downward) holdAltitude = Math.min(holdAltitude - (boat ? 0.20D : 0.18D),
+                    vehicle.getY() - 0.14D);
         }
-        double altitudeError = holdAltitude - vehicle.getY();
+        double error = holdAltitude - vehicle.getY();
+        double velocity = Double.isFinite(measuredVertical) ? measuredVertical : originalY;
+        double desired = Mth.clamp(error * 0.24D - velocity * 0.55D,
+                -0.27D, boat ? 0.27D : 0.23D);
+        if (!upward && !downward && Math.abs(error) < 0.025D
+                && Math.abs(velocity) < 0.025D) desired = 0.0D;
+        if (downward) desired = Math.min(desired, -0.10D);
+        if (upward && vehicle.onGround()) desired = Math.max(desired, 0.16D);
+        if (!Double.isNaN(surfaceDistance) && upward && surfaceDistance > -0.08D)
+            desired = Math.max(desired, originalY);
+
         boolean airborne = !vehicle.onGround() && !vehicle.isInWater()
                 && Double.isNaN(surfaceDistance);
-        double desired;
-        if (airborne && airborneTicks > 30) {
-            int phase = cycle % (boat ? 10 : 6);
-            if (phase == 0) {
-                desired = (boat ? 0.29D : 0.33D)
-                        + Mth.clamp(altitudeError * 0.30D, -0.14D, 0.34D);
-            } else if (boat) {
-                desired = (phase & 1) == 0 ? -0.06D : -0.01D;
+        if (airborne && boat) {
+            if (downward) {
+                desired = Math.min(desired, -0.18D);
+            } else if (upward) {
+                if (ascentBuffer <= 2.0D && boatFloatingTicks < 9) {
+                    desired = 0.88D - 0.055D * Math.min(2.0D, ascentBuffer);
+                } else {
+                    desired = -0.09D;
+                }
+            } else if (ascentBuffer < 0.9D && holdAltitude - vehicle.getY() > 0.7D
+                    && boatFloatingTicks < 6) {
+                desired = 0.76D;
             } else {
-                desired = switch (phase) {
-                    case 1 -> -0.015D;
-                    case 2 -> -0.10D;
-                    case 3 -> -0.03D;
-                    case 4 -> -0.12D;
-                    default -> -0.065D;
-                };
+                desired = -0.075D;
             }
-            if (downward) desired -= 0.035D;
-        } else {
-            desired = Mth.clamp(altitudeError * 0.28D - originalY * 0.34D,
-                    -0.25D, boat ? 0.28D : 0.22D);
-            if (!upward && !downward && Math.abs(altitudeError) < 0.04D) {
-                desired = Mth.clamp(desired, -0.10D, 0.10D);
-            }
-            if (downward) desired = Math.min(desired, -0.08D);
+        } else if (airborne && upward && airborneTicks > 30
+                && ascentBuffer + BUFFER_RESERVE >= MOUNT_ASCENT_LIMIT) {
+            holdAltitude = Math.min(holdAltitude, vehicle.getY() + 0.14D);
+            desired = Math.min(desired, 0.0D);
         }
-        if (!Double.isNaN(surfaceDistance) && upward && surfaceDistance > -0.08D) {
-            desired = Math.max(desired, originalY);
-        }
-
-        boolean ascentRisk = airborne && (boat || airborneTicks > 30) && desired > 0.0D;
-        boolean hoverRisk = airborne && (boat || airborneTicks > 30)
-                && !Double.isNaN(lastVertical)
-                && desired > (boat ? -0.05D : -1.15D)
-                && Math.abs(desired - lastVertical) < (boat ? 0.025D : 0.05D);
-        if (ascentRisk && ascentBuffer + BUFFER_RESERVE > (boat ? BOAT_ASCENT_LIMIT : MOUNT_ASCENT_LIMIT)) {
-            desired = Math.min(desired, -0.055D);
-        }
-        if (hoverRisk && hoverBuffer + BUFFER_RESERVE > HOVER_LIMIT) {
-            desired = boat ? Math.min(desired, -0.055D)
-                    : (cycle & 1) == 0 ? -0.055D : -0.115D;
-        }
-        return Mth.clamp(desired, -0.30D, 0.65D);
+        if (!(airborne && boat) && Double.isFinite(lastVertical) && Math.abs(lastVertical) <= 0.5D)
+            desired = Mth.clamp(desired, lastVertical - 0.085D, lastVertical + 0.085D);
+        return Mth.clamp(desired, -0.27D, boat && airborne ? 0.9D : 0.65D);
     }
 
-    private static double surfaceMotion(double originalY, double distance, boolean boat) {
+    private double sustainedMountMotion(Entity vehicle, double requestedY, boolean upward, boolean downward) {
+        if (downward) {
+            lastMountPulseTick = vehicle.tickCount;
+            double falling = Double.isFinite(measuredVertical) ? measuredVertical - 0.08D : -0.14D;
+            return Math.min(requestedY, Mth.clamp(falling, -1.2D, -0.14D));
+        }
+        if (upward && Double.isFinite(holdAltitude))
+            holdAltitude = Math.min(holdAltitude, vehicle.getY() + 0.75D);
+        double error = Double.isFinite(holdAltitude) ? holdAltitude - vehicle.getY() : 0.0D;
+        boolean canPulse = (lastMountPulseTick == Integer.MIN_VALUE
+                || vehicle.tickCount - lastMountPulseTick >= 5)
+                && ascentBuffer < 2.0D && hoverBuffer < 2.0D;
+        if (canPulse && (error > 0.12D || upward && error > -0.16D)) {
+            lastMountPulseTick = vehicle.tickCount;
+            return Mth.clamp(0.37D + error * 0.28D, 0.37D, 0.68D);
+        }
+        return (unsupportedTicks & 1) == 0 ? -0.065D : -0.145D;
+    }
+
+    private double surfaceMotion(double originalY, double distance, boolean boat) {
         double error = distance - (boat ? 0.07D : -0.02D);
-        double target = error * (boat ? 0.24D : 0.30D) - originalY * 0.35D;
-        return Mth.clamp(target, -0.12D, boat ? 0.12D : 0.16D);
+        double velocity = Double.isFinite(measuredVertical) ? measuredVertical : originalY;
+        double target = Mth.clamp(error * (boat ? 0.24D : 0.30D) - velocity * 0.55D,
+                -0.12D, boat ? 0.12D : 0.16D);
+        if (Math.abs(error) < 0.02D && Math.abs(velocity) < 0.02D) target = 0.0D;
+        if (Double.isFinite(lastVertical) && Math.abs(lastVertical) < 0.5D)
+            target = Mth.clamp(target, lastVertical - 0.065D, lastVertical + 0.065D);
+        return target;
     }
 
     private static double updateBuffer(double current, boolean violation, double decay) {

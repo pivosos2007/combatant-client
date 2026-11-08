@@ -35,16 +35,17 @@ public final class UiTextRenderer {
         String suffix = "...";
         float suffixWidth = (float) renderer.getWidth(suffix, shadow);
         int low = 0;
-        int high = text.length();
+        int high = text.codePointCount(0, text.length());
         while (low < high) {
             int mid = (low + high + 1) >>> 1;
-            if (renderer.getWidth(text, mid, shadow) + suffixWidth <= maxWidth) {
+            int end = text.offsetByCodePoints(0, mid);
+            if (renderer.getWidth(text, end, shadow) + suffixWidth <= maxWidth) {
                 low = mid;
             } else {
                 high = mid - 1;
             }
         }
-        return low <= 0 ? suffix : text.substring(0, low) + suffix;
+        return low <= 0 ? suffix : text.substring(0, text.offsetByCodePoints(0, low)) + suffix;
     }
 
     public float measureWidth(TextRenderer fallback, String text, UiStyle style) {
@@ -258,13 +259,14 @@ public final class UiTextRenderer {
         float suffixWidth = (float) renderer.getWidth(suffix, shadow);
         if (suffixWidth >= maxWidth) return suffix;
         int low = 0;
-        int high = text.length();
+        int high = text.codePointCount(0, text.length());
         while (low < high) {
             int mid = (low + high + 1) >>> 1;
-            if (renderer.getWidth(text, mid, shadow) + suffixWidth <= maxWidth) low = mid;
+            int end = text.offsetByCodePoints(0, mid);
+            if (renderer.getWidth(text, end, shadow) + suffixWidth <= maxWidth) low = mid;
             else high = mid - 1;
         }
-        return text.substring(0, Math.max(0, low)) + suffix;
+        return text.substring(0, text.offsetByCodePoints(0, low)) + suffix;
     }
 
     private static float textConstraint(UiStyle style) {

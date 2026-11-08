@@ -27,7 +27,7 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.implement.o
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.relations.RelationsComponent;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.theme.ThemeComponent;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.theme.ThemeEditorPreviewComponent;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiHintOverlay;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
@@ -153,7 +153,7 @@ public final class MenuScreen {
         }
         float distanceProgress = easeOutQuint(screenAnim);
         float fadeProgress = smootherStep(screenAnim);
-        float previousAlpha = ClickGuiRenderer.setRenderAlphaMultiplier(fadeProgress);
+        float previousAlpha = LayoutRender2D.setRenderAlphaMultiplier(fadeProgress);
         Renderer2D.COLOR.setAlpha(fadeProgress);
         try (RenderWarpStack.Scope ignored = pushLifecycleWarp(distanceProgress)) {
             if (renderMain) {
@@ -199,7 +199,7 @@ public final class MenuScreen {
             settingsPanel.render(menuX, menuY, menuW, menuH, mx, my, S);
         } finally {
             Renderer2D.COLOR.setAlpha(1.0f);
-            ClickGuiRenderer.restoreRenderAlphaMultiplier(previousAlpha);
+            LayoutRender2D.restoreRenderAlphaMultiplier(previousAlpha);
         }
 
         if (renderMain && !settingsPanel.isActive()) {
@@ -492,12 +492,12 @@ public final class MenuScreen {
         );
 
         if (category.iconToken()) {
-            TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(ClickGuiRenderer.getInterRegular());
+            TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
             float iconSize = 11.5f * S;
             float textSize = 11.5f * S;
             float baseX = shellX + 50f * S;
             float baseY = shellY + 13.5f * S;
-            ClickGuiRenderer.drawText(
+            LayoutRender2D.drawText(
                     icons,
                     category.token(),
                     baseX,
@@ -506,9 +506,9 @@ public final class MenuScreen {
                     palette.menuHeaderText(),
                     false
             );
-            float iconW = ClickGuiRenderer.textWidth(icons, category.token(), iconSize);
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterRegular(),
+            float iconW = LayoutRender2D.textWidth(icons, category.token(), iconSize);
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     " " + category.title(),
                     baseX + iconW + 1.5f * S,
                     baseY,
@@ -529,8 +529,8 @@ public final class MenuScreen {
                     iconSize,
                     SvgRenderOptions.overrideColor(palette.menuHeaderText())
             );
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterRegular(),
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     " " + category.title(),
                     baseX + iconSize + 1.5f * S,
                     baseY,
@@ -539,8 +539,8 @@ public final class MenuScreen {
                     false
             );
         } else {
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterRegular(),
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     "| " + category.title(),
                     shellX + 50f * S,
                     shellY + 13.5f * S,

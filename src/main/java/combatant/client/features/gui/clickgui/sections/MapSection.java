@@ -7,6 +7,10 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.UiBlurResources;
@@ -146,10 +150,10 @@ public final class MapSection implements ClickGuiSection {
     }
 
     private void drawStatus(String status) {
-        TextRenderer font = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, ClickGuiRenderer.getInterRegular());
+        TextRenderer font = Fonts.renderer("OnestMedium", FontInfo.Type.Regular, BuiltinFontCatalog.ONEST_REGULAR.renderer());
         float fontSize = 14.0f;
-        float textWidth = ClickGuiRenderer.textWidth(font, status, fontSize);
-        ClickGuiRenderer.drawText(
+        float textWidth = LayoutRender2D.textWidth(font, status, fontSize);
+        LayoutRender2D.drawText(
                 font,
                 status,
                 x + (width - textWidth) * 0.5f,

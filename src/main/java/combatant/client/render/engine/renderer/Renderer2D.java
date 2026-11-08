@@ -354,6 +354,29 @@ public final class Renderer2D {
         if (material != null) materialPrimitive(primitive, paint, material.asSurface());
     }
 
+    public void materialPrimitive(UiPrimitive primitive, UiPaint paint, UiHoneycombMaterialSpec material) {
+        if (primitive == null || paint == null || material == null || primitive.pointCount() != 4) return;
+        UiRect bounds = primitive.bounds();
+        float epsilon = 0.002f;
+        for (int i = 0; i < 4; i++) {
+            float x = primitive.localX(i);
+            float y = primitive.localY(i);
+            if (Math.min(Math.abs(x), Math.abs(x - bounds.width())) > epsilon ||
+                    Math.min(Math.abs(y), Math.abs(y - bounds.height())) > epsilon) return;
+        }
+        float rounding = primitive.rounding();
+        if (primitive.hasRoundedCorners()) {
+            float[] radii = primitive.cornerRadii();
+            for (float radius : radii) {
+                if (Math.abs(radius - radii[0]) > epsilon) return;
+            }
+            rounding = radii[0];
+        }
+        honeycombRoundedRect(bounds.x(), bounds.y(), bounds.width(), bounds.height(), rounding,
+                material.cellRadiusPx(), material.lineWidthPx(), 1f,
+                paint.solidColor(), material);
+    }
+
     public void materialPrimitive(UiPrimitive primitive, UiPaint paint, UiSurfaceMaterialSpec material) {
         if (primitive == null || paint == null || material == null || primitive.pointCount() < 3) return;
         recordUi(UiCommandKind.SHAPE);
@@ -1973,96 +1996,15 @@ public final class Renderer2D {
                 .next();
     }
 
-    /** Draws the main-menu glass wall: per-cell blur/refraction with an optional chamfered cutout. */
-    public void mainMenuHoneycombGlass(double x, double y, double w, double h,
-                                     float cellRadius,
-                                     float gap,
-                                     float lineWidth,
-                                     float opacity,
-                                     float mouseX,
-                                     float mouseY,
-                                     float lightRadius,
-                                     float originX,
-                                     float originY,
-                                     int baseArgb,
-                                     int highlightArgb) {
-        mainMenuHoneycombGlass(x, y, w, h, cellRadius, gap, lineWidth, opacity,
-                mouseX, mouseY, lightRadius, originX, originY, baseArgb, highlightArgb,
-                0f, 0f, 0f, 0f, 0f, 0f, UiHoneycombMaterialSpec.SMOKED_MACHINED);
-    }
-
-    /**
-     * Variant used by menu windows. The cutout is evaluated in the honeycomb shader, so both the
-     * lattice and its cursor-light/refraction disappear under the exact chamfered window silhouette.
-     */
-    public void mainMenuHoneycombGlass(double x, double y, double w, double h,
-                                     float cellRadius,
-                                     float gap,
-                                     float lineWidth,
-                                     float opacity,
-                                     float mouseX,
-                                     float mouseY,
-                                     float lightRadius,
-                                     float originX,
-                                     float originY,
-                                     int baseArgb,
-                                     int highlightArgb,
-                                     float cutoutX,
-                                     float cutoutY,
-                                     float cutoutW,
-                                      float cutoutH,
-                                      float cutoutCut,
-                                      float cutoutEnabled) {
-        mainMenuHoneycombGlass(x, y, w, h, cellRadius, gap, lineWidth, opacity,
-                mouseX, mouseY, lightRadius, originX, originY, baseArgb, highlightArgb,
-                cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled,
-                UiHoneycombMaterialSpec.SMOKED_MACHINED);
-    }
-
-    public void mainMenuHoneycombGlass(double x, double y, double w, double h,
-                                      float cellRadius,
-                                      float gap,
-                                      float lineWidth,
-                                      float opacity,
-                                      float mouseX,
-                                      float mouseY,
-                                      float lightRadius,
-                                      float originX,
-                                      float originY,
-                                      int baseArgb,
-                                      int highlightArgb,
-                                      float cutoutX,
-                                      float cutoutY,
-                                      float cutoutW,
-                                      float cutoutH,
-                                      float cutoutCut,
-                                      float cutoutEnabled,
-                                      UiHoneycombMaterialSpec material) {
-        if (w <= 0.0 || h <= 0.0 || cellRadius <= 0.0f || opacity <= 0.001f) return;
-        UiHoneycombMaterialSpec safeMaterial = material != null
-                ? material
-                : UiHoneycombMaterialSpec.SMOKED_MACHINED;
-
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null) return;
-        RenderTarget framebuffer = minecraft.gameRenderer.mainRenderTarget();
-        if (framebuffer == null || framebuffer.getColorTextureView() == null) return;
-        GpuSampler sampler = PostProcessManager.getSampler();
-        if (sampler == null) return;
-
-        UiShape backdropShape = UiShape.rect(x, y, w, h);
-        UiBackdropRequest backdrop = UiBackdropRequest.capturedSceneGlass(
-                backdropShape.bounds(), UiBlurQuality.ULTRA, 2.35f);
-        effect(UiEffectSpec.liquidGlass(backdropShape, 0.0, 0.0, 0.0, baseArgb, backdrop));
-
+    public void menuSmokePuff(float centerX, float centerY, float radiusX, float radiusY,
+                              float time, float seed, float intensity, float drift, int color) {
+        if (radiusX <= 0f || radiusY <= 0f || intensity <= 0.001f) return;
+        float x = centerX - radiusX * 1.45f;
+        float y = centerY - radiusY * 1.45f;
+        float w = radiusX * 2.9f;
+        float h = radiusY * 2.9f;
         boolean auto = beginAutoBatch();
-        DrawBatch batch = UI_BATCHER.getOrCreateBlur(
-                UiBatchType.MAIN_MENU_HONEYCOMB,
-                framebuffer.getColorTextureView(),
-                sampler,
-                BlurQuality.ULTRA,
-                2.35f,
-                backdrop);
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.MENU_SMOKE, null, null);
         if (batch == null) {
             endAutoBatch(auto);
             return;
@@ -2070,56 +2012,167 @@ public final class Renderer2D {
         MeshBuilder mesh = batch.mesh;
         mesh.alpha = alpha;
         mesh.ensureQuadCapacity();
-
-        int ba = (baseArgb >>> 24) & 0xFF;
-        int br = (baseArgb >>> 16) & 0xFF;
-        int bg = (baseArgb >>> 8) & 0xFF;
-        int bb = baseArgb & 0xFF;
-        float hr = ((highlightArgb >>> 16) & 0xFF) / 255.0f;
-        float hg = ((highlightArgb >>> 8) & 0xFF) / 255.0f;
-        float hb = (highlightArgb & 0xFF) / 255.0f;
-        float ha = ((highlightArgb >>> 24) & 0xFF) / 255.0f;
-
-        int i1 = appendMainMenuHoneycombVertex(mesh, x, y, br, bg, bb, ba, x, y, w, h,
-                cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
-                 hr, hg, hb, ha, originX, originY,
-                 cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled, safeMaterial);
-        int i2 = appendMainMenuHoneycombVertex(mesh, x, y + h, br, bg, bb, ba, x, y, w, h,
-                cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
-                 hr, hg, hb, ha, originX, originY,
-                 cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled, safeMaterial);
-        int i3 = appendMainMenuHoneycombVertex(mesh, x + w, y + h, br, bg, bb, ba, x, y, w, h,
-                cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
-                 hr, hg, hb, ha, originX, originY,
-                 cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled, safeMaterial);
-        int i4 = appendMainMenuHoneycombVertex(mesh, x + w, y, br, bg, bb, ba, x, y, w, h,
-                cellRadius, gap, lineWidth, opacity, mouseX, mouseY, lightRadius,
-                 hr, hg, hb, ha, originX, originY,
-                 cutoutX, cutoutY, cutoutW, cutoutH, cutoutCut, cutoutEnabled, safeMaterial);
+        int a = (color >>> 24) & 255;
+        int r = (color >>> 16) & 255;
+        int g = (color >>> 8) & 255;
+        int b = color & 255;
+        int i1 = menuSmokeVertex(mesh, x, y, r, g, b, a, x, y, w, h,
+                centerX, centerY, radiusX, radiusY, time, seed, intensity, drift);
+        int i2 = menuSmokeVertex(mesh, x, y + h, r, g, b, a, x, y, w, h,
+                centerX, centerY, radiusX, radiusY, time, seed, intensity, drift);
+        int i3 = menuSmokeVertex(mesh, x + w, y + h, r, g, b, a, x, y, w, h,
+                centerX, centerY, radiusX, radiusY, time, seed, intensity, drift);
+        int i4 = menuSmokeVertex(mesh, x + w, y, r, g, b, a, x, y, w, h,
+                centerX, centerY, radiusX, radiusY, time, seed, intensity, drift);
         mesh.quad(i1, i2, i3, i4);
         endAutoBatch(auto);
     }
 
-    private static int appendMainMenuHoneycombVertex(MeshBuilder mesh,
-                                                      double px, double py,
-                                                      int r, int g, int b, int a,
-                                                      double x, double y, double w, double h,
-                                                      float cellRadius, float gap, float lineWidth, float opacity,
-                                                      float mouseX, float mouseY, float lightRadius,
-                                                      float highlightR, float highlightG, float highlightB, float highlightA,
-                                                      float originX, float originY,
-                                                       float cutoutX, float cutoutY, float cutoutW, float cutoutH,
-                                                       float cutoutCut, float cutoutEnabled,
-                                                       UiHoneycombMaterialSpec material) {
+    private static int menuSmokeVertex(MeshBuilder mesh, double x, double y,
+                                      int r, int g, int b, int a,
+                                      float rectX, float rectY, float rectW, float rectH,
+                                      float centerX, float centerY, float radiusX, float radiusY,
+                                      float time, float seed, float intensity, float drift) {
+        return mesh.vec2(x, y).local2(x, y).color(r, g, b, a)
+                .vec4(rectX, rectY, rectW, rectH)
+                .vec4(centerX, centerY, radiusX, radiusY)
+                .vec4(time, seed, intensity, drift)
+                .next();
+    }
+
+    public void honeycombArea(double x, double y, double w, double h,
+                              float cellRadius, float lineWidth, float opacity,
+                              float mouseX, float mouseY, float lightRadius,
+                              float originX, float originY, int accentArgb,
+                              UiHoneycombMaterialSpec material) {
+        drawHoneycomb(x, y, w, h, cellRadius, lineWidth, opacity, mouseX, mouseY,
+                lightRadius, originX, originY, accentArgb, accentArgb, material,
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
+    }
+
+    public void honeycombAreaCutout(double x, double y, double w, double h,
+                                   float cellRadius, float lineWidth, float opacity,
+                                   float mouseX, float mouseY, float lightRadius,
+                                   float originX, float originY, int accentArgb,
+                                   UiHoneycombMaterialSpec material,
+                                   float cutoutX, float cutoutY, float cutoutW, float cutoutH, float chamfer) {
+        drawHoneycomb(x, y, w, h, cellRadius, lineWidth, opacity, mouseX, mouseY,
+                lightRadius, originX, originY, accentArgb, accentArgb, material,
+                cutoutX, cutoutY, cutoutW, cutoutH, chamfer, 2f, 0f, 0f, 0f, 0f);
+    }
+
+    public void honeycombRoundedRect(double x, double y, double w, double h, float cornerRadius,
+                                     float cellRadius, float lineWidth, float opacity,
+                                     int accentArgb, UiHoneycombMaterialSpec material) {
+        drawHoneycomb(x, y, w, h, cellRadius, lineWidth, opacity, -100000f, -100000f,
+                0f, (float)x, (float)y, accentArgb, accentArgb, material,
+                (float)x, (float)y, (float)w, (float)h, cornerRadius, 1f, 0f, 0f, 0f, 2f);
+    }
+
+    public void honeycombPulse(double viewportWidth, double viewportHeight,
+                               float cellRadius, float lineWidth, float opacity,
+                               float sourceX, float sourceY, float age, float boundRadius,
+                               float originX, float originY, int accentArgb, int coldArgb,
+                               UiHoneycombMaterialSpec material,
+                               float cutoutX, float cutoutY, float cutoutW, float cutoutH, float chamfer) {
+        double x = Math.max(0.0, sourceX - boundRadius);
+        double y = Math.max(0.0, sourceY - boundRadius);
+        double right = Math.min(viewportWidth, sourceX + boundRadius);
+        double bottom = Math.min(viewportHeight, sourceY + boundRadius);
+        if (right <= x || bottom <= y) return;
+        float maskMode = cutoutW > 0f && cutoutH > 0f ? 2f : 0f;
+        drawHoneycomb(x, y, right - x, bottom - y,
+                cellRadius, lineWidth, opacity, sourceX, sourceY, boundRadius,
+                originX, originY, accentArgb, coldArgb, material,
+                cutoutX, cutoutY, cutoutW, cutoutH, chamfer, maskMode,
+                sourceX, sourceY, age, 1f);
+    }
+
+    public void honeycombAmbient(double viewportWidth, double viewportHeight,
+                                 float cellRadius, float lineWidth, float opacity,
+                                 float sourceX, float sourceY, float boundRadius, float phase,
+                                 float originX, float originY, int accentArgb, int coldArgb,
+                                 UiHoneycombMaterialSpec material,
+                                 float cutoutX, float cutoutY, float cutoutW, float cutoutH, float chamfer) {
+        double x = Math.max(0.0, sourceX - boundRadius);
+        double y = Math.max(0.0, sourceY - boundRadius);
+        double right = Math.min(viewportWidth, sourceX + boundRadius);
+        double bottom = Math.min(viewportHeight, sourceY + boundRadius);
+        if (right <= x || bottom <= y) return;
+        float maskMode = cutoutW > 0f && cutoutH > 0f ? 2f : 0f;
+        drawHoneycomb(x, y, right - x, bottom - y,
+                cellRadius, lineWidth, opacity, sourceX, sourceY, boundRadius,
+                originX, originY, accentArgb, coldArgb, material,
+                cutoutX, cutoutY, cutoutW, cutoutH, chamfer, maskMode,
+                sourceX, sourceY, phase, 2f);
+    }
+
+    private void drawHoneycomb(double x, double y, double w, double h,
+                               float cellRadius, float lineWidth, float opacity,
+                               float mouseX, float mouseY, float lightRadius,
+                               float originX, float originY, int accentArgb, int coldArgb,
+                               UiHoneycombMaterialSpec material,
+                               float maskX, float maskY, float maskW, float maskH,
+                               float maskRadius, float maskMode,
+                               float pulseX, float pulseY, float pulseAge, float pulseMode) {
+        if (w <= 0.0 || h <= 0.0 || cellRadius <= 0f || opacity <= 0.001f) return;
+        UiHoneycombMaterialSpec spec = material != null ? material : UiHoneycombMaterialSpec.HEX_PATH;
+        boolean auto = beginAutoBatch();
+        DrawBatch batch = UI_BATCHER.getOrCreate(UiBatchType.HONEYCOMB, null, null);
+        if (batch == null) {
+            endAutoBatch(auto);
+            return;
+        }
+        MeshBuilder mesh = batch.mesh;
+        mesh.alpha = alpha;
+        mesh.ensureQuadCapacity();
+        int a = (accentArgb >>> 24) & 255;
+        int r = (accentArgb >>> 16) & 255;
+        int g = (accentArgb >>> 8) & 255;
+        int b = accentArgb & 255;
+        int cr = (coldArgb >>> 16) & 255;
+        int cg = (coldArgb >>> 8) & 255;
+        int cb = coldArgb & 255;
+        float time = (float) ((System.nanoTime() / 1000000000.0) % 4096.0);
+        int i1 = honeycombVertex(mesh, x, y, r, g, b, a, cr, cg, cb, x, y, w, h, cellRadius,
+                lineWidth, opacity, time, mouseX, mouseY, lightRadius, originX, originY,
+                maskX, maskY, maskW, maskH, maskRadius, maskMode,
+                pulseX, pulseY, pulseAge, pulseMode, spec);
+        int i2 = honeycombVertex(mesh, x, y + h, r, g, b, a, cr, cg, cb, x, y, w, h, cellRadius,
+                lineWidth, opacity, time, mouseX, mouseY, lightRadius, originX, originY,
+                maskX, maskY, maskW, maskH, maskRadius, maskMode,
+                pulseX, pulseY, pulseAge, pulseMode, spec);
+        int i3 = honeycombVertex(mesh, x + w, y + h, r, g, b, a, cr, cg, cb, x, y, w, h, cellRadius,
+                lineWidth, opacity, time, mouseX, mouseY, lightRadius, originX, originY,
+                maskX, maskY, maskW, maskH, maskRadius, maskMode,
+                pulseX, pulseY, pulseAge, pulseMode, spec);
+        int i4 = honeycombVertex(mesh, x + w, y, r, g, b, a, cr, cg, cb, x, y, w, h, cellRadius,
+                lineWidth, opacity, time, mouseX, mouseY, lightRadius, originX, originY,
+                maskX, maskY, maskW, maskH, maskRadius, maskMode,
+                pulseX, pulseY, pulseAge, pulseMode, spec);
+        mesh.quad(i1, i2, i3, i4);
+        endAutoBatch(auto);
+    }
+
+    private static int honeycombVertex(MeshBuilder mesh, double px, double py,
+                                      int r, int g, int b, int a, int coldR, int coldG, int coldB,
+                                      double x, double y, double w, double h,
+                                      float radius, float lineWidth, float opacity, float time,
+                                      float mouseX, float mouseY, float lightRadius,
+                                      float originX, float originY,
+                                      float maskX, float maskY, float maskW, float maskH,
+                                      float maskRadius, float maskMode,
+                                      float pulseX, float pulseY, float pulseAge, float pulseMode,
+                                      UiHoneycombMaterialSpec spec) {
         return mesh.vec2(px, py).local2(px, py).color(r, g, b, a)
-                .vec4(x, y, w, h)
-                .vec4(cellRadius, gap, lineWidth, opacity)
-                .vec4(mouseX, mouseY, lightRadius, material.highlightCompression())
-                .vec4(highlightR, highlightG, highlightB, highlightA)
-                .vec4(originX, originY, cutoutCut, cutoutEnabled)
-                .vec4(cutoutX, cutoutY, cutoutW, cutoutH)
-                .vec4(material.mode().shaderId(), material.cellBlurMix(), material.sceneDetail(),
-                        material.tintAbsorption())
+                .vec4((float)x, (float)y, (float)w, (float)h)
+                .vec4(radius, lineWidth, opacity, time)
+                .vec4(mouseX, mouseY, lightRadius, 0f)
+                .vec4(pulseX, pulseY, pulseAge, pulseMode)
+                .vec4(originX, originY, maskRadius, maskMode)
+                .vec4(maskX, maskY, maskW, maskH)
+                .vec4(spec.lineOpacity(), spec.emission(), spec.glow(), spec.motionSpeed())
+                .vec4(coldR / 255f, coldG / 255f, coldB / 255f, 1f)
                 .next();
     }
 

@@ -49,3 +49,12 @@ Combatant bundles Source Sans 3 Regular and Semibold, version 3.046.
 © 2010 – 2021 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’
 Licensed under SIL OFL 1.1; see `THIRD_PARTY_LICENSES/SourceSans3-OFL-1.1.txt`.
 Runtime files: `assets/combatant/font/source_sans3_{regular,semibold}.ttf`.
+# Accurate Block Placement: Reborn
+
+Accurate placement in NoDelay and the reference test fixtures contain code derived
+from Accurate Block Placement: Reborn, commit
+`f9f1acfbb58add990ca43b778a700a4eacda38ea`.
+Copyright (c) 2023 schwar; (c) 2023 KadTheHunter; (c) 2022 Flourick; (c) 2019 Clayborn.
+Upstream: https://github.com/KadTheHunter/AccurateBlockPlacement-Reborn
+License: MIT. Full original notice:
+`THIRD_PARTY_LICENSES/AccurateBlockPlacement-Reborn-MIT.txt`.

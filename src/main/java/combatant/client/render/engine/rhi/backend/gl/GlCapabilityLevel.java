@@ -31,28 +31,28 @@ public final class GlCapabilityLevel {
         // Mention only functionality beyond the corresponding core level. These are
         // representative supported feature groups, NOT a synthetic OpenGL version.
         if (core < 40 && caps.GL_ARB_tessellation_shader) {
-            extensions.add("tessellation"); extensionEra = Math.max(extensionEra, 40);
+            extensions.add("tessellation"); extensionEra = 40;
         }
         if (core < 42 && caps.GL_ARB_shader_image_load_store) {
-            extensions.add("image load/store"); extensionEra = Math.max(extensionEra, 42);
+            extensions.add("image load/store"); extensionEra = 42;
         }
         if (core < 43 && caps.GL_ARB_compute_shader) {
-            extensions.add("compute"); extensionEra = Math.max(extensionEra, 43);
+            extensions.add("compute"); extensionEra = 43;
         }
         if (core < 43 && caps.GL_ARB_shader_storage_buffer_object) {
-            extensions.add("SSBO"); extensionEra = Math.max(extensionEra, 43);
+            extensions.add("SSBO"); extensionEra = 43;
         }
         if (core < 43 && caps.GL_ARB_multi_draw_indirect) {
-            extensions.add("MDI"); extensionEra = Math.max(extensionEra, 43);
+            extensions.add("MDI"); extensionEra = 43;
         }
         if (core < 44 && caps.GL_ARB_multi_bind) {
-            extensions.add("multi-bind"); extensionEra = Math.max(extensionEra, 44);
+            extensions.add("multi-bind"); extensionEra = 44;
         }
         if (core < 45 && caps.GL_ARB_direct_state_access) {
-            extensions.add("DSA"); extensionEra = Math.max(extensionEra, 45);
+            extensions.add("DSA"); extensionEra = 45;
         }
         if (core < 46 && caps.GL_ARB_gl_spirv) {
-            extensions.add("SPIR-V"); extensionEra = Math.max(extensionEra, 46);
+            extensions.add("SPIR-V"); extensionEra = 46;
         }
 
         return extensions.isEmpty()

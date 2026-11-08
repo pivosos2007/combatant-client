@@ -7,11 +7,12 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.config;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 import combatant.client.config.profile.ConfigProfileDateFormatter;
 import combatant.client.config.profile.ConfigProfileMeta;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
@@ -37,7 +38,7 @@ public final class ConfigProfileCardComponent {
         int bottomStrong = hover ? SettingsGuiPalette.mix(palette.moduleCardBottomStrong(), palette.menuCategoryHoverRight(), 0.14f) : palette.moduleCardBottomStrong();
 
         try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
-        ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
+        LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedQuad(x, y, w, h, 5f * scale, top, topStrong, bottom, bottomStrong);
 
         float iconBox = 15f * scale;
@@ -70,12 +71,12 @@ public final class ConfigProfileCardComponent {
         float titleY = y + 3.8f * scale;
         float titleW = w - 80f * scale;
         float titleH = 10f * scale;
-        String title = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterMedium(), meta.name(), titleSize, titleW);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), title, titleX, titleY, titleSize, palette.moduleTitleText(), false);
+        String title = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), meta.name(), titleSize, titleW);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), title, titleX, titleY, titleSize, palette.moduleTitleText(), false);
 
         float authorSize = 6.8f * scale;
-        String author = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), meta.author(), authorSize, w - 80f * scale);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), author, textX, y + 14.4f * scale, authorSize, palette.moduleDescriptionText(), false);
+        String author = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), meta.author(), authorSize, w - 80f * scale);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), author, textX, y + 14.4f * scale, authorSize, palette.moduleDescriptionText(), false);
 
         LayoutRender2D.rectQuad(
                 x,
@@ -96,18 +97,18 @@ public final class ConfigProfileCardComponent {
         int labelColor = palette.moduleDescriptionIcon();
         int valueColor = palette.moduleDescriptionText();
 
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), ClickGuiI18n.tr("clickgui.settings.config.card.created", "Created:"), labelX, row1Y, rowSize, labelColor, false);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(),
-                ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), ConfigProfileDateFormatter.created(meta), rowSize, w - 110f * scale),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), ClickGuiI18n.tr("clickgui.settings.config.card.created", "Created:"), labelX, row1Y, rowSize, labelColor, false);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(),
+                LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), ConfigProfileDateFormatter.created(meta), rowSize, w - 110f * scale),
                 valueX,
                 row1Y,
                 rowSize,
                 valueColor,
                 false
         );
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), ClickGuiI18n.tr("clickgui.settings.config.card.updated", "Updated:"), labelX, row2Y, rowSize, labelColor, false);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(),
-                ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), ConfigProfileDateFormatter.updated(meta), rowSize, w - 110f * scale),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), ClickGuiI18n.tr("clickgui.settings.config.card.updated", "Updated:"), labelX, row2Y, rowSize, labelColor, false);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(),
+                LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), ConfigProfileDateFormatter.updated(meta), rowSize, w - 110f * scale),
                 valueX,
                 row2Y,
                 rowSize,

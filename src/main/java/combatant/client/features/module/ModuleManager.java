@@ -33,7 +33,6 @@ import combatant.client.render.helpers.PlacementPreviewRenderer;
 import combatant.client.render.engine.renderer.ui.ItemBatchRenderer;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
-import combatant.client.runtime.error.ErrorHandler;
 import combatant.client.runtime.RuntimeShutdownContext;
 import combatant.client.input.CombatantInput;
 import combatant.client.input.InputScope;

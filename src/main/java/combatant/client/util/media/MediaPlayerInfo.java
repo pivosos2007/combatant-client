@@ -33,7 +33,7 @@ public interface MediaPlayerInfo extends AutoCloseable {
         if (os.startsWith("windows")) {
             return loadBackend("combatant.client.util.media.impl.win.WindowsMediaPlayerInfo");
         }
-        if (os.equals("linux") || os.contains("linux")) {
+        if (os.contains("linux")) {
             return loadBackend("combatant.client.util.media.impl.linux.LinuxMediaPlayerInfo");
         }
         return DummyMediaPlayerInfo.INSTANCE;

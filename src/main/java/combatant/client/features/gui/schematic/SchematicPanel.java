@@ -6,9 +6,12 @@
  */
 package combatant.client.features.gui.schematic;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.automation.compat.litematica.LitematicaCompat;
 import combatant.client.automation.compat.litematica.LitematicaWorkspace;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.SettingsPanelComponent;
 import combatant.client.features.gui.clickgui.settings.SettingErrorView;
 import combatant.client.features.gui.clickgui.settings.SettingRenderSurface;
@@ -25,7 +28,6 @@ import combatant.client.input.minecraft.CombatantTextInputBridge;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
-import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
@@ -98,7 +100,7 @@ public final class SchematicPanel {
         long generation = Fonts.generation();
         if (searchFont == null || searchFontGeneration != generation) {
             searchFont = Fonts.renderer("SourceSans3", FontInfo.Type.Regular,
-                    ClickGuiRenderer.getOnestMedium());
+                    BuiltinFontCatalog.ONEST_MEDIUM.renderer());
             searchFontGeneration = generation;
         }
         return searchFont;
@@ -206,7 +208,6 @@ public final class SchematicPanel {
         Minecraft mc = Minecraft.getInstance();
         float fixedWidth = Math.max(1f, HudScale.virtualWidth(mc.getWindow().getWidth(), mc.getWindow().getHeight()));
         float fixedHeight = Math.max(1f, HudScale.virtualHeight(mc.getWindow().getWidth(), mc.getWindow().getHeight()));
-        MenuBackgroundRenderer.renderConfigured(mc);
         mouseX = toFixed(mx);
         mouseY = toFixed(my);
         float width = Math.min(fixedWidth - 34f, 1660f);
@@ -214,7 +215,10 @@ public final class SchematicPanel {
         bounds = Layout.compute((fixedWidth - width) * .5f, (fixedHeight - height) * .5f, width, height, true, libraryMode, drawerProgress);
         ViewportContext.beginUnscaledLogical(context);
         Renderer2D.COLOR.begin();
-        try { renderWorkspace(); }
+        try {
+            Renderer2D.COLOR.quad(0, 0, fixedWidth, fixedHeight, Theme.theme().windowBg() | 0xFF000000);
+            renderWorkspace();
+        }
         finally {
             Renderer2D.COLOR.render();
             ViewportContext.end(context);
@@ -362,11 +366,11 @@ public final class SchematicPanel {
         Map<String, Object> props = props();
         runtime = script.bake(moduleHandle, module, "schematic-workspace",
                 CachedUiScriptRuntime.signature(props), bounds.w, bounds.h,
-                ClickGuiRenderer.getOnestMedium(), bounds.x, bounds.y, bounds.w, bounds.h, () -> props);
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(), bounds.x, bounds.y, bounds.w, bounds.h, () -> props);
         if (runtime == null) return;
         registerActions();
         if (litematicaSettingsMode) litematicaSettings.registerActions(runtime);
-        runtime.render(new UiRenderContext(Renderer2D.COLOR, ClickGuiRenderer.getOnestMedium(),
+        runtime.render(new UiRenderContext(Renderer2D.COLOR, BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                         null, 0f, UiProjectionMode.CURRENT, AnimationUtility.easeOutCubic(openAnim)),
                 () -> {
                     animateRetainedDrawer();
@@ -567,7 +571,7 @@ public final class SchematicPanel {
             }
         }
         float originCaret = originEdit < 0 ? 0f :
-                ClickGuiRenderer.textWidth(searchFont,
+                LayoutRender2D.textWidth(searchFont,
                         originInput.text().substring(0, Math.min(originInput.cursor(), originInput.text().length())), 17f)
                         - originInput.viewportOffset();
         float originSelectFrom = originEdit < 0 ? 0f : textWidth(originInput.text(), originInput.selectionStart())
@@ -617,11 +621,11 @@ public final class SchematicPanel {
 
     private float textWidth(String text, int index) {
         if (searchFont == null || text == null || index <= 0) return 0f;
-        return ClickGuiRenderer.textWidth(searchFont, text.substring(0, Math.min(index, text.length())), 17f);
+        return LayoutRender2D.textWidth(searchFont, text.substring(0, Math.min(index, text.length())), 17f);
     }
 
     private float textTo(String text, int index) {
-        return ClickGuiRenderer.textWidth(searchFont, text.substring(0, Math.min(Math.max(0,index), text.length())), 17f);
+        return LayoutRender2D.textWidth(searchFont, text.substring(0, Math.min(Math.max(0,index), text.length())), 17f);
     }
 
     private Map<String, Object> translations() {

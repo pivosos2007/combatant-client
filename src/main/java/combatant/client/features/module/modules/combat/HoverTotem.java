@@ -15,7 +15,6 @@ import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.mixins.accessors.AbstractContainerScreenAccessor;
 import combatant.client.util.player.inventory.InventoryActionKind;
-import combatant.client.util.player.inventory.InventorySlotLocks;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventoryMover;
 import combatant.client.config.values.BooleanValue;

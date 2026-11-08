@@ -251,7 +251,7 @@ public final class SeedCrackerRuntime {
         var known = SeedSnapshots.currentStored();
         return "SeedCrackerX: " + (PRESENT ? (running() ? "running" : "stopped") : "not installed")
                 + ", context=" + SeedCrackerConfig.get().contextDescription() + ", profile=" + profile()
-                + ", seed=" + known.map(s -> Long.toString(s.worldSeed()) + " [" + s.origin()
+                + ", seed=" + known.map(s -> s.worldSeed() + " [" + s.origin()
                         + ", " + (SeedSnapshots.currentIsPersisted() ? "disk" : "session") + "]").orElse("none")
                 + (PRESENT ? ", " + SeedCrackerIntegration.status() + ", " + SeedCrackerChunkBackfill.diagnostics() : "");
     }

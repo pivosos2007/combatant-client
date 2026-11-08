@@ -1,0 +1,31 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_Previous;
+layout(binding = 1, rgba16f) writeonly uniform image2D u_Pressure;
+layout(std430, binding = 2) readonly buffer MenuSmokeParams {
+    vec4 screen;
+    vec4 mouse;
+    vec4 motion;
+    vec4 accent;
+    vec4 soft;
+    vec4 cold;
+    vec4 warm;
+    vec4 sources[48];
+    vec4 sourceProps[48];
+} u_Smoke;
+
+float samplePressure(ivec2 p, ivec2 size) {
+    return texelFetch(u_Previous, clamp(p, ivec2(0), size - 1), 0).r;
+}
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_Pressure);
+    if (any(greaterThanEqual(p, size))) return;
+    float divergence = texelFetch(u_Previous, p, 0).g;
+    float neighborSum = samplePressure(p + ivec2(1, 0), size)
+                      + samplePressure(p - ivec2(1, 0), size)
+                      + samplePressure(p + ivec2(0, 1), size)
+                      + samplePressure(p - ivec2(0, 1), size);
+    imageStore(u_Pressure, p, vec4((neighborSum - divergence) * 0.25, divergence, 0.0, 0.0));
+}

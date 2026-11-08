@@ -22,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
@@ -41,7 +42,7 @@ public final class SchematicLibrary {
     private final Map<Path, SchematicHeader> headerCache = new ConcurrentHashMap<>();
     private volatile List<SchematicHeader> headers = List.of();
     private volatile boolean scanning;
-    private volatile int scanGeneration;
+    private final AtomicInteger scanGeneration = new AtomicInteger();
     private CompletableFuture<Void> pendingScan;
 
     private static final class Storage {
@@ -114,7 +115,7 @@ public final class SchematicLibrary {
 
     /** Bumped after every finished scan so views know to re-filter. */
     public int scanGeneration() {
-        return scanGeneration;
+        return scanGeneration.get();
     }
 
     public synchronized CompletableFuture<Void> refresh() {
@@ -125,7 +126,7 @@ public final class SchematicLibrary {
             if (error != null) {
                 headerCache.clear();
                 headers = List.of();
-                scanGeneration++;
+                scanGeneration.incrementAndGet();
                 DebugLog.error("Schematic scan failed", error);
             }
         });
@@ -204,7 +205,7 @@ public final class SchematicLibrary {
         headerCache.keySet().retainAll(files);
         next.sort(Comparator.comparing(h -> h.fileName().toLowerCase(Locale.ROOT)));
         headers = List.copyOf(next);
-        scanGeneration++;
+        scanGeneration.incrementAndGet();
     }
 
     private SchematicHeader header(Path path) {

@@ -72,7 +72,9 @@ public final class WaterSpeed extends Module {
         }
 
         Jesus jesus = Modules.get(Jesus.class);
-        if (!player.isInWater() || jesus != null && jesus.isManagingVulcan297(player)) {
+        LongJump longJump = Modules.get(LongJump.class);
+        if (!player.isInWater() || jesus != null && jesus.isManagingVulcan297(player)
+                || longJump != null && longJump.isManagingVulcan297(player)) {
             resetArmTimer();
             return;
         }

@@ -10,6 +10,7 @@ package combatant.client.features.module.modules.movement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.world.InteractionHand;
@@ -23,6 +24,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
@@ -50,6 +52,8 @@ import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.simulation.PlayerSimulationCache;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -62,7 +66,11 @@ import java.util.Set;
         description = "module.nofall.description")
 public class NoFall extends Module {
 
-    private static final int MLG_COLLISION_PREDICTION_TICKS = 20;
+    private static final int MLG_COLLISION_PREDICTION_TICKS = 32;
+    private static final double MLG_PREDICTION_FOOTPRINT_EPSILON = 0.02;
+    // Aim can begin earlier, but a distant predicted X/Z landing point is too unstable for a click.
+    private static final int MLG_MAX_COMMIT_TICKS = 4;
+    private static final int SLIME_MLG_RETRY_TICKS = 10;
     private static final int MLG_SCAFFOLDING_SNEAK_TICKS = 3;
     private static final int MLG_HOTBAR_RESET_TICKS = 1;
     private static final long MLG_PICKUP_WATER_MIN_DELAY_MS = 200L;
@@ -85,7 +93,7 @@ public class NoFall extends Module {
     }
 
     private final EnumValue<Mode> mode =
-            enumSetting("mode", "mode", Mode.GROUD_SPOOF, Mode.values());
+            enumCommon("mode", "mode", CommonSettingSchemas.MODE, Mode.GROUD_SPOOF, Mode.values());
     private final NumberValue<Float> packetJumpFallDistance =
             visibleWhen(num("packet_jump_fall_distance", 3.0f, 0.0f, 20.0f), () -> mode.get() == Mode.PACKET_JUMP);
     private final EnumValue<PacketJumpTiming> packetJumpTiming =
@@ -98,8 +106,24 @@ public class NoFall extends Module {
             visibleWhen(num("vulcan_fall_distance", 7.0f, 3.0f, 40.0f), () -> mode.get() == Mode.VULCAN);
     private final NumberValue<Float> mlgMinFallDistance =
             visibleWhen(num("mlg_min_fall_distance", 4.0f, 3.0f, 50.0f), () -> mode.get() == Mode.MLG);
-    private final BooleanValue mlgNoRotations =
-            visibleWhen(bool("mlg_no_rotations", false), () -> mode.get() == Mode.MLG);
+    private final NumberValue<Float> slimeMlgMinHeight =
+            visibleWhen(num("slime_mlg_min_height", 1.0f, 0.0f, 20.0f), () -> mode.get() == Mode.SLIME_MLG);
+    private final EnumValue<MlgRotationMode> mlgRotationMode =
+            visibleWhen(enumSetting("mlg_rotation_mode", "mlg_rotation_mode", MlgRotationMode.ROTATIONS,
+                    MlgRotationMode.values()), this::isMlgMode);
+    private final EnumValue<MovementCorrection> mlgMovementCorrection =
+            visibleWhen(enumCommon("mlg_movement_correction", "movement_correction",
+                    CommonSettingSchemas.PLACEMENT_MOVEMENT_CORRECTION,
+                    MovementCorrection.SILENT, MovementCorrection.values()),
+                    () -> isMlgMode() && mlgRotationMode.get() == MlgRotationMode.ROTATIONS);
+    private final NumberValue<Integer> mlgRotationResetTicks =
+            visibleWhen(numCommon("mlg_rotation_reset_ticks", "rotation_reset_ticks",
+                    CommonSettingSchemas.ROTATION_RESET_TICKS, 1, 1, 20),
+                    () -> isMlgMode() && mlgRotationMode.get() == MlgRotationMode.ROTATIONS);
+    private final NumberValue<Float> mlgRotationResetThreshold =
+            visibleWhen(numCommon("mlg_rotation_reset_threshold", "rotation_reset_threshold",
+                    CommonSettingSchemas.ROTATION_RESET_THRESHOLD, 2.0f, .1f, 15.0f),
+                    () -> isMlgMode() && mlgRotationMode.get() == MlgRotationMode.ROTATIONS);
     private final List<PlacedWater> lastWaterPlacements = new ArrayList<>();
     private boolean packetJumpFalling;
     private boolean packetJumpInternalSend;
@@ -109,6 +133,11 @@ public class NoFall extends Module {
     private double lastMoveZ = Double.NaN;
     private MlgPlan currentMlgPlan;
     private int mlgSneakTicks;
+    private int lastMlgActionTick = Integer.MIN_VALUE;
+    private int lastSlimePlacementTick = Integer.MIN_VALUE;
+    private BlockPos lastSlimePlacementPos;
+    // The simulation starts at the current tick; once descent begins it no longer knows the jump apex.
+    private double observedSlimePeakY = Double.NaN;
 
     {
         setDefaultBind("GRAVE_ACCENT");
@@ -130,7 +159,8 @@ public class NoFall extends Module {
         if (client == null || client.player == null || client.getConnection() == null) return;
 
         LocalPlayer player = client.player;
-        if (mode.get() == Mode.MLG) {
+        if (isMlgMode()) {
+            if (mode.get() == Mode.SLIME_MLG) updateSlimePeak(player);
             tickMlg(client, player);
             return;
         }
@@ -171,8 +201,9 @@ public class NoFall extends Module {
             return;
         }
 
-        if (mode.get() != Mode.MLG) {
+        if (!isMlgMode()) {
             currentMlgPlan = null;
+            RotationManager.INSTANCE.clear(this);
             return;
         }
 
@@ -182,8 +213,10 @@ public class NoFall extends Module {
             return;
         }
 
+        if (mode.get() == Mode.SLIME_MLG) updateSlimePeak(client.player);
         currentMlgPlan = getCurrentGoal(client.player);
-        if (currentMlgPlan == null || mlgNoRotations.get()) {
+        if (currentMlgPlan == null || mlgRotationMode.get() == MlgRotationMode.NO_ROTATIONS) {
+            RotationManager.INSTANCE.clear(this);
             return;
         }
 
@@ -191,10 +224,10 @@ public class NoFall extends Module {
                 currentMlgPlan.rotation(),
                 client.player,
                 List.of(),
-                1,
-                4.0f,
+                mlgRotationResetTicks.get(),
+                mlgRotationResetThreshold.get(),
                 false,
-                MovementCorrection.SILENT,
+                mlgMovementCorrection.get(),
                 null
         );
         RotationManager.INSTANCE.setRotationTarget(target, 100, this);
@@ -202,7 +235,7 @@ public class NoFall extends Module {
 
     @EventHandler
     private void onMovementInput(MovementInputEvent event) {
-        if (mode.get() != Mode.MLG || mlgSneakTicks <= 0) {
+        if (!isMlgMode() || mlgSneakTicks <= 0) {
             return;
         }
 
@@ -297,6 +330,11 @@ public class NoFall extends Module {
         lastMoveZ = Double.NaN;
         currentMlgPlan = null;
         mlgSneakTicks = 0;
+        lastMlgActionTick = Integer.MIN_VALUE;
+        lastSlimePlacementTick = Integer.MIN_VALUE;
+        lastSlimePlacementPos = null;
+        observedSlimePeakY = Double.NaN;
+        RotationManager.INSTANCE.clear(this);
         lastWaterPlacements.clear();
         InventorySwap.INSTANCE.releaseHotbar(this);
     }
@@ -307,13 +345,31 @@ public class NoFall extends Module {
             return;
         }
 
-        MlgPlan plan = currentMlgPlan;
-        if (plan == null) {
+        if (player.tickCount == lastMlgActionTick) return;
+        List<MlgPlan> slimeAlternatives = mode.get() == Mode.SLIME_MLG
+                && mlgRotationMode.get() == MlgRotationMode.NO_ROTATIONS
+                ? getSlimeMlgPlacementPlans(player, findClosestSpecificItemSource(player, Items.SLIME_BLOCK))
+                : List.of();
+        MlgPlan fresh = slimeAlternatives.isEmpty() ? getCurrentGoal(player) : slimeAlternatives.get(0);
+        if (fresh == null) {
+            currentMlgPlan = null;
+            RotationManager.INSTANCE.clear(this);
             return;
         }
+        MlgPlan planned = currentMlgPlan;
+        if (planned != null && !sameMlgTarget(planned, fresh)) {
+            currentMlgPlan = fresh;
+        }
+        MlgPlan plan = fresh;
+        int commitTicks = mode.get() == Mode.SLIME_MLG
+                ? SlimeMlgTrajectoryPlanner.commitWindow(player.getDeltaMovement().x,
+                        player.getDeltaMovement().z) : MLG_MAX_COMMIT_TICKS;
+        if (plan.type() == MlgPlanType.PLACE && plan.ticksToLanding() > commitTicks
+                && !(mode.get() == Mode.SLIME_MLG
+                && mlgRotationMode.get() == MlgRotationMode.NO_ROTATIONS)) return;
 
         if (plan.type() == MlgPlanType.PLACE
-                && (player.onGround()
+                && ((player.onGround() && mode.get() != Mode.SLIME_MLG)
                 || player.isInWater()
                 || player.isInLava()
                 || player.onClimbable()
@@ -322,9 +378,14 @@ public class NoFall extends Module {
             return;
         }
 
+        if (mode.get() == Mode.SLIME_MLG && plan.type() == MlgPlanType.PLACE
+                && mlgRotationMode.get() != MlgRotationMode.NO_ROTATIONS
+                && !SlimeMlgTrajectoryPlanner.clearForPlacement(player.getBoundingBox().minY,
+                        plan.targetPos().getY() - 1)) return;
+
         BlockHitResult hitResult;
         Rotation useRotation;
-        if (mlgNoRotations.get()) {
+        if (mlgRotationMode.get() == MlgRotationMode.NO_ROTATIONS) {
             if (plan.type() == MlgPlanType.PICKUP_WATER) {
                 Rotation playerRotation = new Rotation(player.getYRot(), player.getXRot(), true).normalize();
                 hitResult = traceTarget(player, playerRotation, ClipContext.Fluid.SOURCE_ONLY);
@@ -333,11 +394,17 @@ public class NoFall extends Module {
                 }
                 useRotation = playerRotation;
             } else {
+                // No Rotations means packet placement at a planned support face, independent
+                // of the player's camera yaw/pitch. Just as in Scaffold and ordinary MLG,
+                // the clicked block, face and reach are validated by the placement plan.
                 hitResult = plan.target().toHitResult();
                 useRotation = plan.rotation();
             }
         } else {
-            Rotation currentRotation = RotationManager.INSTANCE.getCurrentRotation();
+            // For slime a prepared aim isn't a confirmed server-facing rotation.
+            Rotation currentRotation = mode.get() == Mode.SLIME_MLG
+                    ? RotationManager.INSTANCE.getServerRotation()
+                    : RotationManager.INSTANCE.getCurrentRotation();
             if (currentRotation == null) {
                 return;
             }
@@ -353,8 +420,44 @@ public class NoFall extends Module {
             useRotation = currentRotation;
         }
 
-        executeMlgPlacement(player, plan, hitResult, useRotation);
-        currentMlgPlan = null;
+        if (mode.get() == Mode.SLIME_MLG && mlgRotationMode.get() == MlgRotationMode.NO_ROTATIONS) {
+            for (MlgPlan alternative : slimeAlternatives) {
+                if (alternative.type() != MlgPlanType.PLACE
+                        || !SlimeMlgTrajectoryPlanner.clearForPlacement(
+                        player.getBoundingBox().minY, alternative.targetPos().getY() - 1)) continue;
+                if (executeMlgPlacement(player, alternative, alternative.target().toHitResult(),
+                        alternative.rotation())) {
+                    currentMlgPlan = null;
+                    return;
+                }
+            }
+            return;
+        }
+        if (executeMlgPlacement(player, plan, hitResult, useRotation)) currentMlgPlan = null;
+    }
+
+    private boolean isMlgMode() {
+        return mode.get() == Mode.MLG || mode.get() == Mode.SLIME_MLG;
+    }
+
+    private void updateSlimePeak(LocalPlayer player) {
+        if (player == null) return;
+        double feetY = player.getY();
+        if (player.onGround()) {
+            observedSlimePeakY = feetY;
+        } else {
+            // fallDistance also covers enabling NoFall midway through the descent.
+            double estimatedPeak = feetY + Math.max(0.0f, player.fallDistance);
+            observedSlimePeakY = Double.isFinite(observedSlimePeakY)
+                    ? Math.max(observedSlimePeakY, estimatedPeak)
+                    : estimatedPeak;
+        }
+    }
+
+    private static boolean sameMlgTarget(MlgPlan a, MlgPlan b) {
+        return a.type() == b.type() && a.targetPos().equals(b.targetPos())
+                && a.item() == b.item() && a.hand() == b.hand()
+                && a.hotbarSlot() == b.hotbarSlot();
     }
 
     private MlgPlan getCurrentGoal(LocalPlayer player) {
@@ -362,49 +465,137 @@ public class NoFall extends Module {
         if (placement != null) {
             return placement;
         }
-        return getCurrentPickupPlan(player);
+        return mode.get() == Mode.SLIME_MLG ? null : getCurrentPickupPlan(player);
     }
 
     private MlgPlan getCurrentMlgPlacementPlan(LocalPlayer player) {
-        if (player == null || player.fallDistance <= mlgMinFallDistance.get()) {
-            return null;
-        }
+        if (player == null) return null;
+        boolean slime = mode.get() == Mode.SLIME_MLG;
+        if (!slime && player.fallDistance <= mlgMinFallDistance.get()) return null;
+        if (slime && (player.isPassenger() || player.isInWater() || player.isInLava()
+                || player.onClimbable() || player.getAbilities().flying)) return null;
 
-        MlgSource source = findClosestMlgSource(player);
+        MlgSource source = mode.get() == Mode.SLIME_MLG
+                ? findClosestSpecificItemSource(player, Items.SLIME_BLOCK)
+                : findClosestMlgSource(player);
         if (source == null) {
             return null;
         }
 
-        BlockPos collision = findMlgCollision(player);
-        if (collision == null || isFallDamageBlocking(collision)) {
-            return null;
-        }
+        if (slime) return getSlimeMlgPlacementPlan(player, source);
 
-        BlockPos targetPos = collision.above();
-        ScaffoldPlacementTarget target = ScaffoldTargetFinder.findTarget(
-                player,
-                targetPos,
-                source.stack(),
-                List.of(BlockPos.ZERO),
-                null,
-                false,
-                new ScaffoldFacePositionFactory(
-                        player,
-                        player.getEyePosition(),
-                        ScaffoldFacePositionFactory.Mode.CENTER,
-                        null,
-                        0.0
-                ),
-                player.getEyePosition()
-        );
-        if (target == null) {
-            return null;
-        }
-        if (!isWithinMlgBlockRange(player, target.getHitVec())) {
-            return null;
-        }
+        MlgLanding landing = findMlgCollision(player);
+        if (landing == null || isFallDamageBlocking(landing.support())) return null;
+        BlockPos targetPos = landing.support().above();
+        if (!player.level().getBlockState(targetPos).canBeReplaced()) return null;
+        ScaffoldPlacementTarget target = findMlgPlacementTarget(player, source, targetPos, null);
+        if (target == null || !isWithinMlgBlockRange(player, target.getHitVec())) return null;
+        return new MlgPlan(MlgPlanType.PLACE, targetPos, target, target.getRotation(),
+                source.hand(), source.hotbarSlot(), source.item(), landing.ticksToLanding());
+    }
 
-        return new MlgPlan(MlgPlanType.PLACE, targetPos, target, target.getRotation(), source.hand(), source.hotbarSlot(), source.item());
+    private MlgPlan getSlimeMlgPlacementPlan(LocalPlayer player, MlgSource source) {
+        List<MlgPlan> plans = getSlimeMlgPlacementPlans(player, source);
+        return plans.isEmpty() ? null : plans.get(0);
+    }
+
+    private List<MlgPlan> getSlimeMlgPlacementPlans(LocalPlayer player, MlgSource source) {
+        if (player == null || source == null) return List.of();
+        List<SlimeMlgTrajectoryPlanner.Frame> path = slimePrediction(player);
+        var candidates = SlimeMlgTrajectoryPlanner.candidates(path,
+                player.getBbWidth(), slimeMlgMinHeight.get(), observedSlimePeakY);
+        if (candidates.isEmpty()) return List.of();
+
+        var world = player.level();
+        Rotation serverRotation = mlgRotationMode.get() == MlgRotationMode.ROTATIONS
+                ? RotationManager.INSTANCE.getServerRotation() : null;
+        BlockHitResult serverHit = serverRotation == null ? null
+                : traceTarget(player, serverRotation, ClipContext.Fluid.NONE);
+        SlimeMlgTrajectoryPlanner.Candidate previous = null;
+        SlimeMlgTrajectoryPlanner.Candidate aligned = null;
+        List<SlimeMlgTrajectoryPlanner.Candidate> viable = new ArrayList<>();
+        Map<SlimeMlgTrajectoryPlanner.Candidate, MlgPlan> plans = new HashMap<>();
+        for (var candidate : candidates) {
+            BlockPos support = new BlockPos(candidate.x(), candidate.supportY(), candidate.z());
+            BlockPos targetPos = support.above();
+            if (lastSlimePlacementPos != null && lastSlimePlacementPos.equals(targetPos)
+                    && player.tickCount >= lastSlimePlacementTick
+                    && player.tickCount - lastSlimePlacementTick < SLIME_MLG_RETRY_TICKS) continue;
+            if (isFallDamageBlocking(support) || !world.getBlockState(targetPos).canBeReplaced()) continue;
+            var shape = world.getBlockState(support).getCollisionShape(world, support);
+            if (shape.isEmpty() || Math.abs(shape.max(Direction.Axis.Y) - 1.0) > 0.025) continue;
+            ScaffoldPlacementTarget placement;
+            if (mlgRotationMode.get() == MlgRotationMode.NO_ROTATIONS) {
+                Vec3 eye = player.getEyePosition();
+                double hitX = Math.max(support.getX() + 0.06, Math.min(support.getX() + 0.94, eye.x));
+                double hitZ = Math.max(support.getZ() + 0.06, Math.min(support.getZ() + 0.94, eye.z));
+                Vec3 hit = new Vec3(hitX, support.getY() + 1.0, hitZ);
+                placement = new ScaffoldPlacementTarget(support, targetPos, Direction.UP,
+                        hit, support.getY() + 1.0,
+                        Rotation.lookingAt(hit, eye).normalize());
+            } else {
+                placement = findMlgPlacementTarget(player, source, targetPos,
+                        (supportPos, face) -> face == Direction.UP && supportPos.equals(support));
+            }
+            if (placement == null || !isWithinMlgBlockRange(player, placement.getHitVec())) continue;
+            MlgPlan plan = new MlgPlan(MlgPlanType.PLACE, targetPos, placement, placement.getRotation(),
+                    source.hand(), source.hotbarSlot(), source.item(), candidate.contactTick());
+            plans.put(candidate, plan);
+            viable.add(candidate);
+            if (currentMlgPlan != null && sameMlgTarget(currentMlgPlan, plan)) previous = candidate;
+            if (serverHit != null && plan.matches(serverHit)) aligned = candidate;
+        }
+        if (viable.isEmpty()) return List.of();
+        SlimeMlgTrajectoryPlanner.Candidate chosen = SlimeMlgTrajectoryPlanner.choose(viable, previous, aligned);
+        viable.sort(java.util.Comparator.comparingInt(SlimeMlgTrajectoryPlanner.Candidate::contactTick)
+                .thenComparing(java.util.Comparator.comparingDouble(
+                        SlimeMlgTrajectoryPlanner.Candidate::coverage).reversed()));
+        List<MlgPlan> ordered = new ArrayList<>(viable.size());
+        if (chosen != null) ordered.add(plans.get(chosen));
+        for (var candidate : viable) {
+            if (!candidate.equals(chosen)) ordered.add(plans.get(candidate));
+        }
+        return ordered;
+    }
+
+    private List<SlimeMlgTrajectoryPlanner.Frame> slimePrediction(LocalPlayer player) {
+        List<SlimeMlgTrajectoryPlanner.Frame> path = new ArrayList<>(MLG_COLLISION_PREDICTION_TICKS + 1);
+        PlayerSimulationCache.SimulatedPlayerCache simulation = PlayerSimulationCache.getSimulationForLocalPlayer();
+        if (simulation != null) {
+            try {
+                for (int tick = 0; tick <= MLG_COLLISION_PREDICTION_TICKS; tick++) {
+                    var snapshot = simulation.getSnapshotAt(tick);
+                    if (snapshot == null) break;
+                    path.add(new SlimeMlgTrajectoryPlanner.Frame(
+                            snapshot.pos().x, snapshot.pos().y, snapshot.pos().z, snapshot.onGround()));
+                }
+            } catch (RuntimeException ignored) {
+                path.clear();
+            }
+        }
+        if (path.size() >= 2) return path;
+        Vec3 position = player.position();
+        Vec3 velocity = player.getDeltaMovement();
+        path.clear();
+        if (player.onGround() && velocity.y <= 0.0) return path;
+        for (int tick = 0; tick <= MLG_COLLISION_PREDICTION_TICKS; tick++) {
+            path.add(new SlimeMlgTrajectoryPlanner.Frame(position.x, position.y, position.z,
+                    tick == 0 && player.onGround()));
+            position = position.add(velocity);
+            velocity = new Vec3(velocity.x * 0.91, (velocity.y - 0.08) * 0.98,
+                    velocity.z * 0.91);
+        }
+        return path;
+    }
+
+    private ScaffoldPlacementTarget findMlgPlacementTarget(LocalPlayer player, MlgSource source,
+                                                           BlockPos targetPos,
+                                                           java.util.function.BiPredicate<BlockPos, Direction> faceFilter) {
+        return ScaffoldTargetFinder.findTarget(
+                player, targetPos, source.stack(), List.of(BlockPos.ZERO), null, false,
+                new ScaffoldFacePositionFactory(player, player.getEyePosition(),
+                        ScaffoldFacePositionFactory.Mode.CENTER, null, 0.0),
+                player.getEyePosition(), faceFilter);
     }
 
     private MlgPlan getCurrentPickupPlan(LocalPlayer player) {
@@ -438,7 +629,8 @@ public class NoFall extends Module {
                 continue;
             }
 
-            return new MlgPlan(MlgPlanType.PICKUP_WATER, placement.pos(), null, rotation, source.hand(), source.hotbarSlot(), source.item());
+            return new MlgPlan(MlgPlanType.PICKUP_WATER, placement.pos(), null, rotation,
+                    source.hand(), source.hotbarSlot(), source.item(), 0);
         }
 
         return null;
@@ -528,22 +720,34 @@ public class NoFall extends Module {
         return Math.min(diff, 9 - diff);
     }
 
-    private BlockPos findMlgCollision(LocalPlayer player) {
+    private MlgLanding findMlgCollision(LocalPlayer player) {
         PlayerSimulationCache.SimulatedPlayerCache simulation = PlayerSimulationCache.getSimulationForLocalPlayer();
         if (simulation == null) {
             return null;
         }
 
+        PlayerSimulationCache.SimulatedPlayerSnapshot previous = simulation.getSnapshotAt(0);
+        double peakY = previous.pos().y;
         for (int tick = 1; tick <= MLG_COLLISION_PREDICTION_TICKS; tick++) {
             PlayerSimulationCache.SimulatedPlayerSnapshot snapshot = simulation.getSnapshotAt(tick);
-            if (!snapshot.onGround()) {
-                continue;
+            peakY = Math.max(peakY, snapshot.pos().y);
+            if (snapshot.onGround() && !previous.onGround()) {
+                Vec3 pos = snapshot.pos();
+                Vec3 before = previous.pos();
+                int supportY = (int) Math.floor(pos.y - 0.2);
+                double halfWidth = player.getBbWidth() * .5 + MLG_PREDICTION_FOOTPRINT_EPSILON;
+                for (MlgLandingSelector.Column column : MlgLandingSelector.rank(
+                        before.x, before.z, pos.x, pos.z, halfWidth)) {
+                    BlockPos candidate = new BlockPos(column.x(), supportY, column.z());
+                    // The support must really collide, not just occupy the sampled X/Z column.
+                    if (!player.level().getBlockState(candidate).getCollisionShape(player.level(), candidate).isEmpty()) {
+                        return new MlgLanding(candidate, tick, peakY);
+                    }
+                }
+                return null;
             }
-
-            Vec3 pos = snapshot.pos();
-            return BlockPos.containing(pos.x, pos.y - 0.2, pos.z);
+            previous = snapshot;
         }
-
         return null;
     }
 
@@ -583,42 +787,58 @@ public class NoFall extends Module {
         return hitResult instanceof BlockHitResult blockHitResult ? blockHitResult : null;
     }
 
-    private void executeMlgPlacement(LocalPlayer player, MlgPlan plan, BlockHitResult hitResult, Rotation useRotation) {
+    private boolean executeMlgPlacement(LocalPlayer player, MlgPlan plan, BlockHitResult hitResult, Rotation useRotation) {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.gameMode == null || player == null || plan == null || hitResult == null || useRotation == null) {
-            return;
+            return false;
         }
         if (!canReachMlgTarget(player, plan, hitResult)) {
-            return;
+            return false;
         }
 
+        boolean slime = mode.get() == Mode.SLIME_MLG && plan.type() == MlgPlanType.PLACE;
+        int previousSlot = -1;
         if (plan.hotbarSlot() >= 0) {
-            InventorySwap.INSTANCE.leaseHotbar(this, plan.hotbarSlot(), MLG_HOTBAR_RESET_TICKS);
+            previousSlot = ((PlayerInventoryAccessor) player.getInventory()).combatant$getSelectedSlot();
+            if (slime && !InventorySwap.INSTANCE.leaseHotbar(this, plan.hotbarSlot(), MLG_HOTBAR_RESET_TICKS)) return false;
+            if (previousSlot != plan.hotbarSlot()
+                    && !InventorySwap.INSTANCE.selectHotbar(plan.hotbarSlot())) return false;
         }
 
         boolean success;
-        if (plan.type() == MlgPlanType.PICKUP_WATER) {
-            InteractionResult useResult = interactItemWithRotation(player, plan.hand(), useRotation);
-            success = useResult != null && useResult.consumesAction();
-        } else {
-            InteractionResult result = BlockInteractionPipeline.INSTANCE.useOnBlock(
-                    this,
-                    player,
-                    plan.hand(),
-                    -1,
-                    MLG_HOTBAR_RESET_TICKS,
-                    hitResult,
-                    false
-            );
-            success = result != null && result.consumesAction();
-
-            if (!success && result == InteractionResult.PASS) {
+        try {
+            if (plan.type() == MlgPlanType.PICKUP_WATER) {
                 InteractionResult useResult = interactItemWithRotation(player, plan.hand(), useRotation);
                 success = useResult != null && useResult.consumesAction();
+            } else {
+                InteractionResult result = BlockInteractionPipeline.INSTANCE.useOnBlock(
+                        this,
+                        player,
+                        plan.hand(),
+                        slime ? plan.hotbarSlot() : -1,
+                        MLG_HOTBAR_RESET_TICKS,
+                        hitResult,
+                        false
+                );
+                success = result != null && result.consumesAction();
+
+                if (!success && !slime && result == InteractionResult.PASS) {
+                    InteractionResult useResult = interactItemWithRotation(player, plan.hand(), useRotation);
+                    success = useResult != null && useResult.consumesAction();
+                }
+            }
+        } finally {
+            if (previousSlot >= 0 && previousSlot != plan.hotbarSlot()) {
+                InventorySwap.INSTANCE.restoreHotbar(previousSlot);
             }
         }
 
         if (success) {
+            lastMlgActionTick = player.tickCount;
+            if (mode.get() == Mode.SLIME_MLG && plan.type() == MlgPlanType.PLACE) {
+                lastSlimePlacementTick = player.tickCount;
+                lastSlimePlacementPos = plan.targetPos();
+            }
             player.swing(plan.hand(), player.getItemInHand(plan.hand()).getInteractAnimation(), false);
             if (plan.item() == Items.SCAFFOLDING) {
                 mlgSneakTicks = MLG_SCAFFOLDING_SNEAK_TICKS;
@@ -629,6 +849,7 @@ public class NoFall extends Module {
                 lastWaterPlacements.removeIf(placement -> placement.pos().equals(plan.targetPos()));
             }
         }
+        return success;
     }
 
     private boolean canReachMlgTarget(LocalPlayer player, MlgPlan plan, BlockHitResult hitResult) {
@@ -685,8 +906,11 @@ public class NoFall extends Module {
         PACKET_JUMP,
         VULCAN,
         NO_GROUND,
-        MLG
+        MLG,
+        SLIME_MLG
     }
+
+    public enum MlgRotationMode { ROTATIONS, NO_ROTATIONS }
 
     public enum PacketJumpTiming {
         LANDING,
@@ -698,6 +922,8 @@ public class NoFall extends Module {
         PICKUP_WATER
     }
 
+    private record MlgLanding(BlockPos support, int ticksToLanding, double peakY) { }
+
     private record MlgSource(InteractionHand hand, int hotbarSlot, ItemStack stack, Item item) {
     }
 
@@ -708,7 +934,8 @@ public class NoFall extends Module {
             Rotation rotation,
             InteractionHand hand,
             int hotbarSlot,
-            Item item
+            Item item,
+            int ticksToLanding
     ) {
         private boolean matches(BlockHitResult hitResult) {
             if (hitResult == null) {

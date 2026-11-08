@@ -96,7 +96,7 @@ public enum RenderThread2DDebugRenderer {
 
             logGuiStateIfDue(gw, gh, rects);
         } catch (Throwable t) {
-            recordGuiStateFailure(t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()));
+            recordGuiStateFailure(t.getClass().getSimpleName() + ": " + t.getMessage());
         }
     }
 
@@ -167,7 +167,7 @@ public enum RenderThread2DDebugRenderer {
 
             logImmediateIfDue(fbw, fbh, stats);
         } catch (Throwable t) {
-            recordImmediateFailure(t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()));
+            recordImmediateFailure(t.getClass().getSimpleName() + ": " + t.getMessage());
         } finally {
             if (pushedModelView) {
                 modelView.popMatrix();

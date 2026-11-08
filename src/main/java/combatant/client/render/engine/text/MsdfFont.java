@@ -37,7 +37,6 @@ import org.lwjgl.system.MemoryStack;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
-import java.util.Map;
 
 public final class MsdfFont implements GlyphFont {
     private static final int FONT_SIZES = 5;

@@ -223,8 +223,8 @@ public final class DuplexLocalTcpTransport implements AutoCloseable {
             }
         } finally {
             readBuffer.compact();
-            if (!readBuffer.hasRemaining()) throw new IOException("receive buffer exhausted");
         }
+        if (!readBuffer.hasRemaining()) throw new IOException("receive buffer exhausted");
     }
 
     private static ByteBuffer framed(byte[] payload) {

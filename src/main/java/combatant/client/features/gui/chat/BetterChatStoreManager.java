@@ -11,6 +11,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -24,6 +25,7 @@ import combatant.client.features.gui.chat.rich.BetterChatMessageJson;
 import combatant.client.features.gui.chat.rich.ItemNode;
 import combatant.client.features.gui.chat.rich.TextNode;
 import combatant.client.config.ConfigPaths;
+import combatant.client.config.persist.AtomicFileStore;
 import combatant.client.features.gui.hud.draggable.impl.BetterChat;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.text.LegacyTextUtil;
@@ -31,11 +33,10 @@ import combatant.client.util.text.TextJsonUtil;
 import combatant.client.util.chat.ChatSpamHeuristics;
 
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Per-world chat storage + async Gson persistence.
@@ -45,6 +46,7 @@ public enum BetterChatStoreManager {
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
     private static final Map<String, BetterChatStore> STORES = new HashMap<>();
+    private static final Map<String, Object> SAVE_FILE_LOCKS = new ConcurrentHashMap<>();
     private static final Map<String, BetterChatHoverCache> HOVER_CACHES = new HashMap<>();
     private static final Map<String, CompletableFuture<?>> SAVE_JOBS = new HashMap<>();
     private static final Map<String, CompletableFuture<?>> CACHE_SAVE_JOBS = new HashMap<>();
@@ -132,9 +134,10 @@ public enum BetterChatStoreManager {
 
     private static BetterChatStore loadSync(String key, BetterChatHoverCache cache) {
         File f = fileFor(key);
-        if (!f.exists()) return new BetterChatStore();
-        try (FileReader reader = new FileReader(f, StandardCharsets.UTF_8)) {
-            JsonArray arr = GSON.fromJson(reader, JsonArray.class);
+        AtomicFileStore.ReadResult result = AtomicFileStore.readRecovering(f.toPath(), BetterChatStoreManager::validHistory);
+        if (!result.found()) return new BetterChatStore();
+        try {
+            JsonArray arr = GSON.fromJson(new String(result.bytes(), StandardCharsets.UTF_8), JsonArray.class);
             BetterChatStore store = new BetterChatStore();
             if (arr != null) {
                 for (var el : arr) {
@@ -186,13 +189,19 @@ public enum BetterChatStoreManager {
      */
     public static void flushAll() {
         // wait for pending async saves
-        for (CompletableFuture<?> f : new ArrayList<>(SAVE_JOBS.values())) {
+        List<CompletableFuture<?>> saveJobs;
+        List<CompletableFuture<?>> cacheJobs;
+        synchronized (BetterChatStoreManager.class) {
+            saveJobs = new ArrayList<>(SAVE_JOBS.values());
+            cacheJobs = new ArrayList<>(CACHE_SAVE_JOBS.values());
+        }
+        for (CompletableFuture<?> f : saveJobs) {
             try {
                 f.join();
             } catch (Throwable ignored) {
             }
         }
-        for (CompletableFuture<?> f : new ArrayList<>(CACHE_SAVE_JOBS.values())) {
+        for (CompletableFuture<?> f : cacheJobs) {
             try {
                 f.join();
             } catch (Throwable ignored) {
@@ -211,31 +220,45 @@ public enum BetterChatStoreManager {
         }
     }
 
-    private static void saveSync(String key, BetterChatStore store) {
-        try {
-            SavePayload payload = captureSavePayload(store);
-            File f = fileFor(key);
-            f.getParentFile().mkdirs();
-            JsonArray arr = new JsonArray();
-            for (ChatLine line : payload.lines()) {
-                JsonObject obj = new JsonObject();
-                String json = BetterChatSerializedLineCache.text(line);
-                obj.addProperty("text", json);
-                if (!line.rawMessage().isTextOnly()) {
-                    obj.add("nodes", BetterChatMessageJson.encode(line.rawMessage()));
+    private static boolean saveSync(String key, BetterChatStore store) {
+        synchronized (SAVE_FILE_LOCKS.computeIfAbsent(key, ignored -> new Object())) {
+            try {
+                SavePayload payload = captureSavePayload(store);
+                File f = fileFor(key);
+                synchronized (BetterChatStoreManager.class) {
+                    if (payload.revision() <= LAST_SAVED_REVISIONS.getOrDefault(key, -1L)
+                            && f.isFile()) return true;
                 }
-                obj.addProperty("time", line.timestampMs());
-                if (line.repeatCount() > 1) obj.addProperty("count", line.repeatCount());
-                arr.add(obj);
+                JsonArray arr = new JsonArray();
+                for (ChatLine line : payload.lines()) {
+                    JsonObject obj = new JsonObject();
+                    String json = BetterChatSerializedLineCache.text(line);
+                    obj.addProperty("text", json);
+                    if (!line.rawMessage().isTextOnly()) {
+                        obj.add("nodes", BetterChatMessageJson.encode(line.rawMessage()));
+                    }
+                    obj.addProperty("time", line.timestampMs());
+                    if (line.repeatCount() > 1) obj.addProperty("count", line.repeatCount());
+                    arr.add(obj);
+                }
+                AtomicFileStore.write(f.toPath(), GSON.toJson(arr).getBytes(StandardCharsets.UTF_8),
+                        BetterChatStoreManager::validHistory);
+                synchronized (BetterChatStoreManager.class) {
+                    LAST_SAVED_REVISIONS.put(key, payload.revision());
+                }
+                return true;
+            } catch (Exception e) {
+                DebugLog.error("BetterChat save failed for %s", e, key);
+                return false;
             }
-            try (FileWriter writer = new FileWriter(f, StandardCharsets.UTF_8)) {
-                GSON.toJson(arr, writer);
-            }
-            synchronized (BetterChatStoreManager.class) {
-                LAST_SAVED_REVISIONS.put(key, payload.revision());
-            }
-        } catch (Exception e) {
-            DebugLog.error("BetterChat save failed for %s", e, key);
+        }
+    }
+
+    private static boolean validHistory(byte[] bytes) {
+        try {
+            return JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8)).isJsonArray();
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 
@@ -252,7 +275,7 @@ public enum BetterChatStoreManager {
                         return;
                     }
                 }
-                saveSync(key, store);
+                if (!saveSync(key, store)) return;
             }
         } finally {
             synchronized (BetterChatStoreManager.class) {
@@ -423,12 +446,14 @@ public enum BetterChatStoreManager {
 
     private static void scheduleCacheSave(String key, BetterChatHoverCache cache) {
         if (key == null || cache == null) return;
-        CACHE_SAVE_JOBS.compute(key, (k, prev) -> {
-            CompletableFuture<?> base = prev == null
-                    ? CompletableFuture.completedFuture(null)
-                    : prev.exceptionally(ex -> null);
-            return base.thenRunAsync(() -> cache.save(k));
-        });
+        synchronized (BetterChatStoreManager.class) {
+            CACHE_SAVE_JOBS.compute(key, (k, prev) -> {
+                CompletableFuture<?> base = prev == null
+                        ? CompletableFuture.completedFuture(null)
+                        : prev.exceptionally(ex -> null);
+                return base.thenRunAsync(() -> cache.save(k));
+            });
+        }
     }
 
     public static BetterChatRenderer.Layout loadLayout() {

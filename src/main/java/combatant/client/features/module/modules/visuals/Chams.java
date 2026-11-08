@@ -37,7 +37,6 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
-import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.iris.IrisHandRendererAccessor;
 import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.pipeline.EffectRenderPipelines;

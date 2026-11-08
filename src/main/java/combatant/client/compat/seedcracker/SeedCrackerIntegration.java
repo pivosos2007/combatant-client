@@ -184,10 +184,10 @@ final class SeedCrackerIntegration {
     }
     private static void configureHashGuard(Config cfg, boolean enabled) {
         if (Boolean.valueOf(enabled).equals(appliedHashGuard)) return;
-        cfg.endCity.set(enabled ? false : nativeEndCity);
-        cfg.endPillars.set(enabled ? false : nativeEndPillars);
-        cfg.endGateway.set(enabled ? false : nativeEndGateway);
-        cfg.biome.set(enabled ? false : nativeBiome);
+        cfg.endCity.set(!enabled && nativeEndCity);
+        cfg.endPillars.set(!enabled && nativeEndPillars);
+        cfg.endGateway.set(!enabled && nativeEndGateway);
+        cfg.biome.set(!enabled && nativeBiome);
         cfg.dungeon.set(enabled || nativeDungeon);
         // A non-null zero hash is safe for upstream's login/database handling;
         // TimeMachine's hash branch explicitly excludes zero.

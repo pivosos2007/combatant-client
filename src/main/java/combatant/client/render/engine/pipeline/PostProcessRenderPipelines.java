@@ -23,7 +23,6 @@ import net.minecraft.resources.Identifier;
 
 public final class PostProcessRenderPipelines {
     private static final RenderPipeline.Snippet MESH_UNIFORMS = CombatantRenderPipelines.meshUniforms();
-    private static final RenderPipeline.Snippet UI_BATCH_UNIFORMS = CombatantRenderPipelines.uiBatchUniforms();
     private static final String UI_BLUR_BLOCK = CombatantRenderPipelines.uiBlurBlock();
 
 
@@ -199,46 +198,6 @@ public final class PostProcessRenderPipelines {
             .withCull(false)
             .build();
     /** Full-screen cover-fit texture used by the rewritten main menu. */
-    @PipelineRegister
-    public static final RenderPipeline MAIN_MENU_TEXTURE_BACKGROUND = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/main_menu_texture_background"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("damage_tint.vert"))
-            .withFragmentShader(shader("main_menu_texture_background.frag"))
-            .withSampler("u_PreviousTexture")
-            .withSampler("u_Texture")
-            .withUniform("MenuTextureTransition", UniformType.UNIFORM_BUFFER)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withCull(false)
-            .build();
-    /** Full-screen procedural aurora used by the Combatant/vanilla menu background replacement. */
-    @PipelineRegister
-    public static final RenderPipeline MAIN_MENU_AURORA_BACKGROUND = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/menu_background_aurora"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("damage_tint.vert"))
-            .withFragmentShader(shader("menu_background_aurora.frag"))
-            .withUniform("MenuBackground", UniformType.UNIFORM_BUFFER)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withCull(false)
-            .build();
-    /** Full-screen procedural waves used by the Combatant/vanilla menu background replacement. */
-    @PipelineRegister
-    public static final RenderPipeline MAIN_MENU_WAVES_BACKGROUND = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/menu_background_waves"))
-            .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("damage_tint.vert"))
-            .withFragmentShader(shader("menu_background_waves.frag"))
-            .withUniform("MenuBackground", UniformType.UNIFORM_BUFFER)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withDepthWrite(false)
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withCull(false)
-            .build();
     /** Stationary procedural cloud panorama used by isolated visual-preview scenes. */
     @PipelineRegister
     public static final RenderPipeline VISUAL_PREVIEW_CLOUDS = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)

@@ -16,6 +16,7 @@ import java.lang.annotation.Target;
 public @interface GaugeConnect {
     String id();
     String labelKey();
+    GaugeRegistry.Kind kind() default GaugeRegistry.Kind.BAR;
     GaugeRegistry.Readiness readiness() default GaugeRegistry.Readiness.CONTINUOUS;
     float threshold() default 0f;
     GaugeRegistry.Flow flow() default GaugeRegistry.Flow.FILL;

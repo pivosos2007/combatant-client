@@ -63,7 +63,6 @@ import combatant.client.api.v0.render.CombatantRenderStage;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.WorldPhase;
-import combatant.client.features.module.modules.visuals.*;
 import combatant.client.mixins.accessors.GameRendererAccessor;
 import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.render.engine.RenderState;
@@ -80,7 +79,6 @@ import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.config.MainConfig;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
-import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.RenderProfiler3D;
 import combatant.client.render.engine.profiler.TracyGpuProfiler;
@@ -1059,10 +1057,8 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
     )
     private void combatant$captureWorldForHudGlass(CallbackInfo ci) {
         if (!combatant.client.runtime.RuntimeGate.canRunRender()) {
-            MenuBackgroundRenderer.clearDeferred();
             return;
         }
-        MenuBackgroundRenderer.drainDeferred(minecraft);
         Renderer2D.prepareDeferredUiItems();
         UiBlurResources.captureWorldSource();
         if (AddonRenderPipelineManager.hasActiveCallbacks(CombatantRenderStage.SCREEN_BEFORE_VANILLA_GUI)) {

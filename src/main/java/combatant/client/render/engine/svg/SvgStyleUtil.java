@@ -235,6 +235,12 @@ enum SvgStyleUtil {
         return vals;
     }
 
+    private static int expandedHexDigit(String hex, int index) {
+        int digit = Character.digit(hex.charAt(index), 16);
+        if (digit < 0) throw new NumberFormatException("Invalid hex color");
+        return digit * 17;
+    }
+
     private static Integer parsePaint(String raw, int currentColor) {
         String v = raw.trim().toLowerCase(Locale.ROOT);
         if (v.isEmpty() || "none".equals(v) || v.startsWith("url(")) return null;
@@ -246,16 +252,16 @@ enum SvgStyleUtil {
             try {
                 return switch (hex.length()) {
                     case 3 -> {
-                        int r = Integer.parseInt(hex.substring(0, 1) + hex.substring(0, 1), 16);
-                        int g = Integer.parseInt(hex.substring(1, 2) + hex.substring(1, 2), 16);
-                        int b = Integer.parseInt(hex.substring(2, 3) + hex.substring(2, 3), 16);
+                        int r = expandedHexDigit(hex, 0);
+                        int g = expandedHexDigit(hex, 1);
+                        int b = expandedHexDigit(hex, 2);
                         yield (0xFF << 24) | (r << 16) | (g << 8) | b;
                     }
                     case 4 -> {
-                        int r = Integer.parseInt(hex.substring(0, 1) + hex.substring(0, 1), 16);
-                        int g = Integer.parseInt(hex.substring(1, 2) + hex.substring(1, 2), 16);
-                        int b = Integer.parseInt(hex.substring(2, 3) + hex.substring(2, 3), 16);
-                        int a = Integer.parseInt(hex.substring(3, 4) + hex.substring(3, 4), 16);
+                        int r = expandedHexDigit(hex, 0);
+                        int g = expandedHexDigit(hex, 1);
+                        int b = expandedHexDigit(hex, 2);
+                        int a = expandedHexDigit(hex, 3);
                         yield (a << 24) | (r << 16) | (g << 8) | b;
                     }
                     case 6 -> (0xFF << 24) | Integer.parseInt(hex, 16);

@@ -1,0 +1,31 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_DyeHistory;
+layout(binding = 1, rgba16f) writeonly uniform image2D u_Dye;
+layout(binding = 3) uniform sampler2D u_Velocity;
+layout(std430, binding = 2) readonly buffer MenuSmokeParams {
+    vec4 screen;
+    vec4 mouse;
+    vec4 motion;
+    vec4 accent;
+    vec4 soft;
+    vec4 cold;
+    vec4 warm;
+    vec4 sources[48];
+    vec4 sourceProps[48];
+} u_Smoke;
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_Dye);
+    if (any(greaterThanEqual(p, size))) return;
+    vec2 uv = (vec2(p) + 0.5) / vec2(size);
+    if (u_Smoke.motion.z > 0.5) {
+        imageStore(u_Dye, p, vec4(0.0));
+        return;
+    }
+    float dt = clamp(u_Smoke.screen.z, 0.0, 0.033);
+    vec2 flow = texture(u_Velocity, uv).xy;
+    vec2 back = clamp(uv - flow * dt, 0.5 / vec2(size), 1.0 - 0.5 / vec2(size));
+    imageStore(u_Dye, p, texture(u_DyeHistory, back));
+}

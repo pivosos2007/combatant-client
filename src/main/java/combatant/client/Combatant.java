@@ -598,6 +598,7 @@ public class Combatant implements ClientModInitializer {
         Events.BUS.registerIsolated(MapLinkRuntime.get());
         Events.BUS.registerIsolated(MapLocationRuntime.get());
         Events.BUS.register(SelfBedTracker.INSTANCE);
+        Events.BUS.register(combatant.client.util.player.TeleportImpulseTracker.INSTANCE);
         Events.BUS.register(BoatSimulationCache.INSTANCE);
         Events.BUS.register(PlayerSimulationCache.INSTANCE);
         Events.BUS.register(BlinkManager.INSTANCE);

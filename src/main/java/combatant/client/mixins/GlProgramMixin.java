@@ -75,7 +75,7 @@ public abstract class GlProgramMixin {
                 break;
             }
             out.append(template, cursor, placeholder);
-            out.append(String.valueOf(args[argIndex++]));
+            out.append(args[argIndex++]);
             cursor = placeholder + 2;
         }
         out.append(template, cursor, template.length());

@@ -49,7 +49,6 @@ import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.RGBColorValue;
-import combatant.client.features.module.*;
 import combatant.client.mixins.accessors.PersistentProjectileEntityAccessor;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.TextureStorage;
@@ -67,7 +66,6 @@ import combatant.client.util.target.TargetManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 
 @ModuleInfo(id = "predictions", displayName = "Predictions", category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.predictions.description")
@@ -610,7 +608,6 @@ public class Predictions extends Module {
 
     private static boolean isPredictedProjectile(Entity e) {
         return e instanceof ThrownEnderpearl
-                || e instanceof ThrownTrident
                 || e instanceof AbstractArrow
                 || e instanceof Fireball
                 || e instanceof WindCharge

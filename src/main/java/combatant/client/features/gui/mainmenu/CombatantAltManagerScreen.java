@@ -28,20 +28,17 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
-import net.minecraft.util.Util;
 import combatant.client.features.account.AccountConfig;
 import combatant.client.features.account.AccountEntry;
 import combatant.client.features.account.SkinManager;
 import combatant.client.features.gui.hud.HudRenderUtil;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
-import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiPaint;
 import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
@@ -193,7 +190,6 @@ public final class CombatantAltManagerScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         updateUiMetrics();
         clampScroll();
-        renderBackgroundTexture();
 
         float fx = toFixedX(mouseX);
         float fy = toFixedY(mouseY);
@@ -525,7 +521,7 @@ public final class CombatantAltManagerScreen extends Screen {
                 0.0f,
                 LayoutRender2D.alpha(0xFF000000, openAlpha * (0.18f + 0.08f * hoverAnim - 0.025f * pressAnim))
         );
-        ClickGuiRenderer.drawBlur(x, y, w, h, radius, 0xFF000000, (200f / 255f) * openAlpha);
+        LayoutRender2D.drawBlur(x, y, w, h, radius, 0xFF000000, (200f / 255f) * openAlpha);
         LayoutRender2D.roundedQuad(
                 x, y, w, h, radius,
                 LayoutRender2D.alpha(top, openAlpha),
@@ -645,7 +641,7 @@ public final class CombatantAltManagerScreen extends Screen {
                 withAlpha(denseTint, Math.round(alpha * 238f)),
                 alpha,
                 1.0f,
-                (9.6f + hover * 1.0f) * MainMenuBackdrop.MENU_SCALE,
+                (9.6f + hover) * MainMenuBackdrop.MENU_SCALE,
                 -9.0f,
                 0.98f,
                 0.84f,
@@ -772,7 +768,7 @@ public final class CombatantAltManagerScreen extends Screen {
         Renderer2D.COLOR.primitiveStroke(field, UiPaint.solid(withAlpha(stroke, 202)), UiStroke.of(0.62f * MainMenuBackdrop.MENU_SCALE));
         if (microsoftAuthPending) {
             float pulse = 0.5f + 0.5f * (float) Math.sin(AnimationUtility.time(0.006f, AnimationUtility.Mode.MILLIS));
-            UiPrimitive pulseBar = parallelogram(x + 4f * SCALE, y + h - 1.6f * SCALE, w - 8f * SCALE, 1.0f * SCALE, 1.0f * SCALE, 0.35f * SCALE);
+            UiPrimitive pulseBar = parallelogram(x + 4f * SCALE, y + h - 1.6f * SCALE, w - 8f * SCALE, SCALE, SCALE, 0.35f * SCALE);
             Renderer2D.COLOR.primitive(pulseBar, UiPaint.linear(
                     withAlpha(c.accentSoft, Math.round(72f + 44f * pulse)),
                     withAlpha(c.accent, Math.round(48f + 36f * pulse)), 0f, 0f));
@@ -805,7 +801,7 @@ public final class CombatantAltManagerScreen extends Screen {
         Renderer2D.COLOR.primitive(field, UiPaint.linear(fillTop, fillBottom, 90f, 0f));
         Renderer2D.COLOR.primitiveStroke(field, UiPaint.solid(withAlpha(stroke, 206)), UiStroke.of(0.62f * MainMenuBackdrop.MENU_SCALE));
         if (focusAnim > 0.01f) {
-            UiPrimitive focusBar = parallelogram(x + 4f * SCALE, y + h - 1.6f * SCALE, w - 8f * SCALE, 1.0f * SCALE, 1.0f * SCALE, 0.35f * SCALE);
+            UiPrimitive focusBar = parallelogram(x + 4f * SCALE, y + h - 1.6f * SCALE, w - 8f * SCALE, SCALE, SCALE, 0.35f * SCALE);
             Renderer2D.COLOR.primitive(focusBar, UiPaint.linear(
                     withAlpha(c.accentSoft, Math.round(104f * focusAnim)),
                     withAlpha(c.accent, Math.round(72f * focusAnim)), 0f, 0f));
@@ -1086,11 +1082,6 @@ public final class CombatantAltManagerScreen extends Screen {
                 withAlpha(textMuted, Math.round(alpha * 205f)),
                 surface, surfaceHover, accent, accentSoft
         );
-    }
-
-    private void renderBackgroundTexture() {
-        Minecraft mc = this.minecraft;
-        if (mc != null) MenuBackgroundRenderer.renderConfigured(mc);
     }
 
     private static UiPrimitive windowPrimitive(float x, float y, float w, float h) {

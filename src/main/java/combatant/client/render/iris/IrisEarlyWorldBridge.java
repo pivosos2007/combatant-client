@@ -15,7 +15,6 @@ import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.SeeInvisibles;
 import combatant.client.render.engine.core.CombatantRenderSystem;
-import combatant.client.render.engine.world.EarlyShockwavePass;
 import combatant.client.render.engine.world.VanillaBeforeTranslucentPass;
 import combatant.client.util.logging.DebugLog;
 import net.irisshaders.iris.gl.texture.InternalTextureFormat;

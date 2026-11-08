@@ -11,6 +11,7 @@ import combatant.client.events.impl.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffects;
@@ -26,8 +27,13 @@ import net.minecraft.world.phys.Vec3;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.KeyBindValue;
+import combatant.client.config.values.BindMode;
+import combatant.client.config.common.CommonSettingSchemas;
+import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
+import combatant.client.features.gui.hud.gauges.GaugeConnect;
+import combatant.client.features.gui.hud.gauges.GaugeRegistry;
 import combatant.client.events.EventHandler;
-import combatant.client.events.impl.*;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -71,10 +77,18 @@ public class ElytraFly extends Module {
     private static final double PACKET_START_COLLISION_XZ_CONTRACT = 0.25;
     private static final double PACKET_START_COLLISION_Y_OFFSET = -0.3;
     private static final double VANILLA_FIREWORK_BOOST = 0.1;
+    private static final double VULCAN_HORIZONTAL_CAP = 4.13;
+    private static final double VULCAN_ASCENT_CAP = 1.435;
+    private static final double VULCAN_BURST_ACCELERATION = 0.16;
+    private static final double VULCAN_CRUISE_ACCELERATION = 0.022;
+    // Type G requires >0.031 horizontal gain; leave room for displacement rounding.
+    private static final double VULCAN_G_ACCELERATION_CAP = 0.028;
+    private static final double VULCAN_G_MIN_SPEED = 0.645;
+    private static final int VULCAN_RECAST_STABILIZATION_TICKS = 6;
     private static final int CONTROL_FIREWORK_COOLDOWN = 5;
     public final BooleanValue noCrash = bool("elytrafly_no_crash", false);
     private final Minecraft mc = Minecraft.getInstance();
-    private final EnumValue<Mode> mode = enumMode("elytrafly_mode", Mode.FIREWORK, Mode.values());
+    private final EnumValue<Mode> mode = enumCommon("elytrafly_mode", CommonSettingSchemas.MODE, Mode.FIREWORK, Mode.values());
     private final BooleanValue instantStart = bool("elytrafly_instant_start", false);
     private final BooleanValue instantStop = bool("elytrafly_instant_stop", false);
     private final BooleanValue speedEnabled =
@@ -93,12 +107,10 @@ public class ElytraFly extends Module {
             visibleWhen(num("elytrafly_static_glide_vertical", 0.01f, 0.0f, 1.0f), () -> mode.get() == Mode.STATIC && staticGlide.get());
     private final NumberValue<Float> staticHorizontalGlide =
             visibleWhen(num("elytrafly_static_glide_horizontal", 0.0f, 0.0f, 1.0f), () -> mode.get() == Mode.STATIC && staticGlide.get());
-    private final NumberValue<Float> vanillaDragPercent =
-            visibleWhen(num("elytrafly_vanilla_drag_percent", 99.0f, 90.0f, 100.0f), () -> mode.get() == Mode.VANILLA);
-    private final NumberValue<Float> vanillaForwardBoost =
-            visibleWhen(num("elytrafly_vanilla_forward_boost", 18.0f, 0.0f, 100.0f), () -> mode.get() == Mode.VANILLA);
-    private final NumberValue<Float> vanillaPitchLift =
-            visibleWhen(num("elytrafly_vanilla_pitch_lift", 4.5f, 0.0f, 30.0f), () -> mode.get() == Mode.VANILLA);
+    private final FunctionBindSetting vulcanBoostKey = action("vulcan_boost_key",
+            new KeyBindValue("elytrafly_vulcan_boost_key", "NONE"), BindMode.HOLD);
+    private final BooleanValue waterDragReduction = visibleWhen(
+            bool("elytrafly_water_drag_reduction", false), () -> mode.get() == Mode.VULCAN_297);
     private final NumberValue<Float> boostSpeed =
             visibleWhen(num("elytrafly_boost_speed", 0.018f, 0.001f, 2.0f), () -> mode.get() == Mode.BOOST);
     private final NumberValue<Float> boostAcceleration =
@@ -163,6 +175,29 @@ public class ElytraFly extends Module {
     private boolean controlHolding;
     private float controlHeading;
     private double controlHoldY;
+    private final VulcanBuffer vulcanLimit = new VulcanBuffer(1.0, 0.25);
+    private final VulcanBuffer vulcanAcceleration = new VulcanBuffer(6.0, 0.125);
+    private final VulcanBuffer vulcanRapidAcceleration = new VulcanBuffer(3.0, 0.1);
+    private final VulcanBuffer vulcanAscendingAcceleration = new VulcanBuffer(4.0, 0.1);
+    private final VulcanBuffer vulcanAscent = new VulcanBuffer(4.0, 0.1);
+    private final VulcanBuffer vulcanStall = new VulcanBuffer(8.0, 0.125);
+    private final VulcanBuffer vulcanHorizontalPattern = new VulcanBuffer(4.0, 0.1);
+    private final VulcanBuffer vulcanVerticalPattern = new VulcanBuffer(4.0, 0.1);
+    private double vulcanLastX;
+    private double vulcanLastY;
+    private double vulcanLastZ;
+    private double vulcanLastSpeed = Double.NaN;
+    private double vulcanLastVertical = Double.NaN;
+    private int vulcanLastTick = Integer.MIN_VALUE;
+    private int vulcanFlyingTicks;
+    private double vulcanProjectedLimit;
+    private double vulcanProjectedAcceleration;
+    private double vulcanProjectedAscent;
+    private double vulcanProjectedMotion;
+    private double vulcanProjectedRapid;
+    private double vulcanProjectedAscending;
+    private int vulcanCorrectionCooldown;
+    private int vulcanLastGlideTick = Integer.MIN_VALUE;
 
     {
         setDefaultBind("LEFT_ALT+L");
@@ -176,6 +211,8 @@ public class ElytraFly extends Module {
 
     @Override
     public void onDisable() {
+        vulcanLastGlideTick = Integer.MIN_VALUE;
+        GaugeRegistry.removeOwner("elytrafly");
         RotationManager.INSTANCE.clear(this);
         InventorySwap.INSTANCE.releaseHotbar(this);
         resetRuntimeState();
@@ -183,6 +220,7 @@ public class ElytraFly extends Module {
 
     @Override
     public void onTick() {
+        GaugeRegistry.updateAnnotated("elytrafly", this);
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) {
             resetRuntimeState();
@@ -191,6 +229,9 @@ public class ElytraFly extends Module {
 
         syncModeChange();
         tickFireworkCooldown();
+        if (!vulcanMotionActive(player) && vulcanLastTick != Integer.MIN_VALUE) {
+            resetVulcanState();
+        }
 
         if (shouldNotOperate(player)) {
             ElytraRecastUtil.INSTANCE.reset(this);
@@ -296,23 +337,39 @@ public class ElytraFly extends Module {
         return mc.player == null || shouldNotOperate(mc.player);
     }
 
-    public boolean shouldApplyVanillaHook(LocalPlayer player) {
-        return isEnabled()
-                && mode.get() == Mode.VANILLA
-                && player != null
-                && player.isFallFlying();
+    @GaugeConnect(id = "speed", labelKey = "hud.gauges.elytrafly.speed",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample vulcanSpeedGauge() {
+        return vulcanGauge(Math.max(vulcanLimit.used, vulcanProjectedLimit), vulcanLimit.limit);
     }
 
-    public double getVanillaDragFactor() {
-        return vanillaDragPercent.get() / 100.0;
+    @GaugeConnect(id = "acceleration", labelKey = "hud.gauges.elytrafly.acceleration",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample vulcanAccelerationGauge() {
+        return vulcanGauge(Math.max(Math.max(
+                        Math.max(vulcanAcceleration.used, vulcanProjectedAcceleration) / vulcanAcceleration.limit,
+                        Math.max(vulcanRapidAcceleration.used, vulcanProjectedRapid) / vulcanRapidAcceleration.limit),
+                        Math.max(vulcanAscendingAcceleration.used, vulcanProjectedAscending) / vulcanAscendingAcceleration.limit), 1.0D);
     }
 
-    public double getVanillaForwardBoostFactor() {
-        return vanillaForwardBoost.get() / 1000.0;
+    @GaugeConnect(id = "vertical", labelKey = "hud.gauges.elytrafly.vertical",
+            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+    private GaugeRegistry.Sample vulcanVerticalGauge() {
+        return vulcanGauge(Math.max(Math.max(vulcanAscent.used, vulcanProjectedAscent) / vulcanAscent.limit,
+                Math.max(vulcanVerticalPattern.used / vulcanVerticalPattern.limit,
+                        vulcanStall.used / vulcanStall.limit)), 1.0D);
     }
 
-    public double getVanillaPitchLiftFactor() {
-        return vanillaPitchLift.get() / 1000.0;
+    private GaugeRegistry.Sample vulcanGauge(double used, double max) {
+        boolean active = isEnabled() && mode.get() == Mode.VULCAN_297
+                && mc.player != null && vulcanMotionActive(mc.player);
+        float fill = (float) (1.0 - Mth.clamp(used / max, 0.0, 1.0));
+        return new GaugeRegistry.Sample(fill, fill >= 0.2f,
+                active, GaugeRegistry.Flow.DRAIN, "");
+    }
+
+    private static boolean vulcanMotionActive(LocalPlayer player) {
+        return player.isFallFlying() && player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA);
     }
 
     public Vec3 predictTargetingPos(LocalPlayer player) {
@@ -320,39 +377,21 @@ public class ElytraFly extends Module {
             return Vec3.ZERO;
         }
 
-        Vec3 velocity = switch (mode.get()) {
-            case VANILLA -> predictVanillaVelocity(player);
-            default -> player.getDeltaMovement();
-        };
-
-        return player.position().add(velocity);
+        return player.position().add(player.getDeltaMovement());
     }
 
     private boolean shouldNotOperate(LocalPlayer player) {
         if (player == null) return true;
         if (player.isPassenger()) return true;
-        if (player.getAbilities().instabuild || player.hasEffect(MobEffects.LEVITATION)) return true;
+        if (player.hasEffect(MobEffects.LEVITATION)) return true;
+        if (player.getAbilities().instabuild && mode.get() != Mode.VULCAN_297) return true;
 
         ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
         return !chest.is(Items.ELYTRA) || nextDamageWillBreak(chest);
     }
 
-    private Vec3 predictVanillaVelocity(LocalPlayer player) {
-        Vec3 velocity = player.getDeltaMovement();
-        Vec3 look = player.getViewVector(1.0f);
-        float pitch = player.getXRot();
-
-        velocity = velocity.scale(getVanillaDragFactor());
-        velocity = velocity.add(look.scale(getVanillaForwardBoostFactor()));
-
-        double lift = -Math.sin(Math.toRadians(pitch)) * getVanillaPitchLiftFactor();
-        return velocity.add(0.0, lift, 0.0);
-    }
-
     private void applyTickMode(LocalPlayer player) {
         switch (mode.get()) {
-            case VANILLA -> {
-            }
             case BOOST -> applyBoostTick(player);
             case FIREWORK -> applyFireworkTick(player);
             default -> {
@@ -619,6 +658,11 @@ public class ElytraFly extends Module {
 
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
+        if (isEnabled() && mode.get() == Mode.VULCAN_297
+                && event.getPacket() instanceof ClientboundPlayerPositionPacket) {
+            vulcanCorrectionCooldown = 30;
+            vulcanLastTick = Integer.MIN_VALUE;
+        }
         if (!isEnabled() || mode.get() != Mode.PACKET || !packetCancelCorrections.get()) return;
 
         LocalPlayer player = mc.player;
@@ -696,6 +740,27 @@ public class ElytraFly extends Module {
         return player.getYRot();
     }
 
+    @EventHandler
+    private void onWaterTravel(PlayerWaterTravelEvent event) {
+        LocalPlayer player = event.getPlayer();
+        if (!isEnabled() || mode.get() != Mode.VULCAN_297 || !waterDragReduction.get()
+                || mc.player != player || !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) return;
+        if (!player.isFallFlying() && (vulcanLastGlideTick == Integer.MIN_VALUE
+                || player.tickCount - vulcanLastGlideTick > 2)) return;
+        Vec3 incoming = event.getIncomingVelocity();
+        Vec3 current = event.getVelocity();
+        if (incoming == null || current == null) return;
+        double before = Math.hypot(incoming.x, incoming.z);
+        double after = Math.hypot(current.x, current.z);
+        if (before <= 0.02D || after <= 1.0E-6D || !Double.isFinite(before) || !Double.isFinite(after)) return;
+        if (incoming.x * current.x + incoming.z * current.z <= 0.0D) return;
+        double target = Math.min(VULCAN_HORIZONTAL_CAP, Math.max(after, before * 0.99D));
+        if (target <= after) return;
+        double recovered = Math.min(target, after + 0.13D);
+        double factor = recovered / after;
+        event.setVelocity(new Vec3(current.x * factor, current.y, current.z * factor));
+    }
+
     private Vec3 resolveDirectionVector(LocalPlayer player) {
         Rotation rotation = RotationManager.INSTANCE.getCurrentRotation();
         var rotationTarget = RotationManager.INSTANCE.getActiveRotationTarget();
@@ -703,6 +768,218 @@ public class ElytraFly extends Module {
             return rotation.directionVector();
         }
         return player.getViewVector(1.0f);
+    }
+
+    @EventHandler
+    private void onElytraTravel(ElytraTravelEvent event) {
+        LocalPlayer player = event.getPlayer();
+        if (!isEnabled() || mode.get() != Mode.VULCAN_297 || mc.player != player
+                || !vulcanMotionActive(player) || shouldNotOperate(player)) return;
+
+        int tick = player.tickCount;
+        boolean alreadyProcessed = vulcanLastTick == tick;
+        if (!alreadyProcessed) {
+            if (vulcanLastTick != Integer.MIN_VALUE && tick != vulcanLastTick + 1)
+                resetVulcanState();
+            sampleVulcanTravel(player, tick);
+        }
+
+        Vec3 velocity = event.getVelocity();
+        if (velocity == null || !Double.isFinite(velocity.x)
+                || !Double.isFinite(velocity.y) || !Double.isFinite(velocity.z)) return;
+
+        vulcanLastGlideTick = tick;
+        // The vanilla elytra physics runs before this event. A dive can push an already
+        // boosted velocity over Vulcan's X/Z limit even when our own boost was capped.
+        double incomingHorizontal = Math.hypot(velocity.x, velocity.z);
+        if (incomingHorizontal > VULCAN_HORIZONTAL_CAP) {
+            double factor = VULCAN_HORIZONTAL_CAP / incomingHorizontal;
+            velocity = new Vec3(velocity.x * factor, velocity.y, velocity.z * factor);
+        }
+        // Do not quantize Y to hundredths: Elytra M treats that as a snapped motion pattern.
+        if (velocity.y > VULCAN_ASCENT_CAP && player.getXRot() > -20.0F) {
+            velocity = new Vec3(velocity.x, VULCAN_ASCENT_CAP, velocity.z);
+        }
+        // On the first gliding tick no previous movement sample exists. Do not issue
+        // a full 0.16/t boost on top of the transition from grounded movement.
+        // During the next ticks also constrain vanilla's horizontal gain: Type G
+        // reads the final displacement, not just ElytraFly's added acceleration.
+        if (vulcanFlyingTicks > 0 && vulcanFlyingTicks <= VULCAN_RECAST_STABILIZATION_TICKS
+                && Double.isFinite(vulcanLastSpeed) && velocity.y > -0.5D) {
+            double horizontal = Math.hypot(velocity.x, velocity.z);
+            double safeHorizontal = Math.max(VULCAN_G_MIN_SPEED,
+                    vulcanLastSpeed + VULCAN_G_ACCELERATION_CAP);
+            if (horizontal > safeHorizontal && horizontal > 0.0D) {
+                double factor = safeHorizontal / horizontal;
+                velocity = new Vec3(velocity.x * factor, velocity.y, velocity.z * factor);
+            }
+        }
+        event.setVelocity(velocity);
+        if (alreadyProcessed || player.onGround() || vulcanFlyingTicks == 0
+                || !Double.isFinite(vulcanLastSpeed)) return;
+
+        // Server corrections suspend additional acceleration, not the safety limits.
+        if (vulcanCorrectionCooldown > 0) {
+            vulcanCorrectionCooldown--;
+            return;
+        }
+        boolean bound = !"NONE".equalsIgnoreCase(vulcanBoostKey.get());
+        boolean pressed = bound && isActionHeld("vulcan_boost_key");
+        Vec3 direction = resolveVulcanDirection(player);
+        if (direction.lengthSqr() <= 1.0E-6D && pressed) {
+            Vec3 look = resolveDirectionVector(player);
+            double length = Math.hypot(look.x, look.z);
+            if (length > 1.0E-6D) direction = new Vec3(look.x / length, 0.0D, look.z / length);
+        }
+        if (direction.lengthSqr() <= 1.0E-6D) {
+            double length = Math.hypot(velocity.x, velocity.z);
+            if (length > 0.1D) direction = new Vec3(velocity.x / length, 0.0D, velocity.z / length);
+        }
+        double speed = Math.hypot(velocity.x, velocity.z);
+        double previous = vulcanLastSpeed;
+        if (direction.lengthSqr() > 1.0E-6D && speed < VULCAN_HORIZONTAL_CAP) {
+            boolean ascending = velocity.y > 0.0D;
+            boolean burst = !ascending && (!bound || pressed);
+            double amount = ascending ? 0.0D
+                    : burst ? VULCAN_BURST_ACCELERATION : VULCAN_CRUISE_ACCELERATION;
+            if (amount > 0.0D) {
+                double low = 0.0D;
+                double high = amount;
+                for (int i = 0; i < 15; i++) {
+                    double mid = (low + high) * 0.5D;
+                    Vec3 candidate = velocity.add(direction.scale(mid));
+                    double projected = Math.hypot(candidate.x, candidate.z);
+                    double gain = projected - previous;
+                    boolean c = vulcanFlyingTicks > 3 && gain > 0.035D && velocity.y > -0.6D;
+                    boolean g = gain > VULCAN_G_ACCELERATION_CAP
+                            && velocity.y > -0.5D && projected > 0.65D;
+                    boolean k = vulcanFlyingTicks > 5 && velocity.y > 0.0D
+                            && gain > 0.005D && projected > 0.3D;
+                    boolean allowed = projected <= VULCAN_HORIZONTAL_CAP
+                            && !k
+                            && !g
+                            && (!c || vulcanAcceleration.used + 1.0D <= vulcanAcceleration.limit - 0.35D);
+                    if (allowed) low = mid;
+                    else high = mid;
+                }
+                if (low > 1.0E-5D) {
+                    Vec3 boosted = velocity.add(direction.scale(low));
+                    double projected = Math.hypot(boosted.x, boosted.z);
+                    if (projected > speed + 1.0E-6D) {
+                        double gain = projected - previous;
+                        boolean c = vulcanFlyingTicks > 3 && gain > 0.035D && velocity.y > -0.6D;
+                        boolean g = gain > VULCAN_G_ACCELERATION_CAP
+                                && velocity.y > -0.5D && projected > 0.65D;
+                        velocity = boosted;
+                        vulcanProjectedLimit = vulcanLimit.used;
+                        vulcanProjectedAcceleration = Math.min(vulcanAcceleration.limit,
+                                vulcanAcceleration.used + (c ? 1.0D : 0.0D));
+                        vulcanProjectedRapid = Math.min(vulcanRapidAcceleration.limit,
+                                vulcanRapidAcceleration.used + (g ? 1.0D : 0.0D));
+                        vulcanProjectedAscending = vulcanAscendingAcceleration.used;
+                        vulcanProjectedAscent = vulcanAscent.used;
+                        vulcanProjectedMotion = vulcanHorizontalPattern.used;
+                    }
+                }
+            }
+        }
+        event.setVelocity(velocity);
+    }
+
+    private void sampleVulcanTravel(LocalPlayer player, int tick) {
+        vulcanProjectedLimit = 0.0D;
+        vulcanProjectedAcceleration = 0.0D;
+        vulcanProjectedAscent = 0.0D;
+        vulcanProjectedMotion = 0.0D;
+        vulcanProjectedRapid = 0.0D;
+        vulcanProjectedAscending = 0.0D;
+        if (vulcanLastTick != Integer.MIN_VALUE && tick == vulcanLastTick + 1) {
+            double speed = Math.hypot(player.getX() - vulcanLastX, player.getZ() - vulcanLastZ);
+            double vertical = player.getY() - vulcanLastY;
+            if (Double.isFinite(speed) && Double.isFinite(vertical)) {
+                double acceleration = Double.isNaN(vulcanLastSpeed) ? 0.0 : speed - vulcanLastSpeed;
+                double verticalChange = Double.isNaN(vulcanLastVertical)
+                        ? 1.0 : Math.abs(vertical - vulcanLastVertical);
+                vulcanFlyingTicks++;
+                vulcanLimit.record(speed > 4.25);
+                vulcanAcceleration.record(vulcanFlyingTicks > 3 && acceleration > 0.035 && vertical > -0.6);
+                vulcanRapidAcceleration.record(acceleration > 0.031 && vertical > -0.5 && speed > 0.65);
+                vulcanAscendingAcceleration.record(vulcanFlyingTicks > 5
+                        && vertical > 0.0 && acceleration > 0.005 && speed > 0.3);
+                vulcanAscent.record(vertical > 1.45 && player.getXRot() > -20.0f);
+                vulcanStall.record(vulcanFlyingTicks > 5 && vulcanFlyingTicks < 400
+                        && speed > 1.0 && Math.abs(acceleration) < 1.0E-10 && verticalChange < 1.0E-10);
+                vulcanHorizontalPattern.record(speed > 0.1 && speed % 0.1 != 0.0
+                        && (0.1 % (speed % 0.1)) < 1.0E-8);
+                vulcanVerticalPattern.record(Math.abs(vertical) > 0.01
+                        && vertical % 0.01 != 0.0 && (0.01 % (vertical % 0.01)) < 1.0E-8);
+                vulcanLastSpeed = speed;
+                vulcanLastVertical = vertical;
+            }
+        } else {
+            vulcanFlyingTicks = 0;
+            vulcanLastSpeed = Double.NaN;
+            vulcanLastVertical = Double.NaN;
+        }
+        vulcanLastX = player.getX();
+        vulcanLastY = player.getY();
+        vulcanLastZ = player.getZ();
+        vulcanLastTick = tick;
+    }
+
+    private Vec3 resolveVulcanDirection(LocalPlayer player) {
+        if (player.input == null) return Vec3.ZERO;
+        Vec2 movement = player.input.getMoveVector();
+        double forward = movement.y;
+        double sideways = movement.x;
+        double length = Math.hypot(sideways, forward);
+        if (length < 1.0E-4) return Vec3.ZERO;
+        double yaw = Math.toRadians(resolveMovementYaw(player));
+        double x = -Math.sin(yaw) * forward + Math.cos(yaw) * sideways;
+        double z = Math.cos(yaw) * forward + Math.sin(yaw) * sideways;
+        return new Vec3(x / length, 0.0, z / length);
+    }
+
+    private void resetVulcanState() {
+        vulcanLimit.reset();
+        vulcanAcceleration.reset();
+        vulcanRapidAcceleration.reset();
+        vulcanAscendingAcceleration.reset();
+        vulcanAscent.reset();
+        vulcanStall.reset();
+        vulcanHorizontalPattern.reset();
+        vulcanVerticalPattern.reset();
+        vulcanLastTick = Integer.MIN_VALUE;
+        vulcanLastSpeed = Double.NaN;
+        vulcanLastVertical = Double.NaN;
+        vulcanFlyingTicks = 0;
+        vulcanProjectedLimit = 0.0D;
+        vulcanProjectedAcceleration = 0.0D;
+        vulcanProjectedAscent = 0.0D;
+        vulcanProjectedMotion = 0.0D;
+        vulcanProjectedRapid = 0.0D;
+        vulcanProjectedAscending = 0.0D;
+        vulcanCorrectionCooldown = 0;
+    }
+
+    private static final class VulcanBuffer {
+        private final double limit;
+        private final double decay;
+        private double used;
+
+        private VulcanBuffer(double limit, double decay) {
+            this.limit = limit;
+            this.decay = decay;
+        }
+
+        private void record(boolean violation) {
+            used = violation ? Math.min(limit + 1.0, used + 1.0)
+                    : Math.max(0.0, used - decay);
+        }
+
+        private void reset() {
+            used = 0.0;
+        }
     }
 
     private boolean isNearGround(LocalPlayer player) {
@@ -836,7 +1113,7 @@ public class ElytraFly extends Module {
     }
 
     private boolean shouldRunDurabilityExploit() {
-        if (mode.get() == Mode.VANILLA) return false;
+        if (mode.get() == Mode.VULCAN_297) return false;
         if (mode.get() != Mode.STATIC) return true;
         return !staticDurabilityExploitNotWhileNoMove.get() || !MovementUtil.isMoving();
     }
@@ -880,9 +1157,14 @@ public class ElytraFly extends Module {
         controlHolding = false;
         queuedFireworkUse = false;
         ElytraRecastUtil.INSTANCE.reset(this);
+        resetVulcanState();
     }
 
     private void resetModeState(Mode currentMode) {
+        if (currentMode == Mode.VULCAN_297) {
+            resetVulcanState();
+            GaugeRegistry.removeOwner("elytrafly");
+        }
         if (currentMode == Mode.BOOST) {
             resetBoostState();
         }
@@ -903,9 +1185,14 @@ public class ElytraFly extends Module {
         groundCheckCooldown = 0;
     }
 
-    public enum Mode {
+    public enum Mode implements EnumValue.AliasProvider {
         STATIC,
-        VANILLA,
+        VULCAN_297 {
+            @Override
+            public List<String> aliases() {
+                return List.of("vanilla", "vulcan");
+            }
+        },
         BOOST,
         FIREWORK,
         CONTROL,

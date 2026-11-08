@@ -7,6 +7,10 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.config.subsystem.MapUiConfig;
 import combatant.client.config.subsystem.MapTriangulationConfig;
 import combatant.client.features.map.location.PlayerLocationService;
@@ -20,6 +24,7 @@ import combatant.client.render.engine.renderer.ui.UiBlurResources;
 import combatant.client.render.engine.renderer.ui.UiDeferredScheduler;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 import combatant.client.render.map.MapGridSpec;
+import combatant.client.render.map.MapChunkAreaRenderer;
 import combatant.client.render.map.MapBearingRay;
 import combatant.client.render.map.MapPlayerMarker;
 import combatant.client.render.map.MapPlayerMarkerRenderer;
@@ -103,6 +108,7 @@ final class XaeroMapSurface {
     private final Map<String, LoadingRegion> loadingRegions = new LinkedHashMap<>();
     private final boolean[] waitingForBranchCache = new boolean[1];
     private final XaeroMapElements elements = new XaeroMapElements();
+    private final MapInfoOverlay mapInfo = new MapInfoOverlay();
     private final XaeroMapUiRenderer.ChromeMotion chromeMotion = new XaeroMapUiRenderer.ChromeMotion();
     private XaeroMapSettingsPanel settings;
     private long settingsRetryAfterNanos;
@@ -202,6 +208,7 @@ final class XaeroMapSurface {
             viewedDimension = dimensionId;
             centered = false;
             dragging = false;
+            mapInfo.reset();
         }
         if (!centered) centerOnPlayer(processor, dimension);
         updateZoom();
@@ -240,9 +247,17 @@ final class XaeroMapSurface {
                 frameId,
                 viewport,
                 snapshot,
-                ClickGuiRenderer.getOnestMedium()
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer()
         );
         drawLoading(viewport);
+        Minecraft client = Minecraft.getInstance();
+        boolean liveDimension = client != null && client.level != null
+                && dimension.getDimId().equals(client.level.dimension());
+        // Data panels sit below the existing selection rendering and never capture selection clicks.
+        if (liveDimension) mapInfo.render(viewport, mouseX, mouseY,
+                !rightSelecting && !contextOpen && (settings == null || !settings.isVisible())
+                        && drawer == Drawer.NONE && !helpOpen && waypointEditor == null);
+        else mapInfo.reset();
         drawSelection(viewport);
         drawFootprints(processor, dimension, viewport);
         Minecraft minecraft = Minecraft.getInstance();
@@ -365,6 +380,8 @@ final class XaeroMapSurface {
     boolean mouseScrolled(float mouseX, float mouseY, double amount) {
         if (settings != null && settings.mouseScrolled(mouseX, mouseY, amount)) return true;
         if (!contains(mouseX, mouseY) || amount == 0.0) return false;
+        if (!rightSelecting && !contextOpen && drawer == Drawer.NONE && !helpOpen
+                && mapInfo.mouseScrolled(mouseX, mouseY, amount)) return true;
         changeZoom(amount, mouseX, mouseY, amount > 0.0);
         return true;
     }
@@ -1494,14 +1511,14 @@ final class XaeroMapSurface {
         }
         float alpha = remaining < 220L ? Math.max(0.0f, remaining / 220.0f) : 1.0f;
         float textSize = 10.8f;
-        float textW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), transientStatus, textSize);
+        float textW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), transientStatus, textSize);
         float width = textW + 18.0f;
         float height = 20.0f;
         float x = areaX + (areaWidth - width) * 0.5f;
         float y = areaY + areaHeight - height - 18.0f;
         Renderer2D.COLOR.roundedRect(x, y, width, height, 7.0f,
                 withAlpha(combatant.client.features.theme.Theme.theme().windowBg() | 0xFF000000, 0.88f * alpha));
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), transientStatus,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), transientStatus,
                 x + 9.0f, y + 4.0f, textSize, withAlpha(combatant.client.features.theme.Theme.theme().textPrimary() | 0xFF000000, alpha), false);
     }
 
@@ -1836,25 +1853,11 @@ final class XaeroMapSurface {
 
     private void drawSelection(MapViewport currentViewport) {
         if ((!rightSelecting && !contextOpen) || rightClickElement != null || rightClickLocationMarker != null) return;
-        int left = Math.min(selectionStartX, selectionEndX) << 4;
-        int right = (Math.max(selectionStartX, selectionEndX) + 1) << 4;
-        int top = Math.min(selectionStartZ, selectionEndZ) << 4;
-        int bottom = (Math.max(selectionStartZ, selectionEndZ) + 1) << 4;
-        MapScreenPoint a = currentViewport.project(left, top);
-        MapScreenPoint b = currentViewport.project(right, bottom);
-        float x = (float) Math.min(a.x(), b.x());
-        float y = (float) Math.min(a.y(), b.y());
-        float width = (float) Math.abs(b.x() - a.x());
-        float height = (float) Math.abs(b.y() - a.y());
-        Renderer2D renderer = Renderer2D.COLOR;
         int accent = combatant.client.features.theme.Theme.theme().accent();
-        renderer.quad(x, y, width, height, (accent & 0x00FFFFFF) | 0x28000000);
-        float stroke = 1.5f;
-        int edge = (accent & 0x00FFFFFF) | 0xC8000000;
-        renderer.quad(x, y, width, stroke, edge);
-        renderer.quad(x, y + height - stroke, width, stroke, edge);
-        renderer.quad(x, y, stroke, height, edge);
-        renderer.quad(x + width - stroke, y, stroke, height, edge);
+        MapChunkAreaRenderer.draw(currentViewport,
+                Math.min(selectionStartX, selectionEndX), Math.min(selectionStartZ, selectionEndZ),
+                Math.max(selectionStartX, selectionEndX), Math.max(selectionStartZ, selectionEndZ),
+                accent, 0x28, 0xC8, 1.5f);
     }
 
     private void centerOnPlayer(MapProcessor processor, MapDimension dimension) {

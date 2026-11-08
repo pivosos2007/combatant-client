@@ -1466,10 +1466,9 @@ public final class TargetHud extends DraggableHudElement {
 
         TextRenderer chipRenderer = BuiltinFontCatalog.INTER_BOLD.renderer(textRenderer);
         float textScale = EFFECTS_TEXT_SCALE * scaleFactor;
-        float textHeight = 0.0f;
         chipRenderer.begin(textScale, false, false);
         try {
-            textHeight = (float) chipRenderer.getHeight(false);
+            float textHeight = (float) chipRenderer.getHeight(false);
             float cursorX = rowX;
             for (EffectChip chip : layout.chips()) {
                 if (glassEnabled) {

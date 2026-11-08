@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 import combatant.client.util.text.SingleLineTextInput;
 import combatant.client.util.text.GuiTextCaret;
 
@@ -21,11 +23,10 @@ import combatant.client.config.subsystem.MapHeuristicConfig;
 import combatant.client.config.subsystem.MapLinkConfig;
 import combatant.client.config.subsystem.MapTriangulationConfig;
 import combatant.client.features.account.SkinManager;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.util.ClickGuiRichTextRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.other.SearchComponent;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.settings.BooleanSetting;
 import combatant.client.features.gui.clickgui.settings.ColorSetting;
 import combatant.client.features.gui.clickgui.settings.ModeSetting;
@@ -75,7 +76,6 @@ import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext
 import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiDynamicPatchBuffer;
-import combatant.client.runtime.discovery.CombatantIndex;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.helpers.PlayerHeadRenderer;
@@ -230,6 +230,7 @@ final class XaeroMapSettingsPanel {
         addCombatantArrowSettings();
         addCombatantHudSettings();
         addCombatantPlayerSettings();
+        addMapInformationSettings();
         addServerIntegrationSettings();
 
         addProfiled(manager, WorldMapProfiledConfigOptions.COORDINATES, Category.DISPLAY);
@@ -364,15 +365,15 @@ final class XaeroMapSettingsPanel {
         renderBrowserSurface(layout, lifecycleAlpha, mouseX, mouseY);
 
         double previousRendererAlpha = Renderer2D.COLOR.getAlpha();
-        float previousGuiAlpha = ClickGuiRenderer.getRenderAlphaMultiplier();
+        float previousGuiAlpha = LayoutRender2D.getRenderAlphaMultiplier();
         Renderer2D.COLOR.setAlpha(previousRendererAlpha * lifecycleAlpha);
-        ClickGuiRenderer.setRenderAlphaMultiplier(previousGuiAlpha * lifecycleAlpha);
+        LayoutRender2D.setRenderAlphaMultiplier(previousGuiAlpha * lifecycleAlpha);
         try {
             searchComponent.render(searchX, searchY, searchW, searchH, searchModel);
             updateSystemCursor(mouseX, mouseY);
             renderSettingsContent(layout, mouseX, mouseY, contentAnim);
         } finally {
-            ClickGuiRenderer.restoreRenderAlphaMultiplier(previousGuiAlpha);
+            LayoutRender2D.restoreRenderAlphaMultiplier(previousGuiAlpha);
             Renderer2D.COLOR.setAlpha(previousRendererAlpha);
         }
     }
@@ -472,9 +473,6 @@ final class XaeroMapSettingsPanel {
             categories.add(item);
         }
         props.put("categories", categories);
-        boolean devUiKits = CombatantIndex.classNames(CombatantIndex.Kind.CLICK_GUI).contains(
-                "combatant.client.features.gui.clickgui.sections.dev.UiComponentLabSection");
-        props.put("devUiKits", devUiKits);
 
         UiRuntime runtime = scriptRuntime.bakeTracked(
                 moduleHandle,
@@ -482,7 +480,7 @@ final class XaeroMapSettingsPanel {
                 "map-settings",
                 width,
                 height,
-                ClickGuiRenderer.getOnestMedium(),
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 x,
                 y,
                 width,
@@ -492,17 +490,17 @@ final class XaeroMapSettingsPanel {
                 null
         );
         if (runtime != null) {
-            if (devUiKits) {
-                writeNavigationPatches(layout);
-                runtime.applyDynamicProps(navigationPatchProgram);
-                runtime.applyDynamicBounds(navigationPatchProgram);
-                runtime.input().updateHover(runtime.root(), mouseX, mouseY);
-            }
+            // The shared navigation group is part of the production Map GUI.
+            // Keep its animated selection/hover bounds in sync on every frame.
+            writeNavigationPatches(layout);
+            runtime.applyDynamicProps(navigationPatchProgram);
+            runtime.applyDynamicBounds(navigationPatchProgram);
+            runtime.input().updateHover(runtime.root(), mouseX, mouseY);
             Renderer2D.COLOR.withLiquidGlassSceneSource(
                     UiBackdropRequest.SceneSource.UI_UNDERLAY,
                     () -> runtime.render(new UiRenderContext(
                             Renderer2D.COLOR,
-                            ClickGuiRenderer.getOnestMedium(),
+                            BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                             null,
                             0.0f,
                             UiProjectionMode.CURRENT,
@@ -535,9 +533,9 @@ final class XaeroMapSettingsPanel {
 
         boolean clipped = ScissorFunction.pushRaw(contentX, contentY, contentW, contentH);
         double previousRendererAlpha = Renderer2D.COLOR.getAlpha();
-        float previousGuiAlpha = ClickGuiRenderer.getRenderAlphaMultiplier();
+        float previousGuiAlpha = LayoutRender2D.getRenderAlphaMultiplier();
         Renderer2D.COLOR.setAlpha(previousRendererAlpha * contentAlpha);
-        ClickGuiRenderer.setRenderAlphaMultiplier(previousGuiAlpha * contentAlpha);
+        LayoutRender2D.setRenderAlphaMultiplier(previousGuiAlpha * contentAlpha);
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAP_SETTINGS, MAP_SETTING_SCALE, overlayHost)) {
             List<Entry> visible = entries.stream().filter(this::matches).toList();
             for (Entry entry : visible) {
@@ -560,13 +558,13 @@ final class XaeroMapSettingsPanel {
                 total += animatedHeight + animatedGap;
             }
         } finally {
-            ClickGuiRenderer.restoreRenderAlphaMultiplier(previousGuiAlpha);
+            LayoutRender2D.restoreRenderAlphaMultiplier(previousGuiAlpha);
             Renderer2D.COLOR.setAlpha(previousRendererAlpha);
             if (clipped) ScissorFunction.pop();
         }
 
         if (total <= 0.0f) {
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.browser.no_results", "No matching settings"),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.browser.no_results", "No matching settings"),
                     contentX + 6.0f, contentY + 16.0f, 18.0f,
                     SettingsGuiPalette.withAlpha(palette.panelMuted(), Math.round(255.0f * contentAlpha)), false);
         }
@@ -586,13 +584,13 @@ final class XaeroMapSettingsPanel {
         renderScrollbar(contentX, contentY, contentW, contentH, mouseX, mouseY);
 
         double overlayRendererAlpha = Renderer2D.COLOR.getAlpha();
-        float overlayGuiAlpha = ClickGuiRenderer.getRenderAlphaMultiplier();
+        float overlayGuiAlpha = LayoutRender2D.getRenderAlphaMultiplier();
         Renderer2D.COLOR.setAlpha(overlayRendererAlpha * contentAlpha);
-        ClickGuiRenderer.setRenderAlphaMultiplier(overlayGuiAlpha * contentAlpha);
+        LayoutRender2D.setRenderAlphaMultiplier(overlayGuiAlpha * contentAlpha);
         try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAP_SETTINGS, MAP_SETTING_SCALE, overlayHost)) {
             overlayHost.render(mouseX, mouseY);
         } finally {
-            ClickGuiRenderer.restoreRenderAlphaMultiplier(overlayGuiAlpha);
+            LayoutRender2D.restoreRenderAlphaMultiplier(overlayGuiAlpha);
             Renderer2D.COLOR.setAlpha(overlayRendererAlpha);
         }
     }
@@ -604,9 +602,9 @@ final class XaeroMapSettingsPanel {
         float alpha = smootherStep(visibility);
         float offsetY = (1.0f - easeOutCubic(visibility)) * 7.0f;
         double previousRendererAlpha = Renderer2D.COLOR.getAlpha();
-        float previousGuiAlpha = ClickGuiRenderer.getRenderAlphaMultiplier();
+        float previousGuiAlpha = LayoutRender2D.getRenderAlphaMultiplier();
         Renderer2D.COLOR.setAlpha(previousRendererAlpha * alpha);
-        ClickGuiRenderer.setRenderAlphaMultiplier(previousGuiAlpha * alpha);
+        LayoutRender2D.setRenderAlphaMultiplier(previousGuiAlpha * alpha);
         boolean partialReveal = visibility < 0.985f && animatedHeight < baseHeight - 0.75f;
         boolean clip = false;
         if (partialReveal) {
@@ -618,7 +616,7 @@ final class XaeroMapSettingsPanel {
             setting.renderSafely(sx, sy + offsetY, sw, mouseX, mouseY);
         } finally {
             if (clip) ScissorFunction.pop();
-            ClickGuiRenderer.restoreRenderAlphaMultiplier(previousGuiAlpha);
+            LayoutRender2D.restoreRenderAlphaMultiplier(previousGuiAlpha);
             Renderer2D.COLOR.setAlpha(previousRendererAlpha);
         }
     }
@@ -839,6 +837,53 @@ final class XaeroMapSettingsPanel {
         distance.visibleWhen(() -> config.hudEnabled() && config.hudPlayerMarkers());
         entries.add(new Entry(distance, Category.PLAYERS,
                 "player hud distance max range meters"));
+    }
+
+    private void addMapInformationSettings() {
+        MapUiConfig config = MapUiConfig.get();
+        addMapInfoBool("gui.combatant.map.info.enabled", "Map information overlays", config.mapInfoEnabledValue(), null,
+                "map overlay chunk information esp enabled");
+        addMapInfoBool("gui.combatant.map.info.icons", "Show item icons", config.mapInfoIconsValue(),
+                config::mapInfoEnabled, "map info item icons");
+        addMapInfoBool("gui.combatant.map.info.sources", "Show ESP source names", config.mapInfoSourcesValue(),
+                config::mapInfoEnabled, "map info source module names");
+        addMapInfoBool("gui.combatant.map.info.highlights", "Highlight occupied chunks",
+                config.mapInfoChunkHighlightsValue(), config::mapInfoEnabled,
+                "map esp permanently highlighted occupied chunks");
+        addMapInfoNumber("gui.combatant.map.info.highlight_intensity", "Chunk highlight intensity (%)",
+                config.mapInfoHighlightIntensityValue(), 0, 100,
+                () -> config.mapInfoEnabled() && config.mapInfoChunkHighlights());
+        addMapInfoNumber("gui.combatant.map.info.background", "Panel backdrop opacity (%)",
+                config.mapInfoBackgroundValue(), 30, 100);
+        addMapInfoNumber("gui.combatant.map.info.width", "Panel width", config.mapInfoCardWidthValue(), 128, 320);
+        addMapInfoNumber("gui.combatant.map.info.rows", "Visible rows per panel", config.mapInfoRowsValue(), 1, 16);
+        addMapInfoNumber("gui.combatant.map.info.clustering", "Aggregation cell size (px)",
+                config.mapInfoClusterPixelsValue(), 72, 360);
+        addMapInfoNumber("gui.combatant.map.info.max_cards", "Maximum visible panels",
+                config.mapInfoMaxCardsValue(), 8, 180);
+    }
+
+    private void addMapInfoBool(String key, String fallback, BooleanValue value,
+                                Supplier<Boolean> condition, String search) {
+        BooleanSetting setting = new BooleanSetting(tr(key, fallback), value);
+        setting.setI18nEnabled(false, false);
+        setting.setParent(MapUiConfig.get());
+        if (condition != null) setting.visibleWhen(condition);
+        entries.add(new Entry(setting, Category.INFO, search));
+    }
+
+    private void addMapInfoNumber(String key, String fallback, NumberValue<Integer> value, int min, int max) {
+        addMapInfoNumber(key, fallback, value, min, max, MapUiConfig.get()::mapInfoEnabled);
+    }
+
+    private void addMapInfoNumber(String key, String fallback, NumberValue<Integer> value,
+                                  int min, int max, Supplier<Boolean> condition) {
+        SliderSetting<Integer> setting = new SliderSetting<>(tr(key, fallback), value);
+        setting.setI18nEnabled(false, false);
+        setting.setParent(MapUiConfig.get());
+        setting.sliderRange(min, max);
+        setting.visibleWhen(condition);
+        entries.add(new Entry(setting, Category.INFO, (key + " " + fallback).toLowerCase(Locale.ROOT)));
     }
 
     private void addCombatantPlayerSettings() {
@@ -1653,7 +1698,7 @@ final class XaeroMapSettingsPanel {
         if (amount <= 0.001f) return;
         boolean clipped = ScissorFunction.pushRaw(x, y, 2.0f + 2.0f * amount, height);
         try {
-            ClickGuiRenderer.drawRoundedRect(x, y, width, height, radius, color);
+            LayoutRender2D.drawRoundedRect(x, y, width, height, radius, color);
         } finally {
             if (clipped) ScissorFunction.pop();
         }
@@ -1661,14 +1706,14 @@ final class XaeroMapSettingsPanel {
 
     private static float relationTagWidth(CategoryType type, float size) {
         if (type == null || type == CategoryType.DEFAULT) return 0.0f;
-        return ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), relationLabel(type), size) + 13.0f;
+        return LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), relationLabel(type), size) + 13.0f;
     }
 
     /** Relations are metadata, so use a light dot-label rather than a competing pill. */
     private static void drawRelationTag(CategoryType type, float x, float y, float size, int color) {
         if (type == null || type == CategoryType.DEFAULT) return;
         Renderer2D.COLOR.circle(x + 2.4f, y + size * 0.54f, 2.2f, color);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), relationLabel(type),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), relationLabel(type),
                 x + 8.0f, y, size, color, false);
     }
 
@@ -1686,6 +1731,7 @@ final class XaeroMapSettingsPanel {
     private enum Category {
         DISPLAY("display", "Display", "Map interface, coordinates and additional layers", "map"),
         TERRAIN("terrain", "Terrain", "Terrain colors, lighting and chunk updates", "layers"),
+        INFO("info", "Information", "Chunk ESP data and overlay presentation", "list"),
         WAYPOINTS("waypoints", "Waypoints", "Waypoint rendering and visibility", "map-pinned"),
         CAVE("cave", "Underground", "Underground map display and depth settings", "land-plot"),
         PLAYERS("players", "Players & Radar", "Players on the map, entity radar and distant markers", "users-round"),
@@ -1879,13 +1925,13 @@ final class XaeroMapSettingsPanel {
         @Override
         public void render(float x, float y, float width, float mouseX, float mouseY) {
             SettingsGuiPalette palette = SettingsGuiPalette.current();
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), title,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), title,
                     x + 4.0f, y + 2.0f, 19.5f, palette.panelText(), false);
             if (!description.isBlank()) {
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), description,
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), description,
                         x + 4.0f, y + 25.0f, 13.5f, palette.panelMuted(), false);
             }
-            ClickGuiRenderer.drawRect(x + 4.0f, y + 48.0f, Math.max(1.0f, width - 8.0f), 1.0f,
+            LayoutRender2D.drawRect(x + 4.0f, y + 48.0f, Math.max(1.0f, width - 8.0f), 1.0f,
                     SettingsGuiPalette.withAlpha(palette.panelText(), 26));
         }
 
@@ -1910,18 +1956,18 @@ final class XaeroMapSettingsPanel {
             String status = duplexStatusLabel(enabled, state, runtime.transportConnected());
             String description = duplexStatusDescription(enabled, state);
 
-            ClickGuiRenderer.drawRoundedRect(x + 4.0f, y + 2.0f, Math.max(1.0f, width - 8.0f), 98.0f, 10.0f,
+            LayoutRender2D.drawRoundedRect(x + 4.0f, y + 2.0f, Math.max(1.0f, width - 8.0f), 98.0f, 10.0f,
                     SettingsGuiPalette.withAlpha(palette.panelText(), 8));
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                     tr("gui.combatant.map.duplex.status.title", "Duplex status"),
                     x + 17.0f, y + 13.0f, 17.0f, palette.panelText(), false);
 
             Renderer2D.COLOR.circle(x + 19.5f, y + 43.0f, 3.0f,
                     SettingsGuiPalette.withAlpha(statusColor, enabled ? 245 : 145));
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), status,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), status,
                     x + 30.0f, y + 34.0f, 14.2f, statusColor, false);
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
-                    ClickGuiRenderer.fitText(ClickGuiRenderer.getOnestMedium(), description, 12.1f,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
+                    LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), description, 12.1f,
                             Math.max(1.0f, width - 42.0f)),
                     x + 17.0f, y + 57.0f, 12.1f, palette.panelMuted(), false);
 
@@ -1935,15 +1981,15 @@ final class XaeroMapSettingsPanel {
             if (runtime.peerVerified() && runtime.peerAgeMs() >= 0L) {
                 meta += "  ·  " + Math.max(0L, runtime.peerAgeMs() / 1000L) + "s";
             }
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
-                    ClickGuiRenderer.fitText(ClickGuiRenderer.getOnestMedium(), meta, 11.2f,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
+                    LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), meta, 11.2f,
                             Math.max(1.0f, width - 42.0f)),
                     x + 17.0f, y + 78.0f, 11.2f, palette.panelMuted(), false);
 
             String error = runtime.transportLastError();
             if (enabled && state == DuplexState.DEGRADED && error != null && !error.isBlank()) {
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
-                        ClickGuiRenderer.fitText(ClickGuiRenderer.getOnestMedium(), error, 10.8f,
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
+                        LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), error, 10.8f,
                                 Math.max(1.0f, width * 0.38f)),
                         x + width - Math.min(width * 0.38f, 260.0f) - 16.0f, y + 14.0f,
                         10.8f, SettingsGuiPalette.withAlpha(statusColor, 190), false);
@@ -2011,10 +2057,10 @@ final class XaeroMapSettingsPanel {
             modeHits.clear();
             SettingsGuiPalette palette = SettingsGuiPalette.current();
             MapTriangulationMode selected = MapTriangulationConfig.get().mode();
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                     tr("gui.combatant.map.triangulation.mode.title", "Tracking mode"),
                     x + 4.0f, y + 2.0f, 21.0f, palette.panelText(), false);
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                     tr("gui.combatant.map.triangulation.mode.description", "Choose what the resolver is allowed to collect. This does not change MapLink exact positions."),
                     x + 4.0f, y + 27.0f, 13.5f, palette.panelMuted(), false);
 
@@ -2044,13 +2090,13 @@ final class XaeroMapSettingsPanel {
                 int selectedBg = SettingsGuiPalette.withAlpha(Theme.theme().accent(),
                         Math.round(22.0f + hoverEase * 15.0f));
                 int bg = SettingsGuiPalette.mix(neutral, selectedBg, activeAnim);
-                ClickGuiRenderer.drawRoundedRect(cx, visualY, cardW, CARD_H, 9.0f, bg);
+                LayoutRender2D.drawRoundedRect(cx, visualY, cardW, CARD_H, 9.0f, bg);
                 drawClippedLeadingAccent(cx, visualY, cardW, CARD_H, 9.0f,
                         SettingsGuiPalette.withAlpha(Theme.theme().accent(), Math.round(225.0f * activeAnim)),
                         activeAnim);
                 String title = triangulationModeTitle(mode);
                 String desc = triangulationModeDescription(mode);
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), title,
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), title,
                         cx + 13.0f, visualY + 10.0f, 17.0f,
                         SettingsGuiPalette.mix(palette.panelText(), Theme.theme().accent(), activeAnim), false);
                 drawWrappedText(desc, cx + 13.0f, visualY + 33.0f, cardW - 26.0f, 13.0f, palette.panelMuted(), 2);
@@ -2097,9 +2143,9 @@ final class XaeroMapSettingsPanel {
         int lines = 0;
         for (String word : words) {
             String candidate = line.isEmpty() ? word : line + " " + word;
-            float width = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), candidate, size);
+            float width = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), candidate, size);
             if (width > maxWidth && !line.isEmpty()) {
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), line.toString(), x, y + lines * (size + 3.0f), size, color, false);
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), line.toString(), x, y + lines * (size + 3.0f), size, color, false);
                 lines++;
                 if (lines >= maxLines) return;
                 line.setLength(0);
@@ -2110,7 +2156,7 @@ final class XaeroMapSettingsPanel {
             }
         }
         if (!line.isEmpty() && lines < maxLines) {
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), line.toString(), x, y + lines * (size + 3.0f), size, color, false);
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), line.toString(), x, y + lines * (size + 3.0f), size, color, false);
         }
     }
 
@@ -2149,12 +2195,12 @@ final class XaeroMapSettingsPanel {
             List<TargetRow> players = displayTargetRows();
             List<TargetRow> allPlayers = targetRowsForFrame();
 
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.targets.title", "Targets"),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.targets.title", "Targets"),
                     x + 6.0f, y + 4.0f, 20.0f, palette.panelText(), false);
             String summary = targetedCount(allPlayers) + " " + tr("gui.combatant.map.targets.targeted", "targeted")
                     + "  ·  " + onlineCount() + " " + tr("gui.combatant.map.targets.online", "online")
                     + "  ·  " + triangulationModeTitle(MapTriangulationConfig.get().mode());
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), summary,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), summary,
                     x + 6.0f, y + 29.0f, 13.2f, palette.panelMuted(), false);
 
             inputX = x + 4.0f;
@@ -2176,7 +2222,7 @@ final class XaeroMapSettingsPanel {
                     inputDt, addHover ? 14.0f : 10.0f);
             addPressAnim = animateToward(addPressAnim, 0.0f, inputDt, 18.0f);
             float addVisualY = addY - easeOutCubic(addHoverAnim) * 0.7f + addPressAnim * 1.2f;
-            ClickGuiRenderer.drawRoundedRect(inputX, inputY, inputW, inputH, 8.0f,
+            LayoutRender2D.drawRoundedRect(inputX, inputY, inputW, inputH, 8.0f,
                     SettingsGuiPalette.withAlpha(palette.panelText(),
                             Math.round(7.0f + inputHoverAnim * 4.0f + inputFocusAnim * 7.0f)));
             Renderer2D.COLOR.roundedRectStroke(inputX, inputY, inputW, inputH, 8.0f, 1.0f, 0.7f,
@@ -2188,32 +2234,32 @@ final class XaeroMapSettingsPanel {
                     : playerInput;
             int inputColor = playerInput.isEmpty() ? palette.panelMuted() : palette.panelText();
             boolean clipped = ScissorFunction.pushRaw(inputX + 9.0f, inputY + 2.0f, inputW - 18.0f, inputH - 4.0f);
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), shown,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), shown,
                     inputX + 10.0f, inputY + 9.0f, 13.5f, inputColor, false);
             long inputNow = System.currentTimeMillis();
             boolean cursorVisible = inputFocused
                     && (inputNow - inputFocusedAtMs < 650L || ((inputNow / 500L) & 1L) == 0L);
             if (cursorVisible) {
-                float cursorX = inputX + 10.0f + ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), playerInput, 13.5f) + 1.0f;
-                GuiTextCaret.draw(cursorX, inputY + 9.0f, ClickGuiRenderer.getOnestMedium(), 13.5f, Theme.theme().accent());
+                float cursorX = inputX + 10.0f + LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), playerInput, 13.5f) + 1.0f;
+                GuiTextCaret.draw(cursorX, inputY + 9.0f, BuiltinFontCatalog.ONEST_MEDIUM.renderer(), 13.5f, Theme.theme().accent());
             }
             if (clipped) ScissorFunction.pop();
 
-            ClickGuiRenderer.drawRoundedRect(addX, addVisualY, addW, addH, 8.0f,
+            LayoutRender2D.drawRoundedRect(addX, addVisualY, addW, addH, 8.0f,
                     SettingsGuiPalette.withAlpha(Theme.theme().accent(), Math.round(28.0f + addHoverAnim * 20.0f)));
             Renderer2D.COLOR.svg("user-plus", addX + 8.0f, addVisualY + 8.0f, 18.0f, 18.0f,
                     SvgRenderOptions.overrideColor(Theme.theme().accent()));
 
             float rowY = y + 100.0f;
             if (!inputMessage.isBlank() && System.currentTimeMillis() < inputMessageUntil) {
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), inputMessage,
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), inputMessage,
                         x + 6.0f, y + 89.0f, 11.5f, 0xFFFF818A, false);
                 rowY += 13.0f;
             }
             if (players.isEmpty()) {
-                ClickGuiRenderer.drawRoundedRect(x + 4.0f, rowY, Math.max(1.0f, width - 8.0f), 56.0f, 9.0f,
+                LayoutRender2D.drawRoundedRect(x + 4.0f, rowY, Math.max(1.0f, width - 8.0f), 56.0f, 9.0f,
                         SettingsGuiPalette.withAlpha(palette.panelText(), 6));
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                         tr("gui.combatant.map.targets.empty", "No players"), x + 16.0f, rowY + 11.0f,
                         15.0f, palette.panelText(), false);
                 drawWrappedText(tr("gui.combatant.map.targets.empty.description",
@@ -2250,7 +2296,7 @@ final class XaeroMapSettingsPanel {
                         SettingsGuiPalette.mix(palette.controlSurface(), Theme.theme().accent(), 0.18f),
                         Math.round(145.0f + hoverEase * 24.0f));
                 int base = SettingsGuiPalette.mix(idleBase, targetBase, activeAnim);
-                ClickGuiRenderer.drawRoundedRect(x + 4.0f, visualY, rw, ROW_H - 4.0f, 9.0f, base);
+                LayoutRender2D.drawRoundedRect(x + 4.0f, visualY, rw, ROW_H - 4.0f, 9.0f, base);
                 drawClippedLeadingAccent(x + 4.0f, visualY, rw, ROW_H - 4.0f, 9.0f,
                         SettingsGuiPalette.withAlpha(Theme.theme().accent(), Math.round(235.0f * activeAnim)),
                         activeAnim);
@@ -2260,7 +2306,7 @@ final class XaeroMapSettingsPanel {
                 float headY = visualY + 9.0f;
                 renderTargetHead(row, headX, headY, head, palette);
                 if (row.online()) {
-                    ClickGuiRenderer.drawCircle(headX + head - 2.5f, headY + head - 2.5f, 3.0f, 0xFF65E48B);
+                    LayoutRender2D.drawCircle(headX + head - 2.5f, headY + head - 2.5f, 3.0f, 0xFF65E48B);
                     Renderer2D.COLOR.circleStroke(headX + head - 2.5f, headY + head - 2.5f, 3.9f, 0.7f, 0.8f,
                             SettingsGuiPalette.withAlpha(palette.panelBgRight(), 220));
                 }
@@ -2282,13 +2328,13 @@ final class XaeroMapSettingsPanel {
                 drawRelationTag(relation, tagX, visualY + 19.0f, 10.8f, relationColor);
 
                 String meta = targetMeta(row, now);
-                String fitted = ClickGuiRenderer.fitText(ClickGuiRenderer.getOnestMedium(), meta, 11.8f, metaWidth);
-                float metaTextW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), fitted, 11.8f);
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), fitted,
+                String fitted = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), meta, 11.8f, metaWidth);
+                float metaTextW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), fitted, 11.8f);
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), fitted,
                         metaRight - metaTextW, visualY + 18.5f, 11.8f, palette.panelMuted(), false);
 
                 int actionColor = SettingsGuiPalette.mix(palette.panelText(), Theme.theme().accent(), activeAnim);
-                ClickGuiRenderer.drawRoundedRect(actionX, actionY, actionSize, actionSize, 8.0f,
+                LayoutRender2D.drawRoundedRect(actionX, actionY, actionSize, actionSize, 8.0f,
                         SettingsGuiPalette.withAlpha(actionColor, Math.round(10.0f + activeAnim * 30.0f + hoverEase * 9.0f)));
                 Renderer2D.COLOR.svg(activeAnim > 0.5f ? "check" : "user-plus", actionX + 6.0f, actionY + 6.0f, 16.0f, 16.0f,
                         SvgRenderOptions.overrideColor(actionColor));
@@ -2418,7 +2464,7 @@ final class XaeroMapSettingsPanel {
             String needle = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
             if (Objects.equals(cachedFilter, needle)) return cachedFilteredRows;
             cachedFilter = needle;
-            if (needle.isEmpty() || "target targets players targeted locator triangulation tracking player list relations staff friend enemy цели игроки стафф друг враг".contains(needle)) {
+            if ("target targets players targeted locator triangulation tracking player list relations staff friend enemy цели игроки стафф друг враг".contains(needle)) {
                 cachedFilteredRows = rows;
             } else {
                 cachedFilteredRows = rows.stream().filter(row -> targetSearchText(row).contains(needle)).toList();
@@ -2540,7 +2586,7 @@ final class XaeroMapSettingsPanel {
         }
 
         private void renderTargetHead(TargetRow row, float x, float y, float size, SettingsGuiPalette palette) {
-            float opacity = AnimationUtility.clamp01(ClickGuiRenderer.getRenderAlphaMultiplier());
+            float opacity = AnimationUtility.clamp01(LayoutRender2D.getRenderAlphaMultiplier());
             if (opacity <= 0.01f) return;
             Identifier skin = null;
             if (row.info() != null && row.info().getProfile() != null) skin = PlayerSkinResolver.resolveProfileSkin(row.info().getProfile());
@@ -2605,26 +2651,26 @@ final class XaeroMapSettingsPanel {
             HeuristicRuntimeStats stats = HeuristicRuntime.get().stats();
             List<HeuristicTargetMetrics> targets = displayTelemetry();
 
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.triangulation.runtime.title", "Resolver status"),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.triangulation.runtime.title", "Resolver status"),
                     x + 6.0f, y + 4.0f, 20.0f, palette.panelText(), false);
             String summary = triangulationModeTitle(stats.mode())
                     + "  ·  " + stats.activeTargets() + " " + tr("gui.combatant.map.triangulation.runtime.active", "active")
                     + "  ·  " + stats.queuedTargets() + " " + tr("gui.combatant.map.triangulation.runtime.queued", "queued")
                     + "  ·  " + stats.solved() + " " + tr("gui.combatant.map.triangulation.runtime.solved", "resolved");
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), summary,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), summary,
                     x + 6.0f, y + 29.0f, 13.2f, palette.panelMuted(), false);
             PlayerTrackingRangeSnapshot tracking = PlayerTrackingRangeRuntime.get().snapshot();
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), trackingRangeSummary(tracking),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), trackingRangeSummary(tracking),
                     x + 6.0f, y + 47.0f, 11.7f, palette.panelMuted(), false);
 
             float rowY = y + 70.0f;
             if (targets.isEmpty()) {
-                ClickGuiRenderer.drawRoundedRect(x + 4.0f, rowY, Math.max(1.0f, width - 8.0f), 62.0f, 9.0f,
+                LayoutRender2D.drawRoundedRect(x + 4.0f, rowY, Math.max(1.0f, width - 8.0f), 62.0f, 9.0f,
                         SettingsGuiPalette.withAlpha(palette.panelText(), 6));
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                         tr("gui.combatant.map.triangulation.runtime.empty", "No observations yet"),
                         x + 16.0f, rowY + 13.0f, 15.0f, palette.panelText(), false);
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                         tr("gui.combatant.map.triangulation.runtime.empty.description", "Waiting for locator bearings."),
                         x + 16.0f, rowY + 35.0f, 12.0f, palette.panelMuted(), false);
                 return;
@@ -2644,7 +2690,7 @@ final class XaeroMapSettingsPanel {
                 hoverAnims.put(metrics.targetUuid(), hoverAnim);
                 float visualY = ry - easeOutCubic(hoverAnim) * 0.65f;
                 int relationColor = relationColor(targetMetricName(metrics));
-                ClickGuiRenderer.drawRoundedRect(x + 4.0f, visualY, rw, ROW_H - 5.0f, 9.0f,
+                LayoutRender2D.drawRoundedRect(x + 4.0f, visualY, rw, ROW_H - 5.0f, 9.0f,
                         SettingsGuiPalette.withAlpha(palette.controlSurface(), Math.round(78.0f + hoverAnim * 34.0f)));
 
                 float leftX = x + 16.0f;
@@ -2666,15 +2712,15 @@ final class XaeroMapSettingsPanel {
                         : estimateStatus(estimate);
                 int statusColor = estimate == null ? palette.panelText()
                         : SettingsGuiPalette.mix(palette.panelText(), Theme.theme().accent(), (float) Math.max(0.0, Math.min(1.0, estimate.confidence())));
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
-                        ClickGuiRenderer.fitText(ClickGuiRenderer.getOnestMedium(), status, 12.6f, width - 32.0f),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
+                        LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), status, 12.6f, width - 32.0f),
                         leftX, visualY + 35.0f, 12.6f, statusColor, false);
 
                 String detail = estimate == null
                         ? collectionDetail(metrics, baseline, spread)
                         : estimateDetail(metrics, estimate, baseline, spread, now);
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
-                        ClickGuiRenderer.fitText(ClickGuiRenderer.getOnestMedium(), detail, 11.4f, width - 32.0f),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
+                        LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), detail, 11.4f, width - 32.0f),
                         leftX, visualY + 55.0f, 11.4f, palette.panelMuted(), false);
 
                 float targetProgress = estimate == null
@@ -2684,10 +2730,10 @@ final class XaeroMapSettingsPanel {
                         targetProgress, dt, 9.0f);
                 progressAnims.put(metrics.targetUuid(), progress);
                 float barW = Math.max(1.0f, width - 32.0f);
-                ClickGuiRenderer.drawRoundedRect(leftX, visualY + 72.0f, barW, 2.0f, 1.0f,
+                LayoutRender2D.drawRoundedRect(leftX, visualY + 72.0f, barW, 2.0f, 1.0f,
                         SettingsGuiPalette.withAlpha(palette.panelText(), 16));
                 if (progress > 0.002f) {
-                    ClickGuiRenderer.drawRoundedRect(leftX, visualY + 72.0f, barW * clamp(progress, 0.0f, 1.0f), 2.0f, 1.0f,
+                    LayoutRender2D.drawRoundedRect(leftX, visualY + 72.0f, barW * clamp(progress, 0.0f, 1.0f), 2.0f, 1.0f,
                             SettingsGuiPalette.withAlpha(statusColor, 190));
                 }
             }
@@ -2735,7 +2781,7 @@ final class XaeroMapSettingsPanel {
             String needle = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
             if (Objects.equals(cachedFilter, needle)) return cachedFilteredRows;
             cachedFilter = needle;
-            if (needle.isEmpty() || "triangulation resolver status telemetry observations bearings confidence uncertainty estimate data mining targeted триангуляция резолвер состояние наблюдения".contains(needle)) {
+            if ("triangulation resolver status telemetry observations bearings confidence uncertainty estimate data mining targeted триангуляция резолвер состояние наблюдения".contains(needle)) {
                 cachedFilteredRows = rows;
             } else {
                 cachedFilteredRows = rows.stream().filter(value -> (value.targetUuid() + " " + targetMetricName(value) + " "
@@ -2924,16 +2970,16 @@ final class XaeroMapSettingsPanel {
             List<MapLinkProfile> allProfiles = mapLinkProfilesForFrame();
             long configured = allProfiles.stream().filter(MapLinkConfig::isConfiguredProfile).count();
 
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.maplink.profiles.title", "MapLink profiles"),
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.maplink.profiles.title", "MapLink profiles"),
                     x + 6.0f, y + 4.0f, 20.0f, palette.panelText(), false);
             String summary = allProfiles.size() + " " + tr("gui.combatant.map.maplink.profiles.total", "profiles")
                     + "  ·  " + configured + " " + tr("gui.combatant.map.maplink.profiles.ready", "ready")
                     + "  ·  " + snapshot.observations().size() + " " + tr("gui.combatant.map.maplink.profiles.observations", "observations");
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), summary,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), summary,
                     x + 6.0f, y + 29.0f, 13.2f, palette.panelMuted(), false);
 
             String createLabel = tr("gui.combatant.map.maplink.profiles.create", "New profile");
-            createW = Math.max(124.0f, ClickGuiRenderer.textWidth(ClickGuiRenderer.getOnestMedium(), createLabel, 12.8f) + 43.0f);
+            createW = Math.max(124.0f, LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), createLabel, 12.8f) + 43.0f);
             createH = 30.0f;
             createX = x + width - createW - 6.0f;
             createY = y + 8.0f;
@@ -2944,20 +2990,20 @@ final class XaeroMapSettingsPanel {
             createPressAnim = animateToward(createPressAnim, 0.0f, dt, 18.0f);
             float createEase = easeOutCubic(createHoverAnim);
             float createVisualY = createY - createEase * 0.7f + createPressAnim * 1.2f;
-            ClickGuiRenderer.drawRoundedRect(createX, createVisualY, createW, createH, 8.0f,
+            LayoutRender2D.drawRoundedRect(createX, createVisualY, createW, createH, 8.0f,
                     SettingsGuiPalette.withAlpha(Theme.theme().accent(), Math.round(30.0f + createEase * 18.0f)));
             Renderer2D.COLOR.svg("map-plus", createX + 8.0f, createVisualY + 7.0f, 16.0f, 16.0f,
                     SvgRenderOptions.overrideColor(Theme.theme().accent()));
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), createLabel,
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), createLabel,
                     createX + 31.0f, createVisualY + 8.0f, 12.8f, Theme.theme().accent(), false);
 
             float rowY = y + 58.0f;
             if (profiles.isEmpty()) {
-                ClickGuiRenderer.drawRoundedRect(x + 4.0f, rowY, Math.max(1.0f, width - 8.0f), 62.0f, 9.0f,
+                LayoutRender2D.drawRoundedRect(x + 4.0f, rowY, Math.max(1.0f, width - 8.0f), 62.0f, 9.0f,
                         SettingsGuiPalette.withAlpha(palette.panelText(), 7));
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.maplink.profiles.empty", "No profiles"),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.maplink.profiles.empty", "No profiles"),
                         x + 16.0f, rowY + 13.0f, 16.0f, palette.panelText(), false);
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                         tr("gui.combatant.map.maplink.profiles.empty.description", "Create one and set the server and map URL."),
                         x + 16.0f, rowY + 36.0f, 12.2f, palette.panelMuted(), false);
                 return;
@@ -2986,7 +3032,7 @@ final class XaeroMapSettingsPanel {
                 int idleBg = SettingsGuiPalette.withAlpha(palette.panelText(), Math.round(7.0f + hoverEase * 14.0f));
                 int activeBg = SettingsGuiPalette.withAlpha(Theme.theme().accent(), Math.round(25.0f + hoverEase * 16.0f));
                 int bg = SettingsGuiPalette.mix(idleBg, activeBg, selectedAnim);
-                ClickGuiRenderer.drawRoundedRect(x + 4.0f, visualY, rw, ROW_H - 4.0f, 9.0f, bg);
+                LayoutRender2D.drawRoundedRect(x + 4.0f, visualY, rw, ROW_H - 4.0f, 9.0f, bg);
                 drawClippedLeadingAccent(x + 4.0f, visualY, rw, ROW_H - 4.0f, 9.0f,
                         SettingsGuiPalette.withAlpha(Theme.theme().accent(), Math.round(225.0f * selectedAnim)),
                         selectedAnim);
@@ -2997,8 +3043,8 @@ final class XaeroMapSettingsPanel {
                 float actionX = x + width - actionSize - 12.0f;
                 float actionY = visualY + 11.0f;
                 float textW = Math.max(80.0f, actionX - (x + 16.0f) - 12.0f);
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
-                        ClickGuiRenderer.fitText(ClickGuiRenderer.getOnestMedium(), name, 15.5f, textW),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
+                        LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), name, 15.5f, textW),
                         x + 16.0f, visualY + 8.0f, 15.5f, palette.panelText(), false);
 
                 String serverLabel = profile.serverMatcher().isBlank()
@@ -3017,14 +3063,14 @@ final class XaeroMapSettingsPanel {
                 }
                 Renderer2D.COLOR.circle(x + 18.5f, visualY + 35.0f, 2.25f,
                         SettingsGuiPalette.withAlpha(statusColor, configuredProfile ? 235 : 130));
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(),
-                        ClickGuiRenderer.fitText(ClickGuiRenderer.getOnestMedium(), meta, 11.9f, Math.max(1.0f, textW - 10.0f)),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
+                        LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), meta, 11.9f, Math.max(1.0f, textW - 10.0f)),
                         x + 26.0f, visualY + 30.0f, 11.9f,
                         configuredProfile ? statusColor : palette.panelMuted(), false);
 
                 boolean editHover = inside(mouseX, mouseY, actionX, actionY, actionSize, actionSize);
                 int actionColor = SettingsGuiPalette.mix(palette.panelText(), Theme.theme().accent(), selectedAnim);
-                ClickGuiRenderer.drawRoundedRect(actionX, actionY, actionSize, actionSize, 8.0f,
+                LayoutRender2D.drawRoundedRect(actionX, actionY, actionSize, actionSize, 8.0f,
                         SettingsGuiPalette.withAlpha(actionColor, Math.round(9.0f + selectedAnim * 10.0f + (editHover ? 20.0f : 0.0f))));
                 Renderer2D.COLOR.svg("pencil", actionX + 6.0f, actionY + 6.0f, 16.0f, 16.0f,
                         SvgRenderOptions.overrideColor(actionColor));
@@ -3041,11 +3087,11 @@ final class XaeroMapSettingsPanel {
                 deleteHoverAnim = animateToward(deleteHoverAnim, hoverDelete ? 1.0f : 0.0f,
                         dt, hoverDelete ? 14.0f : 10.0f);
                 float deleteEase = easeOutCubic(deleteHoverAnim);
-                ClickGuiRenderer.drawRoundedRect(deleteX, deleteY, deleteW, deleteH, 7.0f,
+                LayoutRender2D.drawRoundedRect(deleteX, deleteY, deleteW, deleteH, 7.0f,
                         SettingsGuiPalette.withAlpha(0xFFFF6D78, Math.round(18.0f + deleteEase * 18.0f)));
                 Renderer2D.COLOR.svg("trash-2", deleteX + 9.0f, deleteY + 6.0f, 16.0f, 16.0f,
                         SvgRenderOptions.overrideColor(0xFFFF818A));
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.maplink.profiles.delete", "Delete"),
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.maplink.profiles.delete", "Delete"),
                         deleteX + 31.0f, deleteY + 7.0f, 12.4f, 0xFFFF818A, false);
             }
         }
@@ -3092,7 +3138,7 @@ final class XaeroMapSettingsPanel {
             String needle = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
             if (Objects.equals(cachedFilter, needle)) return cachedFilteredRows;
             cachedFilter = needle;
-            if (needle.isEmpty() || "maplink providers profiles status live stale players worlds server карта профили сервер".contains(needle)) {
+            if ("maplink providers profiles status live stale players worlds server карта профили сервер".contains(needle)) {
                 cachedFilteredRows = profiles;
             } else {
                 cachedFilteredRows = profiles.stream().filter(profile -> mapLinkSearchText(profile).contains(needle)).toList();

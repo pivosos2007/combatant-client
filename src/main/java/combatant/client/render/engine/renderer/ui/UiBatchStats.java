@@ -53,7 +53,7 @@ public class UiBatchStats {
         this.lastError = reason != null ? reason : "";
     }
 
-    public void noteFlushReason(Renderer2D.FlushReason reason) {
+    public synchronized void noteFlushReason(Renderer2D.FlushReason reason) {
         if (!METRICS_ENABLED) return;
         Renderer2D.FlushReason safeReason = reason != null ? reason : Renderer2D.FlushReason.UNKNOWN;
         this.lastFlushReason = safeReason;
@@ -68,7 +68,7 @@ public class UiBatchStats {
         frameIndices += indices;
     }
 
-    public void onFrameStart() {
+    public synchronized void onFrameStart() {
         if (!METRICS_ENABLED) return;
         frameBatches = 0;
         frameDraws = 0;
@@ -130,7 +130,7 @@ public class UiBatchStats {
         return lastFlushReason;
     }
 
-    public Map<Renderer2D.FlushReason, Integer> getFrameFlushReasons() {
+    public synchronized Map<Renderer2D.FlushReason, Integer> getFrameFlushReasons() {
         if (!METRICS_ENABLED || frameFlushReasons == null || frameFlushReasons.isEmpty()) return Map.of();
         return new EnumMap<>(frameFlushReasons);
     }

@@ -12,7 +12,6 @@ import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.ScissorState;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import combatant.client.features.gui.preview.VisualPreviewRuntime;
@@ -64,6 +63,53 @@ public final class VisualPreviewItemRenderer {
 
         renderScene(context, state.usesBlockLight(), 2.25f,
                 (pose, storage) -> state.submit(pose, storage, FULL_BRIGHT, OverlayTexture.NO_OVERLAY, 0));
+    }
+
+    /**
+     * Small, genuine 3D item model for GUI tooltip headers. Coordinates and size are in
+     * framebuffer pixels (unlike the regular preview scene's logical viewport).
+     * The resolved vanilla model retains all data components, foil/glint and render layers.
+     * We use our own cleared depth target, never the game's world depth buffer.
+     */
+    public static void renderTooltipModel(ItemStack stack, float centerX, float centerY,
+                                          float diameterPx, float yawDegrees) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gameRenderer == null || mc.level == null
+                || stack == null || stack.isEmpty() || diameterPx <= 0.0f) return;
+        ensureRenderer(mc);
+        TrackingItemStackRenderState state = resolve(mc, stack);
+        if (state == null || state.isEmpty()) return;
+        PreviewRenderState previous = PreviewRenderState.capture();
+        try (VisualPreviewRuntime.Scope ignored = VisualPreviewRuntime.enterSubjectRender()) {
+            var previewDepth = VisualPreviewDepthTarget.clear(mc);
+            if (previewDepth == null) return;
+            enterPreviewState(mc, state.usesBlockLight());
+            float fbw = Math.max(1f, mc.getWindow().getWidth());
+            float fbh = Math.max(1f, mc.getWindow().getHeight());
+            float halfHeight = (float) Math.tan(Math.toRadians(FOV_DEGREES * 0.5f)) * CAMERA_DISTANCE;
+            float halfWidth = halfHeight * fbw / fbh;
+            float ndcX = (centerX / fbw) * 2f - 1f;
+            float ndcY = 1f - (centerY / fbh) * 2f;
+            float modelScale = diameterPx * halfHeight * 2.0f / fbh;
+            PoseStack pose = new PoseStack();
+            pose.translate(ndcX * halfWidth, ndcY * halfHeight, -CAMERA_DISTANCE);
+            pose.rotateDegrees(Axis.XP, -17f);
+            pose.rotateDegrees(Axis.YP, yawDegrees);
+            pose.scale(modelScale, modelScale, modelScale);
+            SubmitNodeStorage storage = new SubmitNodeStorage();
+            state.submit(pose, storage, FULL_BRIGHT, OverlayTexture.NO_OVERLAY, 0);
+            combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                    "combatant:tooltip-rare-model", dispatcher, storage,
+                    mc.gameRenderer.mainRenderTarget().getColorTextureView(),
+                    previewDepth.getDepthTextureView(),
+                    combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.ALL);
+            renderBuffers.endFrame();
+        } catch (RuntimeException failure) {
+            // An optional model must never prevent tooltip text or the vanilla GUI from rendering.
+            resetRenderer();
+        } finally {
+            previous.restore();
+        }
     }
 
     public static void renderScene(VisualPreviewSceneContext context, boolean blockLight, float size,

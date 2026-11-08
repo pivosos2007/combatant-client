@@ -19,7 +19,8 @@ public enum UiBatchType {
     ROUNDED_FILL_SMOKE(UiBatchRenderPipelines.UI_ROUNDED_FILL_SMOKE_BATCH, UiBatchRenderPipelines.UI_ROUNDED_FILL_SMOKE_BATCH_ANALYTIC_CLIP, true, false),
     MODULE_CATEGORY_SURFACE(UiBatchRenderPipelines.UI_MODULE_CATEGORY_SURFACE_BATCH, UiBatchRenderPipelines.UI_MODULE_CATEGORY_SURFACE_BATCH_ANALYTIC_CLIP, true, false),
     WIDGET_SURFACE(UiBatchRenderPipelines.UI_WIDGET_SURFACE_BATCH, UiBatchRenderPipelines.UI_WIDGET_SURFACE_BATCH_ANALYTIC_CLIP, true, false),
-    MAIN_MENU_HONEYCOMB(UiBatchRenderPipelines.UI_MAIN_MENU_HONEYCOMB_BATCH, UiBatchRenderPipelines.UI_MAIN_MENU_HONEYCOMB_BATCH_ANALYTIC_CLIP, true, true),
+    HONEYCOMB(UiBatchRenderPipelines.UI_HONEYCOMB_BATCH, UiBatchRenderPipelines.UI_HONEYCOMB_BATCH_ANALYTIC_CLIP, true, false),
+    MENU_SMOKE(UiBatchRenderPipelines.UI_MENU_SMOKE_BATCH, UiBatchRenderPipelines.UI_MENU_SMOKE_BATCH_ANALYTIC_CLIP, true, false),
     ROUNDED_STROKE_ANGULAR(UiBatchRenderPipelines.UI_ROUNDED_STROKE_ANGULAR_BATCH, UiBatchRenderPipelines.UI_ROUNDED_STROKE_ANGULAR_BATCH_ANALYTIC_CLIP, true, false),
     PATH(UiBatchRenderPipelines.UI_PATH_BATCH, UiBatchRenderPipelines.UI_PATH_BATCH_ANALYTIC_CLIP, true, false),
     SHAPE(UiBatchRenderPipelines.UI_SHAPE_BATCH, UiBatchRenderPipelines.UI_SHAPE_BATCH_ANALYTIC_CLIP, true, false),
@@ -71,6 +72,6 @@ public enum UiBatchType {
 
     /** Materials that sample both the captured clean scene and its shared Kawase blur. */
     public boolean usesPreparedGlass() {
-        return this == LIQUID_GLASS || this == MAIN_MENU_HONEYCOMB;
+        return this == LIQUID_GLASS;
     }
 }

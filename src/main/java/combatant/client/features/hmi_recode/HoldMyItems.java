@@ -10,7 +10,6 @@ package combatant.client.features.hmi_recode;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.features.hmi_recode.render.HmiModelCommand;
-import combatant.client.features.hmi_recode.render.HmiTransformCommand;
 import combatant.client.features.hmi_recode.script.HmiScriptRuntime;
 import combatant.client.util.resources.asset.AssetLoad;
 import combatant.client.render.engine.profiler.ProfilerPhase;

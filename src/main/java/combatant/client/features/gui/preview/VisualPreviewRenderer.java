@@ -7,7 +7,10 @@
 
 package combatant.client.features.gui.preview;
 
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.gui.clickgui.util.ClickGuiHintOverlay;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.render.engine.core.CombatantRenderSystem;
@@ -94,8 +97,8 @@ public enum VisualPreviewRenderer {
         float titleSize = 13.0f * scale;
 
         if (scene.screen().provider().showSceneTitle()) {
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getOnestMedium(),
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                     scene.screen().provider().title() + " | " + Math.max(0, FastFps.getFps()) + " FPS",
                     20.0f * scale,
                     17.0f * scale,

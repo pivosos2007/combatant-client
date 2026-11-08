@@ -790,8 +790,6 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
 
             int total = buffers.size() + sampled.size() + images.size() + volumes.size() + sampledVolumes.size();
             VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(total, stack);
-            List<VkDescriptorBufferInfo.Buffer> bufferInfos = new ArrayList<>(buffers.size());
-            List<VkDescriptorImageInfo.Buffer> imageInfos = new ArrayList<>(sampled.size() + images.size() + volumes.size() + sampledVolumes.size());
             int write = 0;
             long storageAlignment = storageBufferOffsetAlignment();
             long maxStorageRange = maxStorageBufferRange();
@@ -810,7 +808,6 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                 }
                 VkDescriptorBufferInfo.Buffer info = VkDescriptorBufferInfo.calloc(1, stack);
                 info.get(0).buffer(buffer.vkBuffer()).offset(physicalOffset).range(binding.size());
-                bufferInfos.add(info);
                 writes.get(write++).sType$Default()
                         .dstSet(descriptorSet)
                         .dstBinding(binding.binding())
@@ -837,7 +834,6 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                 info.get(0).sampler(sampler.vkSampler())
                         .imageView(texture.vkImageView())
                         .imageLayout(VK_IMAGE_LAYOUT_GENERAL);
-                imageInfos.add(info);
                 writes.get(write++).sType$Default()
                         .dstSet(descriptorSet)
                         .dstBinding(binding.binding())
@@ -860,7 +856,6 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                 info.get(0).sampler(sampler.vkSampler())
                         .imageView(volume.imageView(binding.view()))
                         .imageLayout(VK_IMAGE_LAYOUT_GENERAL);
-                imageInfos.add(info);
                 writes.get(write++).sType$Default()
                         .dstSet(descriptorSet)
                         .dstBinding(binding.binding())
@@ -876,7 +871,6 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                 info.get(0).sampler(0L)
                         .imageView(texture.vkImageView())
                         .imageLayout(VK_IMAGE_LAYOUT_GENERAL);
-                imageInfos.add(info);
                 writes.get(write++).sType$Default()
                         .dstSet(descriptorSet)
                         .dstBinding(binding.binding())
@@ -893,7 +887,6 @@ final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
                 info.get(0).sampler(0L)
                         .imageView(volume.imageView(binding.view()))
                         .imageLayout(VK_IMAGE_LAYOUT_GENERAL);
-                imageInfos.add(info);
                 writes.get(write++).sType$Default()
                         .dstSet(descriptorSet)
                         .dstBinding(binding.binding())

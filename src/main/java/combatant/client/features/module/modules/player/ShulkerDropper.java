@@ -14,7 +14,6 @@ import combatant.client.automation.AutomationRuntime;
 import combatant.client.automation.AutomationTask;
 import combatant.client.automation.actions.InventoryAction;
 import combatant.client.config.values.BooleanValue;
-import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;

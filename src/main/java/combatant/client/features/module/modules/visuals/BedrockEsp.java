@@ -39,12 +39,13 @@ import java.util.List;
         aliases = {"bedrockholes"},
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.bedrockesp.description")
-public final class BedrockEsp extends Module {
+public final class BedrockEsp extends Module implements combatant.client.features.map.info.MapInfoSource {
     private static final int SCANS_PER_PASS = 2;
     private static final int PASS_TICKS = 4;
     private static final int REFRESH_TICKS = 600;
 
     private final Minecraft mc = Minecraft.getInstance();
+    private final BooleanValue mapInfo = bool("bedrockesp_map_info", "map_info", true);
     private final NumberValue<Integer> rangeChunks = num("bedrockesp_range_chunks", "range_chunks", 6, 1, 16);
     private final NumberValue<Integer> thickness = num("bedrockesp_thickness", "thickness", 5, 1, 5);
     private final BooleanValue floor = bool("bedrockesp_floor", "floor", true);
@@ -129,6 +130,24 @@ public final class BedrockEsp extends Module {
             out.addAll(BedrockGaps.scan(grid, x0, z0, x0 + 15, z0 + 15, level.getMaxY(), layers, Side.ROOF));
         }
         return out;
+    }
+
+    @Override
+    public void collectMapInfo(combatant.client.features.map.info.MapInfoSink sink) {
+        if (!isEnabled() || !mapInfo.get() || mc.level == null || mc.player == null || mc.level != lastLevel) return;
+        double maxSq = Math.pow(rangeChunks.get() * 16.0, 2);
+        for (ChunkGaps entry : cache.values()) {
+            for (Gap gap : entry.gaps()) {
+                double dx = gap.x() + 0.5 - mc.player.getX();
+                double dz = gap.z() + 0.5 - mc.player.getZ();
+                if (dx * dx + dz * dz > maxSq) continue;
+                boolean shaft = gap.kind() == BedrockGaps.Kind.SHAFT;
+                sink.add(gap.x(), gap.z(), shaft ? "shaft" : "gap",
+                        shaft ? net.minecraft.client.resources.language.I18n.get("gui.combatant.map.info.bedrock.shaft")
+                                : net.minecraft.client.resources.language.I18n.get("gui.combatant.map.info.bedrock.gap"), Blocks.BEDROCK.asItem(),
+                        shaft ? shaftColor.getArgb() : holeColor.getArgb(), 1);
+            }
+        }
     }
 
     @Override

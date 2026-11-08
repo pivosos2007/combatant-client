@@ -23,7 +23,6 @@ import combatant.client.render.engine.rhi.RhiStats;
 import combatant.client.render.engine.rhi.shader.*;
 import combatant.client.render.engine.shader.CombatantShaderSources;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.ShaderDefines;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.MemoryStack;
@@ -296,10 +295,9 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         SampledTextureState sampledTextureState = captureSampledTextureState(command.sampledTextures());
         SampledVolumeState sampledVolumeState = captureSampledVolumeState(command.sampledVolumes());
         List<ImageUnitState> imageUnitState = captureImageUnitState(command.storageImages(), command.storageVolumes());
-        int bound = 0;
         try {
             GlStateManager._glUseProgram(pipeline.program);
-            bound = bindStorage(command.storageBindings());
+            int bound = bindStorage(command.storageBindings());
             bindSampledTextures(command.sampledTextures());
             bindSampledVolumes(command.sampledVolumes());
             bindStorageImages(command.storageImages());

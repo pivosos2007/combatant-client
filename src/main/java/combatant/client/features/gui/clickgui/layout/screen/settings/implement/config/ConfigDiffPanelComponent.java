@@ -6,11 +6,13 @@
  */
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.config;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 import combatant.client.config.profile.ConfigProfileDiff;
 import combatant.client.config.profile.ConfigProfileMeta;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.input.InputKeys;
@@ -64,8 +66,8 @@ public final class ConfigDiffPanelComponent {
     private void refreshFonts() {
         long generation = Fonts.generation();
         if (regular == null || semibold == null || fontGeneration != generation) {
-            regular = Fonts.renderer("SourceSans3", FontInfo.Type.Regular, ClickGuiRenderer.getInterRegular());
-            semibold = Fonts.renderer("SourceSans3Semibold", FontInfo.Type.Regular, ClickGuiRenderer.getInterMedium());
+            regular = Fonts.renderer("SourceSans3", FontInfo.Type.Regular, BuiltinFontCatalog.ONEST_REGULAR.renderer());
+            semibold = Fonts.renderer("SourceSans3Semibold", FontInfo.Type.Regular, BuiltinFontCatalog.ONEST_MEDIUM.renderer());
             fontGeneration = generation;
         }
     }
@@ -112,7 +114,7 @@ public final class ConfigDiffPanelComponent {
 
         LayoutRender2D.roundedSoftShadow(x, y, w, h, 7f * scale, 8f * scale, 0.018f,
                 LayoutRender2D.alpha(palette.panelShadow(), openAnim));
-        ClickGuiRenderer.drawBlur(x, y, w, h, 7f * scale,
+        LayoutRender2D.drawBlur(x, y, w, h, 7f * scale,
                 LayoutRender2D.alpha(palette.panelBlurTint(), openAnim), (200f / 255f) * openAnim);
         LayoutRender2D.roundedQuad(x, y, w, h, 7f * scale,
                 LayoutRender2D.alpha(palette.panelBgLeft(), openAnim),
@@ -201,7 +203,7 @@ public final class ConfigDiffPanelComponent {
                 LayoutRender2D.alpha(color, openAnim), LayoutRender2D.alpha(color, openAnim),
                 LayoutRender2D.alpha(color, openAnim));
         drawText(label, x + 6f * scale, y, 7.2f * scale, color, false);
-        return x + 6f * scale + ClickGuiRenderer.textWidth(regular(), label, 7.2f * scale);
+        return x + 6f * scale + LayoutRender2D.textWidth(regular(), label, 7.2f * scale);
     }
 
     private void renderHeaderActions(float x, float y, float w, float mx, float my,
@@ -330,7 +332,7 @@ public final class ConfigDiffPanelComponent {
             for (ConfigProfileDiff.Value value : entry.values()) {
                 int tint = colorOf(value.kind());
                 if (cy + 20f * scale >= clipY && cy <= clipY + clipH) {
-                    LayoutRender2D.roundedQuad(x + 1f * scale, cy + 2f * scale, 2f * scale, 16f * scale,
+                    LayoutRender2D.roundedQuad(x + scale, cy + 2f * scale, 2f * scale, 16f * scale,
                             1f * scale, LayoutRender2D.alpha(tint, openAnim),
                             LayoutRender2D.alpha(tint, openAnim),
                             LayoutRender2D.alpha(tint, openAnim),
@@ -391,12 +393,12 @@ public final class ConfigDiffPanelComponent {
                              boolean strong, float clipY, float clipH, float scale) {
         if (y + 11f * scale < clipY || y > clipY + clipH) return;
         TextRenderer font = strong ? semibold() : regular();
-        String line = ClickGuiRenderer.fitText(font, value, size, Math.max(1f, width));
+        String line = LayoutRender2D.fitText(font, value, size, Math.max(1f, width));
         drawText(line, x, y, size, color, strong);
     }
 
     private void drawText(String value, float x, float y, float size, int color, boolean strong) {
-        ClickGuiRenderer.drawText(strong ? semibold() : regular(), value,
+        LayoutRender2D.drawText(strong ? semibold() : regular(), value,
                 x, y, size, LayoutRender2D.alpha(color, openAnim), false);
     }
 

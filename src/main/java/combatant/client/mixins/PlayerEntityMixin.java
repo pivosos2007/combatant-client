@@ -22,6 +22,8 @@ package combatant.client.mixins;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemCooldowns;
@@ -36,6 +38,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
 import combatant.client.events.impl.PlayerSafeWalkEvent;
+import combatant.client.events.impl.PlayerEffectMoveEvent;
+import combatant.client.events.impl.PlayerEffectVelocityEvent;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.player.NoDelay;
 import combatant.client.features.module.modules.combat.TPSSync;
@@ -50,6 +54,22 @@ public abstract class PlayerEntityMixin implements IPlayerAttackCooldown {
     @Shadow
     @Final
     private ItemCooldowns cooldowns;
+
+    @Inject(method = "travel", at = @At("TAIL"))
+    private void combatant$afterEffectTravel(Vec3 input, CallbackInfo ci) {
+        Player self = (Player) (Object) this;
+        if (!(self instanceof LocalPlayer player) || player.isPassenger() || player.isFallFlying()
+                || !Events.BUS.hasListeners(PlayerEffectVelocityEvent.class)) return;
+        PlayerEffectMoveEvent.EffectType effect = player.hasEffect(MobEffects.LEVITATION)
+                ? PlayerEffectMoveEvent.EffectType.LEVITATION : player.hasEffect(MobEffects.SLOW_FALLING)
+                ? PlayerEffectMoveEvent.EffectType.SLOW_FALLING : null;
+        if (effect == null) return;
+        Vec3 movement = self.getDeltaMovement();
+        PlayerEffectVelocityEvent event = Events.BUS.post(new PlayerEffectVelocityEvent(player, effect, movement));
+        Vec3 adjusted = event.getVelocity();
+        if (adjusted != null && Double.isFinite(adjusted.x) && Double.isFinite(adjusted.y)
+                && Double.isFinite(adjusted.z) && !adjusted.equals(movement)) self.setDeltaMovement(adjusted);
+    }
 
     @Inject(method = "isStayingOnGroundSurface", at = @At("RETURN"), cancellable = true)
     private void combatant$safeWalk(CallbackInfoReturnable<Boolean> cir) {

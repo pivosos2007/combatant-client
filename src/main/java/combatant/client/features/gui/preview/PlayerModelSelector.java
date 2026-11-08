@@ -5,8 +5,11 @@
  */
 package combatant.client.features.gui.preview;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.config.ConfigSerializer;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.features.module.modules.visuals.PlayerModel;
 import combatant.client.features.playermodel.ModelCatalog;
@@ -88,7 +91,7 @@ public final class PlayerModelSelector {
             props.put(key, I18n.get("playermodel.selector." + key));
         }
         runtime = scripts.bakeTracked(handle, handle.module(), "player-model-selector",
-                width, height, ClickGuiRenderer.getOnestMedium(),
+                width, height, BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 x, y, width, height, () -> props);
         if (runtime == null) return;
         runtime.actions().register("models:tab:models", action -> { variants = false; return true; });
@@ -109,11 +112,11 @@ public final class PlayerModelSelector {
             ConfigSerializer.requestSave(module);
             return true;
         });
-        ClickGuiRenderer.flushRenderer();
-        runtime.render(new UiRenderContext(Renderer2D.COLOR, ClickGuiRenderer.getOnestMedium(), null,
+        LayoutRender2D.flushRenderer();
+        runtime.render(new UiRenderContext(Renderer2D.COLOR, BuiltinFontCatalog.ONEST_MEDIUM.renderer(), null,
                 0f, UiProjectionMode.CURRENT, 1f), () -> runtime.input().updateHover(runtime.root(),
                 scene.screen().mouseXVirtual(), scene.screen().mouseYVirtual()));
-        ClickGuiRenderer.flushRenderer();
+        LayoutRender2D.flushRenderer();
     }
 
     public boolean mousePressed(float mx, float my, int button) {

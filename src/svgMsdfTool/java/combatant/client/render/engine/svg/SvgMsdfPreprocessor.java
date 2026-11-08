@@ -29,7 +29,7 @@ public final class SvgMsdfPreprocessor {
     private SvgMsdfPreprocessor() {
     }
 
-    public static void main(String[] args) throws Exception {
+    static void main(String[] args) throws Exception {
         if (args.length < 2) {
             throw new IllegalArgumentException("Usage: SvgMsdfPreprocessor <input.svg> <output.svg>");
         }

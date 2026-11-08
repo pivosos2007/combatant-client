@@ -31,8 +31,6 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.ai.attributes.Attribute;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -51,7 +49,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.config.values.ItemCooldownRulesValue;
 import combatant.client.events.Events;
+import combatant.client.events.impl.PlayerEffectGravityEvent;
 import combatant.client.events.impl.PlayerJumpEvent;
+import combatant.client.events.impl.PlayerWaterTravelEvent;
 import combatant.client.events.impl.PlayerStepEvent;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.PvpCooldowns;
@@ -81,15 +81,38 @@ public abstract class LivingEntityMixin {
     protected int useItemRemaining;
     @Unique
     private PlayerJumpEvent combatant$playerJumpEvent;
+    @Unique
+    private Vec3 combatant$waterTravelIncoming = Vec3.ZERO;
 
     @Shadow
     protected abstract float getJumpPower();
 
-    @Inject(method = "getAttributeValue", at = @At("RETURN"))
-    private void combatant$noStunSlownessMovementSpeed(Holder<Attribute> attribute, CallbackInfoReturnable<Double> cir) {
-        if (!attribute.equals(Attributes.MOVEMENT_SPEED)) return;
-        return;
+    @ModifyReturnValue(method = "getEffectiveGravity", at = @At("RETURN"))
+    private double combatant$effectGravity(double gravity) {
+        LivingEntity self = (LivingEntity) (Object) this;
+        if (!(self instanceof LocalPlayer player) || !player.hasEffect(MobEffects.SLOW_FALLING)
+                || !Events.BUS.hasListeners(PlayerEffectGravityEvent.class)) return gravity;
+        PlayerEffectGravityEvent event = Events.BUS.post(
+                new PlayerEffectGravityEvent(player, gravity, self.getGravity()));
+        return Double.isFinite(event.getGravity()) ? event.getGravity() : gravity;
+    }
 
+    @Inject(method = "travelInWater", at = @At("HEAD"))
+    private void combatant$beginWaterTravel(Vec3 input, double gravity, boolean falling, double height, CallbackInfo ci) {
+        LivingEntity self = (LivingEntity) (Object) this;
+        if (self instanceof LocalPlayer) combatant$waterTravelIncoming = self.getDeltaMovement();
+    }
+
+    @Inject(method = "travelInWater", at = @At("TAIL"))
+    private void combatant$endWaterTravel(Vec3 input, double gravity, boolean falling, double height, CallbackInfo ci) {
+        LivingEntity self = (LivingEntity) (Object) this;
+        if (!(self instanceof LocalPlayer player) || !Events.BUS.hasListeners(PlayerWaterTravelEvent.class)) return;
+        Vec3 actual = self.getDeltaMovement();
+        PlayerWaterTravelEvent event = Events.BUS.post(new PlayerWaterTravelEvent(
+                player, combatant$waterTravelIncoming, actual));
+        Vec3 adjusted = event.getVelocity();
+        if (adjusted != null && Double.isFinite(adjusted.x) && Double.isFinite(adjusted.y)
+                && Double.isFinite(adjusted.z) && !adjusted.equals(actual)) self.setDeltaMovement(adjusted);
     }
 
     @ModifyReturnValue(method = "getMainHandItem", at = @At("RETURN"))

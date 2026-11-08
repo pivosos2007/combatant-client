@@ -24,11 +24,8 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.common.CommonSettingSchemas;
-import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
-import combatant.client.features.module.*;
 import combatant.client.render.engine.RenderState;
-import combatant.client.compat.seedcracker.SeedSnapshots;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.features.theme.Theme;
@@ -37,7 +34,6 @@ import combatant.client.util.finder.FinderRender;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import combatant.client.render.engine.renderer.Renderer3D;
-import combatant.client.util.block.*;
 import combatant.client.util.logging.DebugLog;
 
 import java.util.*;
@@ -49,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
         aliases = {"xray", "oreesp", "blocks"},
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.blockesp.description")
-public class BlockESP extends Module {
+public class BlockESP extends Module implements combatant.client.features.map.info.MapInfoSource {
 
     private static final int SECTION_SCAN_BUDGET_PER_TICK = 10;
     private static final int SECTION_SCAN_BURST_BUDGET_PER_TICK = 64;
@@ -58,6 +54,7 @@ public class BlockESP extends Module {
     private static final int SODIUM_CANDIDATE_DRAIN_BUDGET_PER_TICK = 4096;
     private static final int RECONCILE_BUDGET_PER_TICK = 512;
     private static final int FULL_RECONCILE_REFRESH_TICKS = 20;
+    private final BooleanValue mapInfo = bool("blockEspMapInfo", "map_info", true);
     private final Minecraft mc = Minecraft.getInstance();
     private final BlockDeobfuscationScanner deobfuscationScanner = new BlockDeobfuscationScanner();
     private final WorldSectionBlockScanner sectionScanner = new WorldSectionBlockScanner();
@@ -951,6 +948,26 @@ public class BlockESP extends Module {
         for (int i = 0, n = tracerCenters.size(); i < n; i++) {
             tracers.render3DTracersRaw(renderer, tickDelta, List.of(tracerCenters.get(i)),
                     0xFF000000 | targetRgb(tracerStates.get(i), tracerVisible.get(i)));
+        }
+    }
+
+    @Override
+    public void collectMapInfo(combatant.client.features.map.info.MapInfoSink sink) {
+        if (!isEnabled() || !mapInfo.get() || mc.level == null || mc.player == null) return;
+        boolean limited = limitDistanceValue.get();
+        double maxSq = (double) maxDistanceValue.get() * maxDistanceValue.get();
+        Vec3 eye = limited ? mc.player.getEyePosition() : null;
+        frameColors.clear(); // Map rendering can run without a world ESP pass after a color change.
+        IdentityHashMap<Block, String> names = new IdentityHashMap<>();
+        for (Target target : renderTargets.values()) {
+            if (target == null || target.pos == null || target.state == null) continue;
+            BlockPos pos = target.pos;
+            if (limited && pos.distToCenterSqr(eye.x, eye.y, eye.z) > maxSq) continue;
+            Block block = target.state.getBlock();
+            String id = BuiltInRegistries.BLOCK.getKey(block).toString();
+            sink.add(pos.getX(), pos.getZ(), id,
+                    names.computeIfAbsent(block, b -> b.getName().getString()),
+                    block.asItem(), 0xFF000000 | targetRgb(target.state, target.visible), 1);
         }
     }
 

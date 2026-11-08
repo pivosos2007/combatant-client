@@ -263,7 +263,6 @@ public enum StatusEffectInference {
 
     private static void updatePotionEntities(Minecraft mc, long now) {
         if (mc.level == null) return;
-        boolean any = false;
         for (Entity entity : mc.level.entitiesForRendering()) {
             if (!(entity instanceof AbstractThrownPotion potion)) continue;
             ItemStack stack = potion.getItem();
@@ -276,10 +275,6 @@ public enum StatusEffectInference {
                 list.add(new PendingEffect(inst.getEffect(), inst.getAmplifier(), inst.getDuration(), false, now + POTION_WINDOW_MS));
             }
             POTIONS.put(entity.getId(), new PotionPending(entity.position(), list, now));
-            any = true;
-        }
-        if (!any && !POTIONS.isEmpty()) {
-            // keep previous entries but let them expire
         }
         prunePotions(now);
     }

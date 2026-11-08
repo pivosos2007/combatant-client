@@ -7,12 +7,14 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.main;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 import combatant.client.config.SettingDef;
 import combatant.client.config.SettingOwner;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.subsystem.MainSettingsContributor;
 import combatant.client.features.gui.clickgui.layout.screen.settings.subsystem.MainSettingsRegistry;
 import combatant.client.features.gui.clickgui.settings.Setting;
@@ -266,7 +268,7 @@ public final class MainSettingsComponent {
                     float stripW = Math.max(2f, 2.2f * scale);
                     int accent = combatant.client.features.theme.Theme.theme().accent();
                     int accentSoft = combatant.client.features.theme.Theme.theme().accentSoft();
-                    LayoutRender2D.rectQuad(rowX - 0.5f * scale, rowY - 1f * scale, stripW, rowH + 2f * scale,
+                    LayoutRender2D.rectQuad(rowX - 0.5f * scale, rowY - scale, stripW, rowH + 2f * scale,
                             SettingsGuiPalette.withAlpha(accentSoft, 170), SettingsGuiPalette.withAlpha(accent, 238),
                             SettingsGuiPalette.withAlpha(accent, 238), SettingsGuiPalette.withAlpha(accentSoft, 170));
                 } finally {
@@ -290,8 +292,8 @@ public final class MainSettingsComponent {
                     iconSize,
                     SvgRenderOptions.overrideColor(text)
             );
-            ClickGuiRenderer.drawText(
-                    ClickGuiRenderer.getInterMedium(),
+            LayoutRender2D.drawText(
+                    BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                     section.title(),
                     x + 27f * scale,
                     rowY + 6f * scale,
@@ -351,7 +353,7 @@ public final class MainSettingsComponent {
                     SvgRenderOptions.overrideColor(LayoutRender2D.alpha(text, 0.92f)));
             headerTextX += icon + 5f * scale;
         }
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), title, headerTextX, titleY, titleSize, text, false);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), title, headerTextX, titleY, titleSize, text, false);
 
         contentX = rightX + pad;
         contentY = rightY + 28f * scale;
@@ -380,7 +382,7 @@ public final class MainSettingsComponent {
                 float h = row.height();
                 if (h > 0.5f) {
                     settingHits.add(new SettingHit(row.setting(), contentX, y, contentW, h));
-                    if (y + h >= contentY - 1f * scale && y <= contentY + contentH + 1f * scale) {
+                    if (y + h >= contentY - scale && y <= contentY + contentH + scale) {
                         float fullH = Math.max(h, row.fullHeight());
                         float renderY = y - (fullH - h) * 0.5f;
                         // The host viewport is already clipped. A per-row scissor is only needed

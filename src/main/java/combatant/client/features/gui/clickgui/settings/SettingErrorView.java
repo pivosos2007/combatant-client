@@ -12,9 +12,8 @@ import combatant.client.features.gui.chat.diagnostics.FailureDiagnostics;
 
 import combatant.client.runtime.error.FailureIsolation;
 
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
 import combatant.client.features.module.Module;
 import combatant.client.config.SettingOwner;
@@ -78,8 +77,8 @@ public final class SettingErrorView {
     }
 
     public static void warning(float x, float y, float size, float alpha) {
-        TextRenderer icon = BuiltinFontCatalog.ICONS.renderer(ClickGuiRenderer.getInterRegular());
-        ClickGuiRenderer.drawText(icon, "L", x, y, size, LayoutRender2D.alpha(RED, alpha), false);
+        TextRenderer icon = BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
+        LayoutRender2D.drawText(icon, "L", x, y, size, LayoutRender2D.alpha(RED, alpha), false);
     }
 
     public static float height() { return 118f * SettingRenderContext.scale(); }
@@ -109,15 +108,15 @@ public final class SettingErrorView {
         float iconSize = 11f * s;
         float titleSize = 8.4f * s;
         warning(innerX, cardY + 9f * s, iconSize, 1f);
-        String fittedTitle = ClickGuiRenderer.fitText(medium, title, titleSize, innerW - iconSize - 6f * s);
+        String fittedTitle = LayoutRender2D.fitText(medium, title, titleSize, innerW - iconSize - 6f * s);
         draw(medium, fittedTitle, innerX + iconSize + 6f * s, cardY + 8.2f * s, titleSize, RED);
 
         float contextSize = 6.8f * s;
         String state = FailureText.state(failure.state());
         String phase = FailureText.phase(failure.phase());
-        draw(font, ClickGuiRenderer.fitText(font, state, contextSize, innerW), innerX, cardY + 23.5f * s,
+        draw(font, LayoutRender2D.fitText(font, state, contextSize, innerW), innerX, cardY + 23.5f * s,
                 contextSize, SettingsGuiPalette.mix(palette.panelMuted(), RED_SOFT, 0.30f));
-        draw(font, ClickGuiRenderer.fitText(font, phase, contextSize, innerW), innerX, cardY + 33.5f * s,
+        draw(font, LayoutRender2D.fitText(font, phase, contextSize, innerW), innerX, cardY + 33.5f * s,
                 contextSize, palette.panelMuted());
 
         LayoutRender2D.horizontalHairline(
@@ -144,13 +143,13 @@ public final class SettingErrorView {
     }
 
     private static void draw(TextRenderer font, String value, float x, float y, float size, int color) {
-        ClickGuiRenderer.drawText(font, value == null ? "" : value, x, y, size, color, false);
+        LayoutRender2D.drawText(font, value == null ? "" : value, x, y, size, color, false);
     }
 
     private static void drawReason(TextRenderer font, String value, float x, float y, float w,
                                    float size, int color) {
-        List<String> lines = ClickGuiRenderer.wrapText(font, value == null ? "" : value, size, w, 2);
-        float lineH = ClickGuiRenderer.textHeight(font, size) + 1.5f * SettingRenderContext.scale();
+        List<String> lines = LayoutRender2D.wrapText(font, value == null ? "" : value, size, w, 2);
+        float lineH = LayoutRender2D.textHeight(font, size) + 1.5f * SettingRenderContext.scale();
         for (int i = 0; i < lines.size(); i++) {
             draw(font, lines.get(i), x, y + i * lineH, size, color);
         }
@@ -200,7 +199,7 @@ public final class SettingErrorView {
 
         TextRenderer font = UnifiedSettingsSkin.fontRegular();
         float size = 6.4f * s;
-        float textY = y + (h - ClickGuiRenderer.textHeight(font, size)) * .5f - .25f * s;
+        float textY = y + (h - LayoutRender2D.textHeight(font, size)) * .5f - .25f * s;
         drawActionLabel(font, detailsLabel, x, detailsW, textY, size,
                 SettingsGuiPalette.mix(palette.panelText(), 0xFFFFD1D1, detailsHover));
         if (retryAllowed) {
@@ -212,8 +211,8 @@ public final class SettingErrorView {
 
     private static void drawActionLabel(TextRenderer font, String label, float x, float w,
                                         float y, float size, int color) {
-        String fitted = ClickGuiRenderer.fitText(font, label, size, Math.max(1f, w - 5f * SettingRenderContext.scale()));
-        float textX = x + (w - ClickGuiRenderer.textWidth(font, fitted, size)) * .5f;
+        String fitted = LayoutRender2D.fitText(font, label, size, Math.max(1f, w - 5f * SettingRenderContext.scale()));
+        float textX = x + (w - LayoutRender2D.textWidth(font, fitted, size)) * .5f;
         draw(font, fitted, textX, y, size, color);
     }
 

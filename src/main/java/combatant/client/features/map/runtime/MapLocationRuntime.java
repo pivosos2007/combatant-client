@@ -16,7 +16,6 @@ import combatant.client.features.map.duplex.DuplexEstimate;
 import combatant.client.features.map.duplex.DuplexRuntime;
 import combatant.client.features.map.heuristic.HeuristicEstimate;
 import combatant.client.features.map.heuristic.HeuristicLifecycleEvent;
-import combatant.client.features.map.heuristic.HeuristicLifecycleEventType;
 import combatant.client.features.map.heuristic.HeuristicRuntime;
 import combatant.client.features.map.location.LocationSessionKey;
 import combatant.client.features.map.location.PlayerLocationEvent;

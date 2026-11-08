@@ -22,7 +22,6 @@ import org.joml.Vector4fc;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
-import combatant.client.render.engine.rhi.*;
 import combatant.client.render.engine.rhi.backend.vulkan.clip.VulkanShapeClipBackend;
 import combatant.client.render.engine.rhi.backend.vulkan.msaa.VulkanMsaaControl;
 import combatant.client.render.engine.rhi.backend.vulkan.state.VulkanPipelineStateBackend;

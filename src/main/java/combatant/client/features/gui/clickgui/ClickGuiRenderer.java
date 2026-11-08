@@ -17,6 +17,7 @@ import combatant.client.input.minecraft.CombatantTextInputBridge;
 import combatant.client.input.minecraft.CombatantTextInputTarget;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.addon.ClickGuiSectionManager;
 import combatant.client.features.gui.clickgui.settings.*;
 import combatant.client.render.engine.math.HudScale;
@@ -38,7 +39,6 @@ import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.modules.misc.ClickGui;
 import combatant.client.mixininterface.IGuiGraphics;
 import combatant.client.render.engine.animation.AnimationUtility;
-import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.RenderPhaseScope;
@@ -47,10 +47,7 @@ import combatant.client.render.engine.profiler.ProfilerPhase;
 import combatant.client.render.engine.profiler.RenderProfiler2D;
 import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.Renderer2D;
-import combatant.client.render.engine.renderer.ui.draw.UiMeshGeometry;
-import combatant.client.render.engine.text.Fonts;
 import combatant.client.render.engine.text.TextRenderer;
-import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.text.ClipboardUtil;
@@ -93,21 +90,6 @@ public enum ClickGuiRenderer {
     private static final float INPUT_READY_PROGRESS = 0.72f;
     private static final Set<InputKey> pendingBindKeys = new LinkedHashSet<>();
     private static final List<PickerIcon> pickerIcons = new ArrayList<>();
-    private static final java.util.ArrayList<TextBatchItem> TEXT_BATCH = new java.util.ArrayList<>();
-    private static final int TEXT_WIDTH_CACHE_LIMIT = 4096;
-    private static final int TEXT_HEIGHT_CACHE_LIMIT = 256;
-    private static final Map<TextMeasureKey, Float> TEXT_WIDTH_CACHE = new LinkedHashMap<>(512, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<TextMeasureKey, Float> eldest) {
-            return size() > TEXT_WIDTH_CACHE_LIMIT;
-        }
-    };
-    private static final Map<TextHeightKey, Float> TEXT_HEIGHT_CACHE = new LinkedHashMap<>(64, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<TextHeightKey, Float> eldest) {
-            return size() > TEXT_HEIGHT_CACHE_LIMIT;
-        }
-    };
     public static boolean waitingForKey = false;
     public static Object keyBindOwner = null;
     private static int colorClipboard = 0xFFFFFFFF;
@@ -115,12 +97,6 @@ public enum ClickGuiRenderer {
     private static float mouseX, mouseY;
     private static boolean cursorShown = false;
     private static int fbWidth, fbHeight;
-    private static TextRenderer interRegular;
-    private static TextRenderer interMedium;
-    private static TextRenderer onestMedium;
-    private static TextRenderer onestBold;
-    private static TextRenderer monsterratRegular;
-    private static long boundFontGeneration = Long.MIN_VALUE;
     private static String activeTabId = MODULES_TAB_ID;
     private static float tabBarX, tabBarY, tabBarW, tabBarH;
     private static float tabTargetX, tabTargetW;
@@ -142,13 +118,8 @@ public enum ClickGuiRenderer {
     private static boolean pickerIconScissorActive = false;
     private static float pickerIconScissorX, pickerIconScissorY, pickerIconScissorW, pickerIconScissorH;
     private static Renderer2D renderer;
-    private static float renderAlphaMultiplier = 1.0f;
-    private static boolean verticalAlphaFadeEnabled;
-    private static float verticalAlphaFadeStart;
-    private static float verticalAlphaFadeEnd;
     private static ClickGuiScreen mainScreen;
     private static ClickGuiPickerScreen pickerScreen;
-    private static boolean textBatchActive;
 
     // =========================
     //  API for MIXIN MOUSE
@@ -846,7 +817,7 @@ public enum ClickGuiRenderer {
         ensureTabCapacity(tabs.size());
         float totalTabs = 0f;
         for (int t = 0; t < tabs.size(); t++) {
-            float wTab = textWidth(getSfProDisplaySemibold(), tabs.get(t).label(), TAB_FONT) + TAB_PAD_X * 2f;
+            float wTab = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_BOLD.renderer(), tabs.get(t).label(), TAB_FONT) + TAB_PAD_X * 2f;
             if (wTab < TAB_MIN_W) wTab = TAB_MIN_W;
             tabW[t] = wTab;
             totalTabs += wTab;
@@ -933,7 +904,7 @@ public enum ClickGuiRenderer {
         boolean islandShell = DynamicIsland.shouldOwnClickGuiTabShell();
         if (islandShell) return;
 
-        TextRenderer tabFont = getOnestBold();
+        TextRenderer tabFont = BuiltinFontCatalog.ONEST_BOLD.renderer();
         float y = tabBarY - (1.0f - eased) * TAB_BAR_SLIDE_DISTANCE;
         float outerRadius = tabBarH * 0.5f;
         float outerPad = TAB_BAR_INNER_PAD;
@@ -944,15 +915,15 @@ public enum ClickGuiRenderer {
         float innerRadius = innerH * 0.5f;
 
         float outerSurfaceAlpha = TAB_BAR_SURFACE_ALPHA;
-        int outerLeft = scaleAlpha(mixColor(theme().surface(), theme().windowBg(), 0.34f), outerSurfaceAlpha * eased);
-        int outerRight = scaleAlpha(mixColor(theme().surfaceHover(), theme().windowBg(), 0.22f), outerSurfaceAlpha * eased);
-        int outerStrokeLeft = scaleAlpha(mixColor(theme().strokeSoft(), theme().accentSoft(), 0.18f), 0.50f * eased);
-        int outerStrokeRight = scaleAlpha(mixColor(theme().strokeSoft(), theme().textPrimary(), 0.08f), 0.42f * eased);
+        int outerLeft = LayoutRender2D.scaleAlpha(LayoutRender2D.mixColor(theme().surface(), theme().windowBg(), 0.34f), outerSurfaceAlpha * eased);
+        int outerRight = LayoutRender2D.scaleAlpha(LayoutRender2D.mixColor(theme().surfaceHover(), theme().windowBg(), 0.22f), outerSurfaceAlpha * eased);
+        int outerStrokeLeft = LayoutRender2D.scaleAlpha(LayoutRender2D.mixColor(theme().strokeSoft(), theme().accentSoft(), 0.18f), 0.50f * eased);
+        int outerStrokeRight = LayoutRender2D.scaleAlpha(LayoutRender2D.mixColor(theme().strokeSoft(), theme().textPrimary(), 0.08f), 0.42f * eased);
 
-        int activeLeft = scaleAlpha(mixColor(theme().accentSoft(), theme().accent(), 0.18f), eased);
-        int activeRight = scaleAlpha(mixColor(theme().accent(), theme().textPrimary(), 0.08f), eased);
-        int activeStrokeLeft = scaleAlpha(mixColor(theme().accentSoft(), theme().textPrimary(), 0.20f), 0.88f * eased);
-        int activeStrokeRight = scaleAlpha(theme().accent(), 0.92f * eased);
+        int activeLeft = LayoutRender2D.scaleAlpha(LayoutRender2D.mixColor(theme().accentSoft(), theme().accent(), 0.18f), eased);
+        int activeRight = LayoutRender2D.scaleAlpha(LayoutRender2D.mixColor(theme().accent(), theme().textPrimary(), 0.08f), eased);
+        int activeStrokeLeft = LayoutRender2D.scaleAlpha(LayoutRender2D.mixColor(theme().accentSoft(), theme().textPrimary(), 0.20f), 0.88f * eased);
+        int activeStrokeRight = LayoutRender2D.scaleAlpha(theme().accent(), 0.92f * eased);
 
         try (RenderWarpStack.Scope ignored = Renderer2D.pushPerspectiveWarp(
                 tabBarX,
@@ -968,16 +939,16 @@ public enum ClickGuiRenderer {
         )) {
             if (!islandShell) {
                 // Match the outer shell exactly and drive the ClickGUI blur at full strength.
-                // drawBlur() multiplies by the ClickGUI density scale (1.16) and clamps to 1, so
+                // LayoutRender2D.drawBlur() multiplies by the ClickGUI density scale (1.16) and clamps to 1, so
                 // eased == 1.0 resolves to a true 255/255 blur alpha.
-                flushRenderer();
-                drawBlur(
+                LayoutRender2D.flushRenderer();
+                LayoutRender2D.drawBlur(
                         tabBarX, y, tabBarW, tabBarH, outerRadius,
                         0xFFFFFFFF,
-                        (255.0f / 255.0f) * eased
+                        (1.0f) * eased
                 );
-                flushRenderer();
-                drawRoundedRectShadow(
+                LayoutRender2D.flushRenderer();
+                LayoutRender2D.drawRoundedRectShadow(
                         tabBarX,
                         y,
                         tabBarW,
@@ -985,23 +956,23 @@ public enum ClickGuiRenderer {
                         outerRadius,
                         TAB_BAR_SHADOW_BLUR,
                         TAB_BAR_SHADOW_SPREAD,
-                        scaleAlpha(0xCC000000, TAB_BAR_SHADOW_ALPHA * eased)
+                        LayoutRender2D.scaleAlpha(0xCC000000, TAB_BAR_SHADOW_ALPHA * eased)
                 );
-                drawRoundedRectGradient(tabBarX, y, tabBarW, tabBarH, outerRadius, outerLeft, outerRight, 0.0f);
-                drawRoundedRectStrokeGradient(tabBarX, y, tabBarW, tabBarH, outerRadius, 1.0f, outerStrokeLeft, outerStrokeRight, 0.0f);
+                LayoutRender2D.drawRoundedRectGradient(tabBarX, y, tabBarW, tabBarH, outerRadius, outerLeft, outerRight, 0.0f);
+                LayoutRender2D.drawRoundedRectStrokeGradient(tabBarX, y, tabBarW, tabBarH, outerRadius, 1.0f, outerStrokeLeft, outerStrokeRight, 0.0f);
             }
 
-            drawRoundedRectGlow(
+            LayoutRender2D.drawRoundedRectGlow(
                     innerX,
                     innerY,
                     innerW,
                     innerH,
                     innerRadius,
                     10.0f,
-                    scaleAlpha(theme().accentSoft(), 0.30f * eased)
+                    LayoutRender2D.scaleAlpha(theme().accentSoft(), 0.30f * eased)
             );
-            drawRoundedRectGradient(innerX, innerY, innerW, innerH, innerRadius, activeLeft, activeRight, 0.0f);
-            drawRoundedRectStrokeGradient(innerX, innerY, innerW, innerH, innerRadius, 1.0f, activeStrokeLeft, activeStrokeRight, 0.0f);
+            LayoutRender2D.drawRoundedRectGradient(innerX, innerY, innerW, innerH, innerRadius, activeLeft, activeRight, 0.0f);
+            LayoutRender2D.drawRoundedRectStrokeGradient(innerX, innerY, innerW, innerH, innerRadius, 1.0f, activeStrokeLeft, activeStrokeRight, 0.0f);
 
             for (int i = 0; i < tabs.size(); i++) {
                 float x = tabX[i];
@@ -1012,18 +983,18 @@ public enum ClickGuiRenderer {
                 if (i > 0) {
                     float sepH = tabBarH - outerPad * 3.4f;
                     float sepY = y + (tabBarH - sepH) * 0.5f;
-                    drawRect(x, sepY, 1.0f, sepH, scaleAlpha(theme().strokeSoft(), 0.32f * eased));
+                    LayoutRender2D.drawRect(x, sepY, 1.0f, sepH, LayoutRender2D.scaleAlpha(theme().strokeSoft(), 0.32f * eased));
                 }
                 int textCol = active ? theme().textPrimary() : theme().textMuted();
                 if (!active && hovered) {
-                    textCol = mixColor(textCol, theme().textPrimary(), 0.55f);
+                    textCol = LayoutRender2D.mixColor(textCol, theme().textPrimary(), 0.55f);
                 }
-                textCol = scaleAlpha(textCol, eased);
-                float textH = textHeight(tabFont, TAB_FONT);
+                textCol = LayoutRender2D.scaleAlpha(textCol, eased);
+                float textH = LayoutRender2D.textHeight(tabFont, TAB_FONT);
                 float textY = y + (tabBarH - textH) * 0.5f - 0.35f;
-                float labelW = textWidth(tabFont, tab.label(), TAB_FONT);
+                float labelW = LayoutRender2D.textWidth(tabFont, tab.label(), TAB_FONT);
                 float textX = x + (w - labelW) * 0.5f;
-                drawText(tabFont, tab.label(), textX, textY, TAB_FONT, textCol, false);
+                LayoutRender2D.drawText(tabFont, tab.label(), textX, textY, TAB_FONT, textCol, false);
             }
         }
     }
@@ -1165,81 +1136,8 @@ public enum ClickGuiRenderer {
         return 1.0f - inv * inv * inv;
     }
 
-    /** Baseline UI regular face. Historical name kept for API stability; resolves to Onest Regular. */
-    public static TextRenderer getInterRegular() {
-        ensureFontBindingsCurrent();
-        if (interRegular == null) {
-            interRegular = BuiltinFontCatalog.ONEST_REGULAR.renderer(TextRenderer.get());
-        }
-        return interRegular;
-    }
-
     public static Renderer2D currentRenderer() {
         return renderer;
-    }
-
-    /** Baseline UI medium face. Historical name kept for API stability; resolves to Onest Medium. */
-    public static TextRenderer getInterMedium() {
-        ensureFontBindingsCurrent();
-        if (interMedium == null) {
-            interMedium = BuiltinFontCatalog.ONEST_MEDIUM.renderer(getInterRegular());
-        }
-        return interMedium;
-    }
-
-    public static TextRenderer getIosevkaRegular() {
-        return getSfMedium();
-    }
-
-    public static TextRenderer getSfMedium() {
-        ensureFontBindingsCurrent();
-        if (onestMedium == null) {
-            onestMedium = BuiltinFontCatalog.ONEST_MEDIUM.renderer(TextRenderer.get());
-        }
-        return onestMedium;
-    }
-
-    public static TextRenderer getOnestMedium() {
-        return getSfMedium();
-    }
-
-    public static TextRenderer getSfProDisplaySemibold() {
-        ensureFontBindingsCurrent();
-        if (onestBold == null) {
-            onestBold = BuiltinFontCatalog.ONEST_BOLD.renderer(getInterMedium());
-        }
-        return onestBold;
-    }
-
-    public static TextRenderer getOnestBold() {
-        return getSfProDisplaySemibold();
-    }
-
-    public static TextRenderer getMonsterratRegular() {
-        ensureFontBindingsCurrent();
-        if (monsterratRegular == null) {
-            monsterratRegular = BuiltinFontCatalog.MONSTERRAT.renderer(TextRenderer.get());
-        }
-        return monsterratRegular;
-    }
-
-    private static void ensureFontBindingsCurrent() {
-        long generation = Fonts.generation();
-        if (boundFontGeneration == generation) return;
-        invalidateFontBindings();
-        boundFontGeneration = generation;
-    }
-
-    /** Drop cached renderer identities after a font/resource generation is replaced. */
-    public static void invalidateFontBindings() {
-        interRegular = null;
-        interMedium = null;
-        onestMedium = null;
-        onestBold = null;
-        monsterratRegular = null;
-        boundFontGeneration = Long.MIN_VALUE;
-        TEXT_WIDTH_CACHE.clear();
-        TEXT_HEIGHT_CACHE.clear();
     }
 
     public static int framebufferWidth() {
@@ -1260,487 +1158,6 @@ public enum ClickGuiRenderer {
 
     public static float getMouseY() {
         return mouseY;
-    }
-
-    public static int mixColor(int from, int to, float t) {
-        t = Math.max(0f, Math.min(1f, t));
-        int a = (int) (((from >>> 24) & 0xFF) * (1 - t) + ((to >>> 24) & 0xFF) * t);
-        int r = (int) (((from >>> 16) & 0xFF) * (1 - t) + ((to >>> 16) & 0xFF) * t);
-        int g = (int) (((from >>> 8) & 0xFF) * (1 - t) + ((to >>> 8) & 0xFF) * t);
-        int b = (int) (((from) & 0xFF) * (1 - t) + ((to) & 0xFF) * t);
-        return (a << 24) | (r << 16) | (g << 8) | b;
-    }
-
-    public static int scaleAlpha(int color, float factor) {
-        int a = (color >>> 24) & 0xFF;
-        int na = (int) (a * Math.max(0f, Math.min(1f, factor)));
-        return (color & 0x00FFFFFF) | (na << 24);
-    }
-
-    public static int withAlpha(int color, int alpha) {
-        int a = Math.max(0, Math.min(255, alpha));
-        return (color & 0x00FFFFFF) | (a << 24);
-    }
-
-    public static float setRenderAlphaMultiplier(float alpha) {
-        float previous = renderAlphaMultiplier;
-        renderAlphaMultiplier = Math.max(0.0f, Math.min(1.0f, alpha));
-        return previous;
-    }
-
-    public static float getRenderAlphaMultiplier() {
-        return renderAlphaMultiplier;
-    }
-
-    public static void restoreRenderAlphaMultiplier(float previous) {
-        renderAlphaMultiplier = Math.max(0.0f, Math.min(1.0f, previous));
-    }
-
-    /**
-     * Applies a real vertex/glyph alpha ramp to ClickGUI content. Geometry remains hard-clipped
-     * separately at {@code endY}; this scope owns only the smooth part of the bottom edge.
-     */
-    public static VerticalAlphaFadeScope pushBottomAlphaFade(float startY, float endY) {
-        VerticalAlphaFadeScope scope = new VerticalAlphaFadeScope(
-                verticalAlphaFadeEnabled,
-                verticalAlphaFadeStart,
-                verticalAlphaFadeEnd
-        );
-        verticalAlphaFadeEnabled = endY > startY;
-        verticalAlphaFadeStart = startY;
-        verticalAlphaFadeEnd = Math.max(startY, endY);
-        return scope;
-    }
-
-    private static int applyAlpha(int argb) {
-        if (renderAlphaMultiplier >= 0.999f) return argb;
-        int a = (argb >>> 24) & 0xFF;
-        int na = Math.round(a * renderAlphaMultiplier);
-        return (argb & 0x00FFFFFF) | ((na & 0xFF) << 24);
-    }
-
-    private static float verticalAlphaAt(float y) {
-        return verticalAlphaAt(y, verticalAlphaFadeEnabled, verticalAlphaFadeStart, verticalAlphaFadeEnd);
-    }
-
-    private static float verticalAlphaAt(float y, boolean enabled, float start, float end) {
-        if (!enabled) return 1.0f;
-        if (y <= start) return 1.0f;
-        if (y >= end) return 0.0f;
-        return 1.0f - (y - start) / Math.max(0.0001f, end - start);
-    }
-
-    private static int multiplyAlpha(int argb, float factor) {
-        int a = (argb >>> 24) & 0xFF;
-        int na = Math.round(a * Math.max(0.0f, Math.min(1.0f, factor)));
-        return (argb & 0x00FFFFFF) | ((na & 0xFF) << 24);
-    }
-
-    public static float scaleForSize(float size) {
-        return TextSizing.scaleForSize(size);
-    }
-
-    public static float textWidth(TextRenderer tr, String text, float size) {
-        if (tr == null || text == null || text.isEmpty()) return 0f;
-        TextMeasureKey key = new TextMeasureKey(tr, Float.floatToIntBits(size), text);
-        Float cached = TEXT_WIDTH_CACHE.get(key);
-        if (cached != null) return cached;
-        float scale = scaleForSize(size);
-        tr.begin(scale, true, false);
-        try {
-            float width = (float) tr.getWidth(text, false);
-            TEXT_WIDTH_CACHE.put(key, width);
-            return width;
-        } finally {
-            tr.end();
-        }
-    }
-
-    public static float textHeight(TextRenderer tr, float size) {
-        if (tr == null) return 0f;
-        TextHeightKey key = new TextHeightKey(tr, Float.floatToIntBits(size));
-        Float cached = TEXT_HEIGHT_CACHE.get(key);
-        if (cached != null) return cached;
-        float scale = scaleForSize(size);
-        tr.begin(scale, true, false);
-        try {
-            float height = (float) tr.getHeight(false);
-            TEXT_HEIGHT_CACHE.put(key, height);
-            return height;
-        } finally {
-            tr.end();
-        }
-    }
-
-    public static void beginTextBatch() {
-        if (textBatchActive) return;
-        textBatchActive = true;
-        TEXT_BATCH.clear();
-    }
-
-    public static void endTextBatch() {
-        if (!textBatchActive) return;
-        textBatchActive = false;
-        if (TEXT_BATCH.isEmpty()) return;
-
-        java.util.LinkedHashMap<TextBatchKey, java.util.ArrayList<TextBatchItem>> groups = new java.util.LinkedHashMap<>();
-        for (TextBatchItem item : TEXT_BATCH) {
-            TextBatchKey key = new TextBatchKey(item.renderer, Float.floatToIntBits(item.size), item.shadow);
-            java.util.ArrayList<TextBatchItem> list = groups.get(key);
-            if (list == null) {
-                list = new java.util.ArrayList<>();
-                groups.put(key, list);
-            }
-            list.add(item);
-        }
-
-        for (var entry : groups.entrySet()) {
-            TextBatchKey key = entry.getKey();
-            TextRenderer tr = key.renderer;
-            if (tr == null) continue;
-            float size = Float.intBitsToFloat(key.sizeBits);
-            float scale = scaleForSize(size);
-            tr.begin(scale, false, false);
-            for (TextBatchItem item : entry.getValue()) {
-                renderTextItem(tr, item);
-            }
-            tr.end();
-        }
-
-        TEXT_BATCH.clear();
-    }
-
-    public static void drawText(TextRenderer tr, String text, float x, float y, float size, int argb, boolean shadow) {
-        if (tr == null || text == null || text.isEmpty()) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        if (textBatchActive) {
-            TEXT_BATCH.add(new TextBatchItem(
-                    tr, text, x, y, size, argb, shadow,
-                    verticalAlphaFadeEnabled, verticalAlphaFadeStart, verticalAlphaFadeEnd
-            ));
-            return;
-        }
-        float scale = scaleForSize(size);
-        tr.begin(scale, false, false);
-        renderTextItem(tr, new TextBatchItem(
-                tr, text, x, y, size, argb, shadow,
-                verticalAlphaFadeEnabled, verticalAlphaFadeStart, verticalAlphaFadeEnd
-        ));
-        tr.end();
-    }
-
-    private static void renderTextItem(TextRenderer tr, TextBatchItem item) {
-        if (!item.fadeEnabled) {
-            tr.render(item.text, item.x, item.y, new RenderColor(item.argb), item.shadow);
-            return;
-        }
-        tr.renderQuadGradient(item.text, item.x, item.y, (index, codePoint, x0, y0, x1, y1, out) -> {
-            int top = multiplyAlpha(item.argb, verticalAlphaAt((float) y0, true, item.fadeStart, item.fadeEnd));
-            int bottom = multiplyAlpha(item.argb, verticalAlphaAt((float) y1, true, item.fadeStart, item.fadeEnd));
-            out[0] = top;
-            out[1] = bottom;
-            out[2] = bottom;
-            out[3] = top;
-        }, item.shadow);
-    }
-
-    public static String fitText(TextRenderer tr, String text, float size, float maxWidth) {
-        if (text == null) return "";
-        if (maxWidth <= 0f) return text;
-        String trimmed = text;
-        float w = textWidth(tr, trimmed, size);
-        if (w <= maxWidth) return trimmed;
-        while (trimmed.length() > 1 && textWidth(tr, trimmed + "...", size) > maxWidth) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1);
-        }
-        return trimmed + "...";
-    }
-
-    public static List<String> wrapText(TextRenderer tr, String text, float size, float maxWidth, int maxLines) {
-        ArrayList<String> lines = new ArrayList<>();
-        if (text == null || text.isBlank()) {
-            lines.add("");
-            return lines;
-        }
-        if (maxLines <= 1 || maxWidth <= 0f) {
-            lines.add(fitText(tr, text, size, maxWidth));
-            return lines;
-        }
-
-        String remaining = normalizeSpaces(text);
-        while (!remaining.isEmpty() && lines.size() < maxLines) {
-            if (lines.size() == maxLines - 1) {
-                lines.add(fitText(tr, remaining, size, maxWidth));
-                break;
-            }
-            if (textWidth(tr, remaining, size) <= maxWidth) {
-                lines.add(remaining);
-                break;
-            }
-
-            int split = bestWrapIndex(tr, remaining, size, maxWidth);
-            String line = remaining.substring(0, split).trim();
-            if (line.isEmpty()) {
-                lines.add(fitText(tr, remaining, size, maxWidth));
-                break;
-            }
-            lines.add(line);
-            remaining = remaining.substring(split).trim();
-        }
-
-        if (lines.isEmpty()) {
-            lines.add(fitText(tr, text, size, maxWidth));
-        }
-        return lines;
-    }
-
-    private static int bestWrapIndex(TextRenderer tr, String text, float size, float maxWidth) {
-        int bestSpace = -1;
-        for (int i = 0; i < text.length(); i++) {
-            if (!Character.isWhitespace(text.charAt(i))) continue;
-            String candidate = text.substring(0, i).trim();
-            if (!candidate.isEmpty() && textWidth(tr, candidate, size) <= maxWidth) {
-                bestSpace = i;
-                continue;
-            }
-            if (bestSpace >= 0) break;
-        }
-        if (bestSpace >= 0) return bestSpace;
-
-        String fitted = fitText(tr, text, size, maxWidth);
-        if (fitted.endsWith("...")) {
-            fitted = fitted.substring(0, Math.max(1, fitted.length() - 3));
-        }
-        return Math.max(1, Math.min(text.length(), fitted.length()));
-    }
-
-    private static String normalizeSpaces(String text) {
-        if (text == null) return "";
-        String trimmed = text.trim();
-        if (trimmed.isEmpty()) return "";
-
-        StringBuilder sb = new StringBuilder(trimmed.length());
-        boolean lastSpace = false;
-        for (int i = 0; i < trimmed.length(); i++) {
-            char c = trimmed.charAt(i);
-            if (Character.isWhitespace(c)) {
-                if (!lastSpace) {
-                    sb.append(' ');
-                    lastSpace = true;
-                }
-            } else {
-                sb.append(c);
-                lastSpace = false;
-            }
-        }
-        return sb.toString();
-    }
-
-    private static String normalizeInlineText(String text) {
-        if (text == null) return "";
-        String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
-        return normalized.replace('\n', ' ');
-    }
-
-    public static void drawRoundedRect(float x, float y, float w, float h, float radius, int argb) {
-        if (renderer == null) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        if (verticalAlphaFadeEnabled) {
-            int top = multiplyAlpha(argb, verticalAlphaAt(y));
-            int bottom = multiplyAlpha(argb, verticalAlphaAt(y + h));
-            renderer.roundedRectGradientQuad(x, y, w, h, radius, 1.1f, top, top, bottom, bottom);
-        } else {
-            renderer.roundedRect(x, y, w, h, radius, 1.1f, argb);
-        }
-    }
-
-    public static void drawRoundedRectStroke(float x, float y, float w, float h, float radius, float thickness, int argb) {
-        if (renderer == null) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        if (verticalAlphaFadeEnabled) {
-            int top = multiplyAlpha(argb, verticalAlphaAt(y));
-            int bottom = multiplyAlpha(argb, verticalAlphaAt(y + h));
-            renderer.roundedRectStrokeGradientQuad(x, y, w, h, radius, 1.1f, thickness,
-                    top, top, bottom, bottom);
-        } else {
-            renderer.roundedRectStroke(x, y, w, h, radius, 1.1f, thickness, argb);
-        }
-    }
-
-    public static void drawRoundedRectGlow(float x, float y, float w, float h,
-                                           float radius, float glow, int argb) {
-        if (renderer == null) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        renderer.roundedRectGlow(x, y, w, h, radius, 1.1f, glow, argb);
-    }
-
-    public static void drawRoundedRectShadow(float x, float y, float w, float h,
-                                             float radius, float softness, float spread, int argb) {
-        if (renderer == null) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        renderer.roundedRectShadow(x, y, w, h, radius, softness, spread, argb);
-    }
-
-    public static void drawRoundedRectGradient(float x, float y, float w, float h, float radius,
-                                               int startArgb, int endArgb, float angleDeg) {
-        if (renderer == null) return;
-        startArgb = applyAlpha(startArgb);
-        endArgb = applyAlpha(endArgb);
-        if (((startArgb >>> 24) & 0xFF) <= 0 && ((endArgb >>> 24) & 0xFF) <= 0) return;
-        if (verticalAlphaFadeEnabled) {
-            int[] colors = new int[4];
-            UiMeshGeometry.computeLinearGradientColors(w, h, startArgb, endArgb, angleDeg, 0.0f, colors);
-            float topAlpha = verticalAlphaAt(y);
-            float bottomAlpha = verticalAlphaAt(y + h);
-            renderer.roundedRectGradientQuad(x, y, w, h, radius, 1.1f,
-                    multiplyAlpha(colors[0], topAlpha), multiplyAlpha(colors[1], topAlpha),
-                    multiplyAlpha(colors[2], bottomAlpha), multiplyAlpha(colors[3], bottomAlpha));
-        } else {
-            renderer.roundedRectGradient(x, y, w, h, radius, 1.1f, startArgb, endArgb, angleDeg);
-        }
-    }
-
-    public static void drawRoundedRectStrokeGradient(float x, float y, float w, float h, float radius, float thickness,
-                                                     int startArgb, int endArgb, float angleDeg) {
-        if (renderer == null) return;
-        startArgb = applyAlpha(startArgb);
-        endArgb = applyAlpha(endArgb);
-        if (((startArgb >>> 24) & 0xFF) <= 0 && ((endArgb >>> 24) & 0xFF) <= 0) return;
-        if (verticalAlphaFadeEnabled) {
-            int[] colors = new int[4];
-            UiMeshGeometry.computeLinearGradientColors(w, h, startArgb, endArgb, angleDeg, 0.0f, colors);
-            float topAlpha = verticalAlphaAt(y);
-            float bottomAlpha = verticalAlphaAt(y + h);
-            renderer.roundedRectStrokeGradientQuad(x, y, w, h, radius, 1.1f, thickness,
-                    multiplyAlpha(colors[0], topAlpha), multiplyAlpha(colors[1], topAlpha),
-                    multiplyAlpha(colors[2], bottomAlpha), multiplyAlpha(colors[3], bottomAlpha));
-        } else {
-            renderer.roundedRectStrokeGradient(x, y, w, h, radius, 1.1f, thickness, startArgb, endArgb, angleDeg);
-        }
-    }
-
-    public static void drawRoundedRectCorners(float x, float y, float w, float h,
-                                              float radiusTL, float radiusTR, float radiusBR, float radiusBL,
-                                              int argb) {
-        if (renderer == null) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        if (verticalAlphaFadeEnabled) {
-            int top = multiplyAlpha(argb, verticalAlphaAt(y));
-            int bottom = multiplyAlpha(argb, verticalAlphaAt(y + h));
-            renderer.roundedRectCornersQuad(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL, 1.1f,
-                    top, top, bottom, bottom);
-        } else {
-            renderer.roundedRectCorners(x, y, w, h, radiusTL, radiusTR, radiusBR, radiusBL, 1.1f, argb);
-        }
-    }
-
-    public static void drawRect(float x, float y, float w, float h, int argb) {
-        if (renderer == null) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        if (verticalAlphaFadeEnabled) {
-            int top = multiplyAlpha(argb, verticalAlphaAt(y));
-            int bottom = multiplyAlpha(argb, verticalAlphaAt(y + h));
-            renderer.quadGradient(x, y, w, h, top, top, bottom, bottom);
-        } else {
-            renderer.quad(x, y, w, h, argb);
-        }
-    }
-
-    public static void flushRenderer() {
-        if (renderer == null) return;
-        if (Renderer2D.isBatching()) {
-            Renderer2D.flushBatch();
-        } else {
-            renderer.begin();
-        }
-    }
-
-    public static void drawGradientRect(float x, float y, float w, float h,
-                                        int cTopLeft, int cTopRight, int cBottomRight, int cBottomLeft) {
-        if (renderer == null) return;
-        cTopLeft = multiplyAlpha(applyAlpha(cTopLeft), verticalAlphaAt(y));
-        cTopRight = multiplyAlpha(applyAlpha(cTopRight), verticalAlphaAt(y));
-        cBottomRight = multiplyAlpha(applyAlpha(cBottomRight), verticalAlphaAt(y + h));
-        cBottomLeft = multiplyAlpha(applyAlpha(cBottomLeft), verticalAlphaAt(y + h));
-        renderer.quadGradient(x, y, w, h, cTopLeft, cTopRight, cBottomRight, cBottomLeft);
-    }
-
-    public static void drawCircle(float cx, float cy, float r, int argb) {
-        if (renderer == null) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        if (verticalAlphaFadeEnabled) {
-            int top = multiplyAlpha(argb, verticalAlphaAt(cy - r));
-            int bottom = multiplyAlpha(argb, verticalAlphaAt(cy + r));
-            renderer.roundedRectGradientQuad(cx - r, cy - r, r * 2f, r * 2f, r, 1.1f,
-                    top, top, bottom, bottom);
-        } else {
-            renderer.circle(cx, cy, r, argb);
-        }
-    }
-
-    public static void drawLine(float x1, float y1, float x2, float y2, int argb) {
-        if (renderer == null) return;
-        argb = applyAlpha(argb);
-        if (((argb >>> 24) & 0xFF) <= 0) return;
-        renderer.line(x1, y1, x2, y2, argb);
-    }
-
-    public static void drawBlur(float x, float y, float w, float h, float radius, int argb, float alpha) {
-        alpha *= renderAlphaMultiplier;
-        alpha = AnimationUtility.clamp(alpha * clickGuiBlurDensityScale(), 0.0f, 1.0f);
-        if (alpha <= 0.01f) return;
-        float quality = clickGuiBlurQuality();
-        float brightness = 1.0f;
-        Renderer2D.COLOR.blurRect(x, y, w, h, radius, quality, brightness, alpha, 0xFFFFFF);
-    }
-
-    public static void drawGlass(float x, float y, float w, float h, float radius, float alpha) {
-        if (renderer == null) return;
-        alpha *= renderAlphaMultiplier;
-        if (alpha <= 0.01f) return;
-
-        float pad = 5f;
-        float gx = x - pad;
-        float gy = y - pad;
-        float gw = w + pad * 2f;
-        float gh = h + pad * 2f;
-        float gr = Math.max(0f, radius + pad);
-        float scale = Math.max(0.75f, gr / 10.0f);
-        float glassOpacity = alpha;
-
-        renderer.withLiquidGlassBlurProfile(
-                Renderer2D.BlurQuality.LIQUID_GLASS,
-                1.38f,
-                () -> renderer.liquidGlassRect(
-                        gx, gy, gw, gh, gr,
-                        0xFFFFFFFF,
-                        glassOpacity,
-                        1.0f,
-                        Renderer2D.LiquidGlassPreset.HUD_LARGE,
-                        scale,
-                        0.0f
-                )
-        );
-    }
-
-    public static float clickGuiBlurQuality() {
-        return 27.35f;
-    }
-
-    public static float clickGuiBlurDensityScale() {
-        return 1.16f;
-    }
-
-    public static float clickGuiGlassBlurScale() {
-        return 1.28f;
     }
 
     public static int getColorClipboard() {
@@ -1878,6 +1295,12 @@ public enum ClickGuiRenderer {
         int len = inlineTextBuffer.length();
         if (len <= 0) return;
         inlineTextBuffer.deleteCharAt(len - 1);
+    }
+
+    private static String normalizeInlineText(String text) {
+        if (text == null) return "";
+        String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
+        return normalized.replace('\n', ' ');
     }
 
     private static void inlinePaste() {
@@ -2036,14 +1459,13 @@ public enum ClickGuiRenderer {
      * the first user-triggered open. Section discovery itself is owned by ClickGuiSectionManager.
      */
     public static void prewarmUiObjects() {
-        ensureFontBindingsCurrent();
         if (mainScreen == null) mainScreen = new ClickGuiScreen();
         if (pickerScreen == null) pickerScreen = new ClickGuiPickerScreen();
-        getInterRegular();
-        getInterMedium();
-        getSfMedium();
-        getOnestBold();
-        getMonsterratRegular();
+        BuiltinFontCatalog.ONEST_REGULAR.renderer();
+        BuiltinFontCatalog.ONEST_MEDIUM.renderer();
+        BuiltinFontCatalog.ONEST_MEDIUM.renderer();
+        BuiltinFontCatalog.ONEST_BOLD.renderer();
+        BuiltinFontCatalog.MONSTERRAT.renderer();
     }
     public static void openClickGuiScreen() {
         if (MC == null) return;
@@ -2177,41 +1599,6 @@ public enum ClickGuiRenderer {
                                     float width,
                                     boolean active,
                                     boolean hovered) {
-    }
-
-    public static final class VerticalAlphaFadeScope implements AutoCloseable {
-        private final boolean previousEnabled;
-        private final float previousStart;
-        private final float previousEnd;
-        private boolean closed;
-
-        private VerticalAlphaFadeScope(boolean previousEnabled, float previousStart, float previousEnd) {
-            this.previousEnabled = previousEnabled;
-            this.previousStart = previousStart;
-            this.previousEnd = previousEnd;
-        }
-
-        @Override
-        public void close() {
-            if (closed) return;
-            closed = true;
-            verticalAlphaFadeEnabled = previousEnabled;
-            verticalAlphaFadeStart = previousStart;
-            verticalAlphaFadeEnd = previousEnd;
-        }
-    }
-
-    private record TextBatchItem(TextRenderer renderer, String text, float x, float y, float size, int argb,
-                                 boolean shadow, boolean fadeEnabled, float fadeStart, float fadeEnd) {
-    }
-
-    private record TextBatchKey(TextRenderer renderer, int sizeBits, boolean shadow) {
-    }
-
-    private record TextMeasureKey(TextRenderer renderer, int sizeBits, String text) {
-    }
-
-    private record TextHeightKey(TextRenderer renderer, int sizeBits) {
     }
 
     private record PickerIcon(ItemStack stack,

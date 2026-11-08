@@ -127,8 +127,8 @@ public enum ChatSpamHeuristics {
         // Long random-looking alpha/alphanumeric blobs. Keep the threshold high so UUIDs, short
         // hashes, ordinary URLs and player names are not filtered.
         if (longestToken >= LONG_TOKEN_LENGTH && letters >= 20) {
-            float vowelRatio = vowels / (float) Math.max(1, letters);
-            float distinctRatio = distinct.size() / (float) Math.max(1, visible);
+            float vowelRatio = vowels / (float) letters;
+            float distinctRatio = distinct.size() / (float) visible;
             float alphaNumRatio = (letters + digits) / (float) visible;
             if (alphaNumRatio >= 0.86f && vowelRatio <= 0.08f && distinctRatio >= 0.36f) {
                 return true;
@@ -172,7 +172,7 @@ public enum ChatSpamHeuristics {
             int cp = text.codePointAt(i);
             i += Character.charCount(cp);
             if (Character.isWhitespace(cp)) {
-                pendingSpace = out.length() > 0;
+                pendingSpace = !out.isEmpty();
                 continue;
             }
             if (pendingSpace) {

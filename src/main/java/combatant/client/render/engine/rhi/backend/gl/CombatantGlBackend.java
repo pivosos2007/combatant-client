@@ -25,7 +25,6 @@ import org.lwjgl.system.MemoryStack;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
-import combatant.client.render.engine.rhi.*;
 import combatant.client.render.engine.rhi.backend.gl.clip.GlStencilShapeClipBackend;
 import combatant.client.render.engine.rhi.backend.gl.GlAdvancedShaderBackend;
 import combatant.client.render.engine.rhi.backend.gl.state.GlPipelineStateBackend;

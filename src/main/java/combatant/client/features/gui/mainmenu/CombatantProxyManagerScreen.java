@@ -19,7 +19,6 @@ import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
-import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.util.proxy.ProxyBackend;
@@ -114,7 +113,6 @@ public final class CombatantProxyManagerScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         updateUiMetrics();
-        renderBackgroundTexture();
         float fx = toFixedX(mouseX);
         float fy = toFixedY(mouseY);
         updateAnimations(fx, fy);
@@ -122,6 +120,8 @@ public final class CombatantProxyManagerScreen extends Screen {
         ViewportContext.beginUnscaledLogical(context);
         Renderer2D.COLOR.begin();
         try {
+            MainMenuBackdrop.GridLayout backdropGrid = MainMenuBackdrop.layout(fixedWidth, fixedHeight);
+            MainMenuBackdrop.render(fixedWidth, fixedHeight, 1f, fx, fy, backdropGrid, null);
             renderDimmer();
             renderPanel(fx, fy);
         } finally {
@@ -511,11 +511,6 @@ public final class CombatantProxyManagerScreen extends Screen {
         int soft = withAlpha(HudRenderUtil.mixColor(t.windowBg(), 0xFF000000, 0.46f), 140);
         int deep = withAlpha(HudRenderUtil.mixColor(t.windowBg(), 0xFF000000, 0.68f), 180);
         Renderer2D.COLOR.quad(0, 0, fixedWidth, fixedHeight, soft, soft, deep, deep);
-    }
-
-    private void renderBackgroundTexture() {
-        Minecraft mc = this.minecraft;
-        if (mc != null) MenuBackgroundRenderer.renderConfigured(mc);
     }
 
     private void updateUiMetrics() {

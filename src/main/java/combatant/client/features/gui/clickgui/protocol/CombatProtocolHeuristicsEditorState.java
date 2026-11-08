@@ -7,6 +7,10 @@
 
 package combatant.client.features.gui.clickgui.protocol;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsGlassMaterial;
@@ -170,15 +174,15 @@ public final class CombatProtocolHeuristicsEditorState {
 
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         Themes.Theme theme = Theme.theme();
-        TextRenderer regular = ClickGuiRenderer.getInterRegular();
-        TextRenderer medium = ClickGuiRenderer.getInterMedium();
+        TextRenderer regular = BuiltinFontCatalog.ONEST_REGULAR.renderer();
+        TextRenderer medium = BuiltinFontCatalog.ONEST_MEDIUM.renderer();
         float mx = ClickGuiRenderer.getMouseX();
         float my = ClickGuiRenderer.getMouseY();
 
-        float previousAlpha = ClickGuiRenderer.setRenderAlphaMultiplier(eased);
+        float previousAlpha = LayoutRender2D.setRenderAlphaMultiplier(eased);
         try {
             int shadow = SettingsGuiPalette.withAlpha(palette.menuShadow(), Math.round(255f * eased));
-            ClickGuiRenderer.drawRoundedRectShadow(windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE, 13f * SCALE, 1.5f * SCALE, shadow);
+            LayoutRender2D.drawRoundedRectShadow(windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE, 13f * SCALE, 1.5f * SCALE, shadow);
             SettingsGlassMaterial.pickerWorkspace(
                     windowX, windowY, WINDOW_W, WINDOW_H,
                     0f,
@@ -186,7 +190,7 @@ public final class CombatProtocolHeuristicsEditorState {
                     palette,
                     eased
             );
-            ClickGuiRenderer.drawRoundedRectStroke(windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE,
+            LayoutRender2D.drawRoundedRectStroke(windowX, windowY, WINDOW_W, WINDOW_H, 9f * SCALE,
                     0.22f * SCALE, palette.menuWindowStroke());
 
             renderHeader(regular, medium, mx, my, palette, theme);
@@ -199,7 +203,7 @@ public final class CombatProtocolHeuristicsEditorState {
             float detailsW = WINDOW_W - PADDING * 2f - SOURCE_W - GAP;
             renderDetails(detailsX, contentY, detailsW, contentH, regular, medium, mx, my, palette, theme);
         } finally {
-            ClickGuiRenderer.restoreRenderAlphaMultiplier(previousAlpha);
+            LayoutRender2D.restoreRenderAlphaMultiplier(previousAlpha);
         }
     }
 
@@ -207,31 +211,31 @@ public final class CombatProtocolHeuristicsEditorState {
                               SettingsGuiPalette palette, Themes.Theme theme) {
         float accentX = windowX + PADDING;
         float accentY = windowY + 7f * SCALE;
-        ClickGuiRenderer.drawRoundedRect(accentX, accentY, 2f * SCALE, 17f * SCALE, SCALE, theme.accent());
-        ClickGuiRenderer.drawRoundedRectGlow(accentX, accentY, 2f * SCALE, 17f * SCALE, SCALE, 7f * SCALE,
+        LayoutRender2D.drawRoundedRect(accentX, accentY, 2f * SCALE, 17f * SCALE, SCALE, theme.accent());
+        LayoutRender2D.drawRoundedRectGlow(accentX, accentY, 2f * SCALE, 17f * SCALE, SCALE, 7f * SCALE,
                 SettingsGuiPalette.withAlpha(theme.accent(), 90));
 
-        ClickGuiRenderer.drawText(medium, title, accentX + 7f * SCALE, windowY + 5.5f * SCALE,
+        LayoutRender2D.drawText(medium, title, accentX + 7f * SCALE, windowY + 5.5f * SCALE,
                 10.5f * SCALE, palette.menuHeaderText(), false);
         String subtitle = tr("subtitle", "Configure protocol signals independently for each source");
-        ClickGuiRenderer.drawText(regular, subtitle, accentX + 7f * SCALE, windowY + 17f * SCALE,
+        LayoutRender2D.drawText(regular, subtitle, accentX + 7f * SCALE, windowY + 17f * SCALE,
                 6.3f * SCALE, palette.panelMuted(), false);
 
         float separatorY = windowY + HEADER_H;
-        ClickGuiRenderer.drawGradientRect(windowX + PADDING, separatorY, WINDOW_W - PADDING * 2f,
+        LayoutRender2D.drawGradientRect(windowX + PADDING, separatorY, WINDOW_W - PADDING * 2f,
                 0.5f * SCALE, palette.menuLineStrong(), palette.menuLineMid(),
                 palette.menuLineMid(), palette.menuLineStrong());
 
         close = new Rect(windowX + WINDOW_W - PADDING - CLOSE_SIZE, windowY + 9f * SCALE, CLOSE_SIZE, CLOSE_SIZE);
         closeHover = animate(closeHover, close.contains(mx, my), 14f);
         int bg = SettingsGuiPalette.mix(palette.panelPillBase(), palette.panelPillActive(), 0.22f + closeHover * 0.58f);
-        ClickGuiRenderer.drawRoundedRect(close.x, close.y, close.w, close.h, 3.5f * SCALE, bg);
-        ClickGuiRenderer.drawRoundedRectStroke(close.x, close.y, close.w, close.h, 3.5f * SCALE,
+        LayoutRender2D.drawRoundedRect(close.x, close.y, close.w, close.h, 3.5f * SCALE, bg);
+        LayoutRender2D.drawRoundedRectStroke(close.x, close.y, close.w, close.h, 3.5f * SCALE,
                 0.24f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), closeHover * 0.45f));
         float pad = 3.2f * SCALE;
         int color = SettingsGuiPalette.mix(palette.panelMuted(), theme.accent(), closeHover);
-        ClickGuiRenderer.drawLine(close.x + pad, close.y + pad, close.x + close.w - pad, close.y + close.h - pad, color);
-        ClickGuiRenderer.drawLine(close.x + close.w - pad, close.y + pad, close.x + pad, close.y + close.h - pad, color);
+        LayoutRender2D.drawLine(close.x + pad, close.y + pad, close.x + close.w - pad, close.y + close.h - pad, color);
+        LayoutRender2D.drawLine(close.x + close.w - pad, close.y + pad, close.x + pad, close.y + close.h - pad, color);
         if (close.contains(mx, my)) SystemCursor.set(SystemCursor.CursorType.HAND);
     }
 
@@ -239,9 +243,9 @@ public final class CombatProtocolHeuristicsEditorState {
                                float mx, float my, SettingsGuiPalette palette, Themes.Theme theme) {
         sourceHits.clear();
         panel(x, y, w, h, palette);
-        ClickGuiRenderer.drawText(medium, tr("sources", "Sources"), x + 8f * SCALE, y + 7f * SCALE,
+        LayoutRender2D.drawText(medium, tr("sources", "Sources"), x + 8f * SCALE, y + 7f * SCALE,
                 7.2f * SCALE, palette.panelText(), false);
-        ClickGuiRenderer.drawText(regular, tr("source_controls", "LMB toggle · RMB configure"),
+        LayoutRender2D.drawText(regular, tr("source_controls", "LMB toggle · RMB configure"),
                 x + 8f * SCALE, y + 16f * SCALE, 5.3f * SCALE, palette.panelMuted(), false);
 
         float rowY = y + 28f * SCALE;
@@ -262,8 +266,8 @@ public final class CombatProtocolHeuristicsEditorState {
             float accentMix = Math.max(enabled ? 0.10f : 0f, select * 0.22f);
             int left = SettingsGuiPalette.mix(baseLeft, theme.accentSoft(), accentMix);
             int right = SettingsGuiPalette.mix(baseRight, theme.accent(), accentMix * 0.72f);
-            ClickGuiRenderer.drawRoundedRectGradient(card.x, card.y, card.w, card.h, 5.5f * SCALE, left, right, 0f);
-            ClickGuiRenderer.drawRoundedRectStrokeGradient(
+            LayoutRender2D.drawRoundedRectGradient(card.x, card.y, card.w, card.h, 5.5f * SCALE, left, right, 0f);
+            LayoutRender2D.drawRoundedRectStrokeGradient(
                     card.x, card.y, card.w, card.h, 5.5f * SCALE, (0.22f + select * 0.16f) * SCALE,
                     SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), Math.max(select * 0.68f, enabled ? 0.18f : 0f)),
                     SettingsGuiPalette.mix(palette.panelStroke(), theme.accent(), Math.max(select * 0.48f, enabled ? 0.12f : 0f)),
@@ -272,10 +276,10 @@ public final class CombatProtocolHeuristicsEditorState {
 
             float markerW = (1.5f + 1.5f * select) * SCALE;
             int marker = enabled ? theme.accent() : SettingsGuiPalette.withAlpha(palette.panelMuted(), 100);
-            ClickGuiRenderer.drawRoundedRect(card.x + 3f * SCALE, card.y + 7f * SCALE, markerW,
+            LayoutRender2D.drawRoundedRect(card.x + 3f * SCALE, card.y + 7f * SCALE, markerW,
                     card.h - 14f * SCALE, markerW * 0.5f, marker);
             String name = sourceName(source);
-            ClickGuiRenderer.drawText(medium, name, card.x + 9f * SCALE, card.y + 7f * SCALE,
+            LayoutRender2D.drawText(medium, name, card.x + 9f * SCALE, card.y + 7f * SCALE,
                     7f * SCALE, palette.panelText(), false);
             String state = enabled ? tr("enabled", "Enabled") : tr("disabled", "Disabled");
             float stateW = statusChipWidth(regular, state);
@@ -286,8 +290,8 @@ public final class CombatProtocolHeuristicsEditorState {
                     + editor(source, CombatProtocolHeuristicsConfig.ProtocolFamily.MODERN).patternCount();
             String countLabel = tr("rules_short", "%s rules", count);
             float countSize = 5.3f * SCALE;
-            float countW = ClickGuiRenderer.textWidth(regular, countLabel, countSize);
-            ClickGuiRenderer.drawText(regular, countLabel, card.x + card.w - 7f * SCALE - countW,
+            float countW = LayoutRender2D.textWidth(regular, countLabel, countSize);
+            LayoutRender2D.drawText(regular, countLabel, card.x + card.w - 7f * SCALE - countW,
                     card.y + 21f * SCALE, countSize, palette.panelMuted(), false);
 
             sourceHits.add(new SourceHit(source, card));
@@ -300,15 +304,15 @@ public final class CombatProtocolHeuristicsEditorState {
                                float mx, float my, SettingsGuiPalette palette, Themes.Theme theme) {
         panel(x, y, w, h, palette);
         boolean enabled = sourceEnabled(selected);
-        ClickGuiRenderer.drawText(medium, sourceName(selected), x + 8f * SCALE, y + 6f * SCALE,
+        LayoutRender2D.drawText(medium, sourceName(selected), x + 8f * SCALE, y + 6f * SCALE,
                 8.2f * SCALE, palette.panelText(), false);
         String sourceHint = tr("source_hint." + selected.key(), defaultSourceHint(selected));
-        ClickGuiRenderer.drawText(regular, sourceHint, x + 8f * SCALE, y + 17f * SCALE,
+        LayoutRender2D.drawText(regular, sourceHint, x + 8f * SCALE, y + 17f * SCALE,
                 5.8f * SCALE, palette.panelMuted(), false);
 
         String status = enabled ? tr("enabled", "Enabled") : tr("disabled", "Disabled");
         float statusSize = 5.7f * SCALE;
-        float statusW = ClickGuiRenderer.textWidth(medium, status, statusSize) + 10f * SCALE;
+        float statusW = LayoutRender2D.textWidth(medium, status, statusSize) + 10f * SCALE;
         float statusX = x + w - 8f * SCALE - statusW;
         drawStatusChip(statusX, y + 7f * SCALE, statusW, status, enabled, medium, palette, theme);
 
@@ -324,7 +328,7 @@ public final class CombatProtocolHeuristicsEditorState {
                 .render(x + 6f * SCALE + editorW + editorGap, editorY, editorW, editorH, regular, medium, mx, my, palette, theme);
 
         String resetLabel = tr("reset_source", "Reset source");
-        float resetW = Math.max(58f * SCALE, ClickGuiRenderer.textWidth(regular, resetLabel, 5.8f * SCALE) + 14f * SCALE);
+        float resetW = Math.max(58f * SCALE, LayoutRender2D.textWidth(regular, resetLabel, 5.8f * SCALE) + 14f * SCALE);
         reset = new Rect(x + w - 6f * SCALE - resetW, y + h - 15f * SCALE, resetW, 11f * SCALE);
         resetHover = animate(resetHover, reset.contains(mx, my), 13f);
         button(reset, resetLabel, resetHover, regular, palette, theme);
@@ -333,7 +337,7 @@ public final class CombatProtocolHeuristicsEditorState {
         String hint = focusedEditor == null
                 ? tr("edit_hint", "Click a pattern area to edit")
                 : tr("keyboard_hint", "Ctrl+A/C/X/V · Enter new line · Esc unfocus");
-        ClickGuiRenderer.drawText(regular, hint, x + 8f * SCALE, y + h - 12.3f * SCALE,
+        LayoutRender2D.drawText(regular, hint, x + 8f * SCALE, y + h - 12.3f * SCALE,
                 5.2f * SCALE, palette.panelMuted(), false);
     }
 
@@ -432,15 +436,15 @@ public final class CombatProtocolHeuristicsEditorState {
             int baseB = SettingsGuiPalette.mix(palette.moduleCardBottom(), palette.panelBgRight(), 0.28f);
             int bgA = SettingsGuiPalette.mix(baseA, theme.accentSoft(), focusAnim * 0.14f + hoverAnim * 0.04f);
             int bgB = SettingsGuiPalette.mix(baseB, theme.accent(), focusAnim * 0.08f + hoverAnim * 0.03f);
-            ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, 5.5f * SCALE, bgA, bgB, 85f);
-            ClickGuiRenderer.drawRoundedRectStrokeGradient(
+            LayoutRender2D.drawRoundedRectGradient(x, y, w, h, 5.5f * SCALE, bgA, bgB, 85f);
+            LayoutRender2D.drawRoundedRectStrokeGradient(
                     x, y, w, h, 5.5f * SCALE, (0.22f + focusAnim * 0.16f) * SCALE,
                     SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), 0.18f + focusAnim * 0.66f),
                     SettingsGuiPalette.mix(palette.panelStroke(), theme.accent(), 0.10f + focusAnim * 0.54f),
                     0f
             );
             if (focused) {
-                ClickGuiRenderer.drawRoundedRectGlow(x, y, w, h, 5.5f * SCALE, 6f * SCALE,
+                LayoutRender2D.drawRoundedRectGlow(x, y, w, h, 5.5f * SCALE, 6f * SCALE,
                         SettingsGuiPalette.withAlpha(theme.accentSoft(), Math.round(25f + 25f * focusAnim)));
             }
 
@@ -449,18 +453,18 @@ public final class CombatProtocolHeuristicsEditorState {
             int invalid = invalidCount(List.of(lines()));
             String meta = tr("pattern_count", "%s patterns", patternCount());
             if (invalid > 0) meta += " · " + tr("invalid_count", "%s invalid", invalid);
-            ClickGuiRenderer.drawText(medium, name, x + 7f * SCALE, y + 5.5f * SCALE,
+            LayoutRender2D.drawText(medium, name, x + 7f * SCALE, y + 5.5f * SCALE,
                     6.7f * SCALE, palette.moduleTitleText(), false);
             float metaSize = 5.3f * SCALE;
-            float metaW = ClickGuiRenderer.textWidth(regular, meta, metaSize);
-            ClickGuiRenderer.drawText(regular, meta, x + w - 7f * SCALE - metaW, y + 7f * SCALE,
+            float metaW = LayoutRender2D.textWidth(regular, meta, metaSize);
+            LayoutRender2D.drawText(regular, meta, x + w - 7f * SCALE - metaW, y + 7f * SCALE,
                     metaSize, invalid > 0 ? 0xFFFF8A80 : palette.panelMuted(), false);
 
             float areaY = y + 19f * SCALE;
             textArea = new Rect(x + 5f * SCALE, areaY, w - 10f * SCALE, h - 24f * SCALE);
             int areaBg = SettingsGuiPalette.withAlpha(SettingsGuiPalette.darken(palette.panelBgRight(), 0.18f), 190);
-            ClickGuiRenderer.drawRoundedRect(textArea.x, textArea.y, textArea.w, textArea.h, 3.5f * SCALE, areaBg);
-            ClickGuiRenderer.drawRoundedRectStroke(textArea.x, textArea.y, textArea.w, textArea.h, 3.5f * SCALE,
+            LayoutRender2D.drawRoundedRect(textArea.x, textArea.y, textArea.w, textArea.h, 3.5f * SCALE, areaBg);
+            LayoutRender2D.drawRoundedRectStroke(textArea.x, textArea.y, textArea.w, textArea.h, 3.5f * SCALE,
                     0.22f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), focusAnim * 0.42f));
             renderText(regular, palette, theme);
             if (hovered) SystemCursor.set(SystemCursor.CursorType.TEXT);
@@ -492,29 +496,29 @@ public final class CombatProtocolHeuristicsEditorState {
                         int a = Math.max(lineStart, selStart);
                         int b = Math.min(lineEnd, selEnd);
                         if (b > a) {
-                            float x0 = viewX + ClickGuiRenderer.textWidth(font, line.substring(0, a - lineStart), FONT_SIZE);
-                            float x1 = viewX + ClickGuiRenderer.textWidth(font, line.substring(0, b - lineStart), FONT_SIZE);
-                            ClickGuiRenderer.drawRoundedRect(x0, lineY, Math.max(1f, x1 - x0), LINE_H,
+                            float x0 = viewX + LayoutRender2D.textWidth(font, line.substring(0, a - lineStart), FONT_SIZE);
+                            float x1 = viewX + LayoutRender2D.textWidth(font, line.substring(0, b - lineStart), FONT_SIZE);
+                            LayoutRender2D.drawRoundedRect(x0, lineY, Math.max(1f, x1 - x0), LINE_H,
                                     2f * SCALE, SettingsGuiPalette.withAlpha(theme.accentSoft(), 155));
                         }
                     }
 
                     String lineNumber = Integer.toString(i + 1);
-                    float numberW = ClickGuiRenderer.textWidth(font, lineNumber, 5.1f * SCALE);
-                    ClickGuiRenderer.drawText(font, lineNumber, textArea.x + GUTTER_W - 4f * SCALE - numberW,
+                    float numberW = LayoutRender2D.textWidth(font, lineNumber, 5.1f * SCALE);
+                    LayoutRender2D.drawText(font, lineNumber, textArea.x + GUTTER_W - 4f * SCALE - numberW,
                             lineY + 0.5f * SCALE, 5.1f * SCALE, palette.panelMuted(), false);
                     int textColor = line.isBlank() || validPattern(line) ? palette.moduleDescriptionText() : 0xFFFF8A80;
-                    ClickGuiRenderer.drawText(font, line, viewX, lineY + 0.2f * SCALE, FONT_SIZE, textColor, false);
+                    LayoutRender2D.drawText(font, line, viewX, lineY + 0.2f * SCALE, FONT_SIZE, textColor, false);
                 }
                 globalOffset = lineEnd + 1;
             }
 
-            ClickGuiRenderer.drawRect(textArea.x + GUTTER_W, textArea.y + 2f * SCALE,
+            LayoutRender2D.drawRect(textArea.x + GUTTER_W, textArea.y + 2f * SCALE,
                     0.4f * SCALE, textArea.h - 4f * SCALE, palette.panelDivider());
 
             if (focused && ((int) (blink * 2f) & 1) == 0) {
                 String line = lines[Math.max(0, Math.min(caretLine, lines.length - 1))];
-                float caretX = viewX + ClickGuiRenderer.textWidth(font, line.substring(0, Math.min(caretCol, line.length())), FONT_SIZE);
+                float caretX = viewX + LayoutRender2D.textWidth(font, line.substring(0, Math.min(caretCol, line.length())), FONT_SIZE);
                 float caretY = viewY + caretLine * LINE_H;
                 GuiTextCaret.draw(caretX, caretY + 0.2f * SCALE, font, FONT_SIZE, theme.accent());
             }
@@ -744,10 +748,10 @@ public final class CombatProtocolHeuristicsEditorState {
             String text = lines[line];
             float localX = mx - (textArea.x + GUTTER_W + TEXT_PAD) + scrollX;
             int column = 0;
-            TextRenderer font = ClickGuiRenderer.getInterRegular();
+            TextRenderer font = BuiltinFontCatalog.ONEST_REGULAR.renderer();
             for (int i = 1; i <= text.length(); i++) {
-                float prev = ClickGuiRenderer.textWidth(font, text.substring(0, i - 1), FONT_SIZE);
-                float next = ClickGuiRenderer.textWidth(font, text.substring(0, i), FONT_SIZE);
+                float prev = LayoutRender2D.textWidth(font, text.substring(0, i - 1), FONT_SIZE);
+                float next = LayoutRender2D.textWidth(font, text.substring(0, i), FONT_SIZE);
                 if (localX < (prev + next) * 0.5f) break;
                 column = i;
             }
@@ -762,9 +766,9 @@ public final class CombatProtocolHeuristicsEditorState {
             if (caretY < targetScrollY) targetScrollY = caretY;
             if (caretY + LINE_H > targetScrollY + visibleH) targetScrollY = caretY + LINE_H - visibleH;
 
-            TextRenderer font = ClickGuiRenderer.getInterRegular();
+            TextRenderer font = BuiltinFontCatalog.ONEST_REGULAR.renderer();
             String line = lines[pos.line];
-            float caretX = ClickGuiRenderer.textWidth(font, line.substring(0, Math.min(pos.column, line.length())), FONT_SIZE);
+            float caretX = LayoutRender2D.textWidth(font, line.substring(0, Math.min(pos.column, line.length())), FONT_SIZE);
             float visibleW = Math.max(20f * SCALE, textArea.w - GUTTER_W - TEXT_PAD * 2f);
             if (caretX < targetScrollX) targetScrollX = caretX;
             if (caretX + 2f * SCALE > targetScrollX + visibleW) targetScrollX = caretX + 2f * SCALE - visibleW;
@@ -775,8 +779,8 @@ public final class CombatProtocolHeuristicsEditorState {
             String[] lines = lines();
             float maxY = Math.max(0f, lines.length * LINE_H - Math.max(LINE_H, textArea.h - 6f * SCALE));
             float maxLineW = 0f;
-            TextRenderer font = ClickGuiRenderer.getInterRegular();
-            for (String line : lines) maxLineW = Math.max(maxLineW, ClickGuiRenderer.textWidth(font, line, FONT_SIZE));
+            TextRenderer font = BuiltinFontCatalog.ONEST_REGULAR.renderer();
+            for (String line : lines) maxLineW = Math.max(maxLineW, LayoutRender2D.textWidth(font, line, FONT_SIZE));
             float maxX = Math.max(0f, maxLineW - Math.max(20f * SCALE, textArea.w - GUTTER_W - TEXT_PAD * 2f));
             targetScrollY = clamp(targetScrollY, 0f, maxY);
             targetScrollX = clamp(targetScrollX, 0f, maxX);
@@ -788,14 +792,14 @@ public final class CombatProtocolHeuristicsEditorState {
     }
 
     private static void panel(float x, float y, float w, float h, SettingsGuiPalette palette) {
-        ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, 6f * SCALE,
+        LayoutRender2D.drawRoundedRectGradient(x, y, w, h, 6f * SCALE,
                 palette.contentPlaneTop(), palette.contentPlaneBottom(), 90f);
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, 6f * SCALE,
+        LayoutRender2D.drawRoundedRectStroke(x, y, w, h, 6f * SCALE,
                 0.22f * SCALE, palette.glassEdgeSoft());
     }
 
     private static float statusChipWidth(TextRenderer font, String text) {
-        return ClickGuiRenderer.textWidth(font, text, 5.7f * SCALE) + 10f * SCALE;
+        return LayoutRender2D.textWidth(font, text, 5.7f * SCALE) + 10f * SCALE;
     }
 
     private static void drawStatusChip(float x,
@@ -815,25 +819,25 @@ public final class CombatProtocolHeuristicsEditorState {
                 ? SettingsGuiPalette.mix(palette.panelStroke(), theme.accentSoft(), 0.34f)
                 : palette.panelStroke();
         int textColor = enabled ? palette.panelText() : palette.panelMuted();
-        ClickGuiRenderer.drawRoundedRect(x, y, w, h, radius, bg);
-        ClickGuiRenderer.drawRoundedRectStroke(x, y, w, h, radius, 0.18f * SCALE, edge);
+        LayoutRender2D.drawRoundedRect(x, y, w, h, radius, bg);
+        LayoutRender2D.drawRoundedRectStroke(x, y, w, h, radius, 0.18f * SCALE, edge);
         float size = 5.7f * SCALE;
-        float textW = ClickGuiRenderer.textWidth(font, text, size);
-        float textH = ClickGuiRenderer.textHeight(font, size);
-        ClickGuiRenderer.drawText(font, text, x + (w - textW) * 0.5f, y + (h - textH) * 0.5f,
+        float textW = LayoutRender2D.textWidth(font, text, size);
+        float textH = LayoutRender2D.textHeight(font, size);
+        LayoutRender2D.drawText(font, text, x + (w - textW) * 0.5f, y + (h - textH) * 0.5f,
                 size, textColor, false);
     }
 
     private static void button(Rect rect, String label, float hover, TextRenderer font,
                                SettingsGuiPalette palette, Themes.Theme theme) {
         int bg = SettingsGuiPalette.mix(palette.panelPillBase(), theme.accentSoft(), 0.08f + hover * 0.24f);
-        ClickGuiRenderer.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, 3.5f * SCALE, bg);
-        ClickGuiRenderer.drawRoundedRectStroke(rect.x, rect.y, rect.w, rect.h, 3.5f * SCALE,
+        LayoutRender2D.drawRoundedRect(rect.x, rect.y, rect.w, rect.h, 3.5f * SCALE, bg);
+        LayoutRender2D.drawRoundedRectStroke(rect.x, rect.y, rect.w, rect.h, 3.5f * SCALE,
                 0.22f * SCALE, SettingsGuiPalette.mix(palette.panelStroke(), theme.accent(), hover * 0.42f));
         float size = 5.8f * SCALE;
-        float tw = ClickGuiRenderer.textWidth(font, label, size);
-        float th = ClickGuiRenderer.textHeight(font, size);
-        ClickGuiRenderer.drawText(font, label, rect.x + (rect.w - tw) * 0.5f,
+        float tw = LayoutRender2D.textWidth(font, label, size);
+        float th = LayoutRender2D.textHeight(font, size);
+        LayoutRender2D.drawText(font, label, rect.x + (rect.w - tw) * 0.5f,
                 rect.y + (rect.h - th) * 0.5f, size,
                 SettingsGuiPalette.mix(palette.panelText(), theme.accent(), hover * 0.55f), false);
     }

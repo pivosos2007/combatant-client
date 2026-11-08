@@ -76,6 +76,13 @@ public final class Std430Writer {
         return this;
     }
 
+    public Std430Writer putVec4(int element, String member, int arrayIndex,
+                                float x, float y, float z, float w) {
+        int offset = offset(element, member, arrayIndex);
+        buffer.putFloat(offset, x).putFloat(offset + 4, y).putFloat(offset + 8, z).putFloat(offset + 12, w);
+        return this;
+    }
+
     /** Writes one column-major GLSL mat4 into a std430 MAT4 member. */
     public Std430Writer putMat4(int element, String member, Matrix4fc value) {
         if (value == null) throw new IllegalArgumentException("value");

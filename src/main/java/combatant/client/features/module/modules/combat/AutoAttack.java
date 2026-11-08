@@ -25,7 +25,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.tags.ItemTags;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -51,7 +50,6 @@ import combatant.client.util.click.ClickHumanizer;
 import combatant.client.util.click.ClickScheduler;
 import combatant.client.util.combat.CombatStrikeController;
 import combatant.client.util.item.FoodUtil;
-import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.combat.protocol.ProtocolUtil;
 
 import java.util.LinkedHashMap;
@@ -504,7 +502,6 @@ public class AutoAttack extends Module {
                         null
                 );
             }
-            return;
         }
     }
 

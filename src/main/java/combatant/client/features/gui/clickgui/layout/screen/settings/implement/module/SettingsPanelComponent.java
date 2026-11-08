@@ -7,6 +7,10 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.module;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.util.resources.asset.UiScriptAsset;
 import combatant.client.config.MainConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
@@ -21,7 +25,6 @@ import combatant.client.render.engine.renderer.ui.runtime.script.CachedUiScriptR
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModule;
 import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptModuleHandle;
 import net.minecraft.client.Minecraft;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.settings.Setting;
@@ -41,7 +44,6 @@ import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -289,22 +291,22 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             float fadeStart = fadeBottom - activeFadeDepth;
 
             try {
-            try (ClickGuiRenderer.VerticalAlphaFadeScope ignoredFade =
-                         ClickGuiRenderer.pushBottomAlphaFade(fadeStart, fadeBottom)) {
+            try (LayoutRender2D.VerticalAlphaFadeScope ignoredFade =
+                         LayoutRender2D.pushBottomAlphaFade(fadeStart, fadeBottom)) {
                 float y = contentY + smoothedScroll;
                 for (SettingRow row : rows) {
                     float sh = row.height() * rowsReveal;
                     float gap = row.gap() * rowsReveal;
                     if (sh > 0.5f) {
                         hits.add(new SettingHit(row.setting(), contentX, y, contentW, sh, row.scale()));
-                        if (y + sh >= contentY - 1.0f * panelScale && y <= contentY + contentH + 1.0f * panelScale) {
+                        if (y + sh >= contentY - panelScale && y <= contentY + contentH + panelScale) {
                             float slide = (1f - row.anim()) * 6f * panelScale;
                             boolean itemClip = ScissorFunction.pushRaw(contentX, y, contentW, sh);
                             try {
                                 try (SettingRenderContext.Scope ignored = SettingRenderContext.push(renderSurface, row.scale())) {
                                     row.setting().renderSafely(contentX, y + slide, contentW, mx, my);
                                 }
-                                ClickGuiRenderer.flushRenderer();
+                                LayoutRender2D.flushRenderer();
                             } finally {
                                 if (itemClip) ScissorFunction.pop();
                             }
@@ -314,7 +316,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
                 }
             }
 
-            ClickGuiRenderer.flushRenderer();
+            LayoutRender2D.flushRenderer();
             } finally {
                 if (clipped) ScissorFunction.pop();
             }
@@ -540,7 +542,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
                 "settings-panel",
                 panelW,
                 panelH,
-                ClickGuiRenderer.getInterRegular(),
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 panelX,
                 panelY,
                 panelW,
@@ -549,7 +551,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         );
         if (runtime == null) return;
 
-        ClickGuiRenderer.flushRenderer();
+        LayoutRender2D.flushRenderer();
 
         // Inventory/Potions-style material: soft outer shadow + an explicit square blur
         // pass below the chrome. Radius stays zero: this is not a rounded glass card.
@@ -559,23 +561,23 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
                 0.0f, Math.max(0.85f, scale * 0.72f),
                 false, 46, alpha
         );
-        ClickGuiRenderer.drawBlur(
+        LayoutRender2D.drawBlur(
                 panelX, panelY, panelW, panelH,
                 0.0f,
                 0xFFFFFFFF,
                 0.92f * alpha
         );
-        ClickGuiRenderer.flushRenderer();
+        LayoutRender2D.flushRenderer();
 
         runtime.render(new UiRenderContext(
                 Renderer2D.COLOR,
-                ClickGuiRenderer.getInterRegular(),
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 null,
                 0f,
                 UiProjectionMode.CURRENT,
                 1f
         ));
-        ClickGuiRenderer.flushRenderer();
+        LayoutRender2D.flushRenderer();
     }
 
     private UiScriptModule ensurePanelModule() {
@@ -672,7 +674,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         // square framebuffer blur reliable even through persistent UI batching.
         props.put("blurAlpha", 0.22f * alpha);
         props.put("blurBrightness", 0.96f);
-        props.put("blurQuality", ClickGuiRenderer.clickGuiBlurQuality());
+        props.put("blurQuality", LayoutRender2D.clickGuiBlurQuality());
 
         props.put("bodyA", hex(bodyStart));
         props.put("bodyB", hex(bodyEnd));

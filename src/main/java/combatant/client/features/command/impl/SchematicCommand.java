@@ -18,7 +18,6 @@ import combatant.client.util.schematic.LayerStats;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicLibrary;
 import combatant.client.util.schematic.SchematicMaterials;
-import combatant.client.util.schematic.SchematicPlacement;
 import combatant.client.util.schematic.SchematicState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;

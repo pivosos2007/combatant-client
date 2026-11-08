@@ -8,10 +8,9 @@
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.category;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.MenuScreen;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -88,12 +87,12 @@ public final class CategoryComponent {
             );
         } else {
             TextRenderer font = category.iconToken()
-                    ? BuiltinFontCatalog.ICONS.renderer(ClickGuiRenderer.getInterMedium())
-                    : ClickGuiRenderer.getInterMedium();
+                    ? BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_MEDIUM.renderer())
+                    : BuiltinFontCatalog.ONEST_MEDIUM.renderer();
             float size = category.iconToken() ? 8.7f * scale : (category.token().length() > 2 ? 7.6f * scale : 9.2f * scale);
-            float tw = ClickGuiRenderer.textWidth(font, category.token(), size);
-            float th = ClickGuiRenderer.textHeight(font, size);
-            ClickGuiRenderer.drawText(
+            float tw = LayoutRender2D.textWidth(font, category.token(), size);
+            float th = LayoutRender2D.textHeight(font, size);
+            LayoutRender2D.drawText(
                     font,
                     category.token(),
                     pcx - tw * 0.5f,

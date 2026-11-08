@@ -122,7 +122,7 @@ public final class XaeroWaypointCommand implements ClientCommand {
         if (argIndex == 1) {
             List<String> out = new ArrayList<>();
             for (String value : List.of("add", "here", "remove", "clear", "list", CURRENT_COORDINATE)) {
-                if (lower.isEmpty() || value.startsWith(lower)) out.add(value);
+                if (value.startsWith(lower)) out.add(value);
             }
             return out;
         }
@@ -131,12 +131,12 @@ public final class XaeroWaypointCommand implements ClientCommand {
             if (action != null && List.of("remove", "delete", "rm", "clear").contains(action.toLowerCase(Locale.ROOT))) {
                 List<String> out = new ArrayList<>();
                 for (String value : List.of("all")) {
-                    if (lower.isEmpty() || value.startsWith(lower)) out.add(value);
+                    if (value.startsWith(lower)) out.add(value);
                 }
                 List<XaeroWaypointStore.Marker> markers = XaeroWaypointStore.markers();
                 for (int i = 1; i <= markers.size(); i++) {
                     String value = Integer.toString(i);
-                    if (lower.isEmpty() || value.startsWith(lower)) out.add(value);
+                    if (value.startsWith(lower)) out.add(value);
                 }
                 return out;
             }
@@ -207,7 +207,7 @@ public final class XaeroWaypointCommand implements ClientCommand {
         for (int i = start; i < args.size(); i++) {
             String part = args.get(i);
             if (part == null || part.isBlank()) continue;
-            if (sb.length() > 0) sb.append(' ');
+            if (!sb.isEmpty()) sb.append(' ');
             sb.append(part.trim());
         }
         return sb.length() == 0 ? null : sb.toString();

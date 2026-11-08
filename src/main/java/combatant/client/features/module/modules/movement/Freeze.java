@@ -9,12 +9,13 @@ package combatant.client.features.module.modules.movement;
 
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.KeyBindValue;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.PlayerFreezeQueryEvent;
 import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.features.module.Modules;
 
 /**
  * Freezes the local player in place and stops the position packets (AirStuck). With a hold key set it only freezes
@@ -34,10 +35,9 @@ public final class Freeze extends Module {
         setDefaultBind("COMMA");
     }
 
-    /** True while the player and its movement packets must be held still. */
-    public static boolean isActive() {
-        Freeze freeze = Modules.get(Freeze.class);
-        return freeze != null && freeze.frozenNow();
+    @EventHandler
+    private void onFreezeQuery(PlayerFreezeQueryEvent event) {
+        if (event.getPlayer() != null && frozenNow()) event.setFrozen(true);
     }
 
     private boolean frozenNow() {

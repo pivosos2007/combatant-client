@@ -1,0 +1,37 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(binding = 0) uniform sampler2D u_Bright;
+layout(binding = 1, rgba16f) writeonly uniform image2D u_Bloom;
+layout(std430, binding = 2) readonly buffer MenuSmokeParams {
+    vec4 screen;
+    vec4 mouse;
+    vec4 motion;
+    vec4 accent;
+    vec4 soft;
+    vec4 cold;
+    vec4 warm;
+    vec4 sources[48];
+    vec4 sourceProps[48];
+} u_Smoke;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_Bloom);
+    if (any(greaterThanEqual(pixel, size))) return;
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    vec2 texel = 1.0 / vec2(size);
+    vec3 result = texture(u_Bright, uv).rgb * 0.30;
+    result += (texture(u_Bright, uv + texel * vec2(1.0, 0.0)).rgb
+             + texture(u_Bright, uv + texel * vec2(-1.0, 0.0)).rgb
+             + texture(u_Bright, uv + texel * vec2(0.0, 1.0)).rgb
+             + texture(u_Bright, uv + texel * vec2(0.0, -1.0)).rgb) * 0.16;
+    result += (texture(u_Bright, uv + texel * vec2(1.5, 1.5)).rgb
+             + texture(u_Bright, uv + texel * vec2(-1.5, 1.5)).rgb
+             + texture(u_Bright, uv + texel * vec2(1.5, -1.5)).rgb
+             + texture(u_Bright, uv + texel * vec2(-1.5, -1.5)).rgb) * 0.11;
+    result += (texture(u_Bright, uv + texel * vec2(2.5, 0.0)).rgb
+             + texture(u_Bright, uv + texel * vec2(-2.5, 0.0)).rgb
+             + texture(u_Bright, uv + texel * vec2(0.0, 2.5)).rgb
+             + texture(u_Bright, uv + texel * vec2(0.0, -2.5)).rgb) * 0.07;
+    imageStore(u_Bloom, pixel, vec4(result * 1.08, 1.0));
+}

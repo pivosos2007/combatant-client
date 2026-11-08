@@ -47,7 +47,7 @@ public enum RuntimeTextLayout {
                     out = new StringBuilder(value.length());
                     out.append(value, 0, offset);
                 }
-                if (separator && previous != ' ' && out.length() > 0) {
+                if (separator && previous != ' ' && !out.isEmpty()) {
                     out.append(' ');
                     previous = ' ';
                 }

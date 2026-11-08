@@ -7,8 +7,11 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.theme;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.util.resources.asset.UiScriptAsset;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.features.theme.Themes;
 import combatant.client.features.theme.EditableClickGuiTheme;
@@ -24,7 +27,6 @@ import combatant.client.render.helpers.ScissorFunction;
 import net.minecraft.client.Minecraft;
 import combatant.client.input.InputKeys;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -139,7 +141,7 @@ public final class ThemeEditorPreviewComponent {
                 "theme-preview",
                 panelW,
                 panelH,
-                ClickGuiRenderer.getInterRegular(),
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 panelX,
                 panelY,
                 panelW,
@@ -147,9 +149,9 @@ public final class ThemeEditorPreviewComponent {
                 () -> props
         );
         if (runtime == null) return;
-        ClickGuiRenderer.flushRenderer();
-        runtime.render(new UiRenderContext(Renderer2D.COLOR, ClickGuiRenderer.getInterRegular(), null, 0f, UiProjectionMode.CURRENT, alpha));
-        ClickGuiRenderer.flushRenderer();
+        LayoutRender2D.flushRenderer();
+        runtime.render(new UiRenderContext(Renderer2D.COLOR, BuiltinFontCatalog.ONEST_REGULAR.renderer(), null, 0f, UiProjectionMode.CURRENT, alpha));
+        LayoutRender2D.flushRenderer();
     }
 
     private UiScriptModule ensurePreviewModule() {

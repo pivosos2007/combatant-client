@@ -22,11 +22,11 @@ import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
-import combatant.client.events.impl.*;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -35,6 +35,8 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
 import combatant.client.util.player.MovementUtil;
+import combatant.client.util.player.ServerFlyUtils;
+import combatant.client.features.module.modules.movement.flight.ServerGrantedFlightMotion;
 
 @ModuleInfo(
         id = "flight",
@@ -44,10 +46,21 @@ import combatant.client.util.player.MovementUtil;
 public class Flight extends Module {
 
     private final EnumValue<Mode> mode =
-            enumMode("mode", Mode.ABILITIES, Mode.values());
+            enumCommon("mode", "mode", CommonSettingSchemas.MODE, Mode.ABILITIES, Mode.values());
     // Min speed is 0.01 because 0.0 freezes the player mid-air in VELOCITY and disables flight movement in ABILITIES.
     private final NumberValue<Double> speed =
             visibleWhen(num("speed", 0.1, 0.01, 5.0), this::usesSpeed);
+    // Acts only on server-granted flight. These are blocks per client tick,
+    // not values written into the player's ability flags or abilities packets.
+    private final NumberValue<Double> grantedHorizontalSpeed =
+            visibleWhen(num("granted_horizontal_speed", 1.2, 0.0, 8.0),
+                    () -> mode.get() == Mode.SERVER_GRANTED);
+    private final NumberValue<Double> grantedVerticalSpeed =
+            visibleWhen(num("granted_vertical_speed", 0.8, 0.0, 8.0),
+                    () -> mode.get() == Mode.SERVER_GRANTED);
+    private final BooleanValue grantedNoInertia =
+            visibleWhen(bool("granted_no_inertia", false),
+                    () -> mode.get() == Mode.SERVER_GRANTED);
     private final BooleanValue verticalSpeedMatch =
             visibleWhen(bool("vertical_speed_match", false), () -> mode.get() == Mode.VELOCITY);
     private final BooleanValue noSneak =
@@ -72,6 +85,11 @@ public class Flight extends Module {
     private String moduleListDetail() {
         String detail = switch (mode.get()) {
             case ABILITIES -> "Abilities";
+            case SERVER_GRANTED -> {
+                LocalPlayer player = Minecraft.getInstance().player;
+                yield ServerFlyUtils.hasVerifiedServerFlight(player)
+                        ? "Server Granted" : "Needs server /fly";
+            }
             case VELOCITY -> "Velocity";
             case AIRWALK -> "Airwalk";
             case SPARTAN_524 -> "Spartan 5.24";
@@ -114,7 +132,7 @@ public class Flight extends Module {
     public void onDisable() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null) return;
-        if (mode.get() == Mode.ABILITIES && !mc.player.isSpectator()) {
+        if (lastMode == Mode.ABILITIES && !mc.player.isSpectator()) {
             abilitiesOff();
         }
         resetModeState();
@@ -180,6 +198,33 @@ public class Flight extends Module {
             default -> {
             }
         }
+    }
+
+    /**
+     * Override movement at the final SELF-move stage, after ordinary motion modules.
+     * Never grants abilities or spoofs a flying flag: vanilla handles the actual
+     * /fly activation and the server can revoke permission at any moment.
+     */
+    @EventHandler(priority = -10000)
+    private void onServerGrantedMove(PlayerMoveEvent event) {
+        if (mode.get() != Mode.SERVER_GRANTED
+                || event.getType() != net.minecraft.world.entity.MoverType.SELF) return;
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc == null ? null : mc.player;
+        if (player == null || mc.level == null || player.isPassenger() || player.isFallFlying()
+                || !ServerFlyUtils.hasVerifiedActiveServerFlight(player)) return;
+        Vec3 movement = event.getMovement();
+        if (movement == null || player.input == null) return;
+
+        double[] direction = MovementUtil.forward(grantedHorizontalSpeed.get());
+        int verticalInput = (mc.options.keyJump.isDown() ? 1 : 0)
+                - (mc.options.keyShift.isDown() ? 1 : 0);
+        Vec3 adjusted = ServerGrantedFlightMotion.resolve(
+                movement, new Vec3(direction[0], verticalInput * grantedVerticalSpeed.get(), direction[1]),
+                grantedNoInertia.get());
+        // Keep both the collision movement and local velocity coherent.
+        player.setDeltaMovement(adjusted);
+        event.setMovement(adjusted);
     }
 
     @EventHandler
@@ -412,18 +457,20 @@ public class Flight extends Module {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null) return;
         mc.player.getAbilities().flying = false;
-        mc.player.getAbilities().setFlyingSpeed(0.05f);
+        mc.player.getAbilities().setFlyingSpeed(ServerFlyUtils.serverFlyingSpeed(mc.player));
         if (!mc.player.getAbilities().instabuild) {
-            mc.player.getAbilities().mayfly = false;
+            // Revert only the spoof from ABILITIES; do not revoke genuine /fly.
+            mc.player.getAbilities().mayfly = ServerFlyUtils.hasVerifiedServerFlight(mc.player);
         }
     }
 
     private void syncModeChange() {
         Mode current = mode.get();
         if (current == lastMode) return;
+        Mode previous = lastMode;
         lastMode = current;
         if (!isEnabled() || !canUpdate()) return;
-        abilitiesOff();
+        if (previous == Mode.ABILITIES) abilitiesOff();
         resetModeState();
     }
 
@@ -459,6 +506,7 @@ public class Flight extends Module {
 
     public enum Mode {
         ABILITIES,
+        SERVER_GRANTED,
         VELOCITY,
         AIRWALK,
         SPARTAN_524,

@@ -4,49 +4,43 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-
 package combatant.client.render.engine.renderer.ui.draw;
 
-public record UiHoneycombMaterialSpec(Mode mode,
-                                      float cellBlurMix,
-                                      float sceneDetail,
-                                      float tintAbsorption,
-                                      float highlightCompression) implements UiMaterialSpec {
+public record UiHoneycombMaterialSpec(float cellRadiusPx,
+                                      float lineWidthPx,
+                                      float lineOpacity,
+                                      float emission,
+                                      float glow,
+                                      float motionSpeed) implements UiMaterialSpec {
     @Override public Family family() { return Family.HONEYCOMB; }
+    @Override public boolean samplesBackdrop() { return false; }
 
-    public static final UiHoneycombMaterialSpec SMOKED_MACHINED = new UiHoneycombMaterialSpec(
-            Mode.SMOKED_MACHINED, 0.32f, 0.20f, 0.36f, 0.72f);
-    public static final UiHoneycombMaterialSpec CERAMIC_CELLS = new UiHoneycombMaterialSpec(
-            Mode.CERAMIC_CELLS, 0.22f, 0.10f, 0.72f, 0.82f);
-    public static final UiHoneycombMaterialSpec LEGACY_GLASS = new UiHoneycombMaterialSpec(
-            Mode.LEGACY_GLASS, 0.985f, 0.035f, 0.012f, 0.0f);
+    public static final UiHoneycombMaterialSpec HEX_PATH = new UiHoneycombMaterialSpec(19.0f, 0.90f, 0.17f, 0.85f, 0.62f, 1.0f);
+    public static final UiHoneycombMaterialSpec SUBTLE = new UiHoneycombMaterialSpec(23.0f, 0.75f, 0.08f, 0.46f, 0.34f, 0.75f);
+    public static final UiHoneycombMaterialSpec EMISSIVE = new UiHoneycombMaterialSpec(18.0f, 1.15f, 0.05f, 1.0f, 0.90f, 1.15f);
 
     public UiHoneycombMaterialSpec {
-        mode = mode != null ? mode : Mode.SMOKED_MACHINED;
-        cellBlurMix = clamp(cellBlurMix);
-        sceneDetail = clamp(sceneDetail);
-        tintAbsorption = clamp(tintAbsorption);
-        highlightCompression = clamp(highlightCompression);
+        cellRadiusPx = clamp(cellRadiusPx, 2.0f, 1024.0f);
+        lineWidthPx = clamp(lineWidthPx, 0.05f, 12.0f);
+        lineOpacity = clamp(lineOpacity, 0.0f, 1.0f);
+        emission = clamp(emission, 0.0f, 2.0f);
+        glow = clamp(glow, 0.0f, 2.0f);
+        motionSpeed = clamp(motionSpeed, 0.0f, 6.0f);
     }
 
-    public enum Mode {
-        SMOKED_MACHINED(0),
-        CERAMIC_CELLS(1),
-        LEGACY_GLASS(2);
-
-        private final int shaderId;
-
-        Mode(int shaderId) {
-            this.shaderId = shaderId;
-        }
-
-        public int shaderId() {
-            return shaderId;
-        }
+    public UiHoneycombMaterialSpec withEmission(float value) {
+        return new UiHoneycombMaterialSpec(cellRadiusPx, lineWidthPx, lineOpacity, value, glow, motionSpeed);
     }
 
-    private static float clamp(float value) {
-        if (!Float.isFinite(value)) return 0.0f;
-        return Math.max(0.0f, Math.min(1.0f, value));
+    public UiHoneycombMaterialSpec withMotionSpeed(float value) {
+        return new UiHoneycombMaterialSpec(cellRadiusPx, lineWidthPx, lineOpacity, emission, glow, value);
+    }
+
+    public UiHoneycombMaterialSpec withCellSize(float radius, float stroke) {
+        return new UiHoneycombMaterialSpec(radius, stroke, lineOpacity, emission, glow, motionSpeed);
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Float.isFinite(value) ? Math.max(min, Math.min(max, value)) : min;
     }
 }

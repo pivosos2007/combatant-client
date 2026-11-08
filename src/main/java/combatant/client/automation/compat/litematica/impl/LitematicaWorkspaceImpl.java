@@ -186,7 +186,7 @@ public final class LitematicaWorkspaceImpl implements LitematicaWorkspace {
 
     private static Option describe(IConfigBase config) {
         String kind = "string";
-        Object value = null;
+        Object value;
         if ((value = invoke(config, "getBooleanValue")) instanceof Boolean) kind = "boolean";
         else if ((value = invoke(config, "getIntegerValue")) instanceof Number) kind = "number";
         else if ((value = invoke(config, "getDoubleValue")) instanceof Number) kind = "number";

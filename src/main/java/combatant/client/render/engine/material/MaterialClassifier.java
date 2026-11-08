@@ -14,7 +14,6 @@ import net.minecraft.tags.FluidTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.StainedGlassBlock;
 import net.minecraft.world.level.block.StainedGlassPaneBlock;
 import net.minecraft.world.level.block.TransparentBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -65,7 +64,7 @@ public final class MaterialClassifier {
         Block block = state.getBlock();
         // Built-in fallback only. Modded glass should register combatant:material/glass.
         if (block == Blocks.GLASS || block == Blocks.GLASS_PANE || block == Blocks.TINTED_GLASS
-                || block instanceof StainedGlassBlock || block instanceof StainedGlassPaneBlock
+                || block instanceof StainedGlassPaneBlock
                 || block instanceof TransparentBlock) {
             return glass(MaterialResolutionSource.VANILLA_FALLBACK);
         }

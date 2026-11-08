@@ -63,6 +63,15 @@ public final class InventorySwap {
 
     // Serialized, owner-scoped window-click queue. No module implements its own tick jitter.
     private final Deque<QueuedAction> queue = new ArrayDeque<>();
+    private InventorySwapPolicy defaultPolicy = InventorySwapPolicy.NONE;
+    private InventorySearchScope defaultScope = InventorySearchScope.FULL;
+    private InventorySwapVisibility defaultVisibility = InventorySwapVisibility.SILENT;
+    private boolean restoreByDefault = true;
+    private boolean preferHotbar = true;
+    private int legitWaitTicks = 2;
+    private int strictInventoryWaitTicks = 1;
+    private int strictMovementLockTicks = 2;
+    private int lastPolicyActionTick = Integer.MIN_VALUE;
     private int queuedMinTicks = 1;
     private int queuedMaxTicks = 4;
     private UUID queuedPlayerUuid;
@@ -175,6 +184,7 @@ public final class InventorySwap {
         } else if (packet instanceof ClientboundLoginPacket) {
             mc.execute(() -> {
                 lastServerSelectedSlot = -1;
+                lastPolicyActionTick = Integer.MIN_VALUE;
                 silentSlot = -1;
                 restorePending = false;
                 hotbarLease = null;
@@ -283,6 +293,59 @@ public final class InventorySwap {
         }
     }
 
+    public void setDefaultPolicy(InventorySwapPolicy policy) {
+        defaultPolicy = policy != null ? policy : InventorySwapPolicy.NONE;
+    }
+
+    public void setDefaultScope(InventorySearchScope scope) {
+        defaultScope = scope != null ? scope : InventorySearchScope.FULL;
+    }
+
+    public void setDefaultVisibility(InventorySwapVisibility visibility) {
+        defaultVisibility = visibility != null ? visibility : InventorySwapVisibility.SILENT;
+    }
+
+    public void setRestoreByDefault(boolean restore) {
+        restoreByDefault = restore;
+    }
+
+    public void setPreferHotbar(boolean prefer) {
+        preferHotbar = prefer;
+    }
+
+    public void setLegitWaitTicks(int ticks) {
+        legitWaitTicks = Math.max(0, Math.min(20, ticks));
+    }
+
+    public void setStrictInventoryWaitTicks(int ticks) {
+        strictInventoryWaitTicks = Math.max(0, Math.min(20, ticks));
+    }
+
+    public void setStrictMovementLockTicks(int ticks) {
+        strictMovementLockTicks = Math.max(0, Math.min(20, ticks));
+    }
+
+    private int policyWaitTicks() {
+        return switch (defaultPolicy) {
+            case NONE -> 0;
+            case LEGIT -> legitWaitTicks;
+            case GRIM_STRICT -> strictInventoryWaitTicks;
+        };
+    }
+
+    private boolean policyReady() {
+        LocalPlayer player = mc.player;
+        if (player == null) return false;
+        int delay = policyWaitTicks();
+        if (lastPolicyActionTick > player.tickCount) lastPolicyActionTick = Integer.MIN_VALUE;
+        return lastPolicyActionTick == Integer.MIN_VALUE || delay == 0
+                || player.tickCount - lastPolicyActionTick >= delay;
+    }
+
+    private void notePolicyAction() {
+        if (mc.player != null) lastPolicyActionTick = mc.player.tickCount;
+    }
+
     public int queuedMaxTicks() {
         return queuedMaxTicks;
     }
@@ -336,12 +399,13 @@ public final class InventorySwap {
             queued.waitTicks--;
             return;
         }
+        if (!policyReady()) return;
         if (isWindowKind(queued.kind)) {
             if (!inventoryAccessAllowed(queued.owner)) return;
             if (!window.windowClickAllowed(isMovementLocked())) {
                 // A window click must not execute against a moving player's input packet; pause movement until
                 // the server has seen a stationary player.
-                requestMovementLock(MOVEMENT_LOCK_TICKS);
+                requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
                 return;
             }
         } else if (!window.actionAllowed(queued.kind)) {
@@ -349,6 +413,7 @@ public final class InventorySwap {
         }
         queue.removeFirst();
         runGuarded(queued.owner, queued.action);
+        notePolicyAction();
     }
 
     private void clearQueue() {
@@ -786,18 +851,20 @@ public final class InventorySwap {
         if (action == null || mc.player == null || mc.getConnection() == null) return false;
         InventoryActionKind kind = actionKind != null ? actionKind : InventoryActionKind.GENERIC;
         if (!isWindowKind(kind)) {
-            if (!window.actionAllowed(kind)) return false;
+            if (!window.actionAllowed(kind) || !policyReady()) return false;
             runGuarded(owner, action);
+            notePolicyAction();
             return true;
         }
 
         if (!inventoryAccessAllowed(owner)) return false;
-        if (queue.isEmpty() && window.windowClickAllowed(isMovementLocked())) {
+        if (queue.isEmpty() && policyReady() && window.windowClickAllowed(isMovementLocked())) {
             runGuarded(owner, action);
+            notePolicyAction();
             return true;
         }
-        requestMovementLock(MOVEMENT_LOCK_TICKS);
-        return enqueue(new QueuedAction(owner, kind, false, null, action, null, 0));
+        requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
+        return enqueue(new QueuedAction(owner, kind, false, null, action, null, policyWaitTicks()));
     }
 
     /**
@@ -808,20 +875,26 @@ public final class InventorySwap {
     public boolean execute(InventorySwapRequest request) {
         LocalPlayer player = mc.player;
         if (request == null || player == null || mc.getConnection() == null || mc.gameMode == null) return false;
-        if (!window.actionAllowed(request.actionKind())) return false;
+        if (!window.actionAllowed(request.actionKind()) || !policyReady()) return false;
 
-        SlotResult found = find(request.predicate(), request.scope());
+        InventorySearchScope scope = request.scope() != null ? request.scope() : defaultScope;
+        SlotResult found = find(request.predicate(), scope);
         if (!found.found()) return false;
 
-        boolean silent = request.visibility() == InventorySwapVisibility.SILENT || request.restore();
+        InventorySwapVisibility visibility = request.visibility() != null ? request.visibility() : defaultVisibility;
+        boolean silent = visibility == InventorySwapVisibility.SILENT || request.restore(restoreByDefault);
         beginInternalSwap();
         try {
+            boolean result;
             if (found.isHotbar()) {
-                return silent ? runSilentHotbar(found.slot(), request.action())
+                result = silent ? runSilentHotbar(found.slot(), request.action())
                         : runNormalHotbar(found.slot(), request.action());
+            } else {
+                result = silent ? runSilentInventory(found.slot(), request.action())
+                        : runNormalInventory(found.slot(), request.action());
             }
-            return silent ? runSilentInventory(found.slot(), request.action())
-                    : runNormalInventory(found.slot(), request.action());
+            if (result) notePolicyAction();
+            return result;
         } finally {
             endInternalSwap();
         }
@@ -862,8 +935,9 @@ public final class InventorySwap {
             case HOTBAR -> findHotbar(predicate);
             case INVENTORY -> findInventory(predicate);
             case FULL -> {
-                SlotResult hotbar = findHotbar(predicate);
-                yield hotbar.found() ? hotbar : findInventory(predicate);
+                SlotResult preferred = preferHotbar ? findHotbar(predicate) : findInventory(predicate);
+                yield preferred.found() ? preferred : preferHotbar
+                        ? findInventory(predicate) : findHotbar(predicate);
             }
         };
     }
@@ -942,7 +1016,7 @@ public final class InventorySwap {
     private boolean inventoryClickReady() {
         if (!inventoryAccessAllowed(inventoryActionOwner)) return false;
         if (window.windowClickAllowed(isMovementLocked())) return true;
-        requestMovementLock(MOVEMENT_LOCK_TICKS);
+        requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
         return false;
     }
 

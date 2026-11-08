@@ -447,7 +447,7 @@ public enum PickerCatalogFactory {
         StringBuilder out = new StringBuilder(id.length() + 4);
         for (String part : parts) {
             if (part.isEmpty()) continue;
-            if (out.length() > 0) out.append(' ');
+            if (!out.isEmpty()) out.append(' ');
             out.append(Character.toUpperCase(part.charAt(0)));
             if (part.length() > 1) out.append(part, 1, part.length());
         }

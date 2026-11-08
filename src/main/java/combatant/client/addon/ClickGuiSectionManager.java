@@ -7,6 +7,8 @@
 
 package combatant.client.addon;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 import combatant.client.api.v0.clickgui.CombatantClickGuiSection;
 import combatant.client.api.v0.clickgui.CombatantClickGuiRenderContext;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
@@ -236,8 +238,8 @@ public enum ClickGuiSectionManager {
             section.render(
                     new CombatantClickGuiRenderContext(
                             ClickGuiRenderer.currentRenderer(),
-                            ClickGuiRenderer.getInterRegular(),
-                            ClickGuiRenderer.getInterMedium()
+                            BuiltinFontCatalog.ONEST_REGULAR.renderer(),
+                            BuiltinFontCatalog.ONEST_MEDIUM.renderer()
                     ),
                     mouseX,
                     mouseY

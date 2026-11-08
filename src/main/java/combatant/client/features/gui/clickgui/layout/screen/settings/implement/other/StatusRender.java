@@ -7,7 +7,7 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.other;
 
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.render.engine.animation.AnimationUtility;
 
 public final class StatusRender {

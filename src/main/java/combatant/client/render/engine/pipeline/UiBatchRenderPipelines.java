@@ -141,13 +141,11 @@ public final class UiBatchRenderPipelines {
             .build();
 
     @PipelineRegister
-    public static final RenderPipeline UI_MAIN_MENU_HONEYCOMB_BATCH = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_main_menu_honeycomb_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS6, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("pos_local_color_rect_params6_generic.vert"))
-            .withFragmentShader(shader("ui_main_menu_honeycomb_batch.frag"))
-            .withSampler("u_Texture")
-            .withSampler("u_BlurTexture")
+    public static final RenderPipeline UI_HONEYCOMB_BATCH = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_honeycomb_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("pos_local_color_rect_params7_generic.vert"))
+            .withFragmentShader(shader("ui_honeycomb_batch.frag"))
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)
@@ -155,13 +153,35 @@ public final class UiBatchRenderPipelines {
             .build();
 
     @PipelineRegister
-    public static final RenderPipeline UI_MAIN_MENU_HONEYCOMB_BATCH_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
-            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_main_menu_honeycomb_batch"))
-            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS6, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
-            .withVertexShader(shader("pos_local_color_rect_params6_generic.vert"))
-            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("ui_main_menu_honeycomb_batch.frag")))
-            .withSampler("u_Texture")
-            .withSampler("u_BlurTexture")
+    public static final RenderPipeline UI_HONEYCOMB_BATCH_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_honeycomb_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS7, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("pos_local_color_rect_params7_generic.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("ui_honeycomb_batch.frag")))
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_MENU_SMOKE_BATCH = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/ui_menu_smoke_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("pos_local_color_rect_params2.vert"))
+            .withFragmentShader(shader("ui_menu_smoke_batch.frag"))
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(true)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline UI_MENU_SMOKE_BATCH_ANALYTIC_CLIP = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, UI_BATCH_UNIFORMS, UI_ANALYTIC_CLIP_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/analytic_clip/ui_menu_smoke_batch"))
+            .withVertexFormat(CombatantVertexFormats.POS2_LOCAL_COLOR_RECT_PARAMS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("pos_local_color_rect_params2.vert"))
+            .withFragmentShader(CombatantShaderSources.analyticClipVariantId(shader("ui_menu_smoke_batch.frag")))
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT)

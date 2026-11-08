@@ -178,7 +178,6 @@ public final class ConfigProfileApplier {
         }
         if (owner instanceof BaseHudElement hud) {
             hud.saveConfig();
-            return;
         }
     }
 

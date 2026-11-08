@@ -407,7 +407,7 @@ public final class SchematicProjection extends Module {
             RenderState.lineWidth = previous;
         }
 
-        float time = (System.nanoTime() / 1_000_000L % 3_600_000L) / 1000.0f;
+        float time = (System.nanoTime() % 3_600_000_000_000L) / 1_000_000_000.0f;
         if (haveDiff && showLayerPlane.get()) drawLayerPlane(tris, core, cam);
         if (haveDiff && showBoundingBox.get()) drawBounds(core, cam);
 

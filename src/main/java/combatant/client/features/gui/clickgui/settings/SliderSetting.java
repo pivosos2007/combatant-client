@@ -119,6 +119,8 @@ public class SliderSetting<N extends Number> extends Setting {
         float hoverAnim = 0f;
         float valueHoverAnim = 0f;
         float editAnim = 0f;
+        String exitText = "";
+        float exitWidth;
         float errorAnim = 0f;
         float cursorBlink = 0f;
         boolean editing = false;

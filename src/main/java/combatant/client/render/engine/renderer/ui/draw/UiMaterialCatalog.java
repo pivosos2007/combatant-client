@@ -42,9 +42,9 @@ public final class UiMaterialCatalog {
 
     public static UiHoneycombMaterialSpec honeycomb(String name) {
         return switch (normalize(name)) {
-            case "ceramic-cells" -> UiHoneycombMaterialSpec.CERAMIC_CELLS;
-            case "legacy-glass", "legacy" -> UiHoneycombMaterialSpec.LEGACY_GLASS;
-            default -> UiHoneycombMaterialSpec.SMOKED_MACHINED;
+            case "subtle", "low" -> UiHoneycombMaterialSpec.SUBTLE;
+            case "emissive", "bright" -> UiHoneycombMaterialSpec.EMISSIVE;
+            default -> UiHoneycombMaterialSpec.HEX_PATH;
         };
     }
 

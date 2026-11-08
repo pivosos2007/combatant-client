@@ -7,12 +7,14 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.theme;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 
 import combatant.client.features.theme.Theme;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.layout.screen.settings.render.SettingsCardTransition;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.features.theme.Themes;
@@ -60,12 +62,12 @@ public final class ThemeComponent {
         if (gradient != null && gradient.enabled()) {
             int start = SettingsGuiPalette.withAlpha(gradient.start(), 220);
             int end = SettingsGuiPalette.withAlpha(gradient.end(), 220);
-            ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, radius, start, end, gradient.angleDeg());
+            LayoutRender2D.drawRoundedRectGradient(x, y, w, h, radius, start, end, gradient.angleDeg());
             return;
         }
         int start = SettingsGuiPalette.withAlpha(fallbackStart, 220);
         int end = SettingsGuiPalette.withAlpha(fallbackEnd, 220);
-        ClickGuiRenderer.drawRoundedRectGradient(x, y, w, h, radius, start, end, 0f);
+        LayoutRender2D.drawRoundedRectGradient(x, y, w, h, radius, start, end, 0f);
     }
 
     private static List<Themes.ThemeEntry> filteredEntries() {
@@ -258,7 +260,7 @@ public final class ThemeComponent {
             );
         }
 
-        ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
+        LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedQuad(
                 x,
                 y,
@@ -311,9 +313,9 @@ public final class ThemeComponent {
         boolean custom = !entry.builtin();
         float titleSize = 9.2f * scale;
         float titleReserve = custom ? 40f * scale : 12f * scale;
-        String title = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterMedium(), entry.name(), titleSize, w - titleReserve);
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterMedium(),
+        String title = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), entry.name(), titleSize, w - titleReserve);
+        LayoutRender2D.drawText(
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 title,
                 x + 6f * scale,
                 y + 3.8f * scale,
@@ -322,7 +324,7 @@ public final class ThemeComponent {
                 false
         );
         if (custom) {
-            float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), title, titleSize);
+            float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), title, titleSize);
             float iconSize = 7f * scale;
             float iconX = Math.min(x + w - 28f * scale, x + 7f * scale + tw + 3f * scale);
             Renderer2D.COLOR.svg("paintbrush", iconX, y + 5.3f * scale, iconSize, iconSize, SvgRenderOptions.overrideColor(SettingsGuiPalette.withAlpha(t.accent(), 230)));
@@ -466,7 +468,7 @@ public final class ThemeComponent {
 
     private void drawAddCard(float x, float y, float w, float h, float scale, SettingsGuiPalette palette) {
         try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
-        ClickGuiRenderer.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
+        LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedQuad(
                 x,
                 y,
@@ -480,10 +482,10 @@ public final class ThemeComponent {
         );
 
         float plusSize = 11f * scale;
-        float plusW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), "+", plusSize);
-        float plusH = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), plusSize);
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterMedium(),
+        float plusW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), "+", plusSize);
+        float plusH = LayoutRender2D.textHeight(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), plusSize);
+        LayoutRender2D.drawText(
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 "+",
                 x + (w - plusW) * 0.5f,
                 y + 5.5f * scale,
@@ -493,11 +495,11 @@ public final class ThemeComponent {
         );
 
         float titleSize = 7.6f * scale;
-        String title = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), ADD_CARD_LABEL, titleSize, w - 12f * scale);
-        float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), title, titleSize);
+        String title = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), ADD_CARD_LABEL, titleSize, w - 12f * scale);
+        float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), title, titleSize);
         float ty = y + h - plusH - 10f * scale;
-        ClickGuiRenderer.drawText(
-                ClickGuiRenderer.getInterRegular(),
+        LayoutRender2D.drawText(
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 title,
                 x + (w - tw) * 0.5f,
                 ty,

@@ -294,7 +294,7 @@ public final class CustomBar extends AbstractHudElement {
             int locatorTop = applyBarAlpha(HudRenderUtil.mixColor(theme().windowBg(), theme().surface(), 0.34f), bm);
             int locatorBottom = applyBarAlpha(HudRenderUtil.mixColor(theme().windowBg(), theme().surface(), 0.52f), bm);
             int locatorStroke = applyBarAlpha(HudRenderUtil.mixColor(theme().windowStroke(), theme().accent(), 0.12f), bm);
-            r2d.roundedRectShadow(x, y, w, h, radius, Math.max(scale, 1.0f * scale), 3.5f * scale,
+            r2d.roundedRectShadow(x, y, w, h, radius, scale, 3.5f * scale,
                     HudRenderUtil.scaleAlpha(0xFF000000, 0.16f * overlay));
             r2d.roundedRectGradient(x, y, w, h, radius, BAR_SOFTNESS * scale,
                     locatorTop, locatorBottom, 90.0f);

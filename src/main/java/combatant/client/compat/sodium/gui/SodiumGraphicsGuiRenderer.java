@@ -6,11 +6,12 @@
  */
 package combatant.client.compat.sodium.gui;
 
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.config.subsystem.VisualConfig;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.theme.Theme;
@@ -480,13 +481,13 @@ public final class SodiumGraphicsGuiRenderer {
         String visible = hasQuery ? query : hint;
         TextRenderer font = hasQuery ? fontMedium() : fontRegular();
         float maxW = r.w - 122f;
-        String fit = ClickGuiRenderer.fitText(font, visible, textSize, maxW);
+        String fit = LayoutRender2D.fitText(font, visible, textSize, maxW);
         drawText(font, fit, textX, textY, textSize,
                 hasQuery ? withAlpha(s.textPrimary, 246) : withAlpha(s.textMuted, focused ? 146 : 174));
 
         if (focused && blinkCaret()) {
             float caretX = hasQuery
-                    ? Math.min(textX + ClickGuiRenderer.textWidth(fontMedium(), fit, textSize) + 3f, r.x + r.w - 76f)
+                    ? Math.min(textX + LayoutRender2D.textWidth(fontMedium(), fit, textSize) + 3f, r.x + r.w - 76f)
                     : textX;
             Renderer2D.COLOR.quad(caretX, r.y + 21f, 2f, 38f, withAlpha(s.accentBright, 252));
         }
@@ -760,7 +761,7 @@ public final class SodiumGraphicsGuiRenderer {
         float labelRight = controlRect.x - 18f;
         if (option instanceof IntegerOption integer) {
             String value = integer.formatValue(integer.getValidatedValue()).getString();
-            labelRight -= Math.min(170f, ClickGuiRenderer.textWidth(fontMedium(), value, 15f) + 26f);
+            labelRight -= Math.min(170f, LayoutRender2D.textWidth(fontMedium(), value, 15f) + 26f);
         }
         Component name = option.getName() != null ? option.getName() : Component.empty();
         drawStyledComponent(name, fontMedium(), r.x + 24f, r.y + 25f, 18f,
@@ -807,7 +808,7 @@ public final class SodiumGraphicsGuiRenderer {
         Renderer2D.COLOR.quad(box.x, box.y, box.w, 1f,
                 withAlpha(on ? s.accentBright : s.strokeBright, on ? 128 : 58));
         String label = on ? "ON" : "OFF";
-        float tw = ClickGuiRenderer.textWidth(fontBold(), label, 15f);
+        float tw = LayoutRender2D.textWidth(fontBold(), label, 15f);
         drawText(fontBold(), label, box.x + (box.w - tw) * 0.5f, box.y + 12f, 15f,
                 enabled ? (on ? withAlpha(s.textPrimary, 250) : withAlpha(s.textMuted, 214)) : withAlpha(s.textMuted, 112));
     }
@@ -821,7 +822,7 @@ public final class SodiumGraphicsGuiRenderer {
         ratio = clamp01(ratio);
 
         String valueText = option.formatValue(value).getString();
-        float valueW = Math.min(170f, ClickGuiRenderer.textWidth(fontMedium(), valueText, 15f));
+        float valueW = Math.min(170f, LayoutRender2D.textWidth(fontMedium(), valueText, 15f));
         float trackX = r.x + 4f;
         float trackW = r.w - 8f;
         float trackY = r.y + 35f;
@@ -839,7 +840,7 @@ public final class SodiumGraphicsGuiRenderer {
                 enabled ? s.accent : withAlpha(s.textMuted, 76),
                 enabled ? s.accent : withAlpha(s.textMuted, 70),
                 enabled ? s.accentBright : withAlpha(s.textMuted, 86));
-        drawText(fontMedium(), ClickGuiRenderer.fitText(fontMedium(), valueText, 15f, valueW),
+        drawText(fontMedium(), LayoutRender2D.fitText(fontMedium(), valueText, 15f, valueW),
                 r.x - valueW - 20f, r.y + 26f, 15f,
                 enabled ? withAlpha(s.textPrimary, 228) : withAlpha(s.textMuted, 112));
     }
@@ -895,7 +896,7 @@ public final class SodiumGraphicsGuiRenderer {
         Renderer2D.COLOR.quad(r.x, r.y + 11f, r.w, 50f,
                 withAlpha(left, 228), withAlpha(right, 220), withAlpha(right, 194), withAlpha(left, 198));
         String value = Component.translatable("sodium.options.open_external_page_button").getString();
-        drawText(fontMedium(), ClickGuiRenderer.fitText(fontMedium(), value, 15f, r.w - 52f),
+        drawText(fontMedium(), LayoutRender2D.fitText(fontMedium(), value, 15f, r.w - 52f),
                 r.x + 14f, r.y + 27f, 15f,
                 enabled ? withAlpha(s.textPrimary, 226) : withAlpha(s.textMuted, 108));
         Renderer2D.COLOR.svg("chevron-right", r.x + r.w - 30f, r.y + 27f, 14f, 14f,
@@ -910,7 +911,7 @@ public final class SodiumGraphicsGuiRenderer {
         Renderer2D.COLOR.quad(r.x, r.y + 11f, r.w, 50f,
                 withAlpha(left, 226), withAlpha(right, 220), withAlpha(right, 190), withAlpha(left, 194));
         String value = String.valueOf(option.getValidatedValue());
-        drawText(fontMedium(), ClickGuiRenderer.fitText(fontMedium(), value, 15f, r.w - 28f),
+        drawText(fontMedium(), LayoutRender2D.fitText(fontMedium(), value, 15f, r.w - 28f),
                 r.x + 14f, r.y + 27f, 15f,
                 enabled ? withAlpha(s.textPrimary, 220) : withAlpha(s.textMuted, 104));
     }
@@ -951,7 +952,7 @@ public final class SodiumGraphicsGuiRenderer {
 
         Component label = access.combatant$getLabel() != null ? access.combatant$getLabel() : Component.empty();
         String plain = LegacyTextUtil.stripLegacy(label.getString());
-        float tw = ClickGuiRenderer.textWidth(fontMedium(), plain, 16f);
+        float tw = LayoutRender2D.textWidth(fontMedium(), plain, 16f);
         float tx = access.combatant$isLeftAligned() ? r.x + 18f : r.x + (r.w - tw) * 0.5f;
         drawStyledComponent(label, fontMedium(), tx, r.y + 29f, 16f,
                 enabled ? withAlpha(s.textPrimary, 238) : withAlpha(s.textMuted, 106), r.w - 36f);
@@ -1231,7 +1232,7 @@ public final class SodiumGraphicsGuiRenderer {
                 y += 8f;
                 continue;
             }
-            List<String> lines = ClickGuiRenderer.wrapText(fontRegular(), text.getString(), 17f, maxW, 9);
+            List<String> lines = LayoutRender2D.wrapText(fontRegular(), text.getString(), 17f, maxW, 9);
             for (String line : lines) {
                 drawText(fontRegular(), line, modal.x + 34f, y, 17f, withAlpha(s.textPrimary, 232));
                 y += 29f;
@@ -1892,7 +1893,7 @@ public final class SodiumGraphicsGuiRenderer {
                 TextRenderer font = style != null && style.isBold() ? fontBold() : baseFont;
                 int color = styledColor(style, fallbackColor);
                 drawText(font, text, cursor[0], y, size, color);
-                float width = ClickGuiRenderer.textWidth(font, text, size);
+                float width = LayoutRender2D.textWidth(font, text, size);
                 if (style != null && style.isUnderlined()) {
                     Renderer2D.COLOR.quad(cursor[0], y + size + 1f, width, 1f, color);
                 }
@@ -1990,7 +1991,7 @@ public final class SodiumGraphicsGuiRenderer {
 
     private static float styledWidth(Style style, TextRenderer baseFont, String text, float size) {
         TextRenderer font = style != null && style.isBold() ? fontBold() : baseFont;
-        return ClickGuiRenderer.textWidth(font, text, size);
+        return LayoutRender2D.textWidth(font, text, size);
     }
 
     private static void drawStyledLine(StyledLine line, float x, float y, float size) {
@@ -1999,7 +2000,7 @@ public final class SodiumGraphicsGuiRenderer {
             TextRenderer font = run.style != null && run.style.isBold() ? fontBold() : fontRegular();
             int color = styledColor(run.style, run.fallbackColor);
             drawText(font, run.text, cursor, y, size, color);
-            float width = ClickGuiRenderer.textWidth(font, run.text, size);
+            float width = LayoutRender2D.textWidth(font, run.text, size);
             if (run.style != null && run.style.isUnderlined()) {
                 Renderer2D.COLOR.quad(cursor, y + size + 1f, width, 1f, color);
             }
@@ -2028,7 +2029,7 @@ public final class SodiumGraphicsGuiRenderer {
                 continue;
             }
             int remaining = maxLines - out.size();
-            out.addAll(ClickGuiRenderer.wrapText(font, paragraph, size, maxWidth, remaining));
+            out.addAll(LayoutRender2D.wrapText(font, paragraph, size, maxWidth, remaining));
         }
         if (out.size() > maxLines) return new ArrayList<>(out.subList(0, maxLines));
         return out;
@@ -2060,15 +2061,15 @@ public final class SodiumGraphicsGuiRenderer {
     }
 
     private static TextRenderer fontMedium() {
-        return ClickGuiRenderer.getOnestMedium();
+        return BuiltinFontCatalog.ONEST_MEDIUM.renderer();
     }
 
     private static TextRenderer fontBold() {
-        return ClickGuiRenderer.getOnestBold();
+        return BuiltinFontCatalog.ONEST_BOLD.renderer();
     }
 
     private static void drawText(TextRenderer renderer, String text, float x, float y, float size, int color) {
-        ClickGuiRenderer.drawText(renderer, text, x, y, size, color, false);
+        LayoutRender2D.drawText(renderer, text, x, y, size, color, false);
     }
 
     private static float clamp01(float value) {

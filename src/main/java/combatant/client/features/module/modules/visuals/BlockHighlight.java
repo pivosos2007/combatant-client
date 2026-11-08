@@ -33,6 +33,7 @@ import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
 import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.renderer.GlowSurfaces;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.util.block.BlockOutlineShapeResolver;
 
 
 @ModuleInfo(
@@ -217,7 +218,8 @@ public class BlockHighlight extends Module {
 
         Entity cameraEntity = mc.getCameraEntity();
         CollisionContext context = cameraEntity != null ? CollisionContext.of(cameraEntity) : CollisionContext.empty();
-        VoxelShape shape = state.getShape(mc.level, pos, context);
+        VoxelShape shape = BlockOutlineShapeResolver.resolve(
+                state, mc.level, pos, context, state.getShape(mc.level, pos, context));
         if (shape.isEmpty()) return;
 
         VoxelShape worldShape = shape.move(pos.getX(), pos.getY(), pos.getZ());

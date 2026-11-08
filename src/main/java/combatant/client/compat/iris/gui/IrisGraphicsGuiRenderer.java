@@ -6,8 +6,9 @@
  */
 package combatant.client.compat.iris.gui;
 
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.config.subsystem.VisualConfig;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.theme.Theme;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -58,7 +59,6 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
@@ -516,7 +516,7 @@ public final class IrisGraphicsGuiRenderer {
                             withAlpha(s.accentBright, Math.round(210f * reveal)));
                 }
 
-                String label = ClickGuiRenderer.fitText(fontMedium(), choice.label, 14f, row.w - 52f);
+                String label = LayoutRender2D.fitText(fontMedium(), choice.label, 14f, row.w - 52f);
                 drawText(fontMedium(), label, row.x + 18f, row.y + 13f, 14f,
                         withAlpha(choice.selected ? s.accentBright : s.text, Math.round(224f * reveal)));
                 if (choice.selected) {
@@ -690,13 +690,13 @@ public final class IrisGraphicsGuiRenderer {
 
         if (notificationDialog != null && notificationDialogTimer > 0 && !notificationDialog.getString().isBlank()) {
             String notice = LegacyTextUtil.stripLegacy(notificationDialog.getString());
-            float nw = Math.min(560f, ClickGuiRenderer.textWidth(fontMedium(), notice, 14f) + 34f);
+            float nw = Math.min(560f, LayoutRender2D.textWidth(fontMedium(), notice, 14f) + 34f);
             float nx = f.root.x + (f.root.w - nw) * 0.5f;
             Renderer2D.COLOR.quad(nx, f.root.y + 25f, nw, 38f,
                     withAlpha(s.control, 176), withAlpha(s.controlHover, 170),
                     withAlpha(s.controlHover, 154), withAlpha(s.control, 160));
             Renderer2D.COLOR.quad(nx, f.root.y + 61f, nw, 2f, withAlpha(s.accentBright, 178));
-            drawText(fontMedium(), ClickGuiRenderer.fitText(fontMedium(), notice, 14f, nw - 24f),
+            drawText(fontMedium(), LayoutRender2D.fitText(fontMedium(), notice, 14f, nw - 24f),
                     nx + 12f, f.root.y + 37f, 14f, withAlpha(s.text, 224));
         }
 
@@ -805,7 +805,7 @@ public final class IrisGraphicsGuiRenderer {
         if (grid) {
             float nameSize = 18f;
             float maxW = r.w - (textX - r.x) - 28f;
-            String fit = ClickGuiRenderer.fitText(fontMedium(), name, nameSize, maxW);
+            String fit = LayoutRender2D.fitText(fontMedium(), name, nameSize, maxW);
             drawText(fontMedium(), fit, textX, r.y + 23f, nameSize, withAlpha(s.text, 238));
             drawStatusText(patch, textX, r.y + 58f, s);
             if (slot.entry.isSelected()) {
@@ -832,15 +832,15 @@ public final class IrisGraphicsGuiRenderer {
         float stateCellX = contentRight - stateBudget;
         float leftBudget = Math.max(80f, (stateBudget > 0f ? stateCellX - metaGap : contentRight) - textX);
 
-        String fitName = ClickGuiRenderer.fitText(fontMedium(), name, 17f, leftBudget);
+        String fitName = LayoutRender2D.fitText(fontMedium(), name, 17f, leftBudget);
         drawText(fontMedium(), fitName, textX, r.y + 15f, 17f, withAlpha(s.text, 238));
 
-        String patchLabel = ClickGuiRenderer.fitText(fontRegular(), patch.shortLabel, 13f, leftBudget);
+        String patchLabel = LayoutRender2D.fitText(fontRegular(), patch.shortLabel, 13f, leftBudget);
         drawStatusText(new PatchSummary(patch.kind, patchLabel, patch.profile, patch.state), textX, r.y + 47f, s);
 
         if (!stateLabel.isEmpty()) {
-            String fitState = ClickGuiRenderer.fitText(fontMedium(), stateLabel, 14f, stateBudget - 24f);
-            float stateW = ClickGuiRenderer.textWidth(fontMedium(), fitState, 14f);
+            String fitState = LayoutRender2D.fitText(fontMedium(), stateLabel, 14f, stateBudget - 24f);
+            float stateW = LayoutRender2D.textWidth(fontMedium(), fitState, 14f);
             float stateX = stateCellX + stateBudget - stateW;
             Renderer2D.COLOR.quad(stateCellX - metaGap * 0.5f, r.y + 16f, 1f, r.h - 32f, withAlpha(s.stroke, 54));
             drawText(fontMedium(), fitState, stateX, r.y + 31f, 14f,
@@ -875,7 +875,7 @@ public final class IrisGraphicsGuiRenderer {
         }
 
         String name = LegacyTextUtil.stripLegacy(entry.getPackName());
-        drawText(fontBold(), ClickGuiRenderer.fitText(fontBold(), name, 22f, w), x, y, 22f, withAlpha(s.text, 248));
+        drawText(fontBold(), LayoutRender2D.fitText(fontBold(), name, 22f, w), x, y, 22f, withAlpha(s.text, 248));
         y += 38f;
         boolean pending = entry.isSelected() && !entry.isApplied();
         boolean shadersEnabled = packList.getTopButtonRow() != null && packList.getTopButtonRow().shadersEnabled;
@@ -935,7 +935,7 @@ public final class IrisGraphicsGuiRenderer {
         if (hooks.isEmpty()) hooks.add(tr("gui.combatant.iris.patch.hooks.none"));
         for (String hook : hooks) {
             Renderer2D.COLOR.quad(x, y + 7f, 5f, 5f, withAlpha(s.accentSoft, 178));
-            drawText(fontRegular(), ClickGuiRenderer.fitText(fontRegular(), hook, 16f, w - 18f),
+            drawText(fontRegular(), LayoutRender2D.fitText(fontRegular(), hook, 16f, w - 18f),
                     x + 16f, y, 16f, withAlpha(s.muted, 220));
             y += 31f;
             if (y > f.details.y + f.details.h - 52f) break;
@@ -985,7 +985,7 @@ public final class IrisGraphicsGuiRenderer {
         boolean hasBack = slot.actions.stream().anyMatch(action -> "chevron-left".equals(action.icon));
         float titleX = r.x + (hasBack ? 108f : 12f);
         float titleW = Math.max(80f, r.w - (titleX - r.x) - 142f);
-        drawText(fontBold(), ClickGuiRenderer.fitText(fontBold(), slot.title, 18f, titleW),
+        drawText(fontBold(), LayoutRender2D.fitText(fontBold(), slot.title, 18f, titleW),
                 titleX, r.y + 18f, 18f, withAlpha(s.text, 224));
         for (HeaderAction action : slot.actions) drawHeaderAction(action, f, s, interactive);
     }
@@ -1030,7 +1030,7 @@ public final class IrisGraphicsGuiRenderer {
         boolean discrete = (slot.widget instanceof StringElementWidget && !(slot.widget instanceof SliderElementWidget))
                 || slot.widget instanceof ProfileElementWidget;
         float labelBudget = discrete ? r.w * 0.50f : r.w * 0.55f;
-        drawText(fontMedium(), ClickGuiRenderer.fitText(fontMedium(), slot.label, 15f, labelBudget),
+        drawText(fontMedium(), LayoutRender2D.fitText(fontMedium(), slot.label, 15f, labelBudget),
                 r.x + 18f, r.y + 18f, 15f, withAlpha(s.text, 226));
 
         if (booleanControl) {
@@ -1051,7 +1051,7 @@ public final class IrisGraphicsGuiRenderer {
                 Renderer2D.COLOR.quad(control.x, control.y + control.h - 2f, control.w, 2f,
                         withAlpha(s.accentBright, Math.round(150f + ca * 72f)));
             }
-            String fit = ClickGuiRenderer.fitText(fontMedium(), slot.value, 14f, control.w - 48f);
+            String fit = LayoutRender2D.fitText(fontMedium(), slot.value, 14f, control.w - 48f);
             drawText(fontMedium(), fit, control.x + 14f, control.y + 15f, 14f,
                     withAlpha(slot.modified ? s.accentBright : s.text, Math.round(224f + m.change * 30f)));
             Renderer2D.COLOR.svg("chevron-down", control.x + control.w - 30f, control.y + 14f, 17f, 17f,
@@ -1060,8 +1060,8 @@ public final class IrisGraphicsGuiRenderer {
         }
 
         if (!slot.value.isBlank()) {
-            float valueW = ClickGuiRenderer.textWidth(fontMedium(), slot.value, 14f);
-            drawText(fontMedium(), ClickGuiRenderer.fitText(fontMedium(), slot.value, 14f, r.w * 0.34f),
+            float valueW = LayoutRender2D.textWidth(fontMedium(), slot.value, 14f);
+            drawText(fontMedium(), LayoutRender2D.fitText(fontMedium(), slot.value, 14f, r.w * 0.34f),
                     r.x + r.w - Math.min(valueW, r.w * 0.34f) - 18f, r.y + 18f, 14f,
                     withAlpha(slot.modified ? s.accentBright : s.muted, 210));
         }
@@ -1117,13 +1117,13 @@ public final class IrisGraphicsGuiRenderer {
         Component title = commented.getCommentTitle().orElse(Component.empty());
         Component body = commented.getCommentBody().orElse(Component.empty());
         if (!title.getString().isBlank()) {
-            drawText(fontMedium(), ClickGuiRenderer.fitText(fontMedium(), LegacyTextUtil.stripLegacy(title.getString()), 17f, w),
+            drawText(fontMedium(), LayoutRender2D.fitText(fontMedium(), LegacyTextUtil.stripLegacy(title.getString()), 17f, w),
                     x, y, 17f, withAlpha(s.accentBright, 232));
             y += 34f;
         }
         if (state.selectPopup != null && state.selectPopup.hoveredChoice != null) {
             String mode = state.selectPopup.hoveredChoice.label;
-            drawText(fontMedium(), ClickGuiRenderer.fitText(fontMedium(), mode, 14f, w),
+            drawText(fontMedium(), LayoutRender2D.fitText(fontMedium(), mode, 14f, w),
                     x, y, 14f, withAlpha(s.text, 206));
             y += 30f;
         }
@@ -1155,7 +1155,7 @@ public final class IrisGraphicsGuiRenderer {
         if (accent) Renderer2D.COLOR.quad(r.x, r.y + r.h - 3f, r.w, 3f, withAlpha(s.accentBright, 210));
         if (m.press > 0.01f) Renderer2D.COLOR.roundedRectStroke(r.x, r.y, r.w, r.h, 3f,
                 1f, withAlpha(s.accentBright, Math.round(145f * m.press)));
-        float tw = ClickGuiRenderer.textWidth(fontMedium(), label, 14f);
+        float tw = LayoutRender2D.textWidth(fontMedium(), label, 14f);
         drawText(fontMedium(), label, r.x + (r.w - tw) * 0.5f, r.y + 15f, 14f,
                 withAlpha(hover || accent ? s.text : s.muted, 224));
     }
@@ -1535,13 +1535,13 @@ public final class IrisGraphicsGuiRenderer {
 
     private static void infoPair(float x, float y, float w, String key, String value, Style s) {
         float gap = 18f;
-        float valueMeasured = ClickGuiRenderer.textWidth(fontMedium(), value, 16f);
+        float valueMeasured = LayoutRender2D.textWidth(fontMedium(), value, 16f);
         float valueBudget = Math.max(72f, Math.min(w * 0.46f, valueMeasured + 4f));
         float keyBudget = Math.max(72f, w - valueBudget - gap);
 
-        String fitKey = ClickGuiRenderer.fitText(fontRegular(), key, 16f, keyBudget);
-        String fitValue = ClickGuiRenderer.fitText(fontMedium(), value, 16f, valueBudget);
-        float valueWidth = ClickGuiRenderer.textWidth(fontMedium(), fitValue, 16f);
+        String fitKey = LayoutRender2D.fitText(fontRegular(), key, 16f, keyBudget);
+        String fitValue = LayoutRender2D.fitText(fontMedium(), value, 16f, valueBudget);
+        float valueWidth = LayoutRender2D.textWidth(fontMedium(), fitValue, 16f);
         float valueCellX = x + keyBudget + gap;
 
         drawText(fontRegular(), fitKey, x, y, 16f, withAlpha(s.muted, 213));
@@ -1549,7 +1549,7 @@ public final class IrisGraphicsGuiRenderer {
     }
 
     private static void drawWrapped(String text, float x, float y, float w, float size, int color, int maxLines) {
-        List<String> lines = ClickGuiRenderer.wrapText(fontRegular(), text == null ? "" : text, size, w, maxLines);
+        List<String> lines = LayoutRender2D.wrapText(fontRegular(), text == null ? "" : text, size, w, maxLines);
         for (String line : lines) {
             drawText(fontRegular(), line, x, y, size, withAlpha(color, 188));
             y += size + 9f;
@@ -1604,15 +1604,15 @@ public final class IrisGraphicsGuiRenderer {
     }
 
     private static TextRenderer fontMedium() {
-        return ClickGuiRenderer.getOnestMedium();
+        return BuiltinFontCatalog.ONEST_MEDIUM.renderer();
     }
 
     private static TextRenderer fontBold() {
-        return ClickGuiRenderer.getOnestBold();
+        return BuiltinFontCatalog.ONEST_BOLD.renderer();
     }
 
     private static void drawText(TextRenderer renderer, String text, float x, float y, float size, int color) {
-        ClickGuiRenderer.drawText(renderer, text == null ? "" : text, x, y, size, color, false);
+        LayoutRender2D.drawText(renderer, text == null ? "" : text, x, y, size, color, false);
     }
 
     private static int withAlpha(int color, int alpha) {

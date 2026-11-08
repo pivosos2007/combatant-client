@@ -17,7 +17,6 @@ import combatant.client.features.module.ModuleSubcategory;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ItemFrame;
@@ -37,14 +36,11 @@ import net.minecraft.world.phys.Vec3;
         id = "clickthrough",
         displayName = "ClickThrough",
         aliases = {"ContainerThrough", "SignThrough"},
-        category = ModuleCategory.PLAYER, subcategory = ModuleSubcategory.AUTOMATION,
+        category = ModuleCategory.PLAYER, subcategory = ModuleSubcategory.EXPLOIT,
         description = "module.clickthrough.description")
 public final class ClickThrough extends Module {
 
     /** A sign hung on a banner on a sign... never needs more than a few layers. */
-    private static final int MAX_LAYERS = 4;
-    private static final double STEP_PAST = 0.01;
-
     private final Minecraft mc = Minecraft.getInstance();
 
     private final BooleanValue signs = bool("clickThroughSigns", "signs", true);

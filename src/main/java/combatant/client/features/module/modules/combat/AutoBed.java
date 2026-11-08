@@ -686,9 +686,7 @@ public class AutoBed extends Module {
         if (isPendingBedBlock(pendingBedData.footPos())) return pendingBedData.footPos();
         if (isPendingBedBlock(pendingBedData.headPos())) return pendingBedData.headPos();
 
-        BlockPos adopted = findBedTouchingPendingPlacement();
-        if (adopted != null) return adopted;
-        return null;
+        return findBedTouchingPendingPlacement();
     }
 
     private BlockHitResult findPendingBedInteractResult(BlockPos preferred) {

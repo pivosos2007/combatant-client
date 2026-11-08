@@ -26,7 +26,6 @@ import combatant.client.render.engine.shader.CombatantShaderSources;
 import combatant.client.render.engine.shader.ShaderCostRegistry;
 import combatant.client.render.engine.uniform.ShaderUniformBindings;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
-import combatant.client.render.iris.IrisRuntime;
 import combatant.client.runtime.discovery.CombatantIndex;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.resources.asset.AssetLoad;

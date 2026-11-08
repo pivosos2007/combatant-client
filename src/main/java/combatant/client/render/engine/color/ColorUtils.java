@@ -15,28 +15,30 @@ public enum ColorUtils {
     ;
 
     public static Color rainbow(int speed, int index, float saturation, float brightness, float opacity) {
-        int angle = (int) ((System.currentTimeMillis() / speed + index) % 360);
+        int angle = (int) ((System.currentTimeMillis() / (speed == 0 ? 1 : speed) + index) % 360);
         float hue = angle / 360f;
         Color color = new Color(Color.HSBtoRGB(hue, saturation, brightness));
         return new Color(color.getRed(), color.getGreen(), color.getBlue(), clampAlpha(opacity));
     }
 
     public static Color skyRainbow(int speed, int index) {
-        int angle = (int) ((System.currentTimeMillis() / speed + index) % 360);
-        float hue = ((angle %= 360) / 360.0) < 0.5 ? -((float) (angle / 360.0)) : (float) (angle / 360.0);
+        int angle = (int) ((System.currentTimeMillis() / (speed == 0 ? 1 : speed) + index) % 360);
+        float hue = angle / 360.0f;
+        hue = hue < 0.5f ? -hue : hue;
         return Color.getHSBColor(hue, 0.5f, 1.0f);
     }
 
     public static Color fade(int speed, int index, Color color, float alpha) {
         float[] hsb = Color.RGBtoHSB(color.getRed(), color.getGreen(), color.getBlue(), null);
-        int angle = (int) ((System.currentTimeMillis() / speed + index) % 360);
+        int angle = (int) ((System.currentTimeMillis() / (speed == 0 ? 1 : speed) + index) % 360);
         angle = (angle > 180 ? 360 - angle : angle) + 180;
         Color colorHSB = new Color(Color.HSBtoRGB(hsb[0], hsb[1], angle / 360f));
         return new Color(colorHSB.getRed(), colorHSB.getGreen(), colorHSB.getBlue(), clampAlpha(alpha));
     }
 
     public static Color twoColorEffect(Color c1, Color c2, double speed, double count) {
-        int angle = (int) (((System.currentTimeMillis()) / speed + count) % 360);
+        double safeSpeed = Double.isFinite(speed) && speed != 0.0 ? speed : 1.0;
+        int angle = (int) ((System.currentTimeMillis() / safeSpeed + count) % 360);
         angle = (angle >= 180 ? 360 - angle : angle) * 2;
         return interpolateColorC(c1, c2, angle / 360f);
     }
@@ -49,7 +51,7 @@ public enum ColorUtils {
     }
 
     public static Color interpolateColorsBackAndForth(int speed, int index, Color start, Color end, boolean trueColor) {
-        int angle = (int) (((System.currentTimeMillis()) / speed + index) % 360);
+        int angle = (int) (((System.currentTimeMillis()) / (speed == 0 ? 1 : speed) + index) % 360);
         angle = (angle >= 180 ? 360 - angle : angle) * 2;
         return trueColor ? interpolateColorHue(start, end, angle / 360f) : interpolateColorC(start, end, angle / 360f);
     }

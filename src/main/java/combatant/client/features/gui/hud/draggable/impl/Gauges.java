@@ -23,8 +23,10 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.engine.text.TextSizing;
+import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.ChatScreen;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -80,7 +82,8 @@ public final class Gauges extends DraggableHudElement {
     @Override
     public void renderEngine(Renderer2D renderer, TextRenderer fallback,
                              GuiGraphicsExtractor ctx, float tickDelta, int screenW, int screenH) {
-        boolean preview = DraggableHudElementRegistry.isForceVisible();
+        boolean preview = DraggableHudElementRegistry.isForceVisible()
+                || ClientScreen.current() instanceof ChatScreen;
         if (mc == null || (mc.player == null && !preview)) {
             remembered.clear();
             progress.clear();
@@ -98,28 +101,27 @@ public final class Gauges extends DraggableHudElement {
                         GaugeRegistry.Readiness.THRESHOLD, .4f, true, GaugeRegistry.Flow.DRAIN, ""),
                 new GaugeRegistry.Gauge("preview:buffer", "Buffer", .35f,
                         GaugeRegistry.Readiness.FULL, 1f, false, GaugeRegistry.Flow.FILL, ""),
-                new GaugeRegistry.Gauge("preview:decay", "Decay", .58f,
-                        GaugeRegistry.Readiness.CONTINUOUS, 0f, true, GaugeRegistry.Flow.DRAIN, ""));
+                new GaugeRegistry.Gauge("preview:ready", "Shulker", 1f,
+                        GaugeRegistry.Readiness.FULL, 1f, true, GaugeRegistry.Flow.FILL, "Ready", GaugeRegistry.Kind.MESSAGE));
         Set<String> current = new HashSet<>();
         for (GaugeRegistry.Gauge value : values) {
             String id = value.id();
             current.add(id);
             remembered.put(id, value);
-            progress.put(id, approach(progress.getOrDefault(id, value.fill()), value.fill(), 10f));
-            presence.put(id, AnimationUtility.snap(
-                    approach(presence.getOrDefault(id, 0f), 1f, 12f), 1f, .02f));
+            progress.put(id, AnimationUtility.snap(
+                    approach(progress.getOrDefault(id, value.fill()), value.fill(), 24f), value.fill(), .005f));
+            presence.put(id, animatePresence(presence.getOrDefault(id, 0f), true));
         }
         for (String id : List.copyOf(remembered.keySet())) {
             if (current.contains(id)) continue;
-            float next = AnimationUtility.snap(
-                    approach(presence.getOrDefault(id, 1f), 0f, 12f), 0f, .02f);
+            float next = animatePresence(presence.getOrDefault(id, 1f), false);
             if (next <= 0f) {
                 presence.remove(id);
                 progress.remove(id);
                 remembered.remove(id);
             } else presence.put(id, next);
         }
-        visible = approach(visible, !remembered.isEmpty() || preview ? 1f : 0f, 10f);
+        visible = animateVisibility(visible, !remembered.isEmpty() || preview);
         if (remembered.isEmpty() && visible < .015f) {
             width = 0f;
             height = 0f;
@@ -145,12 +147,16 @@ public final class Gauges extends DraggableHudElement {
         int track = HudRenderUtil.setAlpha(muted, 66);
 
         float maxLabelWidth = 0f;
+        float maxMessageWidth = 0f;
         float rowFontHeight, headerFontHeight, titleWidth;
         rowFont.begin(fontScale, true, false);
         rowFontHeight = (float) rowFont.getHeight(false);
         for (GaugeRegistry.Gauge gauge : remembered.values()) {
             String label = caption(gauge);
             maxLabelWidth = Math.max(maxLabelWidth, (float) rowFont.getWidth(label, false));
+            if (gauge.kind() == GaugeRegistry.Kind.MESSAGE) {
+                maxMessageWidth = Math.max(maxMessageWidth, (float) rowFont.getWidth(gauge.detail(), false));
+            }
         }
         float countLabelW = (float) rowFont.getWidth("Active:", false);
         float countW = (float) rowFont.getWidth(Integer.toString(values.size()), false);
@@ -161,7 +167,8 @@ public final class Gauges extends DraggableHudElement {
         titleFont.end();
 
         float desiredWidth = Math.max(MIN_WIDTH * baseScale,
-                Math.max(maxLabelWidth + 84f * baseScale,
+                Math.max(Math.max(maxLabelWidth + 84f * baseScale,
+                                maxLabelWidth + maxMessageWidth + 30f * baseScale),
                         titleWidth + countLabelW + countW + 35f * baseScale));
         float heightUnits = 25f;
         List<LinkedHashMap<String, Object>> rows = new ArrayList<>();
@@ -170,12 +177,13 @@ public final class Gauges extends DraggableHudElement {
             String id = entry.getKey();
             float rowPresence = presence.getOrDefault(id, 0f);
             boolean exiting = !current.contains(id);
-            float layoutProgress = exiting ? (float) Math.sqrt(rowPresence) : rowPresence;
+            float layoutProgress = rowPresence;
             heightUnits += ScriptedListHudPanel.ROW_STEP * layoutProgress;
             float level = progress.getOrDefault(id, gauge.fill());
             int gaugeColor = gauge.ready() ? accent : (gauge.flow() == GaugeRegistry.Flow.DRAIN
                     ? softAccent : muted);
-            String percent = Math.round(level * 100f) + "%";
+            boolean isMessage = gauge.kind() == GaugeRegistry.Kind.MESSAGE;
+            String percent = isMessage ? gauge.detail() : Math.round(level * 100f) + "%";
             var row = ScriptedListHudPanel.row(id, "", "",
                     List.of(ScriptedListHudPanel.textPart(caption(gauge), text, 0f)),
                     percent, gauge.ready() ? text : muted,
@@ -183,7 +191,7 @@ public final class Gauges extends DraggableHudElement {
             float alphaFactor = exiting ? exitAlpha(rowPresence) : rowPresence;
             row.put("alpha", alphaFactor);
             ScriptedListHudPanel.rowLayoutProgress(row, layoutProgress);
-            row.put("rightMode", "gauge");
+            row.put("rightMode", isMessage ? "text" : "gauge");
             row.put("meterFill", level);
             row.put("meterThreshold", gauge.target());
             row.put("meterColor", ScriptedListHudPanel.hex(gaugeColor));
@@ -196,8 +204,8 @@ public final class Gauges extends DraggableHudElement {
         animatedHeight = HudRenderUtil.animateDimension(animatedHeight, desiredHeight);
         width = animatedWidth;
         height = animatedHeight;
-        if (visible <= .001f) return;
-        float scaleIn = Math.max(.01f, visible);
+        if (visible <= 0f) return;
+        float scaleIn = Math.max(.01f, HudRenderUtil.visibilityScale(visible));
         float drawX = x + (width * (1f - scaleIn)) * .5f;
         float drawY = y + (height * (1f - scaleIn)) * .5f;
         float drawWidth = width * scaleIn;
@@ -223,13 +231,27 @@ public final class Gauges extends DraggableHudElement {
     }
 
     private String caption(GaugeRegistry.Gauge gauge) {
-        return detail.get() && !gauge.detail().isBlank()
+        return gauge.kind() != GaugeRegistry.Kind.MESSAGE && detail.get() && !gauge.detail().isBlank()
                 ? gauge.label() + " · " + gauge.detail() : gauge.label();
     }
 
     private static float exitAlpha(float anim) {
         float t = Math.max(0f, Math.min(1f, (anim - .18f) / .64f));
         return t * t * (3f - 2f * t);
+    }
+
+    private static float animatePresence(float current, boolean appearing) {
+        return animateTo(current, appearing, appearing ? .14f : .16f);
+    }
+
+    private static float animateVisibility(float current, boolean showing) {
+        return animateTo(current, showing, showing ? .12f : .14f);
+    }
+
+    private static float animateTo(float current, boolean showing, float duration) {
+        float step = AnimationUtility.clamp01(AnimationUtility.deltaTime() / duration);
+        float next = showing ? Math.min(1f, current + step) : Math.max(0f, current - step);
+        return AnimationUtility.snap(next, showing ? 1f : 0f, .001f);
     }
 
     private static float approach(float current, float target, float speed) {

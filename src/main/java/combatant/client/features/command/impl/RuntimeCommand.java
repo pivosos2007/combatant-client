@@ -16,6 +16,7 @@ import combatant.client.runtime.ClientRuntimeState;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 
 @CommandInfo(
         id = "runtime",
@@ -64,9 +65,9 @@ public final class RuntimeCommand implements ClientCommand {
     @Override
     public List<String> suggest(CommandContext ctx, int argIndex, String token) {
         if (argIndex != 1) return List.of();
-        String lower = token == null ? "" : token.toLowerCase();
+        String lower = token == null ? "" : token.toLowerCase(Locale.ROOT);
         return List.of("status", "panic", "resume", "jar", "source").stream()
-                .filter(value -> lower.isEmpty() || value.startsWith(lower))
+                .filter(value -> value.startsWith(lower))
                 .toList();
     }
 

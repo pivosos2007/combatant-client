@@ -6,9 +6,12 @@
  */
 package combatant.client.features.gui.schematic;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.automation.compat.litematica.LitematicaCompat;
 import combatant.client.automation.compat.litematica.LitematicaWorkspace;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.settings.ColorPresetRepository;
 import combatant.client.util.filedialog.NativeFileDialogService;
 import net.minecraft.client.Minecraft;
@@ -184,17 +187,17 @@ public final class LitematicaSettingsPanel {
                         ? presetHex : List.of(),
                 "captureId", captureId, "capturePreview", captureLabel(),
                 "errorPulse", errorOption.isEmpty() ? 0f :
-                        .45f + .55f * (float)Math.sin((now / 100_000_000L) * (100_000_000d / 220_000_000d)));
+                        .45f + .55f * (float)Math.sin(now / 220_000_000d));
     }
     private float measure(String value, int cursor) {
         if (value == null || value.isEmpty() || cursor <= 0) return 0f;
         long generation = Fonts.generation();
         if (textRenderer == null || textRendererGeneration != generation) {
             textRenderer = Fonts.renderer("SourceSans3", FontInfo.Type.Regular,
-                    ClickGuiRenderer.getOnestMedium());
+                    BuiltinFontCatalog.ONEST_MEDIUM.renderer());
             textRendererGeneration = generation;
         }
-        return ClickGuiRenderer.textWidth(textRenderer,
+        return LayoutRender2D.textWidth(textRenderer,
                 value.substring(0, Math.min(cursor, value.length())), 17f);
     }
     public void registerActions(UiRuntime runtime) {

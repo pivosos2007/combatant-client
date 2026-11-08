@@ -7,7 +7,10 @@
 
 package combatant.client.features.gui.clickgui.sections;
 
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -152,7 +155,7 @@ final class XaeroMapWaypointEditor {
                         renderer,
                         panel,
                         panelTint,
-                        1.0f * eased,
+                        eased,
                         1.0f * eased,
                         Renderer2D.LiquidGlassPreset.HUD_SURFACE_LARGE));
 
@@ -281,7 +284,7 @@ final class XaeroMapWaypointEditor {
         renderer.svg("map-pin", contentLeft, y + 15.5f, 17.0f, 17.0f,
                 SvgRenderOptions.overrideColor(
                         SettingsGuiPalette.withAlpha(color, Math.round(240.0f * reveal))));
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestBold(), title,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_BOLD.renderer(), title,
                 contentLeft + 23.5f, y + 16.0f, 16.0f, text, false);
     }
 
@@ -292,9 +295,9 @@ final class XaeroMapWaypointEditor {
         int muted = SettingsGuiPalette.withAlpha(palette.panelMuted(), Math.round(220.0f * reveal));
         int text = SettingsGuiPalette.withAlpha(palette.panelText(), Math.round(255.0f * reveal));
 
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.waypoint.name", "Name"),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.waypoint.name", "Name"),
                 nameX, y + 45.0f, 11.0f, muted, false);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.waypoint.symbol", "Symbol"),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.waypoint.symbol", "Symbol"),
                 symbolX, y + 45.0f, 11.0f, muted, false);
 
         drawField(renderer, nameX, nameY, nameW, FIELD_HEIGHT,
@@ -304,9 +307,9 @@ final class XaeroMapWaypointEditor {
                 focusedField == 2, inside(mouseX, mouseY, symbolX, symbolY, symbolW, FIELD_HEIGHT),
                 palette, reveal);
 
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), name,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), name,
                 nameX + 6.0f, nameY + 7.0f, 14.0f, text, false);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), symbol,
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), symbol,
                 symbolX + 6.0f, symbolY + 7.0f, 14.0f, text, false);
 
         if (focusedField == 1) {
@@ -334,17 +337,17 @@ final class XaeroMapWaypointEditor {
     private void drawCaret(Renderer2D renderer, String value,
                            float tx, float ty, float fontSize,
                            SettingsGuiPalette palette, float reveal) {
-        float caretX = tx + ClickGuiRenderer.textWidth(
-                ClickGuiRenderer.getOnestMedium(), value, fontSize) + 1.2f;
+        float caretX = tx + LayoutRender2D.textWidth(
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(), value, fontSize) + 1.2f;
         float pulse = 0.40f + 0.60f * (float) Math.abs(Math.sin(System.nanoTime() * 0.0000000045));
         int caret = SettingsGuiPalette.withAlpha(
                 palette.panelText(), Math.round(225.0f * reveal * pulse));
-        GuiTextCaret.draw(caretX, ty, ClickGuiRenderer.getOnestMedium(), fontSize, caret);
+        GuiTextCaret.draw(caretX, ty, BuiltinFontCatalog.ONEST_MEDIUM.renderer(), fontSize, caret);
     }
 
     private void drawColors(Renderer2D renderer, SettingsGuiPalette palette, float reveal) {
         int muted = SettingsGuiPalette.withAlpha(palette.panelMuted(), Math.round(215.0f * reveal));
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.waypoint.color", "Color"),
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.waypoint.color", "Color"),
                 contentLeft, y + 108.0f, 11.0f, muted, false);
 
         for (int i = 0; i < 16; i++) {
@@ -374,9 +377,9 @@ final class XaeroMapWaypointEditor {
         int cancelColor = SettingsGuiPalette.mix(
                 palette.panelMuted(), palette.panelText(), cancelState * 0.86f);
         cancelColor = SettingsGuiPalette.withAlpha(cancelColor, Math.round(245.0f * reveal));
-        float cancelTextW = ClickGuiRenderer.textWidth(
-                ClickGuiRenderer.getOnestMedium(), "Cancel", 13.5f);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), tr("gui.combatant.map.common.cancel", "Cancel"),
+        float cancelTextW = LayoutRender2D.textWidth(
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(), "Cancel", 13.5f);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), tr("gui.combatant.map.common.cancel", "Cancel"),
                 cancelX + (cancelW - cancelTextW) * 0.5f,
                 cancelY + 8.0f,
                 13.5f, cancelColor, false);
@@ -405,9 +408,9 @@ final class XaeroMapWaypointEditor {
                 ? tr("gui.combatant.map.common.create", "Create")
                 : tr("gui.combatant.map.common.save", "Save");
         int primaryText = SettingsGuiPalette.withAlpha(palette.panelText(), Math.round(255.0f * reveal));
-        float saveTextW = ClickGuiRenderer.textWidth(
-                ClickGuiRenderer.getOnestMedium(), primary, 13.5f);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getOnestMedium(), primary,
+        float saveTextW = LayoutRender2D.textWidth(
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(), primary, 13.5f);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), primary,
                 bx + (w - saveTextW) * 0.5f - 1.0f,
                 by + (h - 13.5f) * 0.5f - 0.5f,
                 13.5f, primaryText, false);

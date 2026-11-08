@@ -77,7 +77,7 @@ public enum HudElementAutoLoader {
         try {
             Class<?> type = Class.forName(className, false, HudElementAutoLoader.class.getClassLoader());
             if (Modifier.isAbstract(type.getModifiers())) return;
-            int order = 0;
+            int order;
             HudElementInfo elementInfo = type.getAnnotation(HudElementInfo.class);
             if (elementInfo != null) {
                 order = elementInfo.order();

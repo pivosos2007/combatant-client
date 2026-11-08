@@ -6,7 +6,8 @@
  */
 package combatant.client.util.text;
 
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.input.InputKey;
 import combatant.client.input.InputKeys;
 import combatant.client.input.InputModifierMask;
@@ -231,7 +232,7 @@ public final class SingleLineTextInput implements CombatantTextInputTarget {
 
     private boolean masked;
     private String displayed() { return masked ? "*".repeat(value.length()) : value; }
-    private float width(String s) { return ClickGuiRenderer.textWidth(font, s, fontSize); }
+    private float width(String s) { return LayoutRender2D.textWidth(font, s, fontSize); }
     private float pos(int index) { return width(displayed().substring(0, Math.max(0, Math.min(index, value.length())))); }
 
     private int hit(float mouseX) {
@@ -273,15 +274,15 @@ public final class SingleLineTextInput implements CombatantTextInputTarget {
         if (focused && hasSelection()) {
             float left = drawX + pos(selectionStart());
             float right = drawX + pos(selectionEnd());
-            ClickGuiRenderer.drawRect(left, y - h * 0.12f, Math.max(0f, right - left), h * 0.95f, selectionColor);
+            LayoutRender2D.drawRect(left, y - h * 0.12f, Math.max(0f, right - left), h * 0.95f, selectionColor);
         }
-        ClickGuiRenderer.drawText(textFont, displayed(), drawX, y, size, color, false);
+        LayoutRender2D.drawText(textFont, displayed(), drawX, y, size, color, false);
         float caretX = drawX + pos(cursor);
         if (focused && !composition.isEmpty()) {
             String visibleComposition = mask ? "*".repeat(composition.length()) : composition;
-            ClickGuiRenderer.drawText(textFont, visibleComposition, caretX, y, size, color, false);
+            LayoutRender2D.drawText(textFont, visibleComposition, caretX, y, size, color, false);
             float compositionWidth = width(visibleComposition);
-            ClickGuiRenderer.drawRect(caretX, y + h * 0.88f, Math.max(1f, compositionWidth), 1f, color);
+            LayoutRender2D.drawRect(caretX, y + h * 0.88f, Math.max(1f, compositionWidth), 1f, color);
             String beforeCaret = visibleComposition.substring(0, Math.min(compositionCaret, visibleComposition.length()));
             GuiTextCaret.draw(caretX + width(beforeCaret), y, textFont, size, color);
         } else if (focused && (System.currentTimeMillis() / 500L) % 2 == 0) {

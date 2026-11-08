@@ -7,8 +7,9 @@
 
 package combatant.client.features.gui.clickgui.util;
 
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.render.engine.text.BuiltinFontCatalog;
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.text.Fonts;
 import combatant.client.features.theme.Theme;
@@ -34,7 +35,7 @@ public enum ClickGuiHintOverlay {
         float lineGap = 2.25f * ui;
         float padX = 12.0f * ui;
         float padY = 12.0f * ui;
-        float lineH = ClickGuiRenderer.textHeight(font, size);
+        float lineH = LayoutRender2D.textHeight(font, size);
 
         int visible = 0;
         for (String line : lines) {
@@ -54,9 +55,9 @@ public enum ClickGuiHintOverlay {
             if (line == null || line.isBlank()) continue;
 
             float lineY = y + index * (lineH + lineGap);
-            String fitted = ClickGuiRenderer.fitText(font, line, size, maxW);
-            ClickGuiRenderer.drawText(font, fitted, x + 0.7f * ui, lineY + 0.8f * ui, size, shadow, false);
-            ClickGuiRenderer.drawText(font, fitted, x, lineY, size, text, false);
+            String fitted = LayoutRender2D.fitText(font, line, size, maxW);
+            LayoutRender2D.drawText(font, fitted, x + 0.7f * ui, lineY + 0.8f * ui, size, shadow, false);
+            LayoutRender2D.drawText(font, fitted, x, lineY, size, text, false);
             index++;
         }
     }
@@ -68,7 +69,7 @@ public enum ClickGuiHintOverlay {
             fontGeneration = generation;
         }
         if (comfortaa == null) {
-            comfortaa = BuiltinFontCatalog.ONEST_REGULAR.renderer(ClickGuiRenderer.getInterRegular());
+            comfortaa = BuiltinFontCatalog.ONEST_REGULAR.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
         }
         return comfortaa;
     }

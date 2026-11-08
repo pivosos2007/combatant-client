@@ -139,8 +139,6 @@ public final class Inventory extends DraggableHudElement {
     private final NumberValue<Integer> headerIconPulseIntensity =
             new NumberValue<>("inventory_header_icon_pulse_intensity", 100, 0, 100);
 
-    private final List<QueuedItemIcon> pendingItemTasks = new ArrayList<>(COLS * ROWS);
-
     private float displayWidth = -1.0f;
     private float displayHeight = -1.0f;
     private float visibilityAnim = 0.0f;
@@ -156,7 +154,6 @@ public final class Inventory extends DraggableHudElement {
     private int uiDivider;
     private int uiGridDivider;
     private int uiBlurTint;
-    private boolean layoutReady;
     private boolean hitboxActive;
     private boolean displayVisible = true;
     private boolean toggleArmed = true;
@@ -248,9 +245,7 @@ public final class Inventory extends DraggableHudElement {
                              float tickDelta,
                              int screenW,
                              int screenH) {
-        layoutReady = false;
         hitboxActive = false;
-        pendingItemTasks.clear();
 
         boolean forceVisible = DraggableHudElementRegistry.isForceVisible();
         if (mc == null || (mc.player == null && !forceVisible)) {
@@ -424,25 +419,6 @@ public final class Inventory extends DraggableHudElement {
     }
 
     @Override
-    public void renderEngineForeground(Renderer2D renderer,
-                                       TextRenderer textRenderer,
-                                       GuiGraphicsExtractor ctx,
-                                       float tickDelta,
-                                       int screenW,
-                                       int screenH) {
-        if (!layoutReady || ctx == null || pendingItemTasks.isEmpty()) {
-            pendingItemTasks.clear();
-            return;
-        }
-        for (QueuedItemIcon task : pendingItemTasks) {
-            // Inventory is rendered in UNSCALED_LOGICAL space, so item() must receive
-            // logical coordinates directly. itemUnscaled() would shift icons out of slots.
-            renderer.item(task.stack(), task.x(), task.y(), task.scale(), task.seed(), Renderer2D.ITEM_OVERLAY_ALL, null);
-        }
-        pendingItemTasks.clear();
-    }
-
-    @Override
     public boolean contains(float mx, float my) {
         if (!hitboxActive && !DraggableHudElementRegistry.isForceVisible()) {
             return false;
@@ -570,6 +546,4 @@ public final class Inventory extends DraggableHudElement {
         }
     }
 
-    private record QueuedItemIcon(ItemStack stack, float x, float y, float scale, int seed) {
-    }
 }

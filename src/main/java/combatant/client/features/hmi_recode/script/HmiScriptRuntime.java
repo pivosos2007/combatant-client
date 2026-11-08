@@ -30,7 +30,6 @@ import java.io.BufferedReader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -477,7 +476,6 @@ public final class HmiScriptRuntime implements AutoCloseable {
     public static final int HAND_POSE_STATE_ONLY = 1 << 4;
     private static final HmiScriptKind[] KINDS = HmiScriptKind.values();
 
-    private final EnumMap<HmiScriptKind, String> loadedSources = new EnumMap<>(HmiScriptKind.class);
     private V8Runtime runtime;
     private boolean dirty = true;
     private V8ValueArrayBuffer packedOutputBuffer;
@@ -604,10 +602,8 @@ public final class HmiScriptRuntime implements AutoCloseable {
         runtime.setBatterySaverModeEnabled(false);
         runtime.getExecutor(BOOTSTRAP).setResourceName("combatant:hmi/bootstrap.js").executeVoid();
         ResourceManager manager = Minecraft.getInstance().getResourceManager();
-        loadedSources.clear();
         for (HmiScriptKind kind : KINDS) {
             String source = loadStack(manager, kind);
-            loadedSources.put(kind, source);
             String function = "__hmi_" + kind.name().toLowerCase();
             String wrapped = "globalThis." + function + " = function() {\n" +
                     "const " + kind.argumentName() + " = globalThis.__hmi_context;\n" +

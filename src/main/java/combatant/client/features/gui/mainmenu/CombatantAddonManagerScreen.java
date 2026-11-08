@@ -20,7 +20,6 @@ import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
-import combatant.client.render.engine.postprocess.MenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiPaint;
 import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
@@ -145,7 +144,6 @@ public final class CombatantAddonManagerScreen extends Screen {
         updateUiMetrics();
         ensureSelection();
         clampScroll();
-        renderBackgroundTexture();
         float fx = toFixedX(mouseX);
         float fy = toFixedY(mouseY);
         updateAnimations(fx, fy);
@@ -950,11 +948,6 @@ public final class CombatantAddonManagerScreen extends Screen {
                 withAlpha(themeStrokeSoft, Math.round(alpha * 132f)),
                 iconTop, iconBottom, iconShadow
         );
-    }
-
-    private void renderBackgroundTexture() {
-        Minecraft mc = this.minecraft;
-        if (mc != null) MenuBackgroundRenderer.renderConfigured(mc);
     }
 
     private void updateUiMetrics() {

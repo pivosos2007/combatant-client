@@ -12,7 +12,6 @@ import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.modules.player.Printer;
 import combatant.client.automation.compat.litematica.LitematicaCompat;
 import combatant.client.automation.compat.litematica.LitematicaWorkspace;
-import combatant.client.util.schematic.SchematicFormats;
 import combatant.client.util.schematic.Schematic;
 import combatant.client.util.schematic.SchematicLibrary;
 import combatant.client.util.schematic.SchematicState;
@@ -28,7 +27,6 @@ import net.minecraft.util.Util;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.CompletionException;
 import java.util.ArrayList;
 import java.util.List;
 

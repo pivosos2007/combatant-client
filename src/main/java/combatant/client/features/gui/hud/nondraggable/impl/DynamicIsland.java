@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.hud.nondraggable.impl;
 
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.util.text.FastFormat;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.util.resources.asset.UiScriptAsset;
@@ -627,7 +629,6 @@ public final class DynamicIsland extends AbstractHudElement {
         clickGuiShellVisible = clickGuiBridge && visibilityAnim > 0.01f;
 
         if (!shouldShow && visibilityAnim <= 0.01f) {
-            clickGuiShellVisible = false;
             setBounds(0f, 0f, 0f, 0f);
             resetControls();
             return;
@@ -1339,7 +1340,7 @@ public final class DynamicIsland extends AbstractHudElement {
         }
         if (currentMode == IslandMode.CLICKGUI) {
             ClickGuiRenderer.ClickGuiIslandState state = ClickGuiRenderer.islandState();
-            TextRenderer tabFont = ClickGuiRenderer.getOnestBold();
+            TextRenderer tabFont = BuiltinFontCatalog.ONEST_BOLD.renderer();
             float activePad = 4.0f;
             float activeX = drawX + (state.activeX() - state.tabBarX()) + activePad;
             float activeW = Math.max(1.0f, state.activeW() - activePad * 2.0f);
@@ -1354,7 +1355,7 @@ public final class DynamicIsland extends AbstractHudElement {
                 float tabX = drawX + tab.relativeX();
                 float tabW = tab.width();
                 float textSize = 12.0f;
-                float textWidth = ClickGuiRenderer.textWidth(tabFont, tab.label(), textSize);
+                float textWidth = LayoutRender2D.textWidth(tabFont, tab.label(), textSize);
                 if (index > 0) {
                     float sepH = Math.max(1.0f, drawHeight - 13.6f);
                     renderer.quad(tabX, drawY + (drawHeight - sepH) * 0.5f, 0.75f, sepH,
@@ -1362,7 +1363,7 @@ public final class DynamicIsland extends AbstractHudElement {
                 }
                 float textAlpha = tab.active() ? 1.0f : (tab.hovered() ? 0.88f : 0.62f);
                 int color = tab.active() || tab.hovered() ? uiTextPrimary : uiTextSecondary;
-                ClickGuiRenderer.drawText(tabFont, tab.label(),
+                LayoutRender2D.drawText(tabFont, tab.label(),
                         tabX + (tabW - textWidth) * 0.5f,
                         drawY + (drawHeight - textSize) * 0.5f,
                         textSize, HudRenderUtil.scaleAlpha(color, alpha * textAlpha), false);

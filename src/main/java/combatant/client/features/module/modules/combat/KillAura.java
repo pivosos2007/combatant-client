@@ -48,7 +48,6 @@ import combatant.client.util.aiming.preference.RotationPreference;
 import combatant.client.util.aiming.raytrace.RotationRaytrace;
 import combatant.client.util.click.AttackPressing;
 import combatant.client.util.click.ClickScheduler;
-import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.combat.protocol.ProtocolUtil;
 import combatant.client.util.raycast.RaycastUtil;
 import combatant.client.util.target.TargetManager;

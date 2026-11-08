@@ -12,7 +12,6 @@ import combatant.client.util.schematic.StateComparison;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.AmethystClusterBlock;
-import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.EndRodBlock;
 import net.minecraft.world.level.block.HopperBlock;
 import net.minecraft.world.level.block.LightningRodBlock;

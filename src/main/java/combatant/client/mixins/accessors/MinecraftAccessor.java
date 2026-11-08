@@ -8,7 +8,6 @@
 package combatant.client.mixins.accessors;
 
 import com.mojang.authlib.minecraft.UserApiService;
-import com.mojang.authlib.services.FriendsService;
 import com.mojang.authlib.services.ProfileResult;
 import com.mojang.authlib.services.MinecraftServicesDiscoveryService;
 import net.minecraft.client.Minecraft;
@@ -29,6 +28,9 @@ import java.util.concurrent.CompletableFuture;
 
 @Mixin(Minecraft.class)
 public interface MinecraftAccessor {
+
+    @Invoker("startUseItem")
+    void combatant$startUseItem();
 
     @Accessor("rightClickDelay")
     int combatant$getItemUseCooldown();

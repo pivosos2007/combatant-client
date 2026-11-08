@@ -6,7 +6,8 @@
  */
 package combatant.client.util.text;
 
-import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
+
 import combatant.client.render.engine.text.TextRenderer;
 
 /**
@@ -29,14 +30,14 @@ public final class GuiTextCaret {
         return Math.max(0.5f, Math.min(glyphHeight * 0.76f, fontSize * 0.78f));
     }
 
-    /** textY matches the top-left text origin passed to ClickGuiRenderer.drawText(). */
+    /** textY matches the top-left text origin passed to LayoutRender2D.drawText(). */
     public static void draw(float x, float textY, TextRenderer font, float fontSize, int color) {
         if (font == null) return;
-        float glyphHeight = ClickGuiRenderer.textHeight(font, fontSize);
+        float glyphHeight = LayoutRender2D.textHeight(font, fontSize);
         if (glyphHeight <= 0f) return;
         float caretHeight = height(fontSize, glyphHeight);
         float top = textY + (glyphHeight - caretHeight) * 0.5f;
-        ClickGuiRenderer.drawRect(x, top, width(fontSize), caretHeight, color);
+        LayoutRender2D.drawRect(x, top, width(fontSize), caretHeight, color);
     }
 
 }

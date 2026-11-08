@@ -19,12 +19,11 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.config.ConfigPaths;
+import combatant.client.config.persist.AtomicFileStore;
 import combatant.client.features.gui.hud.draggable.impl.BetterChat;
 import combatant.client.util.logging.DebugLog;
 
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -38,8 +37,11 @@ public final class BetterChatHoverCache {
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
-    private static volatile HolderLookup.Provider cachedLookup;
-    private static volatile RegistryOps<com.google.gson.JsonElement> cachedOps;
+    private static volatile CachedOps cachedOps;
+
+    private record CachedOps(HolderLookup.Provider lookup, RegistryOps<com.google.gson.JsonElement> ops) {
+    }
+    private final Object saveLock = new Object();
     private final Map<String, ItemEntry> itemCache = new HashMap<>();
     private final Map<String, EntityEntry> entityCache = new HashMap<>();
     private final Map<String, ItemStack> decodedItemCache = new HashMap<>();
@@ -56,9 +58,10 @@ public final class BetterChatHoverCache {
     public static BetterChatHoverCache load(String key) {
         File f = fileFor(key);
         BetterChatHoverCache cache = new BetterChatHoverCache();
-        if (!f.exists()) return cache;
-        try (FileReader r = new FileReader(f, StandardCharsets.UTF_8)) {
-            JsonObject obj = GSON.fromJson(r, JsonObject.class);
+        AtomicFileStore.ReadResult result = AtomicFileStore.readRecovering(f.toPath(), BetterChatHoverCache::validCache);
+        if (!result.found()) return cache;
+        try {
+            JsonObject obj = GSON.fromJson(new String(result.bytes(), StandardCharsets.UTF_8), JsonObject.class);
             cache.loadedFromDisk = true;
             if (obj != null && obj.has("items")) {
                 JsonArray arr = obj.getAsJsonArray("items");
@@ -108,6 +111,18 @@ public final class BetterChatHoverCache {
         return cache;
     }
 
+    private static boolean validCache(byte[] bytes) {
+        try {
+            JsonElement parsed = JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8));
+            if (!parsed.isJsonObject()) return false;
+            JsonObject obj = parsed.getAsJsonObject();
+            return (!obj.has("items") || obj.get("items").isJsonArray())
+                    && (!obj.has("entities") || obj.get("entities").isJsonArray());
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private static File fileFor(String key) {
         Minecraft mc = Minecraft.getInstance();
         File dir = mc.gameDirectory.toPath()
@@ -132,16 +147,17 @@ public final class BetterChatHoverCache {
         if (lookup == null) {
             return null;
         }
-        RegistryOps<com.google.gson.JsonElement> cached = cachedOps;
-        if (cached != null && cachedLookup == lookup) {
-            return cached;
+        CachedOps cached = cachedOps;
+        if (cached != null && cached.lookup() == lookup) {
+            return cached.ops();
         }
         synchronized (BetterChatHoverCache.class) {
-            if (cachedOps == null || cachedLookup != lookup) {
-                cachedLookup = lookup;
-                cachedOps = RegistryOps.create(JsonOps.INSTANCE, lookup);
+            cached = cachedOps;
+            if (cached == null || cached.lookup() != lookup) {
+                cached = new CachedOps(lookup, RegistryOps.create(JsonOps.INSTANCE, lookup));
+                cachedOps = cached;
             }
-            return cachedOps;
+            return cached.ops();
         }
     }
 
@@ -150,38 +166,44 @@ public final class BetterChatHoverCache {
     }
 
     public void save(String key) {
-        try {
-            File f = fileFor(key);
-            f.getParentFile().mkdirs();
-            JsonObject root = new JsonObject();
-            JsonArray items = new JsonArray();
-            for (var e : itemCache.entrySet()) {
-                JsonObject o = new JsonObject();
-                o.addProperty("k", e.getKey());
-                o.addProperty("id", e.getValue().getId());
-                o.addProperty("comp", e.getValue().componentsJson());
-                items.add(o);
+        synchronized (saveLock) {
+            try {
+                File f = fileFor(key);
+                Map<String, ItemEntry> itemsSnapshot;
+                Map<String, EntityEntry> entitiesSnapshot;
+                synchronized (this) {
+                    itemsSnapshot = new HashMap<>(itemCache);
+                    entitiesSnapshot = new HashMap<>(entityCache);
+                }
+                JsonObject root = new JsonObject();
+                JsonArray items = new JsonArray();
+                for (var e : itemsSnapshot.entrySet()) {
+                    JsonObject o = new JsonObject();
+                    o.addProperty("k", e.getKey());
+                    o.addProperty("id", e.getValue().getId());
+                    o.addProperty("comp", e.getValue().componentsJson());
+                    items.add(o);
+                }
+                JsonArray ents = new JsonArray();
+                for (var e : entitiesSnapshot.entrySet()) {
+                    JsonObject o = new JsonObject();
+                    o.addProperty("k", e.getKey());
+                    o.addProperty("name", e.getValue().name());
+                    o.addProperty("type", e.getValue().typeId());
+                    o.addProperty("uuid", e.getValue().uuid());
+                    ents.add(o);
+                }
+                root.add("items", items);
+                root.add("entities", ents);
+                AtomicFileStore.write(f.toPath(), GSON.toJson(root).getBytes(StandardCharsets.UTF_8),
+                        BetterChatHoverCache::validCache);
+            } catch (Exception e) {
+                DebugLog.error("BetterChatHoverCache save failed for %s", e, key);
             }
-            JsonArray ents = new JsonArray();
-            for (var e : entityCache.entrySet()) {
-                JsonObject o = new JsonObject();
-                o.addProperty("k", e.getKey());
-                o.addProperty("name", e.getValue().name());
-                o.addProperty("type", e.getValue().typeId());
-                o.addProperty("uuid", e.getValue().uuid());
-                ents.add(o);
-            }
-            root.add("items", items);
-            root.add("entities", ents);
-            try (FileWriter w = new FileWriter(f, StandardCharsets.UTF_8)) {
-                GSON.toJson(root, w);
-            }
-        } catch (Exception e) {
-            DebugLog.error("BetterChatHoverCache save failed for %s", e, key);
         }
     }
 
-    public boolean putItem(String keyId, ItemStack stack) {
+    public synchronized boolean putItem(String keyId, ItemStack stack) {
         BetterChat cfg = BetterChat.get();
         if (cfg != null && !cfg.cacheItems()) return false;
         if (keyId == null || stack == null || stack.isEmpty()) return false;
@@ -206,7 +228,7 @@ public final class BetterChatHoverCache {
         }
     }
 
-    public boolean putEntity(String keyId, HoverEvent.EntityTooltipInfo content) {
+    public synchronized boolean putEntity(String keyId, HoverEvent.EntityTooltipInfo content) {
         BetterChat cfg = BetterChat.get();
         if (cfg != null && !cfg.cacheEntities()) return false;
         if (keyId == null || content == null) return false;

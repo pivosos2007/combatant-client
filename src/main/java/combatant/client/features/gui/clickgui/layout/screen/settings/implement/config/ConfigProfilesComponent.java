@@ -7,6 +7,8 @@
 
 package combatant.client.features.gui.clickgui.layout.screen.settings.implement.config;
 
+import combatant.client.render.engine.text.BuiltinFontCatalog;
+
 import combatant.client.util.text.SingleLineTextInput;
 
 import combatant.client.config.profile.*;
@@ -15,7 +17,7 @@ import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.config.ConfigProfileCardComponent.CardHit;
-import combatant.client.features.gui.clickgui.layout.screen.settings.render.LayoutRender2D;
+import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.util.ClickGuiMath;
 import combatant.client.render.engine.animation.AnimationUtility;
@@ -213,7 +215,7 @@ public final class ConfigProfilesComponent {
                     select(entryHit.meta());
                     beginRename(entryHit.meta(), hit.title());
                     renameInput.layout(hit.title().x(), hit.title().w() - 5f * renameScale,
-                            ClickGuiRenderer.getInterMedium(), 8.8f * renameScale);
+                            BuiltinFontCatalog.ONEST_MEDIUM.renderer(), 8.8f * renameScale);
                 }
                 return true;
             }
@@ -276,7 +278,7 @@ public final class ConfigProfilesComponent {
         baseLeft = SettingsGuiPalette.mix(baseLeft, palette.menuCategoryHoverLeft(), 0.12f * anyHover);
         baseRight = SettingsGuiPalette.mix(baseRight, palette.menuCategoryHoverRight(), 0.12f * anyHover);
 
-        ClickGuiRenderer.drawBlur(x, y, pillW, pillH, 4f * scale, palette.panelBlurTint(), 145f / 255f);
+        LayoutRender2D.drawBlur(x, y, pillW, pillH, 4f * scale, palette.panelBlurTint(), 145f / 255f);
         LayoutRender2D.roundedQuad(
                 x,
                 y,
@@ -438,7 +440,7 @@ public final class ConfigProfilesComponent {
         String label = ClickGuiI18n.tr("clickgui.settings.config.save", "Save");
         float textSize = 6.7f * scale;
         int textColor = SettingsGuiPalette.mix(palette.panelText(), palette.menuCategoryText(), hover * 0.24f + pulse * 0.24f);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), label, x + 17.4f * scale, y + 4.2f * scale, textSize, textColor, false);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), label, x + 17.4f * scale, y + 4.2f * scale, textSize, textColor, false);
     }
 
     private void renderToolButtons(float dt, float mx, float my, float scale, SettingsGuiPalette palette) {
@@ -483,12 +485,12 @@ public final class ConfigProfilesComponent {
 
     private void drawSegment(Rect rect, String label, boolean active, float hover, float scale, SettingsGuiPalette palette) {
         float size = 7.5f * scale;
-        float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterMedium(), label, size);
-        float th = ClickGuiRenderer.textHeight(ClickGuiRenderer.getInterMedium(), size);
+        float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), label, size);
+        float th = LayoutRender2D.textHeight(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), size);
         int color = active
                 ? palette.panelText()
                 : SettingsGuiPalette.mix(palette.panelMuted(), palette.panelText(), 0.20f * hover);
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterMedium(), label, rect.x() + (rect.w() - tw) * 0.5f, rect.y() + (rect.h() - th) * 0.5f, size, color, false);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), label, rect.x() + (rect.w() - tw) * 0.5f, rect.y() + (rect.h() - th) * 0.5f, size, color, false);
     }
 
     private void renderCards(float x,
@@ -520,14 +522,14 @@ public final class ConfigProfilesComponent {
                     ? ClickGuiI18n.tr("clickgui.settings.config.empty.no_matches", "No matching configs.")
                     : ClickGuiI18n.tr("clickgui.settings.config.empty.none_saved", "No saved configs.");
             float emptySize = 8.0f * scale;
-            float emptyW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), empty, emptySize);
-            ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), empty, x + (w - emptyW) * 0.5f, y + h * 0.42f, emptySize, palette.panelMuted(), false);
+            float emptyW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), empty, emptySize);
+            LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), empty, x + (w - emptyW) * 0.5f, y + h * 0.42f, emptySize, palette.panelMuted(), false);
             if (!ClickGuiSearch.hasQuery()) {
                 String hint = ClickGuiI18n.tr("clickgui.settings.config.empty.drop_hint", "Drop .cbcfg files here, or put them anywhere under config/combatant/profiles/.");
                 float hintSize = 6.9f * scale;
-                String fitted = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), hint, hintSize, w - 18f * scale);
-                float hintW = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), fitted, hintSize);
-                ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), fitted, x + (w - hintW) * 0.5f, y + h * 0.42f + 13f * scale, hintSize, palette.panelMuted(), false);
+                String fitted = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), hint, hintSize, w - 18f * scale);
+                float hintW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), fitted, hintSize);
+                LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), fitted, x + (w - hintW) * 0.5f, y + h * 0.42f + 13f * scale, hintSize, palette.panelMuted(), false);
             }
             return;
         }
@@ -715,7 +717,7 @@ public final class ConfigProfilesComponent {
                 SettingsGuiPalette.mix(palette.moduleCardTop(), palette.menuCategorySelectedLeft(), 0.28f)
         );
         renameInput.render(rect.x(), rect.y(), rect.w() - 5f * scale, h,
-                ClickGuiRenderer.getInterMedium(), 8.8f * scale, palette.moduleTitleText(),
+                BuiltinFontCatalog.ONEST_MEDIUM.renderer(), 8.8f * scale, palette.moduleTitleText(),
                 SettingsGuiPalette.withAlpha(palette.menuCategorySelectedRight(), 145), true);
     }
 
@@ -727,10 +729,10 @@ public final class ConfigProfilesComponent {
         }
         if (message == null || message.isBlank()) return;
         float size = 6.8f * scale;
-        String text = ClickGuiRenderer.fitText(ClickGuiRenderer.getInterRegular(), message, size, w - 12f * scale);
-        float tw = ClickGuiRenderer.textWidth(ClickGuiRenderer.getInterRegular(), text, size);
+        String text = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), message, size, w - 12f * scale);
+        float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), text, size);
         // The toolbar is occupied by controls; long localized statuses belong in its lower margin.
-        ClickGuiRenderer.drawText(ClickGuiRenderer.getInterRegular(), text, x + w - tw, y + 17.0f * scale, size, palette.panelMuted(), false);
+        LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), text, x + w - tw, y + 17.0f * scale, size, palette.panelMuted(), false);
     }
 
     private void setStatus(String message) {

@@ -11,8 +11,6 @@ import combatant.client.config.*;
 import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.values.*;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import combatant.client.config.*;
-import combatant.client.config.values.*;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.features.module.HudPhase;
