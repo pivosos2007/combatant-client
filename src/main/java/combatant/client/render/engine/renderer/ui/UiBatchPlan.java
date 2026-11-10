@@ -128,7 +128,7 @@ public final class UiBatchPlan {
         return orderedBatchCount;
     }
 
-    /** Returns the ordered batch count. */
+    
     public int batchCount() {
         return orderedBatchCount;
     }

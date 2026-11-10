@@ -16,7 +16,8 @@ package combatant.client.util.network;
 import net.minecraft.network.protocol.Packet;
 
 /**
- * Adapted from LiquidBounce's PacketSnapshot record.
+ * A deferred packet, its original traffic direction and capture time in epoch milliseconds.
+ * The packet reference itself is retained, not serialized or copied.
  */
 public record PacketSnapshot(Packet<?> packet, TransferOrigin origin, long timestamp) {
 }

@@ -13,6 +13,7 @@ import combatant.client.features.account.AccountConfig;
 import combatant.client.features.account.AccountEntry;
 import combatant.client.features.account.SkinManager;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.color.RenderColor;
@@ -63,13 +64,14 @@ public final class CombatantMainMenuScreen extends Screen {
     private static final float CELL_GAP = MainMenuBackdrop.CELL_GAP;
     private static final float BUTTON_ROUNDING = 1.15f * MENU_SCALE;
     private static final float BUTTON_ELEVATION = 7.5f * MENU_SCALE;
-    private static final String[] BUTTON_ICONS = {"a", "b", "x", "", "s", "i"};
-    private static final String[] BUTTON_SVGS = {null, null, null, "folder-pen", null, null};
+    private static final String[] BUTTON_ICONS = {"a", "b", "x", "", "", "s", "i"};
+    private static final String[] BUTTON_SVGS = {null, null, null, "folder-pen", "layout-dashboard", null, null};
     private static final String[] BUTTON_LABEL_KEYS = {
             "menu.singleplayer",
             "menu.multiplayer",
             "screen.combatant.alt_manager.title",
             "screen.combatant.addon_manager.title",
+            "screen.combatant.main_menu.clickgui",
             "menu.options",
             "menu.quit"
     };
@@ -102,6 +104,7 @@ public final class CombatantMainMenuScreen extends Screen {
     private float cachedGridHeight = -1f;
     private MainMenuBackdrop.GridLayout gridLayout;
     private final MainMenuVisualPanel visualPanel = new MainMenuVisualPanel();
+    private boolean fluidPointerDown;
 
     public CombatantMainMenuScreen() {
         super(Component.literal("Combatant"));
@@ -135,6 +138,7 @@ public final class CombatantMainMenuScreen extends Screen {
 
     @Override
     public void removed() {
+        fluidPointerDown = false;
         visualPanel.close();
         MainMenuBackdrop.release();
         super.removed();
@@ -143,6 +147,7 @@ public final class CombatantMainMenuScreen extends Screen {
     @Override
     protected void init() {
         initialized = false;
+        fluidPointerDown = false;
         cachedGridWidth = -1f;
         cachedGridHeight = -1f;
     }
@@ -190,7 +195,8 @@ public final class CombatantMainMenuScreen extends Screen {
             Renderer2D.COLOR.begin();
             MainMenuBackdrop.renderBase(fixedWidth, fixedHeight);
             if (opacity > 0.005f) {
-                MainMenuBackdrop.renderSmoke(fixedWidth, fixedHeight, opacity, fixedMouseX, fixedMouseY);
+                MainMenuBackdrop.renderCrystal(fixedWidth, fixedHeight, opacity, fixedMouseX, fixedMouseY, gridLayout, null);
+                MainMenuBackdrop.renderSmoke(fixedWidth, fixedHeight, opacity, fixedMouseX, fixedMouseY, fluidPointerDown);
                 renderHoneycombMatrix(opacity, fixedMouseX, fixedMouseY);
                 renderButtons(opacity);
                 renderStaticClock(opacity);
@@ -232,7 +238,11 @@ public final class CombatantMainMenuScreen extends Screen {
         }
 
         int index = canInteract(opacity) ? getHoveredButton(mx, my, opacity) : -1;
-        if (index >= 0) handleButton(index);
+        if (index >= 0) {
+            handleButton(index);
+            return true;
+        }
+        fluidPointerDown = true;
         return true;
     }
 
@@ -260,6 +270,7 @@ public final class CombatantMainMenuScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent click) {
+        if (click.button() == combatant.client.input.InputKeys.MOUSE_LEFT) fluidPointerDown = false;
         updateUiMetrics();
         return visualPanel.release(toFixedX((float)click.x()), toFixedY((float)click.y()), click.button())
                 || super.mouseReleased(click);
@@ -524,7 +535,7 @@ public final class CombatantMainMenuScreen extends Screen {
     }
 
     private float buttonCenterX(int index) {
-        return gridLayout.originX() + (index - 2) * gridLayout.stepX();
+        return gridLayout.originX() + (index - (BUTTON_ICONS.length - 1) * 0.5f + 0.5f) * gridLayout.stepX();
     }
 
     private int getHoveredButton(float mouseX, float mouseY, float opacity) {
@@ -601,8 +612,9 @@ public final class CombatantMainMenuScreen extends Screen {
             case 1 -> ClientScreen.show(minecraft, new JoinMultiplayerScreen(this));
             case 2 -> ClientScreen.show(minecraft, new CombatantAltManagerScreen(this));
             case 3 -> ClientScreen.show(minecraft, new CombatantAddonManagerScreen(this));
-            case 4 -> ClientScreen.show(minecraft, new OptionsScreen(this, minecraft.options));
-            case 5 -> minecraft.stop();
+            case 4 -> ClickGuiRenderer.openFromMainMenu(this);
+            case 5 -> ClientScreen.show(minecraft, new OptionsScreen(this, minecraft.options));
+            case 6 -> minecraft.stop();
             default -> {
             }
         }

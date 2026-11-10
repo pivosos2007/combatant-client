@@ -24,6 +24,8 @@ import combatant.client.config.values.RGBColorValue;
 import combatant.client.features.gui.chat.BetterChatRenderer;
 import combatant.client.features.gui.clickgui.settings.FunctionBindSetting;
 import combatant.client.features.gui.hud.HudElementInfo;
+import combatant.client.features.gui.hud.HudGlassSettings;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.render.engine.math.HudScale;
@@ -33,7 +35,6 @@ import combatant.client.runtime.RuntimeGate;
 
 import java.util.Map;
 
-//todo Description
 @HudElementInfo(
         id = "better_chat",
         displayName = "Better Chat",
@@ -54,6 +55,7 @@ public final class BetterChat extends DraggableHudElement {
     private final NumberValue<Double> fadeSeconds = num("fade_seconds", 14.98, 3.0, 30.0);
     private final NumberValue<Integer> liquidGlassAlpha = num("liquid_glass_alpha", 230, 0, 255);
     private final ModeValue surfaceMaterial = HudMaterialChoice.setting("better_chat");
+    private final HudGlassSettings glassSettings = new HudGlassSettings("better_chat", UiGlassOpticsSpec.LIQUID);
     private final BooleanValue hideVanilla = bool("hide_vanilla", true);
     private final BooleanValue stackDuplicates = bool("stack_duplicates", true);
     private final BooleanValue antiSpam = bool("anti_spam", true);
@@ -87,6 +89,7 @@ public final class BetterChat extends DraggableHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        glassSettings.addSettings(defs);
     }
 
     @Override
@@ -96,6 +99,8 @@ public final class BetterChat extends DraggableHudElement {
     }
 
     public String surfaceMaterial() { return surfaceMaterial.get(); }
+    public UiGlassOpticsSpec glassOptics() { return glassSettings.apply(UiGlassOpticsSpec.LIQUID); }
+    public boolean hasCustomGlassOptics() { return glassSettings.customized(); }
     public boolean environmentalEffects() { return environmentalEffectsEnabled(); }
 
     public static BetterChat get() {

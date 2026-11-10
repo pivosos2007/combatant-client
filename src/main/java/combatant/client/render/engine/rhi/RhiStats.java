@@ -14,6 +14,9 @@ import combatant.client.render.engine.shader.ShaderCostRegistry;
 import java.util.IdentityHashMap;
 import java.util.List;
 
+/**
+ * Accumulates RHI submission counters and shader-cost estimates for the active frame.
+ */
 public final class RhiStats {
     private long frameId;
     private long drawCalls;
@@ -75,6 +78,8 @@ public final class RhiStats {
     private long dynamicBufferSubDataUploadBytes;
     private long dynamicMappedUploads;
     private long dynamicBufferSubDataUploads;
+    private long dynamicSubDataGpuWrites;
+    private long dynamicSubDataGpuWriteBytes;
     private long dynamicArenaVertexHighWaterBytes;
     private long dynamicArenaIndexHighWaterBytes;
     private long dynamicArenaVertexCapacityObservedBytes;
@@ -111,6 +116,7 @@ public final class RhiStats {
         dynamicBufferSubDataUploadBytes = 0L;
         dynamicMappedUploads = 0L;
         dynamicBufferSubDataUploads = 0L;
+        dynamicSubDataGpuWrites = dynamicSubDataGpuWriteBytes = 0L;
         dynamicArenaVertexHighWaterBytes = 0L;
         dynamicArenaIndexHighWaterBytes = 0L;
         dynamicArenaVertexCapacityObservedBytes = 0L;
@@ -309,6 +315,12 @@ public final class RhiStats {
         }
     }
 
+    /** Actual CommandEncoder.writeToBuffer calls, distinct from the number of logical meshes. */
+    public void dynamicSubDataGpuWrite(long bytes) {
+        dynamicSubDataGpuWrites++;
+        dynamicSubDataGpuWriteBytes += Math.max(0L, bytes);
+    }
+
     public void dynamicArenaFrameUsage(long vertexUsed, long vertexCapacity,
                                        long indexUsed, long indexCapacity) {
         dynamicArenaVertexHighWaterBytes = Math.max(dynamicArenaVertexHighWaterBytes, Math.max(0L, vertexUsed));
@@ -504,6 +516,7 @@ public final class RhiStats {
                 dynamicArenaVertexUsedObservedBytes, dynamicArenaIndexUsedObservedBytes,
                 dynamicArenaVertexCapacityObservedBytes, dynamicArenaIndexCapacityObservedBytes,
                 dynamicLargestVertexAllocationBytes, dynamicLargestIndexAllocationBytes,
+                dynamicSubDataGpuWrites, dynamicSubDataGpuWriteBytes,
                 pipelineBreakdown);
     }
 

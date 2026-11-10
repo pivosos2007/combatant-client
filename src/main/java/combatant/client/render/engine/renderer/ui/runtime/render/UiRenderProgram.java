@@ -13,7 +13,7 @@ import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 /**
  * A flat, preallocated instruction tape for a reconciled UI tree.
  *
- * <p>Node references are deliberately retained, not snapshots: layout, props, animation,
+ * <p>Node references are retained, not snapshots: layout, props, animation,
  * scroll and input state remain live. Recompile after reconciliation changes the tree.
  * Each node contributes ENTER and LEAVE instructions; the ENTER's jump points past the
  * corresponding LEAVE so invisible/clipped subtrees can be skipped in constant time.

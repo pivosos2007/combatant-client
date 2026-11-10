@@ -76,7 +76,7 @@ public enum HudScriptLayouts {
     }
 
     /**
-     * Resource reload ordering is intentionally HMI (450) -> PlayerAnimator (500) -> UI (550).
+     * Resource reload ordering is HMI (450) -> PlayerAnimator (500) -> UI (550).
      * The animation runtimes invalidate lazily; UI modules can reload immediately against the new
      * ResourceManager. Keeping this as an @AssetLoad hook makes resource reload and manual reload
      * use the same subsystem order.

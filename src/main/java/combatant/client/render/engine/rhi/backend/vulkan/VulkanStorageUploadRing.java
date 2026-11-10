@@ -9,6 +9,10 @@ package combatant.client.render.engine.rhi.backend.vulkan;
 import java.util.Arrays;
 import java.util.function.IntConsumer;
 
+/**
+ * Tracks storage-upload slots by Vulkan submission index.
+ * A slot cannot be reused while its previous submission remains in flight.
+ */
 final class VulkanStorageUploadRing {
     private final long[] owners;
     private int uploadsPerSubmit;

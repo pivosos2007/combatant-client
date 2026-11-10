@@ -10,6 +10,9 @@ package combatant.client.features.module.modules.combat;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.config.values.*;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.ProjectileRaycastBoxEvent;
+import combatant.client.events.impl.ProjectileRaycastCandidatesEvent;
 import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
 import net.minecraft.client.Minecraft;
@@ -28,6 +31,7 @@ import combatant.client.features.relations.EntityFilters;
 import combatant.client.mixininterface.IEntity;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
+import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer3D;
@@ -123,9 +127,7 @@ public class Hitbox extends Module {
         precomputedEntities.clear();
     }
 
-    // ======================================================
     //                      STATE
-    // ======================================================
 
     private static final Matrix4f SCRATCH_MV = new Matrix4f();
     private static final Matrix4f SCRATCH_ROTATION = new Matrix4f();
@@ -205,9 +207,31 @@ public class Hitbox extends Module {
         mesh.line(i1, i2);
     }
 
-    // ======================================================
+    @EventHandler
+    private void onProjectileRaycastCandidates(ProjectileRaycastCandidatesEvent event) {
+        List<Entity> original = event.getEntities();
+        if (original == null || original.isEmpty()) return;
+
+        List<Entity> filtered = new ArrayList<>(original.size());
+        for (Entity entity : original) {
+            if (entity instanceof LivingEntity living && !living.isAlive()) continue;
+            if (shouldIgnore(entity)) continue;
+            filtered.add(entity);
+        }
+        event.setEntities(filtered);
+    }
+
+    @EventHandler
+    private void onProjectileRaycastBox(ProjectileRaycastBoxEvent event) {
+        Entity target = event.getTarget();
+        AABB box = staticBox(target, event.getBox());
+        if (shouldExpandFor(target) && boxDistanceSq(box, event.getStart()) <= event.getMaxDistanceSq()) {
+            box = box.inflate(getPadding());
+        }
+        event.setBox(box);
+    }
+
     //                  FILTERING
-    // ======================================================
 
     public static double boxDistanceSq(AABB box, Vec3 p) {
         double dx = 0.0;
@@ -229,9 +253,7 @@ public class Hitbox extends Module {
         return softDisable.get() && isActionHeld(ACTION_SUPPRESS_HITBOX);
     }
 
-    // ======================================================
     //                     RENDER
-    // ======================================================
 
     public boolean isActiveForHitbox() {
         return isEnabled() && !isSoftDisabledNow();
@@ -305,7 +327,7 @@ public class Hitbox extends Module {
             float flash = getHitFlashFactor(e);
 
             float r = rgba[0], g = rgba[1], b = rgba[2];
-            float fillA = Math.min(1.0f, (0.18f + 0.12f * flash) * 1.17f); //Р°Р»СЊС„Р° С‚СѓС‚
+            float fillA = Math.min(1.0f, (0.18f + 0.12f * flash) * 1.17f); 
             float lineA = Math.min(1.0f, 0.65f + 0.25f * flash);
 
             r = r * (1 - flash) + flash;
@@ -327,11 +349,15 @@ public class Hitbox extends Module {
 
         PoseStack transform = buildTransformStack();
         var fb = mc.gameRenderer.mainRenderTarget();
-        var depthView = PreTranslucentDepth.getDepthView();
+        if (fb == null) return;
         var colorView = fb.getColorTextureView();
-        if (depthView == null) {
-            return;
-        }
+        if (colorView == null) return;
+        // Match the common PRE_DEPTH contract: draw over completed translucent
+        // terrain while testing only against opaque terrain and player silhouettes.
+        // Selecting by color sample count also avoids mixed-sample RHI passes.
+        var depthView = SeeInvisiblesVisualDepth.preDepthViewFor(colorView);
+        if (depthView == null) depthView = PreTranslucentDepth.getDepthViewFor(colorView);
+        if (depthView == null) return;
 
         if (tris.getIndicesCount() > 0) {
             MeshRenderer.begin()
@@ -405,9 +431,7 @@ public class Hitbox extends Module {
         return argbToRgba(hitboxColor.getArgb());
     }
 
-    // ======================================================
     //                 HIT FLASH SUPPORT
-    // ======================================================
 
     private float[] argbToRgba(int argb) {
         float a = ((argb >> 24) & 255) / 255f;
@@ -422,9 +446,7 @@ public class Hitbox extends Module {
 
     }
 
-    // ======================================================
     //             Utility for other components
-    // ======================================================
 
     private float getHitFlashFactor(Entity e) {
         if (hitFlashMs.isEmpty()) return 0f;

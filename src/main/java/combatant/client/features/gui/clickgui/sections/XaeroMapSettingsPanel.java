@@ -1691,7 +1691,6 @@ final class XaeroMapSettingsPanel {
         scrollbarDragging = false;
     }
 
-    /** Draws the accent through the card's own rounded silhouette instead of an exposed bar. */
     private static void drawClippedLeadingAccent(float x, float y, float width, float height,
                                                  float radius, int color, float reveal) {
         float amount = clamp(reveal, 0.0f, 1.0f);
@@ -1709,7 +1708,6 @@ final class XaeroMapSettingsPanel {
         return LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), relationLabel(type), size) + 13.0f;
     }
 
-    /** Relations are metadata, so use a light dot-label rather than a competing pill. */
     private static void drawRelationTag(CategoryType type, float x, float y, float size, int color) {
         if (type == null || type == CategoryType.DEFAULT) return;
         Renderer2D.COLOR.circle(x + 2.4f, y + size * 0.54f, 2.2f, color);

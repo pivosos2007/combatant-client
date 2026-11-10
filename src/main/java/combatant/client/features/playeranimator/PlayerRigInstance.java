@@ -129,7 +129,7 @@ public final class PlayerRigInstance {
      * etc.) instead of being approximated by a fixed Euler pose.
      *
      * The hint is expressed in the upper arm parent's local space and selects the elbow side of the
-     * two-bone solution. This method is intentionally player-specific: the split arm lengths are
+     * two-bone solution. This method is player-specific: the split arm lengths are
      * fixed by {@link PlayerRigBone} and are both six model pixels.
      */
     public PlayerRigInstance reachHandToBone(int upperArmIndex, int targetBoneIndex,

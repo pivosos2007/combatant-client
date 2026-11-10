@@ -10,16 +10,16 @@ package combatant.client.util.item;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * Интерфейс для классов, которые могут извлекать цвет предмета
- * на основе его редкости или других свойств.
+ * Supplies a display color for an item
+ * based on its rarity or other properties.
  */
 public interface ItemRarityColorProvider {
 
     /**
-     * Возвращает RGBA цвет (0..1) для данного предмета.
+     * Returns RGBA channels normalized to [0, 1].
      *
-     * @param stack предмет
-     * @return массив float[4] {r,g,b,a}
+     * @param stack item whose color is requested
+     * @return four channels in R, G, B, A order
      */
     float[] getRarityColor(ItemStack stack);
 }

@@ -7,9 +7,7 @@
 
 package combatant.client.render.engine.renderer.ui.draw;
 
-/**
- * CPU fallback path builder for flexible boxes until the RHI UI shape lowering is fully native.
- */
+
 public enum UiBoxPathBuilder {
     ;
 

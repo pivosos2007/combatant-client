@@ -121,7 +121,8 @@ public final class UiPassCompiler {
         boolean finish = submission.finish();
         int orderedBatchCount = batcher.pendingBatchCount();
 
-        if (batcher.isPureItemBatchOrder()) {
+        OrderedKind kind = classifyOrdered(batcher);
+        if (kind == OrderedKind.ITEMS) {
             UiPipelineTelemetry.recordItemPass();
             return new UiBatchPlan.Pass(
                     "Renderer2D.ItemSequence",
@@ -130,7 +131,7 @@ public final class UiPassCompiler {
             );
         }
 
-        if (canExecuteMixedItemSequence(batcher)) {
+        if (kind == OrderedKind.MIXED_ITEMS) {
             UiPipelineTelemetry.recordMixedItemPass();
             return new UiBatchPlan.Pass(
                     "Renderer2D.MixedItemSequence",
@@ -139,7 +140,7 @@ public final class UiPassCompiler {
             );
         }
 
-        if (!canLowerDirectly(batcher)) {
+        if (kind != OrderedKind.DIRECT) {
             return captureAwarePass(batcher, finish, orderedBatchCount, captureAwareReason(batcher));
         }
 
@@ -301,6 +302,7 @@ public final class UiPassCompiler {
             }
             List<RhiDrawCommand> groupedDraws = OrderedUiBatcher.groupUiUnderlayReplays(draws);
             List<UiBatchPlan.Pass> callbacks = List.copyOf(merged);
+            UiPipelineTelemetry.recordDirectCoalescing(callbacks.size());
             output.add(new UiBatchPlan.Pass(
                     "Renderer2D.RhiDrawSequence[x" + callbacks.size() + "]",
                     orderedBatches,
@@ -315,47 +317,44 @@ public final class UiPassCompiler {
         return output;
     }
 
-    private static boolean canLowerDirectly(OrderedUiBatcher batcher) {
-        if (batcher == null || !batcher.active || batcher.order.isEmpty()) return false;
-        for (Object entry : batcher.order) {
-            if (entry instanceof TextBatch textBatch) {
-                if (textBatch.liquidGlass) return false;
-                continue;
-            }
-            if (!(entry instanceof DrawBatch batch)) return false;
-            if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS) return false;
-            if (batch.type.usesPreparedGlass() || batch.type.requiresMaterialScene()
-                    || batch.type == UiBatchType.CLIMATE_PRIMITIVE) return false;
-        }
-        return true;
+    private enum OrderedKind {
+        ITEMS, MIXED_ITEMS, DIRECT, CAPTURE_AWARE
     }
 
-    private static boolean canExecuteMixedItemSequence(OrderedUiBatcher batcher) {
-        if (batcher == null || !batcher.active || batcher.order.isEmpty()) return false;
+    /**
+     * Classify each ordered stream once. The previous item, mixed-item and direct checks each
+     * traversed the same sequence; most ordinary UI submissions reached all three traversals.
+     */
+    private static OrderedKind classifyOrdered(OrderedUiBatcher batcher) {
+        if (batcher == null || batcher.order.isEmpty()) {
+            return OrderedKind.CAPTURE_AWARE;
+        }
+        // The legacy item-only route did not require an active batcher. Preserve that case,
+        // while keeping the active guard for mixed-item and direct GPU submissions.
+        if (!batcher.active) {
+            return batcher.isPureItemBatchOrder() ? OrderedKind.ITEMS : OrderedKind.CAPTURE_AWARE;
+        }
         boolean hasItems = false;
         boolean hasDraws = false;
         for (Object entry : batcher.order) {
             if (entry instanceof ItemBatch) {
                 hasItems = true;
-                continue;
-            }
-            if (entry instanceof TextBatch textBatch) {
-                if (textBatch.liquidGlass) return false;
+            } else if (entry instanceof TextBatch textBatch) {
+                if (textBatch.liquidGlass) return OrderedKind.CAPTURE_AWARE;
                 hasDraws = true;
-                continue;
-            }
-            if (entry instanceof DrawBatch batch) {
+            } else if (entry instanceof DrawBatch batch) {
                 if (batch.type == UiBatchType.BLUR || batch.type == UiBatchType.BLUR_CORNERS
                         || batch.type.usesPreparedGlass() || batch.type.requiresMaterialScene()
                         || batch.type == UiBatchType.CLIMATE_PRIMITIVE) {
-                    return false;
+                    return OrderedKind.CAPTURE_AWARE;
                 }
                 hasDraws = true;
-                continue;
+            } else {
+                return OrderedKind.CAPTURE_AWARE;
             }
-            return false;
         }
-        return hasItems && hasDraws;
+        if (hasItems) return hasDraws ? OrderedKind.MIXED_ITEMS : OrderedKind.ITEMS;
+        return hasDraws ? OrderedKind.DIRECT : OrderedKind.CAPTURE_AWARE;
     }
 
     private static UiBatchPlan.Pass captureAwarePass(OrderedUiBatcher batcher,

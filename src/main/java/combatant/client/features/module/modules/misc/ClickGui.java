@@ -10,6 +10,8 @@ package combatant.client.features.module.modules.misc;
 import combatant.client.config.DisableSettingI18n;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.ModeValue;
+import combatant.client.features.gui.clickgui.settings.SettingsImplementations;
 import combatant.client.features.gui.clickgui.ClickGuiEditorScreen;
 import combatant.client.features.gui.clickgui.ClickGuiPickerScreen;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
@@ -33,8 +35,23 @@ public class ClickGui extends Module {
     @DisableSettingI18n(name = false, options = true)
     private final BooleanMapValue guiSoundToggles = group("gui_sounds", defaultGuiSounds());
     private final NumberValue<Double> guiSoundVolume = num("gui_sound_volume", 0.75, 0.0, 2.0);
+    private final ModeValue settingsImplementation = mode("settings_implementation",
+            SettingsImplementations.AUTOMATIC, SettingsImplementations.AUTOMATIC,
+            SettingsImplementations.COMPACT, SettingsImplementations.DETAILED);
+
+    public String settingsImplementationId() {
+        return settingsImplementation.get();
+    }
+
+    /** Add an implementation id to the normal, persisted ClickGUI mode control. */
+    public void registerSettingsImplementation(String id) {
+        settingsImplementation.addOption(id);
+    }
 
     {
+        for (String id : SettingsImplementations.available().keySet()) {
+            settingsImplementation.addOption(id);
+        }
         setDefaultBind("RIGHT_SHIFT");
     }
 

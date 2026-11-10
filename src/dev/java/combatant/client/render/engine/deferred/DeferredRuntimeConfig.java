@@ -15,7 +15,7 @@ import java.util.function.Consumer;
 /**
  * Runtime backend policy for the deferred graph.
  *
- * <p>The settings UI is intentionally not part of this class. UI, presets and adaptive-quality
+ * <p>The settings UI is not part of this class. UI, presets and adaptive-quality
  * controllers publish one immutable snapshot; the world graph freezes that snapshot for the whole
  * frame. Runtime values therefore remain data/resource policy and do not become shader/pipeline
  * identity unless an immutable GPU contract actually changes.</p>
@@ -170,7 +170,7 @@ public final class DeferredRuntimeConfig {
                     256,
                     1,
                     1.0f,
-                    true,
+                    false,
                     1.0f,
                     false,
                     0.5f,
@@ -206,8 +206,8 @@ public final class DeferredRuntimeConfig {
                     0.85f,
                     true,
                     true,
-                    true,
-                    true
+                    false,
+                    false
             );
         }
 

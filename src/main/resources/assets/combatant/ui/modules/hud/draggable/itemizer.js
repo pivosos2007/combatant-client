@@ -57,7 +57,7 @@ function card(row, index, pal, isChat, hovered, blur, materialMode, retained) {
   };
   nodes.push(materialMode
     ? ui.shape({ ...panelPaint, shape: "rounded-gradient",
-        materialMode: str(materialMode, ""), materialMicrotexture: true, materialThemeSync: true,
+        materialMode: str(materialMode, ""), materialThemeSync: true,
         style: ui.absolute(x, y, w, h) })
     : ui.roundedGradient(panelPaint));
   nodes.push(ui.roundedGradient({

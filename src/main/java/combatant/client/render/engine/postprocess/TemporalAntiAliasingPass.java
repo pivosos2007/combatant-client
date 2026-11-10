@@ -19,7 +19,7 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
 /** Canonical production TAA pass. MSAA/TAA exclusivity is owned by VisualConfig.
- *  Native-resolution reprojection intentionally reconstructs the current jittered screen sample
+ *  Native-resolution reprojection reconstructs the current jittered screen sample
  *  through the stable projection: the raster jitter is not cancelled before
  *  history lookup, so a static output pixel accumulates different sub-pixel samples over time.
  */

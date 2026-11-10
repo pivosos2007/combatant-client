@@ -36,7 +36,9 @@ import java.util.EnumSet;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Headless fake-lag policy controller adapted from LiquidBounce's FakeLag module.
+ * Decides when outgoing packets are queued by {@link BlinkManager} according to
+ * the configured delay and safety policy. Disabling the controller releases
+ * outstanding outgoing packets.
  */
 public final class FakeLagController {
     public static final FakeLagController INSTANCE = new FakeLagController();
@@ -103,6 +105,10 @@ public final class FakeLagController {
         return enabled;
     }
 
+    /**
+     * Activates or deactivates the outgoing-packet delay.
+     * Disabling immediately flushes the shared outgoing queue.
+     */
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
         if (!enabled) {

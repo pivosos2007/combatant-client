@@ -71,7 +71,6 @@ public final class MainhandSwitcher {
         this.lease = lease;
     }
 
-    // ---- queries -------------------------------------------------------------------------------------------
 
     /** A borrowed hotbar slot is (or is about to be) out of place; the inventory lease is needed. */
     public boolean isInventoryBusy() {
@@ -101,7 +100,6 @@ public final class MainhandSwitcher {
         return player.tickCount <= quietUntilTick;
     }
 
-    // ---- bringing the item to the main hand ----------------------------------------------------------------
 
     /** Makes {@code wanted} (at inventory slot {@code slot}) the main-hand item; {@code PENDING} means call again. */
     public State ensure(LocalPlayer player, int slot, ItemStack wanted) {
@@ -194,7 +192,6 @@ public final class MainhandSwitcher {
         clearExpectation();
     }
 
-    // ---- restoring -----------------------------------------------------------------------------------------
 
     /**
      * Asks for everything to be put back, from {@code notBeforeTick} on. Carried out by {@link #tick}, never in the

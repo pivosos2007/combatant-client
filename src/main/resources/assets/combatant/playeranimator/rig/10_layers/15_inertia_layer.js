@@ -18,6 +18,8 @@
       const f=m.inertiaForward*k, s=m.inertiaStrafe*k, v=m.inertiaVertical*k;
       if (Math.abs(f)+Math.abs(s)+Math.abs(v)<1e-4) return;
 
+      // Root responds first; distal chains carry the delayed velocity farther. This makes braking
+      // readable in legs/arms instead of expressing all inertia as one chest tilt.
       this.rig.move('pelvis',s*.018,-v*.012,-f*.014);
       this.rig.rotate('pelvis',-f*2.5,0,s*3.4);
       this.rig.rotate('spine_lower',-f*4.0,0,s*5.0);

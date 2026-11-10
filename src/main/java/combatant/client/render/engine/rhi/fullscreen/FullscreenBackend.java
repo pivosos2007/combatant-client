@@ -10,6 +10,10 @@ package combatant.client.render.engine.rhi.fullscreen;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 
+/**
+ * Owns the reusable fullscreen geometry exposed to post-processing submissions.
+ * Initialization is explicit; consumers borrow the returned GPU objects.
+ */
 public interface FullscreenBackend extends AutoCloseable {
     void ensureInitialized();
 

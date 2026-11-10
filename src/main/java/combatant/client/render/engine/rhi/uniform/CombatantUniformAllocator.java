@@ -91,7 +91,7 @@ public final class CombatantUniformAllocator implements AutoCloseable {
     /**
      * Writes a uniform into a dedicated persistent buffer no more often than once per {@code updateEveryFrames}.
      * <p>
-     * This is intentionally separate from the per-frame dynamic ring. Reusing an old slice from the ring across
+     * This is separate from the per-frame dynamic ring. Reusing an old slice from the ring across
      * presented frames is unsafe because later frames can rotate/reuse the same backing buffer. Persistent cached
      * streams keep their own small UBO and can be bound every frame while only being mapped when the cadence says
      * to refresh the data.

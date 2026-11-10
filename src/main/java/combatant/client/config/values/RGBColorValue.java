@@ -10,8 +10,8 @@ package combatant.client.config.values;
 import combatant.client.render.engine.color.ColorUtils;
 
 /**
- * Цвет без альфы. Хранится как hex "#RRGGBB" и возвращается с полной альфой (0xFF) при запросе ARGB.
- * Допустимые входные форматы: #RRGGBB, #AARRGGBB, 0xRRGGBB, 0xAARRGGBB.
+ * Stores RGB color as hex; ARGB reads use an opaque alpha channel.
+ * Accepted input formats: #RRGGBB, #AARRGGBB, 0xRRGGBB, 0xAARRGGBB.
  */
 public class RGBColorValue extends ConfigValue<String> implements ColorValue {
 
@@ -109,13 +109,7 @@ public class RGBColorValue extends ConfigValue<String> implements ColorValue {
         if (json instanceof String s) value = normalize(s);
     }
 
-    /**
-     * Возвращает цвет как ARGB с полной альфой (0xFF).
-     *
-     * <p>Called from render code many times per frame. Re-parsing the hex string (trim/toUpperCase for the
-     * rainbow check, substring + parseUnsignedInt for the value) allocated several strings per call, so
-     * the parsed form is cached per backing string instance; {@link #set} swaps the instance on change.</p>
-     */
+    /** Returns opaque ARGB for static colors or the current color for rainbow values. */
     public int getArgb() {
         String current = value;
         Parsed cached = parsed;

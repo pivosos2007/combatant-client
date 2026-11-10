@@ -35,9 +35,7 @@ public final class TextSelection {
         caret = Math.max(0, charIndex);
     }
 
-    /**
-     * Legacy same-context update.
-     */
+    /** Updates the caret in the current anchor context; has no effect before a context is selected. */
     public void updateCaret(int charIndex) {
         if (anchorContextId < 0) return;
         caretContextId = anchorContextId;

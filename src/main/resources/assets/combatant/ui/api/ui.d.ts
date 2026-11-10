@@ -175,6 +175,27 @@ export type UiInlineStyle = {
   materialRoughness?: number;
   materialBevelStrength?: number;
   materialResponse?: number;
+  /** Standard surfaces are procedural; set true to opt into the KTX PBR maps. Ice always uses its texture. */
+  materialMicrotexture?: boolean;
+  materialThemeSync?: boolean;
+  /** Physical scale of procedural grain or machining (larger means broader patterns). */
+  materialPatternScale?: number;
+  materialTileSize?: number;
+  materialNormalStrength?: number;
+  materialHeightStrength?: number;
+  materialRelief?: number;
+  materialRoughnessVariation?: number;
+  materialMetallic?: number;
+  materialSpecularStrength?: number;
+  materialTintStrength?: number;
+  materialAnisotropy?: number;
+  materialDirection?: number;
+  /** Explicit opt-in: samples a snapshot of the background, not the material's own output. */
+  materialSceneLighting?: boolean;
+  materialSceneSource?: "current" | "captured";
+  materialSceneStrength?: number;
+  materialSceneRadius?: number;
+  materialCoatOpacity?: number;
   /** Local, deterministic ice material for solid primitives and optional glass composition. */
   iceSeed?: number;
   iceDensity?: number;
@@ -193,6 +214,20 @@ export type UiInlineStyle = {
   glassRefraction?: number;
   glassBevelWidth?: number;
   glassBevelDepth?: number;
+  /** Relative optical depth of the refracting medium; zero disables geometric bending. */
+  glassOpticalThickness?: number;
+  /** Refractive index of the lens medium. */
+  glassIOR?: number;
+  /** Surface and transmitted-image roughness [0..1]. */
+  glassRoughness?: number;
+  /** Frosted subsurface scattering [0..1]. */
+  glassFrost?: number;
+  /** Thin-film coating thickness in nanometers. */
+  glassFilmThicknessNm?: number;
+  /** Angular interference contribution [0..1]. */
+  glassFilmStrength?: number;
+  /** Pointer-reactive surface film response [0..1]. */
+  glassCoatingResponse?: number;
   /** Fluid optical response only when explicitly enabled on this surface. */
   glassInteraction?: boolean;
   /** Optional liquidGL-like SDF deformation; never implied by reactive refraction. */
@@ -665,6 +700,27 @@ export type UiShapeNode = UiNode & {
   materialRoughness?: number;
   materialBevelStrength?: number;
   materialResponse?: number;
+  /** Standard surfaces are procedural; set true to opt into the KTX PBR maps. Ice always uses its texture. */
+  materialMicrotexture?: boolean;
+  materialThemeSync?: boolean;
+  /** Physical scale of procedural grain or machining (larger means broader patterns). */
+  materialPatternScale?: number;
+  materialTileSize?: number;
+  materialNormalStrength?: number;
+  materialHeightStrength?: number;
+  materialRelief?: number;
+  materialRoughnessVariation?: number;
+  materialMetallic?: number;
+  materialSpecularStrength?: number;
+  materialTintStrength?: number;
+  materialAnisotropy?: number;
+  materialDirection?: number;
+  /** Explicit opt-in: samples a snapshot of the background, not the material's own output. */
+  materialSceneLighting?: boolean;
+  materialSceneSource?: "current" | "captured";
+  materialSceneStrength?: number;
+  materialSceneRadius?: number;
+  materialCoatOpacity?: number;
   /** Local, deterministic ice material for solid primitives and optional glass composition. */
   iceSeed?: number;
   iceDensity?: number;
@@ -686,6 +742,20 @@ export type UiShapeNode = UiNode & {
   glassRefraction?: number;
   glassBevelWidth?: number;
   glassBevelDepth?: number;
+  /** Relative optical depth of the refracting medium; zero disables geometric bending. */
+  glassOpticalThickness?: number;
+  /** Refractive index of the lens medium. */
+  glassIOR?: number;
+  /** Surface and transmitted-image roughness [0..1]. */
+  glassRoughness?: number;
+  /** Frosted subsurface scattering [0..1]. */
+  glassFrost?: number;
+  /** Thin-film coating thickness in nanometers. */
+  glassFilmThicknessNm?: number;
+  /** Angular interference contribution [0..1]. */
+  glassFilmStrength?: number;
+  /** Pointer-reactive surface film response [0..1]. */
+  glassCoatingResponse?: number;
   /** Fluid optical response only when explicitly enabled on this surface. */
   glassInteraction?: boolean;
   /** Optional liquidGL-like SDF deformation; never implied by reactive refraction. */

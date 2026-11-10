@@ -1,3 +1,9 @@
+<#
+This file is part of the Combatant Client distribution.
+Copyright (c) 2026 pivosos2007.
+Licensed under the GNU General Public License v3.0.
+#>
+
 param(
     [string]$FontRoot = "src/main/resources/assets/combatant/font",
     [string]$OutputRoot = "src/main/resources/assets/combatant/font/msdf",

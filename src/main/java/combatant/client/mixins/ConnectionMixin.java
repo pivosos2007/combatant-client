@@ -26,6 +26,12 @@ import combatant.client.events.impl.PacketEvent;
 import combatant.client.util.network.BlinkManager;
 import combatant.client.util.proxy.ProxyNettyInstaller;
 
+/**
+ * Publishes client-connection packet events around Minecraft network handling.
+ * Incoming pre-events are dispatched on the client thread before packet application
+ * so cancellation remains effective; silent Blink replay is excluded from dispatch.
+ * Integrated-server listeners are not included.
+ */
 @Mixin(Connection.class)
 public class ConnectionMixin {
 

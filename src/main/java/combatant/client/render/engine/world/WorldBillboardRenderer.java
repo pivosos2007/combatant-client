@@ -272,6 +272,23 @@ public enum WorldBillboardRenderer {
                 basis != null ? basis.down() : null);
     }
 
+    /** Single-pass text outline with the same coverage algorithm as the UI renderer. */
+    public static void outlinedText(Renderer3D renderer, Basis basis, TextRenderer textRenderer,
+                                    String text, Vec3 anchor, double pixelX, double pixelY,
+                                    double textScale, double worldScale, int argb, float alpha,
+                                    float radius, float outlineOpacity) {
+        if (text == null || text.isEmpty() || alpha <= 0.001f) return;
+        WorldTextRenderer.drawOutlinedBillboard(renderer, textRenderer, text, anchor,
+                new WorldTextRenderer.Options(
+                        new RenderColor(MatteHudStyle.scaleAlpha(argb, alpha)),
+                        SHADOW_UNUSED, textScale, worldScale,
+                        pixelX * worldScale, pixelY * worldScale,
+                        false, false, false, Renderer3D.DepthMode.NONE),
+                basis != null ? basis.right() : null,
+                basis != null ? basis.down() : null,
+                radius, outlineOpacity);
+    }
+
     public static void texture(Renderer3D renderer,
                                Basis basis,
                                Vec3 anchor,

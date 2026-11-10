@@ -22,6 +22,8 @@
           flexElbow(this.rig,side,18*k);
           return;
         }
+        // getRowingTime() is already continuous/interpolated. Use it directly rather than a
+        // separate low-frequency clock.
         const p=time;
         const pull=(Math.sin(p)+1)*.5;
         const sign=side==='right'?1:-1;

@@ -348,8 +348,8 @@ public final class Criticals extends Module {
     }
 
     /**
-     * Runs attack gate with temporary KillAura-specific selection override.
-     * Keeps Criticals internals (mode checks, jump state checks, click lookahead) intact.
+     * Evaluates an attack using a temporary KillAura selection override.
+     * The configured Criticals selection is not changed.
      */
     public boolean shouldAttackForKillAura(ClickScheduler clicker,
                                            Entity target,

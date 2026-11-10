@@ -36,25 +36,9 @@ import combatant.client.util.player.MovementUtil;
         description = "module.timer.description")
 public class Timer extends Module {
 
-    // ── Vulcan TimerA sliding-window model ───────────────────────────────────────
-    //
-    // TimerA uses a 50-sample sliding FIFO window (EvictingQueue).
-    // Each add() evicts the OLDEST entry. The oldest entries are the SLOW packets
-    // from before the boost, not the newly added fast packets:
-    //
-    //   After N fast packets, window = [S×(50-N), F×N]  (old slow | new fast)
-    //   Slow send: evict the oldest slow entry, not a fast entry.
-    //   Fast packets only leave after (50-N) slow packets flush the old slow first.
-    //   REAL tail = 50 slow packets (not N or 14 as the broken counter model said).
-    //
-    // Correct approach: track the exact window state with a circular boolean buffer.
-    //   canBoost = fastCount < kMax   where kMax = floor(2.5S / (1.05*(S-1)))
-    //
-    // For S=2.64: kMax=3.  With fastCount ≤ 2 (boost condition fastCount < kMax):
-    //   avgDelay = (2×18.9 + 48×50)/50 = 48.76ms → speed = 1.025 << 1.05. SAFE.
-    // For S=2.0:  kMax=4, fastCount ≤ 3. speed ≈ 1.031. SAFE.
-    //
-    // Energy bar = 1 - fastCount/kMax.  Full = all window slots slow. Empty = at kMax.
+    // Tracks fast/normal ticks in insertion order. Overwriting the oldest entry
+    // must adjust the fast count before inserting the new sample; merely counting
+    // recent normal ticks would not recover the same window occupancy.
     private static final int VULCAN_WINDOW_SIZE = 50;
     private static final boolean[] vulcanWindow = new boolean[VULCAN_WINDOW_SIZE]; // true=fast
     @SuppressWarnings("unused")
@@ -220,18 +204,8 @@ public class Timer extends Module {
             }
             case SHIFT -> tickTimer = 1f;
             case VULCAN -> {
-                // Correct model: circular buffer tracks exactly which of the last 50
-                // packets were fast. Vulcan's EvictingQueue evicts the OLDEST entry —
-                // after N fast packets the window is [S×(50-N), F×N], so slow packets
-                // evict old SLOW first; fast packets only leave after (50-N) slow packets.
-                //
-                // Safe k_max = floor(2.5*S / (1.05*(S-1))):
-                //   S=2.64 → kMax=3, avgDelay at k=2: 48.76ms, speed=1.025 < 1.05 ✓
-                //   S=2.0  → kMax=4, avgDelay at k=3: 48.5ms,  speed=1.031 < 1.05 ✓
-                //
-                // Boost while fastCount < kMax. After boosting, fastCount rises
-                // to kMax and boosting stops. Fast entries leave only after (50-kMax)
-                // subsequent slow packets flush the initial slow buffer out.
+                // The boost limit depends on the configured speed and the count of
+                // fast entries still present in the rolling window.
 
                 boolean held = isBoostHeld();
                 boolean setbackRecent = getSetbackAge() < 500L;
@@ -279,8 +253,7 @@ public class Timer extends Module {
         if (e.getPacket() instanceof ClientboundPlayerPositionPacket) {
             lastSetbackTime = System.currentTimeMillis();
             if (mode.get() == Mode.VULCAN) {
-                // Server correction inserts a 150ms sample into Vulcan's window — helps.
-                // Reset our circular buffer: assume server state is now clean.
+                // A server correction invalidates the locally tracked sample window.
                 tickTimer = 1f;
                 vulcanWindowHead = 0;
                 vulcanWindowCount = 0;
@@ -350,9 +323,8 @@ public class Timer extends Module {
     }
 
     /**
-     * Update the circular window buffer with one packet (fast or slow).
-     * Evicts the OLDEST entry, exactly mirroring Vulcan's EvictingQueue.add().
-     * fastCount stays accurate: only changes when a fast entry is evicted or added.
+     * Advances the fixed-size sample window and updates the number of fast entries.
+     * Once full, the overwritten entry is removed from the count before insertion.
      */
     private void vulcanEvalWindow(boolean fast) {
         if (vulcanWindowCount == VULCAN_WINDOW_SIZE) {

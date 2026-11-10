@@ -13,6 +13,9 @@ import combatant.client.mixininterface.IVulkanBackendInfo;
 import combatant.client.mixins.accessors.FrontendGpuDeviceAccessor;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * Resolves the Vulkan backend interface of the currently installed Minecraft GPU device, if present.
+ */
 public enum VulkanBackendAccess {
     ;
 

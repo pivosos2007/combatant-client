@@ -62,14 +62,9 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
- * Picks the face and hit point that reproduce a schematic block state.
- *
- * <p>Rather than encode per-block placement rules, every candidate click is run through the block's own
- * {@code getStateForPlacement} with the player briefly turned to the aim rotation, exactly what the server
- * will do with the click. A click that yields the wanted state is exact; one that yields the right block in
- * another state (a stair facing the wrong way, a single slab where a double one goes) is approximate. Derived
- * state (power, lit, connections) does not count, and neither does what clicking the placed block sets later
- * (a repeater's delay, a comparator's mode, a note).</p>
+ * Finds placement faces and hit points that produce the requested schematic block state.
+ * Candidate clicks are evaluated with {@code getStateForPlacement}; properties derived from
+ * neighboring blocks are excluded from the placement-state comparison.
  */
 final class BuildPlanner {
 
@@ -108,11 +103,9 @@ final class BuildPlanner {
     }
 
     /**
-     * Cells where a temporary helper block gives a floating {@code target} something to click against. Searches
-     * outwards from the target through cells that are air in the world and accepted by {@code free} (the caller
-     * keeps schematic blocks and the player's own space out), at most {@code maxHelpers} cells deep. A returned
-     * cell has a clickable neighbour itself, so it can be placed now; the cells between it and the target follow
-     * once it stands, each leaning on the one before. Nearest chains first, lower cells before higher ones.
+     * Finds placeable roots for a helper-block chain leading to a floating target.
+     * Candidates must be free and reachable through at most {@code maxHelpers} cells;
+     * the result prefers shorter chains and lower positions.
      */
     static List<BlockPos> scaffoldRoots(BlockGetter level, BlockPos target, Predicate<BlockPos> free, int maxHelpers) {
         List<BlockPos> roots = new ArrayList<>();

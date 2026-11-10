@@ -11,6 +11,10 @@ import combatant.client.render.engine.renderer.ui.runtime.core.UiProps;
 
 import java.util.Locale;
 
+/**
+ * Resolves UI assets from node properties, consulting registered providers before built-in kinds.
+ * Missing asset IDs return {@code null}; unspecified intrinsic dimensions default to 16 units.
+ */
 public final class UiAssetResolver {
     private final UiAssetRegistry registry;
 

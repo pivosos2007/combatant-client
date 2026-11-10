@@ -35,7 +35,6 @@ import combatant.client.render.engine.text.TextRenderer;
 
 import static combatant.client.features.theme.Theme.theme;
 
-//todo Description
 @HudElementInfo(
         id = "xyz",
         displayName = "XYZ",

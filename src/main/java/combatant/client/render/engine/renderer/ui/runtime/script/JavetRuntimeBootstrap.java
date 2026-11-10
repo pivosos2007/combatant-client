@@ -89,7 +89,7 @@ public final class JavetRuntimeBootstrap {
         }
     }
 
-    /** Final process-exit cleanup. This is intentionally one-way. */
+    /** Final process-exit cleanup. This is one-way. */
     public static void shutdown() {
         synchronized (JavetRuntimeBootstrap.class) {
             if (shuttingDown) return;

@@ -13,9 +13,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Short-range reactive steering for TargetStrafe. No world graph, queue, pathfinder,
- * background work or deferred commands: either this tick's direction is safe or
- * the caller leaves the player's movement alone.
+ * Computes a short-range steering direction for TargetStrafe from the current
+ * player and target state. Unsafe or unavailable directions are reported as null;
+ * the caller remains responsible for applying player input each tick.
  */
 public final class OrbitNavigator {
     private static final double[] AVOID_ANGLES = {40, -40, 80, -80, 120, -120};
@@ -58,6 +58,11 @@ public final class OrbitNavigator {
         yieldUntil = 0;
     }
 
+    /**
+     * Updates the candidate direction from current geometry and hazard exposure.
+     * A change of target resets retained detour state; invalid movement contexts
+     * leave no direction to apply. The method does not move the player.
+     */
     public void update(LocalPlayer player, LivingEntity target, double radius, int orbitalDirection,
                        boolean front, boolean cube, boolean center, boolean autoJump, double stride) {
         direction = null;

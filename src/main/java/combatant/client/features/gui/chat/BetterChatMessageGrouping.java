@@ -9,10 +9,7 @@ package combatant.client.features.gui.chat;
 
 import java.util.List;
 
-/**
- * BetterChat bubbles are intentionally message-local. Server box-drawing/table lines must never
- * be merged into one giant visual column because that breaks viewport accounting and hides history.
- */
+/** Keeps message grouping independent so viewport accounting follows individual messages. */
 final class BetterChatMessageGrouping {
     private BetterChatMessageGrouping() {
     }

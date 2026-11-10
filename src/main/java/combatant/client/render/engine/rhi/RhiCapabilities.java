@@ -270,14 +270,14 @@ public final class RhiCapabilities {
                 || identity.contains("softpipe"));
     }
 
-    /** Blaze3D 26.2 exposes no public compute dispatch; Combatant lowers it natively per backend. */
+    /** Compute Shader Submission; Lowers it natively per backend. */
     public boolean nativeComputeSubmission() {
         if (!computeShaders || !shaderStorageBuffers) return false;
         return GlBackendAccess.current() != null
                 || combatant.client.render.engine.rhi.backend.vulkan.VulkanBackendAccess.current() != null;
     }
 
-    /** Blaze3D 26.2 exposes no tessellation stages; Combatant lowers patches natively per backend. */
+    /** Tesselation Submission; Lowers patches natively per backend. */
     public boolean nativeTessellationSubmission() {
         if (!tessellationShaders) return false;
         return GlBackendAccess.current() != null

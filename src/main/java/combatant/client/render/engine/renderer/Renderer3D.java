@@ -36,14 +36,7 @@ import java.util.List;
 import java.util.function.Predicate;
 import combatant.client.render.engine.world.WorldDrawCommand;
 
-/**
- *
- * Renderer3D is the public world-primitive API only:
- * - modules still call line/tri/quad/batch exactly as before;
- * - calls record CPU-side world commands into WorldCommandBuffer;
- * - WorldPassCompiler converts commands to RHI draw commands;
- * - mesh upload/draw/depth/fog/visibility are delegated to context/RHI/providers.
- */
+/** Records world primitives for compilation and submission by the active RHI. */
 public final class Renderer3D {
     private static final String DEFAULT_SAMPLER = "u_Texture";
     private static final WorldPassCompiler WORLD_COMPILER = new WorldPassCompiler();
@@ -120,9 +113,7 @@ public final class Renderer3D {
         return batchTextured(pipeline, texture.getTextureView(), texture.getSampler(), depthMode);
     }
 
-    // -----------------------
     // Convenience API
-    // -----------------------
 
     public void line(double x1, double y1, double z1,
                      double x2, double y2, double z2,
@@ -301,9 +292,7 @@ public final class Renderer3D {
         }
     }
 
-    // -----------------------
     // Submit
-    // -----------------------
 
     /**
      * Submit recorded world commands to the current main framebuffer.
@@ -401,9 +390,7 @@ public final class Renderer3D {
         GpuBufferSlice resolve();
     }
 
-    // -----------------------
     // Culling helpers
-    // -----------------------
 
     public static final class BatchBindings {
         private static final BatchBindings EMPTY = new BatchBindings(List.of(), List.of());

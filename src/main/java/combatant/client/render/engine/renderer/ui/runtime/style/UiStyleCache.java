@@ -9,14 +9,27 @@ package combatant.client.render.engine.renderer.ui.runtime.style;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
+/**
+ * Caches parsed UI class styles by class string and active theme version.
+ * {@link #clear()} invalidates parsed entries and resets hit/miss counters.
+ */
 public final class UiStyleCache {
     private final UiStyleParser parser = new UiStyleParser();
     private final Object2ObjectOpenHashMap<String, UiStyle> cache = new Object2ObjectOpenHashMap<>();
     private int hits;
     private int misses;
+    private UiTheme cachedTheme;
+    private int cachedVersion = -1;
 
     public UiStyle resolve(String classString) {
-        String key = (classString != null ? classString : "") + "|theme:" + UiThemeRegistry.current().version();
+        UiTheme theme = UiThemeRegistry.current();
+        if (cachedTheme != theme || cachedVersion != theme.version()) {
+            cache.clear();
+            cachedTheme = theme;
+            cachedVersion = theme.version();
+        }
+        // The cache belongs to one theme generation. No per-lookup key concatenation is needed.
+        String key = classString != null ? classString : "";
         UiStyle cached = cache.get(key);
         if (cached != null) {
             hits++;
@@ -24,8 +37,8 @@ public final class UiStyleCache {
         }
         misses++;
         UiStyle style = parser.parse(classString).style();
+        // trim() on every miss rebuilt the hash table repeatedly as unique styles accumulated.
         cache.put(key, style);
-        cache.trim();
         return style;
     }
 
@@ -39,6 +52,8 @@ public final class UiStyleCache {
 
     public void clear() {
         cache.clear();
+        cachedTheme = null;
+        cachedVersion = -1;
         hits = 0;
         misses = 0;
     }

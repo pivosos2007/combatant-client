@@ -51,16 +51,36 @@ public final class UiShapeRenderer {
             return ice.asSurface().withAccent(accent);
         }
         boolean microtexture = props.bool("materialMicrotexture", base.microtextureEnabled());
-        UiSurfaceMaterialSpec resolved = themed && microtexture
-                ? base.withMicrotexture(base.texture().withTintStrength(1.0f))
-                : base.withMicrotexture(microtexture);
-        return resolved.withAccent(accent)
+        UiMaterialTextureSpec profile = base.texture();
+        profile = new UiMaterialTextureSpec(
+                props.number("materialPatternScale", props.number("materialTileSize", profile.tileSizePx())),
+                props.number("materialNormalStrength", profile.normalStrength()),
+                props.number("materialRelief", props.number("materialHeightStrength", profile.heightStrength())),
+                props.number("materialRoughnessVariation", profile.roughnessVariation()),
+                props.number("materialMetallic", profile.metallic()),
+                props.number("materialSpecularStrength", profile.specularStrength()),
+                props.number("materialTintStrength", profile.tintStrength()),
+                props.number("materialAnisotropy", profile.anisotropy()),
+                props.number("materialDirection", profile.directionDegrees()));
+        UiSurfaceMaterialSpec resolved = base.withMicrotexture(microtexture)
+                .withAccent(accent)
                 .withParameters(
                         props.number("materialDetailScale", base.detailScale()),
                         props.number("materialRoughness", base.roughness()),
                         props.number("materialBevelStrength", base.bevelStrength()),
                         props.number("materialResponse", base.response())
                 );
+        resolved = resolved.withDetailSpec(profile);
+        if (props.bool("materialSceneLighting", false)) {
+            String sceneSource = props.string("materialSceneSource", "current");
+            resolved = resolved.withLighting(new UiMaterialLightingSpec(
+                    "captured".equalsIgnoreCase(sceneSource)
+                            ? UiMaterialLightingSpec.Source.CAPTURED_SCENE
+                            : UiMaterialLightingSpec.Source.CURRENT_TARGET,
+                    props.number("materialSceneStrength", 0.45f),
+                    props.number("materialSceneRadius", 11f)));
+        }
+        return resolved;
     }
 
     /** Exact analytic TL/TR/BR/BL arcs for material and structure overlays. */
@@ -92,7 +112,7 @@ public final class UiShapeRenderer {
             // glass visual. Never paint solid ICE on top of that scene.
             if (!(glassActive && material.mode() == UiSurfaceMaterialSpec.Mode.ICE)) {
                 renderer.materialPrimitive(primitive,
-                        glassActive ? fillPaint.withAlphaScale(0.22f) : fillPaint, material);
+                        glassActive ? fillPaint.withAlphaScale(Math.clamp(props.number("materialCoatOpacity", 0.30f), 0f, 1f)) : fillPaint, material);
             }
         } else if (!glassActive) {
             // Structure-only keeps the exact themed fill and four independently
@@ -340,7 +360,7 @@ public final class UiShapeRenderer {
                 if (material != null) {
                     if (!(glassActive && material.mode() == UiSurfaceMaterialSpec.Mode.ICE)) {
                         renderer.materialPrimitive(primitive,
-                                glassActive ? fillPaint.withAlphaScale(0.22f) : fillPaint, material);
+                                glassActive ? fillPaint.withAlphaScale(Math.clamp(props.number("materialCoatOpacity", 0.30f), 0f, 1f)) : fillPaint, material);
                     }
                 } else if (!glassActive || !"voronoi".equalsIgnoreCase(props.string("materialMode", ""))) {
                     renderer.primitive(primitive, fillPaint);
@@ -410,7 +430,7 @@ public final class UiShapeRenderer {
     // method over 8000 bytes of bytecode (HugeMethodLimit), and as one method this had reached
     // 8068, so every scripted HUD shape was drawn by the interpreter on every frame.
 
-    /** Draws the shapes selected by name. Returns false for the cut/chamfer family, which {@link #renderCutShape} draws. */
+    /** @return {@code false} for cut/chamfer shapes handled by {@link #renderCutShape} */
     private boolean renderNamedShape(Renderer2D renderer,
                                      UiProps props,
                                      UiStyle style,
@@ -962,9 +982,8 @@ public final class UiShapeRenderer {
                     context.renderLength(props.number("radius", style.radius())),
                     quality, brightness, blurAlpha, 0xFFFFFF);
             default -> {
-                // The legacy blur batch only has analytic rect/chamfer masks. Do not blur a
-                // bounding rectangle for arbitrary polygons: a wrong silhouette is worse than
-                // no blur and is visually obvious around notches/angled edges.
+                // The blur batch supports rectangular and chamfered masks only; submitting a polygon's
+                // bounds would blur pixels outside its actual shape.
             }
         }
     }

@@ -26,10 +26,10 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Shared aim-point tracker for combat modules.
- * <p>
- * Adapted from LiquidBounce (https://github.com/CCBlueX/LiquidBounce).
- * Original copyright (c) CCBlueX.
+ * Tracks candidate points inside a target's predicted bounding box, retaining
+ * smoothing and delay state across calls for the same entity id. Switching
+ * entities resets the tracking state. Some tracking policies may return null
+ * when no candidate passes reach and visibility constraints.
  */
 public final class PointTracker {
 
@@ -341,6 +341,11 @@ public final class PointTracker {
         this.requireValidCandidate = requireValidCandidate;
     }
 
+    /**
+     * Selects a point for the predicted entity box at {@code ticks}.
+     * With strict candidate validation enabled, returns null if no candidate
+     * satisfies the configured reach and visibility checks.
+     */
     public PointInsideBox findPoint(Vec3 eyes,
                                     Entity entity,
                                     int ticks,

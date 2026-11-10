@@ -17,10 +17,10 @@ import net.minecraft.world.item.Items;
 import java.util.function.Predicate;
 
 /**
- * The one "move an item to the offhand / a hotbar slot" path every module uses. Every click goes through the
- * serialized {@link InventorySwap#command} queue, so Grim's stationary-player and click-ordering rules hold.
- * {@code stillValid} is re-checked when the click actually runs (it may have been queued) against the source stack;
- * {@code after} runs only if the click was sent.
+ * Schedules inventory-to-hotbar and offhand transfers through the serialized
+ * {@link InventorySwap} action queue. Slot validity and optional stack predicates
+ * are checked again when a queued action executes; completion callbacks run
+ * after a successful click or an already-empty exchange that needs no click.
  */
 public final class InventoryMover {
     private static final int OFFHAND_BUTTON = 40;

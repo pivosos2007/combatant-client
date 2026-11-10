@@ -10,6 +10,11 @@ package combatant.client.features.map.duplex;
 import java.util.Arrays;
 import java.util.UUID;
 
+/**
+ * Fields of a DUPLEX frame before wire encoding. The byte-array payload is copied
+ * both when the record is constructed and when it is read, preventing callers from
+ * mutating frame contents through array aliases.
+ */
 public record DuplexFrame(
         DuplexMessageType type,
         long sequence,

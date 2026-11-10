@@ -47,7 +47,7 @@ import java.util.List;
  * Build a separate depth attachment for late world visuals: start with the real scene
  * depth and rasterize only SeeInvisibles players as opaque depth silhouettes. Neither
  * the scene depth nor the entity's real OIT/alpha-blended color pass is changed.
- * This is deliberately NOT an always-on player depth prepass in the world framebuffer.
+ * This is NOT an always-on player depth prepass in the world framebuffer.
  */
 public final class SeeInvisiblesVisualDepth {
     private static final SubmitNodeStorage SUBMITS = new SubmitNodeStorage();

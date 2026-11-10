@@ -24,6 +24,7 @@ import net.fabricmc.loader.api.ModContainer;
 
 import java.nio.file.Path;
 
+/** Exposes addon registration operations for modules, UI extensions, commands and render callbacks. */
 public interface CombatantAddonContext extends CombatantAddonRuntimeContext {
     @UsedImplicitly
     ModContainer modContainer();

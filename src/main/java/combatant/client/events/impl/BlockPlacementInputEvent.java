@@ -10,6 +10,12 @@ import lombok.Getter;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.phys.HitResult;
 
+/**
+ * Offers consumers a chance to claim the current use-key input before vanilla item use.
+ * {@code clickCount > 0} denotes a queued press; {@code held} is the current key state.
+ * Calling {@link #claim(InteractionHand)} stores the chosen hand and cancels the
+ * original use action; claiming does not itself perform an interaction.
+ */
 @Getter
 public final class BlockPlacementInputEvent extends Event {
     private final int clickCount;

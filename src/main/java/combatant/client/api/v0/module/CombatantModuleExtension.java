@@ -13,6 +13,7 @@ import combatant.client.render.engine.renderer.Renderer3D;
 import combatant.client.render.engine.text.TextRenderer;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
+/** Defines hooks around module registration, lifecycle, ticking and rendering. */
 public interface CombatantModuleExtension {
     default void onRegister(ModuleExtensionContext context) {
     }

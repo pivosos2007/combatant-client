@@ -10,6 +10,7 @@ package combatant.client.api.v0.clickgui;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
 
+/** Supplies the renderers made available to a ClickGUI extension section. */
 public record CombatantClickGuiRenderContext(
         Renderer2D renderer,
         TextRenderer regularFont,

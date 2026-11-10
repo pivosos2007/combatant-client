@@ -145,8 +145,6 @@ public final class SlimeMlgTrajectoryPlannerTest {
                 "a block may not be placed where the player is already standing");
     }
 
-    /** The legacy comparator fell back to increasing X/Z on equal contact area,
-     * picking the block BEHIND a player crossing an exact four-way corner. */
     private static void movingCornerPrefersDirectionOfTravel() {
         var forward = List.of(
                 new SlimeMlgTrajectoryPlanner.Frame(4.9, 66.4, 5.9, false),

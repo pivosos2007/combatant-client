@@ -12,6 +12,7 @@ import combatant.client.features.module.ModuleManager;
 
 import java.util.List;
 
+/** Exposes module lookup and activation operations to addon code. */
 public final class CombatantClientApi {
     private static final CombatantClientApi INSTANCE = new CombatantClientApi();
 

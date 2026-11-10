@@ -1,0 +1,10 @@
+{
+  "clickgui.settings.main.deferred": "Deferred (Dev)",
+  "setting.deferred.enabled": "Включить (нужен ReimaginedVisual)",
+  "setting.deferred.gtao": "GTAO",
+  "setting.deferred.indirect_light": "Непрямой свет",
+  "setting.deferred.reflections": "Отражения SSR",
+  "setting.deferred.colored_light": "Цветной свет блоков",
+  "setting.deferred.dynamic_lights": "Динамические источники света",
+  "setting.deferred.debug_gbuffer": "Отладка G-buffer"
+}

@@ -14,9 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Registry of {@link NavigationProvider}s. The built-in walker is always registered and is the fallback: asking
- * for a provider that is unknown or unavailable yields the built-in one rather than nothing, so a module that
- * prefers Baritone keeps working when it is not installed.
+ * Registry of navigation providers. Unknown or unavailable providers resolve to the built-in walker.
  */
 public final class NavigationProviders {
 

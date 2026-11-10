@@ -138,7 +138,6 @@ public final class GlowSurfaces {
             }
         }
 
-        /** All six faces receive independent vertex colors (rather than static top/bottom tints). */
         public void boxColored(AABB box, VertexColor colorAt, float rimAlpha, boolean caps) {
             boxColored(box, colorAt, rimAlpha, caps, phaseFor(box.minX, box.minY, box.minZ));
         }

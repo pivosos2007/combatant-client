@@ -8,12 +8,9 @@
 package combatant.client.features.module.modules.player.autoarmor;
 
 /**
- * Enchantment weighting for AutoArmor's piece scoring. {@link #BALANCED} reproduces the weights the
- * module shipped with; the other entries lean the choice toward one damage source when two pieces of
- * the same tier differ only by enchantments.
- *
- * <p>Base stats still carry most of the score (one armor point is worth {@value #ARMOR_WEIGHT}, a
- * whole Protection IV about 6), so a focus mostly breaks ties between pieces of one tier.</p>
+ * Defines the relative enchantment weights used to score candidate armor pieces.
+ * Armor, toughness and knockback resistance contribute independently of focus;
+ * alternate focuses increase the weight of their corresponding protection type.
  */
 public enum ProtectionFocus {
     BALANCED(1.4, 0.6, 0.4, 0.3),

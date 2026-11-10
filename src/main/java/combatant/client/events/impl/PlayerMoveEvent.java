@@ -19,6 +19,11 @@ import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.events.Event;
 
+/**
+ * Allows listeners to replace the local player's movement argument before
+ * {@code Entity.move} processes collision resolution.
+ * A null replacement is ignored by the publishing hook.
+ */
 @Getter
 public class PlayerMoveEvent extends Event {
     private final MoverType type;

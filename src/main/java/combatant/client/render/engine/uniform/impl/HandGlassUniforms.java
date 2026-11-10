@@ -22,6 +22,8 @@ import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
  * vec4 uTint;     // rgb = glass tint, a = overlay alpha
  * vec4 uMaterial; // x = strength, y = refraction pixels, z = edge haze strength, w = frost blur radius pixels
  * vec4 uReserved; // x = body frost strength, y = chromatic pixels, z = edge refraction multiplier, w = clarity
+ * vec4 u_PaletteEnd;     // secondary RGBA tint
+ * vec4 u_PaletteOptions; // mode, cycles/sec, spatial span, angle in degrees
  */
 public enum HandGlassUniforms {
     ;
@@ -30,6 +32,8 @@ public enum HandGlassUniforms {
             .putVec4()
             .putVec4()
             .putVec4()
+            .putVec4() // palette end
+            .putVec4() // palette options
             .get();
 
     private static final Data DATA = new Data();
@@ -40,7 +44,9 @@ public enum HandGlassUniforms {
             float screenW, float screenH, float time, float edgeWidth,
             float tintR, float tintG, float tintB, float alpha,
             float strength, float refractionPx, float hazeStrength, float reserved0,
-            float reserved1, float reserved2, float reserved3, float reserved4
+            float reserved1, float reserved2, float reserved3, float reserved4,
+            float paletteEndR, float paletteEndG, float paletteEndB, float paletteEndA,
+            float paletteMode, float paletteSpeed, float paletteSpan, float paletteAngle
     ) {
         DATA.screenW = screenW;
         DATA.screenH = screenH;
@@ -61,6 +67,14 @@ public enum HandGlassUniforms {
         DATA.reserved2 = reserved2;
         DATA.reserved3 = reserved3;
         DATA.reserved4 = reserved4;
+        DATA.paletteEndR = paletteEndR;
+        DATA.paletteEndG = paletteEndG;
+        DATA.paletteEndB = paletteEndB;
+        DATA.paletteEndA = paletteEndA;
+        DATA.paletteMode = paletteMode;
+        DATA.paletteSpeed = paletteSpeed;
+        DATA.paletteSpan = paletteSpan;
+        DATA.paletteAngle = paletteAngle;
 
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
@@ -74,6 +88,8 @@ public enum HandGlassUniforms {
         private float tintR, tintG, tintB, alpha;
         private float strength, refractionPx, hazeStrength, reserved0;
         private float reserved1, reserved2, reserved3, reserved4;
+        private float paletteEndR, paletteEndG, paletteEndB, paletteEndA;
+        private float paletteMode, paletteSpeed, paletteSpan, paletteAngle;
 
         @Override
         public void write(java.nio.ByteBuffer buffer) {
@@ -81,7 +97,9 @@ public enum HandGlassUniforms {
                     .putFloat(screenW).putFloat(screenH).putFloat(time).putFloat(edgeWidth)
                     .putFloat(tintR).putFloat(tintG).putFloat(tintB).putFloat(alpha)
                     .putFloat(strength).putFloat(refractionPx).putFloat(hazeStrength).putFloat(reserved0)
-                    .putFloat(reserved1).putFloat(reserved2).putFloat(reserved3).putFloat(reserved4);
+                    .putFloat(reserved1).putFloat(reserved2).putFloat(reserved3).putFloat(reserved4)
+                    .putFloat(paletteEndR).putFloat(paletteEndG).putFloat(paletteEndB).putFloat(paletteEndA)
+                    .putFloat(paletteMode).putFloat(paletteSpeed).putFloat(paletteSpan).putFloat(paletteAngle);
         }
 
         @Override

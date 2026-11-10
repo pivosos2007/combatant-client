@@ -23,7 +23,7 @@ import java.util.function.Predicate;
 /**
  * Main-thread, budgeted scanner for already loaded client world chunk sections.
  *
- * <p>This is intentionally not a worker thread and does not request chunk rebuilds.
+ * <p>This is not a worker thread and does not request chunk rebuilds.
  * Sodium/renderer observations can still feed caches opportunistically, while this
  * scanner provides deterministic catch-up for enable, setting changes and newly
  * reachable sections.</p>

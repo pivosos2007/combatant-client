@@ -23,8 +23,8 @@ public enum ChatNameUtil {
     }
 
     /**
-     * Собираем все никоподобные токены в префиксе сообщения (до первого разделителя >, : или »),
-     * игнорируя явные теги в квадратных скобках и разделители вида "*".
+     * Extracts nickname-like tokens before the first message delimiter (>, : or »),
+     * ignoring bracketed tags and star separators.
      */
     public static List<String> extractNicks(String line) {
         if (line == null) return Collections.emptyList();
@@ -48,9 +48,9 @@ public enum ChatNameUtil {
                 int end = s.indexOf(']', i + 1);
                 if (end < 0) break;
                 i = end + 1;
-                continue; // тег/клан пропускаем
+                continue; 
             }
-            if (ch == '*') { // разделитель между ником и кланом
+            if (ch == '*') { 
                 i++;
                 continue;
             }

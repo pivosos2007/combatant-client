@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.visuals;
 
+import combatant.client.events.impl.TotemActivationEvent;
+
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
@@ -83,6 +85,12 @@ public class TotemFX extends Module {
         long now = System.currentTimeMillis();
         recentLocalAttacks.put(player.getUUID(), now);
         pruneAttackHistory(now);
+    }
+
+    @EventHandler
+    private void onTotemActivation(TotemActivationEvent event) {
+        if (event.isLocal()) onTotemPop();
+        else onOpponentTotemPop(event.getPlayer());
     }
 
     public void onTotemPop() {

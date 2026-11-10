@@ -75,7 +75,6 @@ public enum ClipFunction {
                 x, y, width, height, topLeft, topRight, bottomRight, bottomLeft));
     }
 
-    /** Transitional fallback for subtrees whose material families cannot yet consume analytic clip state. */
     public static boolean pushRoundedRectMsaaStencil(double x, double y, double width, double height, double radius) {
         return push(UiShape.roundedRect(x, y, width, height, radius), UiClipStrategy.MSAA_STENCIL);
     }

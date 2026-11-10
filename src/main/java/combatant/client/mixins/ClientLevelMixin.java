@@ -91,7 +91,6 @@ public abstract class ClientLevelMixin implements ClientLevelEnvironmentSeedView
         NoRender nr = Modules.get(NoRender.class);
         if (nr == null || !nr.isEnabled()) return;
 
-        // частицы еды / питья
         if (nr.off("eat_particles")
                 && effect instanceof ItemParticleOption) {
             ci.cancel();

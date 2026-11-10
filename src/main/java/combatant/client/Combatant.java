@@ -7,21 +7,16 @@
 
 package combatant.client;
 
+import combatant.client.util.combat.ClientAttackEffectListener;
+
 import combatant.client.features.map.heuristic.HeuristicRuntime;
 import combatant.client.compat.seedcracker.SeedCrackerRuntime;
-import combatant.client.events.UsedImplicitly;
 import combatant.client.compat.xaero.XaeroWaypointHudOverlay;
 import combatant.client.render.map.PlayerLocationHudOverlay;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.runtime.*;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
-import combatant.client.runtime.annotation.ClientBound;
-import combatant.client.runtime.annotation.ClientBoundLevel;
-import combatant.client.runtime.annotation.RuntimeAssertion;
-import combatant.client.runtime.annotation.RuntimeAssertionPhase;
-import combatant.client.runtime.annotation.RuntimeResume;
-import combatant.client.runtime.annotation.RuntimeSuspend;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
@@ -101,45 +96,7 @@ import combatant.client.util.session.SessionStatisticsTracker;
 import combatant.client.util.target.TargetManager;
 import combatant.client.util.time.TimerController;
 
-@ClientBound(
-        value = ClientBoundLevel.FULL,
-        packages = "combatant.client",
-        resources = "assets/combatant",
-        exposedPackages = "combatant.client.mixins",
-        isolatedEntrypoints = "combatant.client.runtime.isolated.CombatantIsolatedRuntime",
-        isolatedPackages = "combatant.client.runtime.isolated"
-)
 public class Combatant implements ClientModInitializer {
-
-    @UsedImplicitly
-    @RuntimeSuspend(order = 100)
-    private void suspendClientBoundRuntime(String reason) {
-        ClientRuntime.enterSoftPanic(reason);
-    }
-
-    @UsedImplicitly
-    @RuntimeResume(order = 100)
-    private void resumeClientBoundRuntime(String reason) {
-        ClientRuntime.exitSoftPanic(reason);
-    }
-
-    @UsedImplicitly
-    @RuntimeAssertion(
-            phase = RuntimeAssertionPhase.SUSPENDED,
-            message = "Combatant runtime did not enter soft panic"
-    )
-    private boolean assertClientBoundRuntimeSuspended() {
-        return ClientRuntime.state() == ClientRuntimeState.SOFT_PANIC;
-    }
-
-    @UsedImplicitly
-    @RuntimeAssertion(
-            phase = RuntimeAssertionPhase.ACTIVE,
-            message = "Combatant runtime did not resume"
-    )
-    private boolean assertClientBoundRuntimeActive() {
-        return ClientRuntime.state() == ClientRuntimeState.ACTIVE;
-    }
 
     private static void registerRuntimeLifecycle() {
         AddonManager.registerRuntimeLifecycle();
@@ -489,7 +446,8 @@ public class Combatant implements ClientModInitializer {
     }
 
     private static void appendHudDeferredMarker(Renderer2D.Deferred2DLayer layer, GuiGraphicsExtractor ctx) {
-        if (!(ctx instanceof IGuiGraphics graphics)) return;
+        if (!(ctx instanceof IGuiGraphics graphics)
+                || !combatant.client.render.engine.renderer.ui.UiDeferredScheduler.markNewHudWork(layer)) return;
         ctx.nextStratum();
         graphics.combatant$addDeferredHudMarker(layer);
         ctx.nextStratum();
@@ -545,7 +503,6 @@ public class Combatant implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         combatant.client.config.ConfigPaths.root();
-        combatant.client.runtime.stability.ModuleStabilityRun.register();
         CombatantRenderEngineBootstrap.init();
         PostProcessManager.register(new NetherPortalRiftPass());
         PostProcessManager.register(new SleepOverlayPass());
@@ -573,7 +530,6 @@ public class Combatant implements ClientModInitializer {
             MapLinkRuntime.get().shutdown();
         });
 
-        // -------- CONFIG + BINDS ----------
         // Enabled addons declare built-in module exclusions before auto-discovery.
         AddonManager.prepareModuleLoading();
         ModuleAutoLoader.load("combatant.client.features.module.modules");
@@ -595,6 +551,9 @@ public class Combatant implements ClientModInitializer {
         Events.BUS.register(PvpTracker.INSTANCE);
         Events.BUS.register(PvpTargetTracker.INSTANCE);
         Events.BUS.register(SessionStatisticsTracker.INSTANCE);
+        Events.BUS.register(ClientAttackEffectListener.INSTANCE);
+        Events.BUS.register(combatant.client.util.player.ServerAbilitiesObserver.INSTANCE);
+        Events.BUS.register(combatant.client.features.relations.StaffPacketObserver.INSTANCE);
         Events.BUS.registerIsolated(MapLinkRuntime.get());
         Events.BUS.registerIsolated(MapLocationRuntime.get());
         Events.BUS.register(SelfBedTracker.INSTANCE);
@@ -611,9 +570,7 @@ public class Combatant implements ClientModInitializer {
         Events.BUS.register(combatant.client.config.profile.ConfigServerBindings.INSTANCE);
         Events.BUS.register(combatant.client.features.relations.VanishProbe.INSTANCE);
 
-        // -------- КЛЮЧЕВЫЕ ИВЕНТЫ --------
 
-        // === ТИКИ ===
 
 
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
@@ -687,7 +644,6 @@ public class Combatant implements ClientModInitializer {
         ));
 
 
-        // === HUD 2D OVERLAYS ===
 
         HudElementRegistry.addFirst(
                 Identifier.fromNamespaceAndPath("combatant", "hud_first"),
@@ -699,7 +655,6 @@ public class Combatant implements ClientModInitializer {
                 (ctx, tc) -> renderHudPhase(HudPhase.LAST, ctx, tc)
         );
 
-        // остальные позиции HUD:
         HudElementRegistry.attachElementBefore(
                 net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements.MISC_OVERLAYS,
                 Identifier.fromNamespaceAndPath("combatant", "hud_before_misc"),

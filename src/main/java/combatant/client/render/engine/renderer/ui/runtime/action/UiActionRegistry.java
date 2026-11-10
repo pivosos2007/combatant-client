@@ -9,6 +9,10 @@ package combatant.client.render.engine.renderer.ui.runtime.action;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
+/**
+ * Dispatches named UI actions, resolving exact registered IDs before parsed parameterized IDs.
+ * An unresolved action returns {@code false} without invoking a handler.
+ */
 public final class UiActionRegistry {
     private final Object2ObjectOpenHashMap<String, UiAction> actions = new Object2ObjectOpenHashMap<>();
 
@@ -33,9 +37,7 @@ public final class UiActionRegistry {
     public boolean dispatch(String rawRef, UiActionContext baseContext) {
         if (rawRef == null || rawRef.isBlank()) return false;
         UiActionRef ref = UiActionRef.parse(rawRef);
-        // Direct registered actions (e.g. lab:nav:buttons) must be resolved as
-        // exact IDs. Parameterized actions use namespace.name:argument as a
-        // separate path. Previously all colon-separated dev actions were lost.
+        // Exact registered IDs take precedence over parsed parameterized action keys.
         UiAction action = actions.get(rawRef);
         if (action == null) action = actions.get(ref.key());
         if (action == null) return false;

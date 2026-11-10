@@ -24,6 +24,7 @@ import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.render.engine.color.RenderColor;
@@ -81,18 +82,23 @@ public final class MediaPlayer extends DraggableHudElement {
             .withRefraction(0.011f).withBevel(0.25f, 0.046f)
             .withFluid(0.68f, 0.78f).withCleanReveal(0.76f)
             .withInteractionStrength(0.52f).withChromaticAberration(0.52f)
-            .withMagnification(1.005f).withShapeDeformation(false).withSpecular(false);
+            .withMagnification(1.005f).withShapeDeformation(false).withSpecular(false)
+            .withOpticalThickness(1.22f).withSurfaceRoughness(0.065f)
+            .withReactiveCoating(0.38f);
     private static final UiGlassOpticsSpec MEDIA_TIME_GLASS = MEDIA_GLASS
             .withRefraction(0.006f).withBevel(0.24f, 0.030f)
             .withFluid(0.55f, 0.82f).withInteractionStrength(0.30f)
             .withChromaticAberration(0.24f).withMagnification(1.008f)
+            .withSurfaceRoughness(0.12f).withThinFilm(450f, 0.09f)
             .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
     private static final UiGlassOpticsSpec MEDIA_HOVER_GLASS = MEDIA_GLASS
             .withRefraction(0.007f).withBevel(0.28f, 0.034f)
             .withFluid(0.72f, 0.72f).withInteractionStrength(0.42f)
             .withChromaticAberration(0.28f).withMagnification(1.010f)
+            .withSurfaceRoughness(0.08f).withReactiveCoating(0.52f)
             .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
 
+    private final HudGlassSettings glassSettings = new HudGlassSettings("media_player", MEDIA_GLASS);
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final MediaSessionService mediaService = MediaSessionService.get();
@@ -205,6 +211,14 @@ public final class MediaPlayer extends DraggableHudElement {
         if (flowMotion > 0.9999f) flowMotion = 1f;
     }
 
+    private float chromaticActivity() {
+        return flowMotion * flowMotion * (3f - 2f * flowMotion);
+    }
+
+    private UiGlassOpticsSpec activeChromatic(UiGlassOpticsSpec optics) {
+        return optics.withChromaticAberration(optics.chromaticAberration() * chromaticActivity());
+    }
+
     private float playHover;
     private float shuffleHover;
     private float prevHover;
@@ -254,6 +268,7 @@ public final class MediaPlayer extends DraggableHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.number(scale));
+        glassSettings.addSettings(defs);
         defs.add(SettingDef.bool(syncTheme));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(syncTheme::get));
         defs.add(SettingDef.number(themeMix).visibleWhen(syncTheme::get));
@@ -671,7 +686,7 @@ public final class MediaPlayer extends DraggableHudElement {
             float lensH = timeH + timePadY * 2f;
             HudRenderUtil.drawReactiveGlass(lensX, lensY, lensW, lensH, lensH * 0.5f,
                     Math.max(0.12f, baseScale * scale), false,
-                    1f, scale, timeLensFluid, MEDIA_TIME_GLASS, true, 0f, 0.4f);
+                    1f, scale, timeLensFluid, activeChromatic(glassSettings.apply(MEDIA_TIME_GLASS)), true, 0f, 0.4f);
         }
 
         metaRenderer.begin(metaScale * scale, false, false);
@@ -791,7 +806,7 @@ public final class MediaPlayer extends DraggableHudElement {
         float lensY = y + (size - lensSize) * 0.5f;
         HudRenderUtil.drawReactiveGlass(lensX, lensY, lensSize, lensSize, lensSize * 0.5f,
                 Math.max(0.12f, lensSize / BASE_BUTTON_SIZE), false,
-                1f, eased * alpha, lensFluid, MEDIA_HOVER_GLASS, true, 0f, 0.65f);
+                1f, eased * alpha, lensFluid, activeChromatic(glassSettings.apply(MEDIA_HOVER_GLASS)), true, 0f, 0.65f);
     }
 
     private void updateHover(boolean chatOpen, boolean showShuffle, boolean showRepeat) {
@@ -960,12 +975,10 @@ public final class MediaPlayer extends DraggableHudElement {
     }
 
     private void drawGlass(float x, float y, float w, float h, float radius, float scale, int accentSoft) {
-        // Always keep the same shader. Only its animated body-wave coverage
-        // eases in/out with playback; static chroma, bevel and blur are unchanged.
-        float easedWave = flowMotion * flowMotion * (3f - 2f * flowMotion);
+        float easedWave = chromaticActivity();
         UiGlassVisual visual = UiGlassVisual.FLOW.withVector(0, 1f, 1f, 1f, easedWave);
         HudRenderUtil.drawReactiveGlass(x, y, w, h, radius, scale, true,
-                1f, anim, glassFluid, MEDIA_GLASS, false, 0f, 0.55f, visual);
+                1f, anim, glassFluid, activeChromatic(glassSettings.apply(MEDIA_GLASS)), false, 0f, 0.55f, visual);
         if (isGradientPanelStyle()) {
             float strength = (themeGradientStrength.get() / 100.0f) * (themeMix.get() / 100.0f);
             HudRenderUtil.ThemeGradient panelGradient = HudRenderUtil.themePanelGradient(Math.round(34.0f * strength * anim));

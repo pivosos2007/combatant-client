@@ -12,6 +12,11 @@ import lombok.Setter;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.events.Event;
 
+/**
+ * Allows overriding the local player's input-to-velocity conversion in
+ * {@code Entity.moveRelative}. The supplied velocity is the computed default;
+ * movement input, speed and yaw remain unchanged.
+ */
 @Getter
 public class PlayerVelocityStrafe extends Event {
 

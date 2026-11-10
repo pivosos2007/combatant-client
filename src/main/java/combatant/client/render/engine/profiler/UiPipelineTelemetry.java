@@ -36,6 +36,8 @@ public enum UiPipelineTelemetry {
     private static int msaaTargetResizes;
     private static long msaaPixelSamples;
     private static int directPasses;
+    private static int directCoalescedGroups;
+    private static int directPassesSaved;
     private static int itemPasses;
     private static int mixedItemPasses;
     private static int captureAwarePasses;
@@ -44,8 +46,39 @@ public enum UiPipelineTelemetry {
     private static int captureAwarePreparedGlass;
     private static int captureAwareUnsupported;
 
+    /** Reasons the last ordered UI entry could not absorb the next one. */
+    public enum BatchBreakCause { ORDER, TYPE, SCISSOR, CLIP, SAMPLER, PARAMETERS }
+
+    private static int hudMarkersEmitted;
+    private static int hudMarkersSkipped;
+    private static int batchBreakOrder;
+    private static int batchBreakType;
+    private static int batchBreakScissor;
+    private static int batchBreakClip;
+    private static int batchBreakSampler;
+    private static int batchBreakParameters;
+
+    public static void recordHudMarker(boolean emitted) {
+        if (emitted) hudMarkersEmitted++;
+        else hudMarkersSkipped++;
+    }
+
+    public static void recordBatchBreak(BatchBreakCause reason) {
+        switch (reason) {
+            case ORDER -> batchBreakOrder++;
+            case TYPE -> batchBreakType++;
+            case SCISSOR -> batchBreakScissor++;
+            case CLIP -> batchBreakClip++;
+            case SAMPLER -> batchBreakSampler++;
+            case PARAMETERS -> batchBreakParameters++;
+        }
+    }
+
     public static void beginFrame(long nextFrameId) {
         frameId = nextFrameId;
+        hudMarkersEmitted = hudMarkersSkipped = 0;
+        batchBreakOrder = batchBreakType = batchBreakScissor = batchBreakClip = 0;
+        batchBreakSampler = batchBreakParameters = 0;
         analyticClipPushes = 0;
         stencilClipPushes = 0;
         stencilMaskPasses = 0;
@@ -66,6 +99,8 @@ public enum UiPipelineTelemetry {
         msaaTargetResizes = 0;
         msaaPixelSamples = 0L;
         directPasses = 0;
+        directCoalescedGroups = 0;
+        directPassesSaved = 0;
         itemPasses = 0;
         mixedItemPasses = 0;
         captureAwarePasses = 0;
@@ -143,6 +178,13 @@ public enum UiPipelineTelemetry {
         directPasses++;
     }
 
+    /** Counts facade pass boundaries removed by adjacent direct RHI stream coalescing. */
+    public static void recordDirectCoalescing(int originalPasses) {
+        if (originalPasses < 2) return;
+        directCoalescedGroups++;
+        directPassesSaved += originalPasses - 1;
+    }
+
     public static void recordItemPass() {
         itemPasses++;
     }
@@ -196,13 +238,23 @@ public enum UiPipelineTelemetry {
                 msaaTargetResizes,
                 msaaPixelSamples,
                 directPasses,
+                directCoalescedGroups,
+                directPassesSaved,
                 itemPasses,
                 mixedItemPasses,
                 captureAwarePasses,
                 captureAwareMixedItems,
                 captureAwareBlurCapture,
                 captureAwarePreparedGlass,
-                captureAwareUnsupported
+                captureAwareUnsupported,
+                hudMarkersEmitted,
+                hudMarkersSkipped,
+                batchBreakOrder,
+                batchBreakType,
+                batchBreakScissor,
+                batchBreakClip,
+                batchBreakSampler,
+                batchBreakParameters
         );
     }
 }

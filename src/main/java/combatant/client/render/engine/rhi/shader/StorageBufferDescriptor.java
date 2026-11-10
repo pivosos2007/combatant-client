@@ -7,6 +7,10 @@
 
 package combatant.client.render.engine.rhi.shader;
 
+/**
+ * Storage-buffer layout and allocation policy.
+ * Capacity is measured in layout elements; static uploads cannot be combined with GPU-owned output.
+ */
 public record StorageBufferDescriptor(String label,
                                       Std430StructLayout elementLayout,
                                       int elementCapacity,

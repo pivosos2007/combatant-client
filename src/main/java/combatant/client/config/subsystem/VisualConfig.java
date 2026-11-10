@@ -28,11 +28,14 @@ public final class VisualConfig extends SubsystemConfig {
     private final BooleanValue menuHoneycombCursorGlow = bool("menuHoneycombCursorGlow", true);
     private final BooleanValue menuHoneycombAmbient = bool("menuHoneycombAmbient", true);
     private final BooleanValue menuFluidEnabled = bool("menuFluidEnabled", true);
+    private final BooleanValue menuCrystalBackground = bool("menuCrystalBackground", true);
     private final BooleanValue menuFluidRainbow = bool("menuFluidRainbow", false);
     private final NumberValue<Double> menuGridIntensity = number("menuGridIntensity", 1.0, 0.0, 2.5);
     private final NumberValue<Double> menuCursorIntensity = number("menuCursorIntensity", 1.0, 0.0, 2.5);
     private final NumberValue<Double> menuAmbientIntensity = number("menuAmbientIntensity", 1.0, 0.0, 2.5);
     private final NumberValue<Double> menuHoneycombBloom = number("menuHoneycombBloom", 1.0, 0.0, 2.0);
+    private final NumberValue<Double> menuCrystalIntensity = number("menuCrystalIntensity", 0.85, 0.0, 1.5);
+    private final NumberValue<Double> menuCrystalGloss = number("menuCrystalGloss", 0.72, 0.0, 1.5);
     private final NumberValue<Double> menuFluidIntensity = number("menuFluidIntensity", 1.0, 0.0, 2.5);
     private final NumberValue<Double> menuFluidSize = number("menuFluidSize", 1.0, 0.5, 2.5);
     private final NumberValue<Double> menuFluidVorticity = number("menuFluidVorticity", 1.0, 0.0, 2.5);
@@ -77,11 +80,14 @@ public final class VisualConfig extends SubsystemConfig {
     public BooleanValue menuHoneycombCursorGlowValue() { return menuHoneycombCursorGlow; }
     public BooleanValue menuHoneycombAmbientValue() { return menuHoneycombAmbient; }
     public BooleanValue menuFluidEnabledValue() { return menuFluidEnabled; }
+    public BooleanValue menuCrystalBackgroundValue() { return menuCrystalBackground; }
     public BooleanValue menuFluidRainbowValue() { return menuFluidRainbow; }
     public NumberValue<Double> menuGridIntensityValue() { return menuGridIntensity; }
     public NumberValue<Double> menuCursorIntensityValue() { return menuCursorIntensity; }
     public NumberValue<Double> menuAmbientIntensityValue() { return menuAmbientIntensity; }
     public NumberValue<Double> menuHoneycombBloomValue() { return menuHoneycombBloom; }
+    public NumberValue<Double> menuCrystalIntensityValue() { return menuCrystalIntensity; }
+    public NumberValue<Double> menuCrystalGlossValue() { return menuCrystalGloss; }
     public NumberValue<Double> menuFluidIntensityValue() { return menuFluidIntensity; }
     public NumberValue<Double> menuFluidSizeValue() { return menuFluidSize; }
     public NumberValue<Double> menuFluidVorticityValue() { return menuFluidVorticity; }
@@ -92,6 +98,7 @@ public final class VisualConfig extends SubsystemConfig {
     public RGBColorValue menuFluidColorValue() { return menuFluidColor; }
     public boolean menuCustomColors() { return "custom".equals(menuHoneycombPalette.get()); }
     public boolean menuFluidEnabled() { return menuFluidEnabled.get(); }
+    public boolean menuCrystalBackgroundEnabled() { return menuCrystalBackground.get(); }
     public boolean menuGridEnabled() { return menuHoneycombGrid.get(); }
     public boolean menuCursorGlowEnabled() { return menuHoneycombCursorGlow.get(); }
     public boolean menuAmbientGlowEnabled() { return menuHoneycombAmbient.get(); }
@@ -99,6 +106,8 @@ public final class VisualConfig extends SubsystemConfig {
     public float menuCursorIntensity() { return menuCursorIntensity.get().floatValue(); }
     public float menuAmbientIntensity() { return menuAmbientIntensity.get().floatValue(); }
     public float menuHoneycombBloom() { return menuHoneycombBloom.get().floatValue(); }
+    public float menuCrystalIntensity() { return menuCrystalIntensity.get().floatValue(); }
+    public float menuCrystalGloss() { return menuCrystalGloss.get().floatValue(); }
     public float menuFluidIntensity() { return menuFluidIntensity.get().floatValue(); }
     public float menuFluidSize() { return menuFluidSize.get().floatValue(); }
     public float menuFluidVorticity() { return menuFluidVorticity.get().floatValue(); }

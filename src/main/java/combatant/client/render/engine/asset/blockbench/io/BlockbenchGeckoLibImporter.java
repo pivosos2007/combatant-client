@@ -49,7 +49,7 @@ import java.util.List;
  * <p>Images are resolved either via an optional root-level "combatant:texture" resource identifier,
  * or as matching PNGs next to the model / in GeckoLib's textures directory. A model without a
  * discoverable texture uses the standard white material. The native Blockbench *.bbmodel project
- * format is intentionally not an export format and is not accepted here.</p>
+ * format is not an export format and is not accepted here.</p>
  */
 public final class BlockbenchGeckoLibImporter implements ModelImporter {
     private static final int MAX_GEOMETRY_BYTES = 32 * 1024 * 1024;

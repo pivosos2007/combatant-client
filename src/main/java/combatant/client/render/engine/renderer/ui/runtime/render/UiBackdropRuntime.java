@@ -52,22 +52,30 @@ final class UiBackdropRuntime {
                 : props != null
                 ? props.number("glassInteractionStrength", baseOptics.interactionStrength())
                 : baseOptics.interactionStrength();
-        UiGlassOpticsSpec optics = new UiGlassOpticsSpec(
-                baseOptics.mode(),
-                props != null ? props.number("glassRefraction", baseOptics.refraction()) : baseOptics.refraction(),
-                props != null ? props.number("glassBevelWidth", baseOptics.bevelWidth()) : baseOptics.bevelWidth(),
-                props != null ? props.number("glassBevelDepth", baseOptics.bevelDepth()) : baseOptics.bevelDepth(),
-                interactionStrength,
-                props != null ? props.number("glassInteractionRadius", baseOptics.interactionRadius()) : baseOptics.interactionRadius(),
-                props != null ? props.number("glassInteractionViscosity", baseOptics.interactionViscosity()) : baseOptics.interactionViscosity(),
-                props != null ? props.number("glassCleanReveal", baseOptics.cleanReveal()) : baseOptics.cleanReveal(),
-                props != null ? props.number("glassAberration", baseOptics.chromaticAberration()) : baseOptics.chromaticAberration(),
-                props != null ? props.number("glassMagnification", baseOptics.magnification()) : baseOptics.magnification(),
-                props != null && props.bool("glassDeformShape", false),
-                props != null ? props.number("glassTiltX", baseOptics.tiltXDegrees()) : baseOptics.tiltXDegrees(),
-                props != null ? props.number("glassTiltY", baseOptics.tiltYDegrees()) : baseOptics.tiltYDegrees(),
-                props == null || props.bool("glassSpecular", baseOptics.specular())
-        );
+        UiGlassOpticsSpec optics = baseOptics
+                .withRefraction(props != null ? props.number("glassRefraction", baseOptics.refraction()) : baseOptics.refraction())
+                .withBevel(props != null ? props.number("glassBevelWidth", baseOptics.bevelWidth()) : baseOptics.bevelWidth(),
+                        props != null ? props.number("glassBevelDepth", baseOptics.bevelDepth()) : baseOptics.bevelDepth())
+                .withInteractionStrength(interactionStrength)
+                .withFluid(props != null ? props.number("glassInteractionRadius", baseOptics.interactionRadius()) : baseOptics.interactionRadius(),
+                        props != null ? props.number("glassInteractionViscosity", baseOptics.interactionViscosity()) : baseOptics.interactionViscosity())
+                .withCleanReveal(props != null ? props.number("glassCleanReveal", baseOptics.cleanReveal()) : baseOptics.cleanReveal())
+                .withChromaticAberration(props != null ? props.number("glassAberration", baseOptics.chromaticAberration()) : baseOptics.chromaticAberration())
+                .withMagnification(props != null ? props.number("glassMagnification", baseOptics.magnification()) : baseOptics.magnification())
+                .withShapeDeformation(props != null && props.bool("glassDeformShape", baseOptics.shapeDeformation()))
+                .withTilt(props != null ? props.number("glassTiltX", baseOptics.tiltXDegrees()) : baseOptics.tiltXDegrees(),
+                        props != null ? props.number("glassTiltY", baseOptics.tiltYDegrees()) : baseOptics.tiltYDegrees())
+                .withSpecular(props == null ? baseOptics.specular()
+                        : props.bool("glassSpecular", baseOptics.specular()));
+        if (props != null) {
+            optics = optics.withOpticalThickness(props.number("glassOpticalThickness", optics.opticalThickness()))
+                    .withRefractiveIndex(props.number("glassIOR", optics.refractiveIndex()))
+                    .withSurfaceRoughness(props.number("glassRoughness", optics.surfaceRoughness()))
+                    .withFrost(props.number("glassFrost", optics.frost()))
+                    .withThinFilm(props.number("glassFilmThicknessNm", optics.filmThicknessNm()),
+                            props.number("glassFilmStrength", optics.filmStrength()))
+                    .withReactiveCoating(props.number("glassCoatingResponse", optics.reactiveCoating()));
+        }
         UiLiquidGlassMaterial material = new UiLiquidGlassMaterial(
                 optics, frostedJitter, innerGlow, innerGlowSize, innerGlowColor);
         if (props != null && (props.bool("glassIce", false)

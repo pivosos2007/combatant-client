@@ -11,6 +11,11 @@ import combatant.client.events.Event;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * Requests additional player ticks after the normal position send.
+ * Only cancellation activates the extra-tick path; nonpositive {@code iterations}
+ * cancels without additional ticks. A reentrancy guard prevents nested requests.
+ */
 @Setter
 @Getter
 public class PostPlayerUpdateEvent extends Event {

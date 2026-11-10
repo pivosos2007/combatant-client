@@ -344,9 +344,6 @@ public class AutoCrystal extends Module {
     private int lastBaseDeltaCount;
 
     private static void debugLog(String pattern, Object... args) {
-        // if (!DebugLog.isEnabled()) {
-        //     return;
-        // }
     }
 
     // GrimAC Reach and FarPlace measure from the eyes to the target's box against the interaction range attributes;

@@ -29,12 +29,9 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 
 /**
- * Finds the click (support block, face, hit point, look) that makes the block item produce the schematic state.
- * Candidates are pruned by {@link PlacementOrientation.Requirement#allows}, then each survivor is run through the
- * block's own placement rule with the player turned to the aim rotation, exactly what the server will do. The
- * returned target is pinned and carries a {@link PlacementTarget.ClickCheck} that repeats the simulation with the
- * rotation the server judges the click with (the one it already has), so a block whose facing follows the look is
- * never clicked while the rotation is still turning.
+ * Selects a reachable support face and hit point for the requested schematic
+ * state. Candidates must pass line-of-sight and placement-state checks; the
+ * returned target carries the rotation required for its planned interaction.
  */
 public final class PrinterClickPlanner {
 
@@ -45,7 +42,7 @@ public final class PrinterClickPlanner {
     private PrinterClickPlanner() {
     }
 
-    /** The pinned click for one cell, or null when no support/face reproduces the wanted state. */
+    /** Checks whether the given click produces the requested state under the supplied rotation. */
     public static boolean accepts(LocalPlayer player, Level level, ItemStack stack, BlockPos target,
                                   BlockState wanted, Rotation rotation, BlockHitResult hit) {
         BlockState result = simulate(player, level, stack, target, hit.getBlockPos(), hit.getDirection(),

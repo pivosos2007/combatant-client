@@ -13,7 +13,6 @@ import net.minecraft.client.Options;
 import combatant.client.config.MainConfig;
 import combatant.client.runtime.RuntimeGate;
 
-//Да ну нахуй эту залупу блять
 public enum NarratorBlocker {
     ;
 

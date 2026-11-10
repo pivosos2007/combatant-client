@@ -36,8 +36,8 @@ public final class ConfigProfileApplier {
     }
 
     /**
-     * Dry run: how much of the snapshot this client could apply. Touches no setting. Theme entries always
-     * count as known because themes are imported rather than resolved against existing owners.
+     * Reports which profile entries can be applied without changing any settings.
+     * Theme entries count as recognized because they are imported rather than matched to existing owners.
      */
     public Inspection inspect(ConfigProfileSnapshot snapshot) {
         int knownOwners = 0;

@@ -15,6 +15,8 @@ import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.WorldPhase;
 import combatant.client.features.module.modules.visuals.SeeInvisibles;
+import combatant.client.features.module.modules.visuals.JumpCircles;
+import combatant.client.features.module.modules.visuals.HitEffect;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
@@ -39,12 +41,33 @@ public final class VanillaBeforeTranslucentPass {
     private static Renderer3D beforeDepthRenderer;
     private static Renderer3D endColorRenderer;
     private static Renderer3D endDepthRenderer;
+    private static Renderer3D jumpRenderer;
     private static boolean rendered;
+    private static boolean renderingEarly;
+    private static boolean jumpCirclesRenderedEarly;
 
     private VanillaBeforeTranslucentPass() { }
 
     public static void reset() {
         rendered = false;
+        renderingEarly = false;
+        jumpCirclesRenderedEarly = false;
+    }
+
+    public static boolean renderingEarly() { return renderingEarly; }
+    public static boolean jumpCirclesRenderedEarly() { return jumpCirclesRenderedEarly; }
+
+    /**
+     * World overlays are composited after translucency and tested against the saved
+     * opaque/player depth. No module currently requires pre-translucent color output;
+     * SeeInvisibles alone must not enable early submission of unrelated modules.
+     */
+    public static boolean needsEarlyEffects() {
+        return false;
+    }
+
+    public static boolean needsEarlyShockwaves() {
+        return false;
     }
 
     public static boolean rendered() {
@@ -53,7 +76,8 @@ public final class VanillaBeforeTranslucentPass {
 
     /** Only ordinary main-framebuffer depth-tested primitives can precede OIT. */
     private static boolean drawBeforeTransparency(WorldDrawCommand command) {
-        return command.depthMode() == Renderer3D.DepthMode.MAIN
+        return command.depthMode() == Renderer3D.DepthMode.PRE_DEPTH
+                || command.depthMode() == Renderer3D.DepthMode.MAIN
                 && RenderPipelineRegistry.global().require(command.pipeline())
                         .depthPolicy().needsDepthAttachment();
     }
@@ -73,13 +97,19 @@ public final class VanillaBeforeTranslucentPass {
     /** Must only be invoked after the opaque RenderPass has closed, before classic/OIT translucency. */
     public static void render(RenderTarget target) {
         if (rendered || target == null || target.getColorTextureView() == null) return;
+        // SeeInvisibles is resolved by SeeInvisiblesVisualDepth during the late world
+        // pass. It must not trigger early execution of every module: direct RHI draws
+        // (Hitbox) and queued PRE_DEPTH overlays (BlockHighlight) would be blended
+        // into the scene before water, then tinted when translucency composites.
+        // Only an explicitly registered early effect may ever execute here.
+        if (!needsEarlyEffects()) return;
         if (IrisRuntime.isShaderpackRendererActive()
                 && !combatant.client.render.iris.IrisEarlyWorldBridge.isRendering()) return;
         SeeInvisibles seeInvisibles = Modules.get(SeeInvisibles.class);
-        if (seeInvisibles == null || !seeInvisibles.isEnabled()
-                || seeInvisibles.getInvisiblePlayerAlpha01() <= 0.0f
-                || seeInvisibles.getInvisiblePlayerAlpha01() >= 1.0f) return;
-        if (!combatant.client.render.iris.IrisEarlyWorldBridge.isRendering()
+        boolean translucentPlayer = seeInvisibles != null && seeInvisibles.isEnabled()
+                && seeInvisibles.getInvisiblePlayerAlpha01() > 0.0f
+                && seeInvisibles.getInvisiblePlayerAlpha01() < 1.0f;
+        if (translucentPlayer && !combatant.client.render.iris.IrisEarlyWorldBridge.isRendering()
                 && !PreTranslucentDepth.hasCapturedThisFrame()) return;
 
         Matrix4f view = CombatantWorldMatrices.positionMatrix();
@@ -98,6 +128,8 @@ public final class VanillaBeforeTranslucentPass {
                     WorldRenderPipelines.WORLD_COLORED);
             endDepthRenderer = new Renderer3D(WorldRenderPipelines.WORLD_COLORED_LINES_DEPTH,
                     WorldRenderPipelines.WORLD_COLORED_DEPTH);
+            jumpRenderer = new Renderer3D(WorldRenderPipelines.WORLD_COLORED_LINES,
+                    WorldRenderPipelines.WORLD_COLORED);
         }
 
         boolean oldRendering3D = RenderState.rendering3D;
@@ -135,23 +167,27 @@ public final class VanillaBeforeTranslucentPass {
             // WorldCommandBuffer uses camera-relative vertices; the view matrix is applied
             // by MeshData, not by duplicating the camera transform in the PoseStack.
             PoseStack matrices = new PoseStack();
+            renderingEarly = true;
             try (RenderPhaseScope ignored = CombatantRenderSystem.phase(RenderPhase.WORLD_BEFORE_TRANSLUCENT)) {
                 beforeColorRenderer.begin();
                 beforeDepthRenderer.begin();
                 endColorRenderer.begin();
                 endDepthRenderer.begin();
+                jumpRenderer.begin();
                 float tickDelta = mc.getDeltaTracker().getGameTimeDeltaPartialTick(true);
-                ModuleManager.renderWorldEngine(WorldPhase.BEFORE_TRANSLUCENT,
-                        beforeColorRenderer, beforeDepthRenderer, tickDelta);
-                AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_BEFORE_TRANSLUCENT,
-                        WorldPhase.BEFORE_TRANSLUCENT, beforeColorRenderer, beforeDepthRenderer, matrices, tickDelta);
-                // Unlike the previous patch, END_MAIN 3D primitives share the same
-                // depth policy and must also be eligible for the early world pass.
-                try (RenderPhaseScope endScope = CombatantRenderSystem.phase(RenderPhase.WORLD_AFTER_TRANSLUCENT)) {
-                    ModuleManager.renderWorldEngine(WorldPhase.END_MAIN,
-                            endColorRenderer, endDepthRenderer, tickDelta);
-                    AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_END_MAIN,
-                            WorldPhase.END_MAIN, endColorRenderer, endDepthRenderer, matrices, tickDelta);
+                // Do not pull other modules' END_MAIN work forward just because a jump
+                // sprite or blast requested an early pass. Preserve the legacy stage contract.
+                if (translucentPlayer) {
+                    ModuleManager.renderWorldEngine(WorldPhase.BEFORE_TRANSLUCENT,
+                            beforeColorRenderer, beforeDepthRenderer, tickDelta);
+                    AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_BEFORE_TRANSLUCENT,
+                            WorldPhase.BEFORE_TRANSLUCENT, beforeColorRenderer, beforeDepthRenderer, matrices, tickDelta);
+                    try (RenderPhaseScope endScope = CombatantRenderSystem.phase(RenderPhase.WORLD_AFTER_TRANSLUCENT)) {
+                        ModuleManager.renderWorldEngine(WorldPhase.END_MAIN,
+                                endColorRenderer, endDepthRenderer, tickDelta);
+                        AddonRenderPipelineManager.render3D(CombatantRenderStage.WORLD_END_MAIN,
+                                WorldPhase.END_MAIN, endColorRenderer, endDepthRenderer, matrices, tickDelta);
+                    }
                 }
                 // PRE_DEPTH must stay above water. Selecting by depth policy here
                 // fixes the blending regression without hard-coding BlockHighlight.
@@ -159,21 +195,18 @@ public final class VanillaBeforeTranslucentPass {
                 beforeDepthRenderer.renderMatching(matrices, target, VanillaBeforeTranslucentPass::drawBeforeTransparency);
                 endColorRenderer.renderMatching(matrices, target, VanillaBeforeTranslucentPass::drawBeforeTransparency);
                 endDepthRenderer.renderMatching(matrices, target, VanillaBeforeTranslucentPass::drawBeforeTransparency);
-                rendered = true;
-                if (combatant.client.render.iris.IrisEarlyWorldBridge.isRendering()) {
-                    EarlyShockwavePass.render(combatant.client.render.iris.IrisEarlyWorldBridge.sceneTarget(), tickDelta);
-                } else {
-                    EarlyShockwavePass.render(target, tickDelta);
-                }
+                rendered = translucentPlayer;
             }
         } catch (RuntimeException failure) {
             // A compatibility failure must not abort vanilla's own transparency pass.
             // The late world hook remains the fallback for this frame.
-            DebugLog.warnOnChange("seeinvisibles.vanilla.early-pass.failed",
+            jumpCirclesRenderedEarly = false;
+            DebugLog.warnOnChange("world.vanilla.early-pass.failed",
                     failure.getClass().getName() + ":" + failure.getMessage(),
-                    "[SeeInvisibles] before-translucent world pass failed: %s: %s",
+                    "[WorldRender] before-translucent world pass failed: %s: %s",
                     failure.getClass().getSimpleName(), failure.getMessage());
         } finally {
+            renderingEarly = false;
             modelView.popMatrix();
             MeshRenderer.setProjection(oldMeshProjection);
             RenderState.rendering3D = oldRendering3D;

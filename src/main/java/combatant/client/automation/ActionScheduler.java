@@ -73,7 +73,10 @@ public final class ActionScheduler {
         return task;
     }
 
-    /** Running tasks in tick order. */
+    /**
+     * Returns a new list of unfinished active and pending tasks. Tasks submitted
+     * during a scheduler tick are included even though they have not run yet.
+     */
     public List<AutomationTask> tasks() {
         ArrayList<AutomationTask> out = new ArrayList<>(tasks.size() + pending.size());
         for (AutomationTask task : tasks) if (!task.isDone()) out.add(task);

@@ -23,6 +23,11 @@ import combatant.client.events.Events;
 import combatant.client.events.impl.EventCollision;
 import combatant.client.events.impl.BlockCollisionShapeEvent;
 
+/**
+ * Exposes separate block-state and shape overrides during collision iteration.
+ * State substitution is local to the iterator; shape substitution uses the
+ * collision context after state resolution.
+ */
 @Mixin(value = BlockCollisions.class, priority = 800)
 public abstract class BlockCollisionSpliteratorMixin {
 
@@ -42,8 +47,7 @@ public abstract class BlockCollisionSpliteratorMixin {
         Events.BUS.post(event);
         return event.getState();
     }
-    // CollisionContext is the actual shape provider in Minecraft 26.2.
-    // Use a distinct event: state substitution in EventCollision remains untouched.
+    // The shape hook runs after state substitution; it must not alter that earlier decision.
     @Redirect(
             method = "computeNext",
             at = @At(

@@ -81,7 +81,6 @@ public final class PlayerRigScriptRuntime implements AutoCloseable {
         }
     }
 
-    /** Fast render-thread path, retained for consumers that already own a legacy packed Object[]. */
     public synchronized void executeInto(Object[] packedContext, PlayerRigInstance instance) {
         if (instance == null) return;
         try {

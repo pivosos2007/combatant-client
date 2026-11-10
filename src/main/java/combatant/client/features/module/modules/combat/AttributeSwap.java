@@ -52,6 +52,7 @@ import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.EventSync;
+import combatant.client.events.impl.ManualAttackEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -685,6 +686,11 @@ public class AttributeSwap extends Module {
                 schedulePendingRestore(player.tickCount, syncId, maceScreenSlot, selectedScreenSlot);
             }
         }
+    }
+
+    @EventHandler(priority = 2000)
+    private void onManualAttack(ManualAttackEvent event) {
+        if (!event.isResolved() && handleManualAttack()) event.resolve(true);
     }
 
     public boolean handleManualAttack() {

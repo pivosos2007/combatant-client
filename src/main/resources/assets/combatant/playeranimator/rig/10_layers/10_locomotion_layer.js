@@ -40,6 +40,8 @@
 
       const side=saturate(Math.abs(s));
       const sideSign=Math.sign(s);
+      // The visual lag is deliberately visible: loose limbs trail root acceleration while the
+      // chest leans into it. This remains a secondary motion, never a replacement gait.
       const lagX=m.inertiaStrafe*.095*moving;
       const lagZ=-m.inertiaForward*.072*moving;
       this.rig.rotate('pelvis',gait90*1.6*moving,-s*7*moving,-s*2.2*moving-m.inertiaStrafe*4.0*moving);

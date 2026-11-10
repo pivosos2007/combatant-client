@@ -20,6 +20,10 @@ import java.util.Properties;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardOpenOption.*;
 
+/**
+ * Filesystem operations for storage metadata and exclusive storage leases.
+ * Metadata replacement is atomic, and existing path components are checked against filesystem links.
+ */
 public final class StorageFiles {
     private StorageFiles() { }
 
@@ -32,6 +36,7 @@ public final class StorageFiles {
         }
     }
 
+    /** Resolves an absolute path and rejects existing link or reparse-point components. */
     public static Path checked(Path path) throws IOException {
         Path absolute = path.toAbsolutePath().normalize();
         Path cursor = absolute.getRoot();
@@ -60,6 +65,7 @@ public final class StorageFiles {
         return properties;
     }
 
+    /** Atomically replaces metadata; failure to commit leaves the existing target in place. */
     public static void write(Path file, Properties properties) throws IOException {
         checked(file);
         Files.createDirectories(file.getParent());
@@ -88,6 +94,7 @@ public final class StorageFiles {
         }
     }
 
+    /** Acquires a nonblocking exclusive file lock; a competing holder causes {@link IOException}. */
     public static Lease lock(Path file) throws IOException {
         checked(file);
         FileChannel channel = FileChannel.open(file, CREATE, WRITE, NOFOLLOW_LINKS);

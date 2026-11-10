@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.features.gui.mainmenu;
 
 import com.mojang.renderpearl.api.GpuFormat;
@@ -29,6 +36,7 @@ import net.minecraft.resources.Identifier;
 
 import java.util.List;
 
+/** Owns the compute pipelines and storage images used by the main-menu smoke renderer. */
 final class MainMenuSmokeComputeBackend implements AutoCloseable {
     private static final int LOCAL_SIZE = 8;
     private static final int PRESSURE_ITERATIONS = 30;
@@ -40,6 +48,8 @@ final class MainMenuSmokeComputeBackend implements AutoCloseable {
             .member("soft", Std430Type.VEC4)
             .member("cold", Std430Type.VEC4)
             .member("warm", Std430Type.VEC4)
+            .member("hexGrid", Std430Type.VEC4)
+            .member("rimColor", Std430Type.VEC4)
             .array("sources", Std430Type.VEC4, MainMenuHexTrail.MAX_SOURCES)
             .array("sourceProps", Std430Type.VEC4, MainMenuHexTrail.MAX_SOURCES)
             .build();
@@ -99,8 +109,8 @@ final class MainMenuSmokeComputeBackend implements AutoCloseable {
     boolean canRetry() { return !disabled; }
 
     boolean render(CombatantRhi rhi, float width, float height,
-                   MainMenuHexTrail hex, float delta, float time, float opacity,
-                   int accent, int soft, int cold, int warm, boolean reset) {
+                   MainMenuHexTrail hex, MainMenuBackdrop.GridLayout grid, float delta, float time, float opacity,
+                   int accent, int soft, int cold, int warm, int rimColor, boolean reset) {
         if (rhi == null || disabled || !PostProcessExecutionPolicy.useCompute(rhi)) return false;
         GpuSampler sampler = PostProcessManager.getSampler();
         if (sampler == null) { lastSuccess = false; return false; }
@@ -125,18 +135,22 @@ final class MainMenuSmokeComputeBackend implements AutoCloseable {
             boolean clear = reset || !hasHistory;
             Std430Writer values = new Std430Writer(PARAMS, 1)
                     .putVec4(0, "screen", w, h, Math.min(0.05f, delta), time)
-                    .putVec4(0, "mouse", options.menuFluidBloom(), options.menuFluidVorticity(), 0f, 0f)
-                    .putVec4(0, "motion", 0f, opacity, clear ? 1f : 0f, hex.sourceCount())
+                    .putVec4(0, "mouse", options.menuFluidBloom(), options.menuFluidVorticity(), options.menuFluidSize(), 0f)
+                    .putVec4(0, "motion", options.menuAmbientGlowEnabled() ? 1f : 0f, opacity, clear ? 1f : 0f, hex.sourceCount())
                     .putVec4(0, "accent", red(accent), green(accent), blue(accent), 1f)
                     .putVec4(0, "soft", red(soft), green(soft), blue(soft), 1f)
                     .putVec4(0, "cold", red(cold), green(cold), blue(cold), 1f)
-                    .putVec4(0, "warm", red(warm), green(warm), blue(warm), 1f);
+                    .putVec4(0, "warm", red(warm), green(warm), blue(warm), 1f)
+                    .putVec4(0, "hexGrid", grid.originX() / width, grid.originY() / height,
+                            grid.radius() / width, options.menuCursorGlowEnabled() ? 1f : 0f)
+                    .putVec4(0, "rimColor", red(rimColor), green(rimColor), blue(rimColor),
+                            options.menuCursorIntensity());
             for (int i = 0; i < hex.sourceCount(); i++) {
                 MainMenuHexTrail.PlasmaSource source = hex.source(i);
                 values.putVec4(0, "sources", i, source.x / width, source.y / height,
                                 source.vx / width, source.vy / height)
                         .putVec4(0, "sourceProps", i, source.intensity * options.menuFluidIntensity(), source.tint,
-                                source.radius * w / width * options.menuFluidSize(), source.momentum);
+                                source.age, source.momentum);
             }
             if (params == null) params = owner.advancedShaders().createStorageBuffer(
                     new StorageBufferDescriptor("combatant-menu-smoke-params", PARAMS, 1,
@@ -163,7 +177,7 @@ final class MainMenuSmokeComputeBackend implements AutoCloseable {
                 pressureRead = pressureWrite;
                 pressureWrite = swap;
             }
-            execute(pipeline(PROJECT), curled, stateB, pressureRead, null, w, h, sampler, values.byteSize(), "Fluid wall projection");
+            execute(pipeline(PROJECT), curled, stateB, pressureRead, dyeA, w, h, sampler, values.byteSize(), "Fluid wall projection");
             barrier(stateB);
             execute(pipeline(DYE), dyeA, dyeAdvected, stateB, null, cw, ch,
                     sampler, values.byteSize(), "Fluid RGB advection");
@@ -255,7 +269,7 @@ final class MainMenuSmokeComputeBackend implements AutoCloseable {
             return pressure;
         }
         if (shader.equals(PROJECT)) {
-            if (projection == null) projection = create("projection", PROJECT, PROJECT_LAYOUT);
+            if (projection == null) projection = create("projection", PROJECT, COMPOSITE_LAYOUT);
             return projection;
         }
         if (shader.equals(DYE)) {

@@ -186,7 +186,6 @@ public final class UiDynamicPatchBuffer implements UiPatchWriter {
         slot.kind = BOUNDS;
         slot.x = x;
         slot.y = y;
-        // Match the legacy CompactHudStatModel bounds writer.
         slot.width = Math.max(0.0f, width);
         slot.height = Math.max(0.0f, height);
     }

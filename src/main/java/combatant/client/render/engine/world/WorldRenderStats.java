@@ -7,9 +7,7 @@
 
 package combatant.client.render.engine.world;
 
-/**
- * Lightweight Renderer3D/World command stats. RHI still owns GPU upload/draw counters.
- */
+/** Collects world-command statistics; GPU upload and draw counters remain RHI-owned. */
 public final class WorldRenderStats {
     private long frameId;
     private long recordedCommands;

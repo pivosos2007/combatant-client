@@ -98,8 +98,10 @@ public enum MovementUtil {
     }
 
     /**
-     * Strafe helper inspired by LiquidBounce.
-     * Applies directional input to current horizontal speed with strength blend.
+     * Blends the requested horizontal strafe velocity with {@code currentVelocity}.
+     * The blend is constrained to 0..1 and a missing input clears horizontal motion;
+     * the existing vertical velocity is retained. Rotation uses the supplied yaw
+     * rather than the player's visible camera yaw.
      */
     public static Vec3 withStrafe(Vec3 currentVelocity, Vec3 movementInput, float yaw, double speed, double strength) {
         if (currentVelocity == null) currentVelocity = Vec3.ZERO;
@@ -130,7 +132,9 @@ public enum MovementUtil {
     }
 
     /**
-     * Strafe helper that uses a world-space direction vector.
+     * Blends current horizontal motion toward a world-space direction.
+     * Null or near-zero directions clear horizontal motion; vertical
+     * velocity is preserved.
      */
     public static Vec3 withStrafeDirection(Vec3 currentVelocity, Vec3 direction, double speed, double strength) {
         if (currentVelocity == null) currentVelocity = Vec3.ZERO;

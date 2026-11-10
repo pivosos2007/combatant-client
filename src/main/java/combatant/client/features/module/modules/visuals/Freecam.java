@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.visuals;
 
+import combatant.client.events.impl.InteractionBlockEvent;
+
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
@@ -129,6 +131,11 @@ public class Freecam extends Module {
 
     public boolean freezePlayer() {
         return isEnabled() && toggles.get("Freeze player");
+    }
+
+    @EventHandler
+    private void onInteractionBlock(InteractionBlockEvent event) {
+        if (!allowInteract()) event.cancel();
     }
 
     public boolean allowInteract() {

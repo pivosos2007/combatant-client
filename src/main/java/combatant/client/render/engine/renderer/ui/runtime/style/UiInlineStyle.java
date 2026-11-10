@@ -21,7 +21,7 @@ import java.util.Set;
 /**
  * Sparse inline-style declaration used by script-authored UI nodes.
  *
- * <p>This is intentionally not another resolved style object. Only keys that were explicitly
+ * <p>This is not another resolved style object. Only keys that were explicitly
  * authored are stored, so an inline declaration can be layered over utility classes without
  * resetting unrelated class-derived values to {@link UiStyle} defaults.</p>
  */
@@ -172,7 +172,7 @@ public final class UiInlineStyle {
         Integer textColor = firstColor("color", "textcolor");
         if (textColor != null) builder.textColor(textColor);
         applyFont(builder, resolvedBase);
-        // Legacy multiplicative scale is accepted, but authored fontSize wins when both are present.
+        // Explicit fontSize takes precedence over multiplicative textScale.
         Float textScale = firstNumber("fontscale", "textscale");
         if (textScale != null) builder.textScale(textScale);
         Float fontSize = number("fontsize");

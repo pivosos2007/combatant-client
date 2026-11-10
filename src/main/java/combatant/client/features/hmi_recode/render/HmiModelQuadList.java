@@ -21,7 +21,7 @@ import java.util.RandomAccess;
 /**
  * Carries the per-quad HMI model pose snapshot through Minecraft's deferred item submit pipeline.
  *
- * <p>The wrapper is intentionally still a normal {@link List}: Fabric Renderer API can keep its
+ * <p>The wrapper is still a normal {@link List}: Fabric Renderer API can keep its
  * own submit redirect and extended mesh path. HMI consumes the metadata later, when vanilla
  * {@code ItemFeatureRenderer} emits each baked quad.</p>
  *

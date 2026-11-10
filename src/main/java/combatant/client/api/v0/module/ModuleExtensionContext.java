@@ -11,6 +11,7 @@ import combatant.client.config.SettingDef;
 import combatant.client.config.values.ConfigValue;
 import combatant.client.features.module.Module;
 
+/** Exposes the module and its configurable settings to an addon module extension. */
 public interface ModuleExtensionContext {
     String addonId();
 

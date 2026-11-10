@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Resource-pack scoped format-independent CPU asset cache. GPU handles intentionally do not live here: a resource
+ * Resource-pack scoped format-independent CPU asset cache. GPU handles do not live here: a resource
  * reload invalidates this repository, while GL/Vulkan residency is owned by the RHI lifecycle.
  */
 public final class ImportedModelRepository {

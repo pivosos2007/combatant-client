@@ -398,7 +398,6 @@ final class BuildMover {
         lastPosition = position;
     }
 
-    // ------------------------------------------------------------------ placing phase
 
     /**
      * The builder found nothing to click from here. Walk somewhere better or climb; returns a support block
@@ -606,7 +605,6 @@ final class BuildMover {
         routeCells += path.length - 1;
     }
 
-    // ------------------------------------------------------------------ route following
 
     /** Advances along the route; {@code false} once the last cell is reached (or the route was dropped). */
     private boolean followRoute(LocalPlayer player, long deadline) {
@@ -681,7 +679,6 @@ final class BuildMover {
         abortCooldown = ABORT_COOLDOWN_TICKS;
     }
 
-    // ------------------------------------------------------------------ pillar
 
     private HelperClick tickPillar(LocalPlayer player, long deadline) {
         PillarPlanner.Pillar column = pillar;
@@ -778,12 +775,10 @@ final class BuildMover {
         mode = Mode.IDLE;
     }
 
-    // ------------------------------------------------------------------ bridge
 
     /**
-     * Nothing reaches the targets by walking or climbing: grow a bridge of temporary blocks from the floor under
-     * the feet towards them, one block at a time. The blocks are tracked like pillar blocks and broken again
-     * afterwards.
+     * Starts a temporary bridge toward otherwise unreachable schematic cells.
+     * Helper blocks are tracked for subsequent cleanup.
      */
     private boolean startBridge(LocalPlayer player) {
         if (!host.bridgeEnabled() || bridgeBlocks >= host.bridgeLimit() || !player.onGround() || helperSlot(player) < 0) {
@@ -897,7 +892,6 @@ final class BuildMover {
         return state.isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO) && !BuildPlanner.isInteractive(state);
     }
 
-    // ------------------------------------------------------------------ clearing support blocks
 
     /** The build is done: break the support blocks again. {@code false} once there is nothing left to do. */
     boolean tickClear(LocalPlayer player, double reach) {
@@ -1084,7 +1078,6 @@ final class BuildMover {
         stopMining();
     }
 
-    // ------------------------------------------------------------------ input
 
     /** Drives the keys while the mover is in charge; leaves the player's own input alone otherwise. */
     void applyInput(MovementInputEvent event, LocalPlayer player) {
@@ -1164,7 +1157,6 @@ final class BuildMover {
         return true;
     }
 
-    // ------------------------------------------------------------------ world view
 
     /** Starts the cache afresh when the world changed or it got old; targets placed since are dropped per cell. */
     private void refreshCache() {

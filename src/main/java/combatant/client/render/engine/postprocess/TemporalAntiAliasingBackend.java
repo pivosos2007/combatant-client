@@ -19,7 +19,7 @@ import org.joml.Matrix4fc;
 
 import java.util.List;
 
-/** Production TAA history/reprojection backend. It is independent from the legacy deferred graph. */
+/** Maintains temporal anti-aliasing history and frame reprojection independently of the deferred graph. */
 public final class TemporalAntiAliasingBackend implements AutoCloseable {
     private static final int LOCAL_SIZE = 8;
     private static final float CONTRACT_VERSION = 3.0f;

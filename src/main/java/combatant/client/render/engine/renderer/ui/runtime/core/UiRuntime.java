@@ -224,10 +224,7 @@ public final class UiRuntime {
         return patched;
     }
 
-    /**
-     * Applies typed, preallocated prop instructions. Unlike legacy map patches,
-     * bound keys and unchanged primitive values are reused across frames.
-     */
+    /** Applies a dynamic property patch and returns the number of changed properties. */
     public int applyDynamicProps(UiDynamicPatchBuffer patches) {
         propPatchRequiresLayout = false;
         if (root == null || patches == null) {
@@ -242,7 +239,6 @@ public final class UiRuntime {
         return patches.propChanges();
     }
 
-    /** Applied after layout, just like patchBoundsByKey() on the legacy path. */
     public int applyDynamicBounds(UiDynamicPatchBuffer patches) {
         if (root == null || patches == null) {
             diagnostics.counters().setBoundsPatchCount(0);
@@ -360,9 +356,6 @@ public final class UiRuntime {
         }
     }
 
-    /**
-     * Renders the current tree.
-     */
     public void render(UiRenderContext context) {
         render(context, null);
     }

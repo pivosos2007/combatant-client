@@ -13,7 +13,7 @@ import org.joml.Matrix4fc;
 
 /**
  * Object/deformation motion producer contract. Transform availability and transform completeness
- * are deliberately separate: a producer may know exact frame-to-frame object translation while
+ * are separate: a producer may know exact frame-to-frame object translation while
  * still lacking previous skeletal/vertex deformation. Consumers must not reinterpret the latter
  * as stationary geometry.
  */

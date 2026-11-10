@@ -36,6 +36,10 @@ public final class EarlyShockwavePass {
         if (target.getColorTexture().getFormat() != com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM
                 && target.getColorTexture().getFormat() != com.mojang.renderpearl.api.GpuFormat.RGBA16_FLOAT) return;
 
+        // A textured/refraction-only circle must not prepare post masks twice per frame.
+        if (!VanillaBeforeTranslucentPass.needsEarlyShockwaves()
+                && !WorldJumpShockwaves.INSTANCE.isActive()
+                && !WorldBlastShockwaves.INSTANCE.isActive()) return;
         ModuleManager.prepareWorldPostProcess(tickDelta);
         // The subsequent PRE_HAND graph must not reapply these two passes after
         // the invisible player's alpha has already been composed.

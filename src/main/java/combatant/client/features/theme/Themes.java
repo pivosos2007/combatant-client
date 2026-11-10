@@ -687,7 +687,7 @@ public enum Themes {
         );
     }
 
-    /** Theme card/selection gradient with the legacy HUD selector fallback preserved. */
+    /** Returns the HUD selection gradient, including its configured fallback. */
     public static GradientSpec hudSelectionGradient() {
         return animatedHudGradient(
                 transitionFromHudSelectionGradient,

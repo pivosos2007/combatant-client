@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Hot-path Sodium bridge for BlockESP.
  *
- * <p>This class is intentionally primitive-only on the meshing path: no module lookup,
+ * <p>This class is primitive-only on the meshing path: no module lookup,
  * no setting reads, no BlockPos allocation unless a configured block actually matched.</p>
  */
 public enum BlockEspSodiumCandidateCollector {

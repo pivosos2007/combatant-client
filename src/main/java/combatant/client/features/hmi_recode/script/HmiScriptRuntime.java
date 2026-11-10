@@ -629,7 +629,7 @@ public final class HmiScriptRuntime implements AutoCloseable {
             packedOutputBytes = view;
             buffer = null;
         } catch (Exception ignored) {
-            // On unsupported Javet backends retain the legacy List output protocol.
+            // Keep the list-based command protocol when direct native buffer access is unavailable.
         } finally {
             if (buffer != null) try { buffer.close(); } catch (Exception ignored) { }
         }
@@ -647,7 +647,7 @@ public final class HmiScriptRuntime implements AutoCloseable {
             packedInputBuffer = buffer;
             buffer = null;
         } catch (Exception ignored) {
-            // Retain the legacy Object[] input path on unsupported native backends.
+            // Keep the object-array input protocol when direct native buffer access is unavailable.
         } finally {
             if (buffer != null) try { buffer.close(); } catch (Exception ignored) { }
         }
@@ -725,7 +725,6 @@ public final class HmiScriptRuntime implements AutoCloseable {
             models.applyModels(quadIndex, stack);
         }
 
-        /** Legacy accessors stay usable by non-optimized clients when needed. */
         @Override public List<HmiTransformCommand> commands() {
             if (transforms.isEmpty()) return commands;
             List<HmiTransformCommand> combined = new ArrayList<>(transforms.toTransforms());

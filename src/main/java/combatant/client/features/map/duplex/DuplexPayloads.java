@@ -11,6 +11,11 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+/**
+ * Serializes bearing observations and length-prefixed UTF-8 fields for DUPLEX.
+ * Text payloads contain at most 255 fields, each at most 1,024 encoded bytes;
+ * decoding rejects truncated fields and trailing bytes.
+ */
 public final class DuplexPayloads {
     private DuplexPayloads() {}
 
@@ -30,6 +35,12 @@ public final class DuplexPayloads {
         }
     }
 
+    /**
+     * Reads one bearing sample and rejects any trailing payload bytes.
+     * The observed time and source revision are preserved as transmitted.
+     *
+     * @throws IllegalArgumentException if the payload is truncated or has extra bytes
+     */
     public static DuplexBearingSample readBearing(byte[] payload) {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload))) {
             DuplexBearingSample sample = new DuplexBearingSample(readUuid(in), in.readDouble(), in.readDouble(),
@@ -41,6 +52,12 @@ public final class DuplexPayloads {
         }
     }
 
+    /**
+     * Encodes up to 255 strings. Null fields are encoded as empty strings.
+     * Limits apply to UTF-8 bytes, not Java character count.
+     *
+     * @throws IllegalArgumentException if a field exceeds 1,024 bytes or the count exceeds 255
+     */
     public static byte[] text(String... values) {
         if (values.length > 255) throw new IllegalArgumentException("Too many text fields");
         try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();

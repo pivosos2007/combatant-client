@@ -40,7 +40,7 @@ public final class MapPlayerMarkerRenderer {
         return extent;
     }
 
-    /** Emits only marker geometry. Labels are intentionally a separate pass. */
+    /** Emits only marker geometry. Labels are a separate pass. */
     public static float drawMarker(float centerX,
                                    float centerY,
                                    UUID playerUuid,
@@ -124,7 +124,7 @@ public final class MapPlayerMarkerRenderer {
 
     /**
      * Minimal name treatment: neutral matte pill, relation dot and the nickname only. Persistent
-     * source/stale text is intentionally omitted; it is available from the marker hover/context UI.
+     * source/stale text is omitted; it is available from the marker hover/context UI.
      */
     public static void drawLabel(float centerX,
                                  float centerY,

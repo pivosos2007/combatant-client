@@ -16,6 +16,9 @@ layout(std430, binding = 3) readonly buffer HandGhosting {
     vec4 u_Params;
     vec4 u_Noise0;
     vec4 u_Noise1;
+    vec4 u_PaletteEnd;
+    vec4 u_PaletteOptions;
+    vec4 u_GhostDetails;
     vec4 u_State; // x = reset history
 };
 
@@ -41,6 +44,7 @@ void main() {
     int octaves = min(clamp(int(u_Noise0.y + 0.5), 1, 6), quality + 2);
     float dt = clamp(u_Screen.z, 0.0, 0.10), time = u_Screen.w * max(u_Noise0.z, 0.0);
     float scale = max(u_Noise0.w, 0.05), swirl = max(u_Noise1.x, 0.0), contrast = max(u_Noise1.y, 0.05), density = max(u_Noise1.z, 0.0);
+    float smokeAmount = clamp(u_GhostDetails.x, 0.0, 2.0);
     vec2 historyTexel = 1.0 / vec2(max(textureSize(u_History, 0), ivec2(1)));
     vec2 aspect = vec2(max(u_Screen.x, 1.0) / max(u_Screen.y, 1.0), 1.0);
     vec2 p = (uv - 0.5) * aspect * scale;
@@ -53,14 +57,28 @@ void main() {
     float ny = fbm(p * 1.18 + vec2(7.3 - slowTime, 3.1 + slowTime * 0.37), octaves);
     vec2 flow = vec2(nx - 0.5, ny - 0.5);
     float frameScale = min(dt * 60.0, 3.0);
-    vec2 advectedUv = uv - flow * historyTexel * swirl * (0.90 + quality * 0.32) * frameScale;
+    vec2 smokeFlow = flow + vec2(0.0, -0.20 * smokeAmount);
+    vec2 advectedUv = uv - smokeFlow * historyTexel * swirl * (1.20 + quality * 0.40)
+            * mix(0.65, 1.50, smokeAmount * 0.5) * frameScale;
     float previousTrail = reset ? 0.0 : historyAt(advectedUv).r;
+    if (!reset && smokeAmount > 0.001) {
+        vec2 spread = historyTexel * (1.0 + smokeAmount * 0.9);
+        float neighbours = (historyAt(advectedUv + vec2(spread.x, 0.0)).r
+                          + historyAt(advectedUv - vec2(spread.x, 0.0)).r
+                          + historyAt(advectedUv + vec2(0.0, spread.y)).r
+                          + historyAt(advectedUv - vec2(0.0, spread.y)).r) * 0.25;
+        float diffusion = (1.0 - pow(0.81, frameScale)) * min(smokeAmount, 1.0);
+        previousTrail = mix(previousTrail, neighbours, diffusion);
+    }
     float bodyNoise = fbm(p * 2.05 + flow * (0.65 + swirl * 0.35) + vec2(time * 0.035, -time * 0.07), octaves);
     float turbulence = pow(clamp(bodyNoise * (0.72 + density * 0.45), 0.0, 1.0), 1.0 / contrast);
     float decay = clamp(u_Params.x, 0.0, 0.99995);
-    float decayedTrail = previousTrail * decay * pow(mix(0.94, 1.0, turbulence), frameScale);
+    float smokeBreakup = mix(1.0, mix(0.88, 1.008, smoothstep(0.18, 0.85, turbulence)), min(smokeAmount * 0.7, 1.0));
+    float decayedTrail = previousTrail * decay * pow(mix(0.94, 1.0, turbulence), frameScale) * pow(smokeBreakup, frameScale);
     decayedTrail = max(decayedTrail - (1.0 - decay) * 0.025, 0.0);
-    float newlyExposed = reset ? 0.0 : smoothstep(0.015, 0.20, max(previousCurrent - current, 0.0));
-    float trail = max(decayedTrail, newlyExposed); if (trail < 0.0025) trail = 0.0;
+    float newlyExposed = reset ? 0.0 : smoothstep(0.02, 0.28, max(previousCurrent - current, 0.0));
+    float emission = newlyExposed * mix(0.78, 0.62, min(smokeAmount, 1.0))
+                   * mix(0.62, 1.0, smoothstep(0.15, 0.85, turbulence));
+    float trail = max(decayedTrail, emission); if (trail < 0.0025) trail = 0.0;
     imageStore(u_Output, pixel, vec4(clamp(trail,0.0,1.0), clamp(current,0.0,1.0), turbulence, 1.0));
 }

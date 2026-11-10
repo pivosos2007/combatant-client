@@ -19,6 +19,7 @@ import combatant.client.config.SettingDef;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.gui.hud.HudClimateSurface;
 import combatant.client.runtime.CombatantBuild;
 import combatant.client.features.gui.hud.draggable.impl.HudMaterialChoice;
@@ -40,12 +41,12 @@ import static combatant.client.features.theme.Theme.theme;
 @HudElementRegister(order = 30)
 public final class CustomHotbar extends AbstractHudElement {
 
-    public static final CustomHotbar INSTANCE = new CustomHotbar();
-    private static final float RADIUS = 6.0f;
     private static final UiGlassOpticsSpec HOTBAR_GLASS = UiGlassOpticsSpec.LIQUID
             .withRefraction(0.0045f).withBevel(0.12f, 0.023f)
             .withInteractionStrength(0f).withChromaticAberration(0f)
-            .withCleanReveal(0.76f).withShapeDeformation(false);
+            .withCleanReveal(0.76f).withShapeDeformation(false)
+            .withSurfaceRoughness(0.12f).withReactiveCoating(0.20f);
+    private static final float RADIUS = 6.0f;
     private static final float DIVIDER_WIDTH_PX = 1.05f;
     private static final float DIVIDER_HEIGHT = 11.0f;
     private static final float SELECT_STROKE_PX = 1.45f;
@@ -61,6 +62,7 @@ public final class CustomHotbar extends AbstractHudElement {
     private static float selectionStartSlot = 0.0f;
     private static float selectionTargetSlot = 0.0f;
     private static long selectionAnimStartMs = 0L;
+    public static final CustomHotbar INSTANCE = new CustomHotbar();
     private final EnumValue<OffHandMode> offHandMode =
             new EnumValue<>("offhand_mode", OffHandMode.MERGED, OffHandMode.values());
     private final RGBColorValue selectColor =
@@ -74,6 +76,7 @@ public final class CustomHotbar extends AbstractHudElement {
     private final NumberValue<Integer> accentAlpha =
             new NumberValue<>("accent_alpha", 255, 0, 255);
     private final ModeValue surfaceMaterial = new ModeValue("surface_material", "Default", HudMaterialChoice.OPTIONS);
+    private final HudGlassSettings glassSettings = new HudGlassSettings("hotbar", HOTBAR_GLASS);
     private final BooleanValue environmentalEffects = new BooleanValue("environmental_effects", CombatantBuild.isDevelopmentBuild());
     private CustomHotbar() {
         super("vanilla_hotbar", "Hotbar", "hud.static.vanilla_hotbar.description", true);
@@ -302,7 +305,7 @@ public final class CustomHotbar extends AbstractHudElement {
                 ? UiGlassVisual.ice(UiIceMaterialSpec.LIGHT)
                 : HudClimateSurface.glassVisual(config.environmentalEffects.get());
         HudRenderUtil.drawReactiveGlass(x, y, w, h, radius, glassScale, false,
-                1f, 1f, null, HOTBAR_GLASS, false, 0f, 0f, visual);
+                1f, 1f, null, config.glassSettings.apply(HOTBAR_GLASS), false, 0f, 0f, visual);
         HudMaterialChoice.drawGlassOverlay(Renderer2D.COLOR, selected,
                 x, y, w, h, radius, radius, radius, radius,
                 HudRenderUtil.glassBackground(), theme().accentSoft());
@@ -327,6 +330,7 @@ public final class CustomHotbar extends AbstractHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.mode(offHandMode));
+        glassSettings.addSettings(defs);
         defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
         defs.add(SettingDef.bool(environmentalEffects).common("setting.common.environmental_effects")
                 .visibleWhen(CombatantBuild::isDevelopmentBuild));

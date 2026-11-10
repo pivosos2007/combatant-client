@@ -34,7 +34,6 @@ public final class UiPropLayoutDependency {
                 || changed("intrinsicHeight", before, patch));
     }
 
-    /** Layout dependency lookup for one prebound property (no temporary patch map). */
     public static boolean affectsLayout(UiNodeType type, String property) {
         if (type == UiNodeType.TEXT) return "text".equals(property);
         boolean intrinsic = switch (type) {

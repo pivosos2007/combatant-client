@@ -7,7 +7,7 @@
 
 package combatant.client.render.engine.rhi.shader;
 
-/** Shader stages intentionally supported by the Combatant RHI roadmap. */
+/** Shader stages supported by the Combatant RHI roadmap. */
 public enum RhiShaderStage {
     VERTEX,
     TESS_CONTROL,

@@ -18,204 +18,204 @@ enum SettingRendererBridge {
     private static final String ICON_WARN = "L";
 
     static void render(BooleanSetting setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static void mouseClicked(BooleanSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static float getHeight(BooleanSetting setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     static <N extends Number> void render(SliderSetting<N> setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static <N extends Number> void mouseClicked(SliderSetting<N> setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static <N extends Number> void mouseReleased(SliderSetting<N> setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseReleased(setting, mx, my, button);
+        SettingsImplementations.active().mouseReleased(setting, mx, my, button);
     }
 
     static <N extends Number> void mouseClickedOutside(SliderSetting<N> setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClickedOutside(setting, mx, my, button);
+        SettingsImplementations.active().mouseClickedOutside(setting, mx, my, button);
     }
 
     static <N extends Number> boolean keyPressed(SliderSetting<N> setting, int keyCode, int scanCode, int modifiers) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.keyPressed(setting, keyCode, scanCode, modifiers);
+        return SettingsImplementations.active().keyPressed(setting, keyCode, scanCode, modifiers);
     }
 
     static <N extends Number> boolean charTyped(SliderSetting<N> setting, char chr, int modifiers) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.charTyped(setting, chr, modifiers);
+        return SettingsImplementations.active().charTyped(setting, chr, modifiers);
     }
 
     static <N extends Number> float getHeight(SliderSetting<N> setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     static void render(ColorSetting setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static void mouseClicked(ColorSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static void mouseReleased(ColorSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseReleased(setting, mx, my, button);
+        SettingsImplementations.active().mouseReleased(setting, mx, my, button);
     }
 
     static void mouseClickedOutside(ColorSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClickedOutside(setting, mx, my, button);
+        SettingsImplementations.active().mouseClickedOutside(setting, mx, my, button);
     }
 
     static boolean keyPressed(ColorSetting setting, int keyCode, int scanCode, int modifiers) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.keyPressed(setting, keyCode, scanCode, modifiers);
+        return SettingsImplementations.active().keyPressed(setting, keyCode, scanCode, modifiers);
     }
 
     static boolean charTyped(ColorSetting setting, char chr, int modifiers) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.charTyped(setting, chr, modifiers);
+        return SettingsImplementations.active().charTyped(setting, chr, modifiers);
     }
 
     static boolean mouseScrolled(ColorSetting setting, double mx, double my, double amount) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.mouseScrolled(setting, mx, my, amount);
+        return SettingsImplementations.active().mouseScrolled(setting, mx, my, amount);
     }
 
     static float getHeight(ColorSetting setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     static void render(TextSetting setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static void mouseClicked(TextSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static void mouseClickedOutside(TextSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClickedOutside(setting, mx, my, button);
+        SettingsImplementations.active().mouseClickedOutside(setting, mx, my, button);
     }
 
     static boolean keyPressed(TextSetting setting, int keyCode, int scanCode, int modifiers) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.keyPressed(setting, keyCode, scanCode, modifiers);
+        return SettingsImplementations.active().keyPressed(setting, keyCode, scanCode, modifiers);
     }
 
     static boolean charTyped(TextSetting setting, char chr, int modifiers) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.charTyped(setting, chr, modifiers);
+        return SettingsImplementations.active().charTyped(setting, chr, modifiers);
     }
 
     static float getHeight(TextSetting setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     static void render(TextListSetting setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static void mouseClicked(TextListSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static void mouseClickedOutside(TextListSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClickedOutside(setting, mx, my, button);
+        SettingsImplementations.active().mouseClickedOutside(setting, mx, my, button);
     }
 
     static boolean keyPressed(TextListSetting setting, int keyCode, int scanCode, int modifiers) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.keyPressed(setting, keyCode, scanCode, modifiers);
+        return SettingsImplementations.active().keyPressed(setting, keyCode, scanCode, modifiers);
     }
 
     static boolean charTyped(TextListSetting setting, char chr, int modifiers) {
         if (!setting.isAvailable()) return false;
-        return UnifiedSettingRenderer.charTyped(setting, chr, modifiers);
+        return SettingsImplementations.active().charTyped(setting, chr, modifiers);
     }
 
     static float getHeight(TextListSetting setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     static void render(GroupSetting setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static void mouseClicked(GroupSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static float getHeight(GroupSetting setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     static void render(ModeSetting setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static void mouseClicked(ModeSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static float getHeight(ModeSetting setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     static void render(KeyBindSetting setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static void mouseClicked(KeyBindSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static float getHeight(KeyBindSetting setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     static void render(FunctionBindSetting setting, float x, float y, float w, float mx, float my) {
-        UnifiedSettingRenderer.render(setting, x, y, w, mx, my);
+        SettingsImplementations.active().render(setting, x, y, w, mx, my);
         renderUnavailable(setting, x, y, w, mx, my);
     }
 
     static void mouseClicked(FunctionBindSetting setting, double mx, double my, int button) {
         if (!setting.isAvailable()) return;
-        UnifiedSettingRenderer.mouseClicked(setting, mx, my, button);
+        SettingsImplementations.active().mouseClicked(setting, mx, my, button);
     }
 
     static float getHeight(FunctionBindSetting setting) {
-        return UnifiedSettingRenderer.getHeight(setting);
+        return SettingsImplementations.active().height(setting);
     }
 
     private static void renderUnavailable(Setting setting, float x, float y, float w, float mx, float my) {

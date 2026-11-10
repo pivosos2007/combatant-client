@@ -179,7 +179,7 @@ public final class InventoryAction extends AbstractAction {
             swap.releaseHotbar(this);
             return ActionResult.RUNNING;
         }
-        // The lease is refused only while someone else's legacy lease is active; keep waiting for it.
+        // Retry while another owner holds the hotbar lease.
         if (swap.leaseHotbar(this, wanted, leaseTicks)) leased++;
         return ActionResult.RUNNING;
     }
@@ -193,7 +193,7 @@ public final class InventoryAction extends AbstractAction {
         }
         if (!acquire(ctx, ActionResource.INVENTORY)) return ActionResult.RUNNING;
         InventorySwap swap = InventorySwap.INSTANCE;
-        // Keep the inventory lease alive while waiting so legacy users cannot interleave clicks.
+        // Retain the inventory lease until the pending operation completes.
         if (!swap.leaseInventory(this, 3)) return ActionResult.RUNNING;
         if (issued) return ActionResult.RUNNING;
 

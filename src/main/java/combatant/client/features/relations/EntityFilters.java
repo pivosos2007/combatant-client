@@ -19,8 +19,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Хранит список игнорируемых сущностей (типов) для логики хитбоксов/рейкаста.
- * Использует новую систему конфигов (ConfigSerializer).
+ * Stores entity types excluded from hitbox and raycast targeting.
+ * 
  */
 public final class EntityFilters implements ConfigObject, ConfigNameProvider {
 

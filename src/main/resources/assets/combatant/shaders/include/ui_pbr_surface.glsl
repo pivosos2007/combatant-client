@@ -31,6 +31,7 @@ vec3 uiPbrEnvironment(vec3 n, vec2 tangent, float roughness, float anisotropy, f
 }
 #endif
 
+#ifdef COMBATANT_MATERIAL_MICROTEXTURE
 vec3 uiPbrSurface(vec2 local, vec2 bevelNormal, float edge, int mode) {
     float angle = radians(v_Params10.x);
     vec2 direction = vec2(cos(angle), sin(angle));
@@ -118,4 +119,124 @@ vec3 uiPbrSurface(vec2 local, vec2 bevelNormal, float edge, int mode) {
     // Do not apply an artistic shoulder to the base paint: it alters chosen RGB values.
     // Clamp only at the LDR framebuffer boundary; the intermediate remains linear.
     return uiPbrSrgb(clamp(color, vec3(0.0), vec3(1.0)));
+}
+
+#endif
+
+float uiProceduralHash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float uiProceduralNoise(vec2 p) {
+    vec2 cell = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(uiProceduralHash(cell), uiProceduralHash(cell + vec2(1.0, 0.0)), f.x),
+               mix(uiProceduralHash(cell + vec2(0.0, 1.0)), uiProceduralHash(cell + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+vec3 uiPbrProceduralSurface(vec2 local, vec2 bevelNormal, float edge, int mode) {
+    vec2 logicalScale = max(uScreen.zw / max(uScreen.xy, vec2(1.0)), vec2(1e-5));
+    vec2 physical = (v_Local.xy / max(abs(v_Local.z), 1e-6)) * logicalScale;
+    vec2 direction = vec2(cos(radians(v_Params10.x)), sin(radians(v_Params10.x)));
+    mat2 rotate = mat2(direction, vec2(-direction.y, direction.x));
+    vec2 samplePoint = transpose(rotate) * physical;
+    float detail = max(v_Params6.y, 0.01);
+    float rough = clamp(v_Params6.z, 0.04, 1.0);
+    float normalStrength = v_Params8.y;
+    float heightStrength = v_Params8.z;
+    float roughVariation = v_Params8.w;
+    float metallic = clamp(v_Params9.x, 0.0, 1.0);
+    float specStrength = v_Params9.y;
+    float anisotropy = (mode == 1 || mode == 6) ? clamp(v_Params9.w, 0.0, 0.95) : 0.0;
+    float scale = max(v_Params8.x, 16.0);
+
+    float height = 0.0;
+    float colorGrain = 0.0;
+    if (mode == 1 || mode == 6) {
+        float frequency = (mode == 6 ? 2.5 : 1.4) * (0.40 + detail) * 128.0 / scale;
+        float phase = samplePoint.y * frequency
+                + uiProceduralNoise(samplePoint * 0.018) * (mode == 6 ? 2.6 : 1.3);
+        float aliasGate = 1.0 - smoothstep(0.50, 1.15, fwidth(phase));
+        float streak = sin(phase) * aliasGate;
+        float fine = sin(phase * 2.17 + 1.7) * (1.0 - smoothstep(0.38, 0.98, fwidth(phase * 2.17)));
+        float broad = uiProceduralNoise(samplePoint * 0.035) - 0.5;
+        height = 0.60 * streak + 0.24 * fine + 0.35 * broad;
+        colorGrain = 0.32 * streak + 0.32 * broad;
+    } else if (mode == 4) {
+        vec2 grainUv = samplePoint * ((0.27 + detail * 0.37) * 128.0 / scale);
+        float filtered = 1.0 - smoothstep(0.65, 1.20, max(fwidth(grainUv.x), fwidth(grainUv.y)));
+        float fine = uiProceduralNoise(grainUv) - 0.5;
+        float coarse = uiProceduralNoise(grainUv * 0.24 + 9.1) - 0.5;
+        height = fine * filtered * 0.64 + coarse * 0.36;
+        colorGrain = fine * filtered * 0.23 + coarse * 0.48;
+    } else if (mode == 2) {
+        vec2 grainUv = samplePoint * ((0.12 + detail * 0.23) * 128.0 / scale);
+        float filtered = 1.0 - smoothstep(0.56, 1.06, max(fwidth(grainUv.x), fwidth(grainUv.y)));
+        height = (uiProceduralNoise(grainUv) - 0.5) * filtered * 0.50
+               + (uiProceduralNoise(grainUv * 0.22 + 3.7) - 0.5) * 0.14;
+        colorGrain = height * 0.12;
+    } else if (mode == 5) {
+        vec2 grainUv = samplePoint * (0.055 * 128.0 / scale);
+        height = (uiProceduralNoise(grainUv) - 0.5) * 0.13;
+        colorGrain = height * 0.09;
+    }
+
+    // Differentiate filtered continuous height, rather than a raw pixel hash.
+    vec2 dh = vec2(dFdx(height), dFdy(height));
+    vec2 normalXY = -dh * normalStrength * heightStrength * (mode == 2 ? 1.8 : 3.6);
+    normalXY += bevelNormal * edge * v_Params7.w * 0.42;
+    vec3 n = normalize(vec3(normalXY, 1.0));
+    rough = clamp(rough + height * roughVariation * (mode == 5 ? 0.15 : 0.28), 0.045, 1.0);
+    vec3 tangent = normalize(vec3(direction, -dot(n.xy, direction) / max(n.z, 0.15)));
+    vec3 bitangent = normalize(cross(n, tangent));
+    vec2 surfaceUv = local / max(v_Rect.zw, vec2(1.0));
+    vec2 pointerUv = (uGlassPointer.zw - v_Rect.xy) / max(v_Rect.zw, vec2(1.0));
+    vec2 lightUv = mix(vec2(0.18, -0.22), pointerUv, clamp(v_Params6.w, 0.0, 1.0));
+    vec3 l = normalize(vec3((lightUv - surfaceUv) * vec2(0.85, 1.0), 0.92));
+    vec3 view = vec3(0.0, 0.0, 1.0);
+    vec3 h = normalize(l + view);
+    float nl = max(dot(n, l), 0.0);
+    float nv = max(dot(n, view), 0.001);
+    float vh = max(dot(view, h), 0.0);
+    float alpha = max(rough * rough, 0.015);
+    float aspect = sqrt(max(0.12, 1.0 - anisotropy * 0.9));
+    float ax = max(alpha * aspect, 0.012);
+    float ay = max(alpha / aspect, 0.012);
+    float albedoMicroContrast = mode == 6 ? 0.34 : mode == 1 ? 0.22
+                              : mode == 4 ? 0.25 : 0.12;
+    vec3 base = combatantUiToLinear(clamp(v_Color.rgb
+            * (1.0 + colorGrain * albedoMicroContrast), 0.0, 1.0));
+    vec3 f0 = mix(vec3(mode == 2 ? 0.025 : 0.04), base, metallic);
+    vec3 spec = combatantUiFresnel(f0, vh)
+            * combatantUiGgxDistribution(n, h, tangent, bitangent, ax, ay)
+            * combatantUiSmithVisibility(n, view, l, tangent, bitangent, ax, ay) * nl;
+    if (mode == 4) spec *= 0.54;
+    if (mode == 2) spec *= 0.52;
+    float diffuse = (0.38 + 0.62 * nl) * (mode == 4 ? 0.77 : 1.0);
+    vec3 radiance = base * (1.0 - metallic) * diffuse * (vec3(1.0) - f0)
+            + spec * specStrength + base * metallic * 0.28;
+    if (mode == 5) {
+        float coatRough = max(0.09, rough * 0.46);
+        float coatA = coatRough * coatRough;
+        radiance += vec3(0.035 * nl * specStrength)
+                * combatantUiGgxDistribution(n, h, tangent, bitangent, coatA, coatA)
+                * combatantUiSmithVisibility(n, view, l, tangent, bitangent, coatA, coatA);
+    }
+#ifdef COMBATANT_SCENE_LIT_MATERIAL
+    float sceneStrength = clamp(v_Params5.z, 0.0, 1.0);
+    if (sceneStrength > 0.001) {
+        vec3 environment = uiPbrEnvironment(n, direction, rough, anisotropy,
+                                            clamp(v_Params5.w, 0.0, 32.0));
+        vec3 environmentFresnel = f0 + (1.0 - f0) * pow(1.0 - nv, 5.0);
+        radiance += environment * sceneStrength * (base * (1.0 - metallic) * 0.18
+                  + environmentFresnel * specStrength * mix(0.86, 0.29, rough));
+    }
+#endif
+    vec3 accent = combatantUiToLinear(v_Params7.rgb);
+    float accentResponse = (0.008 + 0.025 * (1.0 - rough)) * specStrength;
+    radiance += accent * accentResponse * (0.35 + 0.65 * nl)
+            * (mode == 4 || mode == 2 ? 0.45 : 1.0);
+    radiance *= 1.0 - edge * (1.0 - nl) * v_Params7.w * 0.14;
+    return combatantUiToSrgb(clamp(radiance, vec3(0.0), vec3(1.0)));
 }

@@ -183,9 +183,7 @@ public final class RotationManager {
         return !(ClientScreen.current() instanceof AbstractContainerScreen<?>);
     }
 
-    /**
-     * Update current rotation to a new rotation step.
-     */
+    
     public void update() {
         LocalPlayer player = player();
         if (player == null) {

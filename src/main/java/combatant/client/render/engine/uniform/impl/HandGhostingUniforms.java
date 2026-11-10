@@ -22,6 +22,9 @@ import combatant.client.render.engine.rhi.uniform.CombatantUniformAllocator;
  * vec4 u_Params; // x = temporal decay, y = strength, z = blur radius px, w = current-mask rejection
  * vec4 u_Noise0; // x = quality, y = octaves, z = flow speed, w = noise scale
  * vec4 u_Noise1; // x = swirl, y = contrast, z = density, w = history resolution scale
+ * vec4 u_PaletteEnd;     // secondary RGBA color
+ * vec4 u_PaletteOptions; // mode, cycles/sec, spatial span, angle in degrees
+ * vec4 u_GhostDetails;   // smoke amount, ring intensity, ring frequency, ring speed
  * </pre>
  */
 public enum HandGhostingUniforms {
@@ -33,6 +36,9 @@ public enum HandGhostingUniforms {
             .putVec4()
             .putVec4()
             .putVec4()
+            .putVec4() // palette secondary color
+            .putVec4() // palette mode, speed, span, angle
+            .putVec4() // smoke, ring intensity, frequency, speed
             .get();
 
     private static final String UNIFORM_NAME = "Combatant - Hand Ghosting UBO";
@@ -44,7 +50,10 @@ public enum HandGhostingUniforms {
             float colorR, float colorG, float colorB, float colorA,
             float decay, float strength, float blurPx, float currentReject,
             float quality, float octaves, float speed, float scale,
-            float swirl, float contrast, float density, float historyScale
+            float swirl, float contrast, float density, float historyScale,
+            float paletteEndR, float paletteEndG, float paletteEndB, float paletteEndA,
+            float paletteMode, float paletteSpeed, float paletteSpan, float paletteAngle,
+            float smokeAmount, float ringAmount, float ringFrequency, float ringSpeed
     ) {
         DATA.screenW = screenW;
         DATA.screenH = screenH;
@@ -66,6 +75,12 @@ public enum HandGhostingUniforms {
         DATA.contrast = contrast;
         DATA.density = density;
         DATA.historyScale = historyScale;
+        DATA.paletteEndR = paletteEndR; DATA.paletteEndG = paletteEndG;
+        DATA.paletteEndB = paletteEndB; DATA.paletteEndA = paletteEndA;
+        DATA.paletteMode = paletteMode; DATA.paletteSpeed = paletteSpeed;
+        DATA.paletteSpan = paletteSpan; DATA.paletteAngle = paletteAngle;
+        DATA.smokeAmount = smokeAmount; DATA.ringAmount = ringAmount;
+        DATA.ringFrequency = ringFrequency; DATA.ringSpeed = ringSpeed;
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
 
@@ -79,6 +94,9 @@ public enum HandGhostingUniforms {
         private float decay, strength, blurPx, currentReject;
         private float quality, octaves, speed, scale;
         private float swirl, contrast, density, historyScale;
+        private float paletteEndR, paletteEndG, paletteEndB, paletteEndA;
+        private float paletteMode, paletteSpeed, paletteSpan, paletteAngle;
+        private float smokeAmount, ringAmount, ringFrequency, ringSpeed;
 
         @Override
         public void write(java.nio.ByteBuffer buffer) {
@@ -87,7 +105,10 @@ public enum HandGhostingUniforms {
                     .putFloat(colorR).putFloat(colorG).putFloat(colorB).putFloat(colorA)
                     .putFloat(decay).putFloat(strength).putFloat(blurPx).putFloat(currentReject)
                     .putFloat(quality).putFloat(octaves).putFloat(speed).putFloat(scale)
-                    .putFloat(swirl).putFloat(contrast).putFloat(density).putFloat(historyScale);
+                    .putFloat(swirl).putFloat(contrast).putFloat(density).putFloat(historyScale)
+                    .putFloat(paletteEndR).putFloat(paletteEndG).putFloat(paletteEndB).putFloat(paletteEndA)
+                    .putFloat(paletteMode).putFloat(paletteSpeed).putFloat(paletteSpan).putFloat(paletteAngle)
+                    .putFloat(smokeAmount).putFloat(ringAmount).putFloat(ringFrequency).putFloat(ringSpeed);
         }
 
         @Override

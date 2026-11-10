@@ -12,6 +12,10 @@ import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.world.entity.Entity;
 
+/**
+ * Allows overriding the on-ground flag of a newly constructed outgoing
+ * vehicle-movement packet. The vehicle position and orientation are preserved.
+ */
 @Getter
 public final class VehicleGroundStateEvent extends Event {
     private final Entity vehicle;

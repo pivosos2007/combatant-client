@@ -7,8 +7,9 @@
 
 package combatant.client.mixins;
 
-import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.misc.ServerRPSpoofer;
+import combatant.client.events.Events;
+import combatant.client.events.impl.ResourcePackPushEvent;
+
 import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.common.ClientboundResourcePackPushPacket;
@@ -28,8 +29,7 @@ public abstract class ResourcePackSpoofMixin {
 
     @Inject(method = "handleResourcePackPush", at = @At("HEAD"), cancellable = true)
     private void combatant$spoofResourcePack(ClientboundResourcePackPushPacket packet, CallbackInfo ci) {
-        ServerRPSpoofer module = Modules.get(ServerRPSpoofer.class);
-        if (module != null && module.intercept(packet, connection)) {
+        if (Events.BUS.post(new ResourcePackPushEvent(packet, connection)).isCancelled()) {
             ci.cancel();
         }
     }

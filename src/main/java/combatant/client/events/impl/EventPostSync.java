@@ -9,6 +9,10 @@ package combatant.client.events.impl;
 
 import combatant.client.events.Event;
 
+/**
+ * Posted after {@code LocalPlayer.sendPosition} returns, before any queued
+ * {@link EventSync} post-actions execute.
+ */
 public class EventPostSync extends Event {
     public EventPostSync() {
     }

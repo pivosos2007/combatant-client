@@ -72,7 +72,7 @@ public final class FinderRender {
 
     /** Horizontal circle, e.g. a spawner's activation range. */
     public void ring(Vec3 center, double radius, int argb) {
-        // Enough segments that a 16-block ring does not look polygonal up close.
+        // Ring tessellation scales with the 16-block chunk width.
         int segments = Math.max(24, (int) Math.ceil(radius * 4.0));
         double previousX = center.x + radius;
         double previousZ = center.z;

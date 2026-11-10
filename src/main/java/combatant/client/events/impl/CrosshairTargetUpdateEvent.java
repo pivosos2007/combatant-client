@@ -13,6 +13,12 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.HitResult;
 import combatant.client.events.Event;
 
+/**
+ * Exposes the completed crosshair raycast before its result is stored for use by the client.
+ * Subscribers can replace both the hit result and the targeted entity; these values
+ * are written back independently after dispatch. Click count and held state describe
+ * the use key at the time of the raycast.
+ */
 @Getter
 public final class CrosshairTargetUpdateEvent extends Event {
     private final float tickDelta;

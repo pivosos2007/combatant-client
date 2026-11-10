@@ -35,16 +35,9 @@ import java.util.Objects;
 import combatant.client.util.combat.AttackUtil;
 
 /**
- * Shared execution layer for block actions.
- *
- * <p>Target selection belongs to modules. This class owns the parts which must stay coherent across
- * modules: server-facing rotation, reach/visibility validation, vanilla destroy state, hand/tool
- * selection through {@link InventorySwap}, and the final block interaction call.</p>
- *
- * <p>The pipeline deliberately does not implement packet-mining tricks. Mining goes through
- * {@link net.minecraft.client.multiplayer.MultiPlayerGameMode#startDestroyBlock} and
- * {@link net.minecraft.client.multiplayer.MultiPlayerGameMode#continueDestroyBlock}; modules such
- * as NoDelay may alter vanilla progress independently.</p>
+ * Executes module-requested block actions through shared rotation, reach and visibility
+ * validation, inventory selection, and Minecraft block-interaction state.
+ * Modules are responsible for selecting targets.
  */
 public final class BlockInteractionPipeline {
 

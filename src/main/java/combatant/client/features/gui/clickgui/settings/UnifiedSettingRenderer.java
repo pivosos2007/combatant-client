@@ -16,6 +16,7 @@ import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.ColorValue;
 import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.PrecisionNumberValue;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.render.engine.animation.AnimationUtility;
 import combatant.client.render.engine.text.TextRenderer;
@@ -127,9 +128,7 @@ enum UnifiedSettingRenderer {
         Renderer2D.COLOR.svg(icon, x, y, size, size, SvgRenderOptions.overrideColor(color));
     }
 
-    // ------------------------------------------------------------
     // Boolean
-    // ------------------------------------------------------------
 
     static void render(BooleanSetting setting, float x, float y, float w, float mx, float my) {
         UnifiedSettingsSkin.syncTheme();
@@ -451,9 +450,7 @@ enum UnifiedSettingRenderer {
         LayoutRender2D.drawRoundedRect(knobX, knobY, knobW, knobH, knobW * 0.5f, knobCol);
     }
 
-    // ------------------------------------------------------------
     // Slider
-    // ------------------------------------------------------------
 
     static <N extends Number> void mouseClicked(SliderSetting<N> setting, double mx, double my, int button) {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
@@ -795,7 +792,7 @@ enum UnifiedSettingRenderer {
             double max = setting.value().getMax().doubleValue();
             parsed = Math.max(min, Math.min(max, parsed));
             if (sliderInteger(setting)) parsed = Math.round(parsed);
-            else parsed = Math.round(parsed * 1000d) / 1000d;
+            else parsed = roundSliderNumber(setting.value(), parsed, 3);
             N next = setting.value().castToType(parsed);
             setting.value().set(next);
             ui.exitText = ui.editBuffer;
@@ -944,12 +941,26 @@ enum UnifiedSettingRenderer {
         ui.errorAnim = 1f;
     }
 
+    private static double roundSliderNumber(NumberValue<?> value, double number, int defaultDigits) {
+        int digits = value instanceof PrecisionNumberValue precise
+                ? Math.max(0, Math.min(6, precise.decimalPlaces())) : defaultDigits;
+        double factor = switch (digits) {
+            case 4 -> 10000d;
+            case 3 -> 1000d;
+            case 2 -> 100d;
+            case 1 -> 10d;
+            case 0 -> 1d;
+            default -> 1000000d;
+        };
+        return Math.round(number * factor) / factor;
+    }
+
     private static <N extends Number> void setSliderValueFromMouse(SliderSetting<N> setting, float mx, float trackX, float trackW, double min, double max) {
         float percent = UnifiedSettingsSkin.clamp01((mx - trackX) / Math.max(1f, trackW));
         double nextRaw = min + (max - min) * percent;
         if (setting.value().get() instanceof Integer || setting.value().get() instanceof Long)
             nextRaw = Math.round(nextRaw);
-        else nextRaw = Math.round(nextRaw * 100d) / 100d;
+        else nextRaw = roundSliderNumber(setting.value(), nextRaw, 2);
         N current = setting.value().get();
         N next = setting.value().castToType(nextRaw);
         if (Double.compare(current.doubleValue(), next.doubleValue()) != 0) {
@@ -989,9 +1000,7 @@ enum UnifiedSettingRenderer {
         }
     }
 
-    // ------------------------------------------------------------
     // Mode / Group chips
-    // ------------------------------------------------------------
 
     static void mouseClicked(ModeSetting setting, double mx, double my, int button) {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
@@ -1477,9 +1486,7 @@ enum UnifiedSettingRenderer {
         if (clip) ScissorFunction.pop();
     }
 
-    // ------------------------------------------------------------
     // Text / TextList
-    // ------------------------------------------------------------
 
     static void mouseClicked(TextSetting setting, double mx, double my, int button) {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
@@ -2225,9 +2232,7 @@ enum UnifiedSettingRenderer {
         renderBindBase(setting, display, null, ui.waiting, x, y, w, mx, my, ui);
     }
 
-    // ------------------------------------------------------------
     // Key binds
-    // ------------------------------------------------------------
 
     static void mouseClicked(KeyBindSetting setting, double mx, double my, int button) {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return;
@@ -2591,9 +2596,7 @@ enum UnifiedSettingRenderer {
         if (clipped) ScissorFunction.pop();
     }
 
-    // ------------------------------------------------------------
     // Color
-    // ------------------------------------------------------------
 
     static void mouseClicked(ColorSetting setting, double mx, double my, int button) {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT && button != combatant.client.input.InputKeys.MOUSE_MIDDLE) return;
@@ -3687,9 +3690,7 @@ enum UnifiedSettingRenderer {
         return text.length();
     }
 
-    // ------------------------------------------------------------
     // Shared Main/Map overlay pass
-    // ------------------------------------------------------------
 
     static void overlayOpened(Setting setting) {
         if (setting instanceof ColorSetting color) {
@@ -4235,7 +4236,7 @@ enum UnifiedSettingRenderer {
         setting.value().set(id, !setting.value().get(id));
         GuiSound.booleanFeedback(setting.value().get(id));
         if (setting.getParent() != null) setting.getParent().saveConfig();
-        return true; // multi-select intentionally stays open
+        return true; // multi-select stays open
     }
 
     private static boolean colorOverlayClicked(ColorSetting setting, double mx, double my, int button) {
@@ -4266,9 +4267,7 @@ enum UnifiedSettingRenderer {
         return true;
     }
 
-    // ------------------------------------------------------------
     // Common helpers
-    // ------------------------------------------------------------
 
     private static void renderInlineSelection(TextRenderer font, String text, int start, int end, float textX, float textY, float size, float fieldH, float fieldY) {
         if (text == null || start < 0 || end < 0 || start == end) return;

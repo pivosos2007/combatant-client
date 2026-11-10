@@ -284,7 +284,6 @@ public final class Offhand extends Module {
         consumer.abandonOffhandTurn();
     }
 
-    // ---- public API used by other modules -----------------------------------------------------------------
 
     public boolean shouldHoldTotemNow(LocalPlayer player) {
         if (!isEnabled() || player == null) return false;
@@ -318,7 +317,6 @@ public final class Offhand extends Module {
         return swapper.isPending();
     }
 
-    // ---- offhand policy -----------------------------------------------------------------------------------
 
     private void updateOffhandPolicy(LocalPlayer player, boolean danger) {
         if (!danger) {

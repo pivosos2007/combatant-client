@@ -26,6 +26,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Collects current module, HUD and theme configuration into profile snapshots.
+ */
 public final class ConfigProfileCollector {
     public ConfigProfileSnapshot collect(ConfigProfileType type, String name) {
         long now = System.currentTimeMillis();
@@ -107,7 +110,6 @@ public final class ConfigProfileCollector {
             }
         } catch (Throwable ignored) {
         }
-        // TODO: use Discord RPC nickname/avatar when Discord integration is ready.
         return "Unknown";
     }
 

@@ -21,6 +21,11 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 
+/**
+ * Predicts supported foot positions along a scaffold placement line using
+ * the player's collision dimensions and recent placement offsets.
+ * Cached placement offsets belong to this instance and are cleared by {@link #reset()}.
+ */
 public final class ScaffoldMovementPrediction {
 
     private static final int MAX_PLACEMENT_OFFSETS = 4;
@@ -98,10 +103,8 @@ public final class ScaffoldMovementPrediction {
                 }
             }
 
-            // clip() reports where the segment ENTERS the box. Walking along from->to we need where it leaves, so
-            // trace from the far end back towards the player: the first hit of that trace is the exit point. Using
-            // the entry point returned a position behind the player (the "fall-off point" sat at the near face of
-            // the supporting block), so the target was only found once the player was already off the edge.
+            // AABB.clip finds the first intersection in ray order. Reverse the ray to
+            // locate the exit face of a supporting box rather than its entry face.
             Optional<Vec3> next = cache.stream()
                     .map(box -> box.clip(extendedTo, extendedFrom).orElse(null))
                     .filter(java.util.Objects::nonNull)

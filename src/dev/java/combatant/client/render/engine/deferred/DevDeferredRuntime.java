@@ -18,7 +18,16 @@ public enum DevDeferredRuntime {
     public static DeferredWorldPipeline world() { return WORLD; }
     public static DeferredPassGraph graph() { return GRAPH; }
 
-    public static void serviceFrameBoundary() { WORLD.serviceRuntimeLifecycle(); }
+    public static void serviceFrameBoundary() {
+        var module = combatant.client.features.module.Modules.get(
+                combatant.client.features.module.modules.visuals.ReimaginedVisual.class);
+        var settings = DevDeferredSettings.get();
+        settings.publish();
+        WORLD.requestEnabled(module != null && module.isEnabled() && settings.enabled()
+                && combatant.client.runtime.RuntimeGate.canRunRender());
+        WORLD.setDebugGbuffer(settings.debugGbuffer());
+        WORLD.serviceRuntimeLifecycle();
+    }
 
     public static void backendChanged(CombatantRhi previous) {
         WORLD.releasePhysicalResources();

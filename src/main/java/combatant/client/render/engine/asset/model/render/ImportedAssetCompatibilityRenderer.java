@@ -44,7 +44,7 @@ import java.util.LinkedHashMap;
 /**
  * Shaderpack-off world-entity path for imported static assets.
  *
- * <p>This is deliberately not the Photon renderer. It proves geometry/material/texture residency,
+ * <p>This is not the Photon renderer. It proves geometry/material/texture residency,
  * depth, transforms and visibility before pack-specific G-buffer insertion exists. World instances
  * stay off when Iris owns the world instead of pretending to reproduce the active shaderpack. HAND
  * instances use a separate native first-person submission after the world/post pass, so the same

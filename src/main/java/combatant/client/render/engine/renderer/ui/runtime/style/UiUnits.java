@@ -14,7 +14,7 @@ import combatant.client.render.engine.text.TextSizing;
  *
  * <p>Layout coordinates, dimensions, spacing, radii and authored font sizes all live in the same
  * logical UI coordinate space. Text backends still consume their historical multiplicative scale,
- * but that conversion is intentionally kept below the script/style boundary.</p>
+ * but that conversion is kept below the script/style boundary.</p>
  */
 public final class UiUnits {
     /** A text backend scale of 1.0 corresponds to an authored 18-unit font size. */

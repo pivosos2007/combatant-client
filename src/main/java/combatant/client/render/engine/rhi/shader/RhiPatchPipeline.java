@@ -7,6 +7,9 @@
 
 package combatant.client.render.engine.rhi.shader;
 
+/**
+ * Backend tessellation pipeline handle with a fixed number of patch control points.
+ */
 public interface RhiPatchPipeline extends AutoCloseable {
     String label();
 

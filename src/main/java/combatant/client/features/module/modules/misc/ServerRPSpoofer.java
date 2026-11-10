@@ -7,6 +7,9 @@
 
 package combatant.client.features.module.modules.misc;
 
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.ResourcePackPushEvent;
+
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.Module;
@@ -51,6 +54,11 @@ public final class ServerRPSpoofer extends Module {
      * Called by the packet-handler mixin. Returns true when the push was swallowed and must not be processed
      * by vanilla.
      */
+    @EventHandler
+    private void onResourcePackPush(ResourcePackPushEvent event) {
+        if (intercept(event.getPacket(), event.getConnection())) event.cancel();
+    }
+
     public boolean intercept(ClientboundResourcePackPushPacket packet, Connection connection) {
         if (!isEnabled() || connection == null) return false;
         UUID id = packet.id();

@@ -71,7 +71,7 @@ public final class SmartAngleSmooth extends AngleSmooth {
      * Rebase a smooth pass onto the observed camera rotation when an external
      * owner (e.g. the player's mouse) may have changed it between updates.
      *
-     * The ordinary RotationManager path deliberately keeps its virtual state;
+     * The ordinary RotationManager path keeps its virtual state;
      * only direct-camera consumers explicitly request this synchronization.
      */
     public void rebaseToActualRotation(Rotation actualRotation) {

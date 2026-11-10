@@ -36,7 +36,6 @@ import java.util.List;
 
 import static combatant.client.features.theme.Theme.theme;
 
-//todo Description
 @HudElementInfo(
         id = "armor",
         displayName = "Armor",

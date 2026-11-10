@@ -9,6 +9,7 @@ package combatant.client.api.v0.addon;
 
 import combatant.client.api.v0.client.CombatantClientApi;
 
+/** Provides an addon identifier and access to the client API at runtime. */
 public interface CombatantAddonRuntimeContext {
     String addonId();
 

@@ -1282,19 +1282,9 @@ public class NameTags extends Module {
                                               int argb,
                                               float alpha) {
         if (text == null || text.isEmpty() || alpha <= 0.001f) return;
-        double o = ENCHANT_OUTLINE_OFFSET;
-        float outlineAlpha = Math.min(1.0f, alpha * ENCHANT_OUTLINE_ALPHA);
-        double[] offsets = {-o, 0.0, o};
-        for (double ox : offsets) {
-            for (double oy : offsets) {
-                if (ox == 0.0 && oy == 0.0) continue;
-                drawWorldText(renderer, basis, textRenderer, text, anchor,
-                        pixelX + ox, pixelY + oy, textScale, worldScale,
-                        0xFF000000, outlineAlpha, false);
-            }
-        }
-        drawWorldText(renderer, basis, textRenderer, text, anchor,
-                pixelX, pixelY, textScale, worldScale, argb, alpha, false);
+        WorldBillboardRenderer.outlinedText(renderer, basis, textRenderer, text, anchor,
+                pixelX, pixelY, textScale, worldScale, argb, alpha,
+                (float) ENCHANT_OUTLINE_OFFSET, ENCHANT_OUTLINE_ALPHA);
     }
 
     private static double drawWorldStyledText(Renderer3D renderer,

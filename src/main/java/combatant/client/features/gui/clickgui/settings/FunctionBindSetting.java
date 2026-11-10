@@ -127,7 +127,6 @@ public class FunctionBindSetting extends Setting {
         return ui;
     }
 
-    // ====================== CONFIG ======================
 
     @Override
     public Object save() {
@@ -140,7 +139,6 @@ public class FunctionBindSetting extends Setting {
         refreshRegistration();
     }
 
-    // ======================== UI ========================
 
     @Override
     public void render(float x, float y, float w, float mx, float my) {

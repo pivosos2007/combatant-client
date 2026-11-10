@@ -17,6 +17,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+/**
+ * Enforces inventory slot locks before local menu clicks are applied.
+ * Only the current local player's clicks are checked; server-side container
+ * processing and clicks from unrelated players are unaffected.
+ */
 @Mixin(AbstractContainerMenu.class)
 public abstract class AbstractContainerMenuMixin {
     @Inject(method = "clicked", at = @At("HEAD"), cancellable = true)

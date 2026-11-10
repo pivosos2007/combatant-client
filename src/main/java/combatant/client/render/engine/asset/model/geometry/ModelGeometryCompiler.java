@@ -9,7 +9,7 @@ import combatant.client.render.engine.asset.model.data.ModelPrimitive;
 
 import java.util.Objects;
 
-/** CPU preparation only. GPU upload is deliberately delegated to Combatant's GL/Vulkan RHI. */
+/** CPU preparation only. GPU upload is delegated to Combatant's GL/Vulkan RHI. */
 public final class ModelGeometryCompiler {
     private static final float EPSILON = 1.0e-12f;
 

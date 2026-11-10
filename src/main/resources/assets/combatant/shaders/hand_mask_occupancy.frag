@@ -18,7 +18,7 @@ const int CELL_SIZE = 8;
 
 float maskAt(ivec2 pixel, ivec2 size) {
     vec4 mask = texelFetch(u_Mask, clamp(pixel, ivec2(0), size - ivec2(1)), 0);
-    return max(mask.a, max(mask.r, max(mask.g, mask.b)));
+    return clamp(mask.a, 0.0, 1.0);
 }
 
 void main() {

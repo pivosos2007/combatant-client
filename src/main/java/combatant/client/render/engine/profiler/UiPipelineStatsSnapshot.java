@@ -30,12 +30,22 @@ public record UiPipelineStatsSnapshot(
         int msaaTargetResizes,
         long msaaPixelSamples,
         int directPasses,
+        int directCoalescedGroups,
+        int directPassesSaved,
         int itemPasses,
         int mixedItemPasses,
         int captureAwarePasses,
         int captureAwareMixedItems,
         int captureAwareBlurCapture,
         int captureAwarePreparedGlass,
-        int captureAwareUnsupported
+        int captureAwareUnsupported,
+        int hudMarkersEmitted,
+        int hudMarkersSkipped,
+        int batchBreakOrder,
+        int batchBreakType,
+        int batchBreakScissor,
+        int batchBreakClip,
+        int batchBreakSampler,
+        int batchBreakParameters
 ) {
 }

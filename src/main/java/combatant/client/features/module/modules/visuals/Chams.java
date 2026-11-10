@@ -112,6 +112,17 @@ public class Chams extends Module {
     private static final String SETTING_GHOSTING_CONTRAST = "ghosting_contrast";
     private static final String SETTING_GHOSTING_SWIRL = "ghosting_swirl";
     private static final String SETTING_GHOSTING_DENSITY = "ghosting_density";
+    private static final String SETTING_GHOSTING_SMOKE = "ghosting_smoke";
+    private static final String SETTING_GHOSTING_RINGS = "ghosting_rings";
+    private static final String SETTING_GHOSTING_RING_FREQUENCY = "ghosting_ring_frequency";
+    private static final String SETTING_GHOSTING_RING_SPEED = "ghosting_ring_speed";
+    private static final String SETTING_GHOSTING_GRADIENT_ANGLE = "ghosting_gradient_angle";
+    private static final String SETTING_GHOSTING_GRADIENT_SPAN = "ghosting_gradient_span";
+    private static final String SETTING_FILL_COLOR_MODE = "fill_color_mode";
+    private static final String SETTING_FILL_COLOR_SPEED = "fill_color_speed";
+    private static final String SETTING_FILL_COLOR_2 = "fill_color_2";
+    private static final String SETTING_FILL_GRADIENT_ANGLE = "fill_gradient_angle";
+    private static final String SETTING_FILL_GRADIENT_SPAN = "fill_gradient_span";
     private final Minecraft mc = Minecraft.getInstance();
     private final ModeValue mode =
             modeSetting("handChamsMode", SETTING_MODE, "Smoke", "Smoke", "Metallic", "Glass", "Rift");
@@ -121,6 +132,30 @@ public class Chams extends Module {
 
     private final RGBAColorValue fillColor =
             color("handChamsFillColor", SETTING_FILL, "#66FFFFFF");
+    private final EnumValue<AnimatedRenderColors.Mode> fillColorMode = visibleWhen(
+            common(enumSetting("handChamsFillColorMode", SETTING_FILL_COLOR_MODE,
+                    AnimatedRenderColors.Mode.STATIC,
+                    AnimatedRenderColors.Mode.STATIC, AnimatedRenderColors.Mode.RAINBOW,
+                    AnimatedRenderColors.Mode.LIGHT_RAINBOW, AnimatedRenderColors.Mode.SKY,
+                    AnimatedRenderColors.Mode.FADE, AnimatedRenderColors.Mode.DOUBLE_COLOR,
+                    AnimatedRenderColors.Mode.ANALOGOUS, AnimatedRenderColors.Mode.THEME),
+                    CommonSettingSchemas.RENDER_COLOR_MODE.commonI18nKey()), this::hasColorFill);
+    private final NumberValue<Integer> fillColorSpeed = visibleWhen(
+            common(num("handChamsFillColorSpeed", SETTING_FILL_COLOR_SPEED, 18, 2, 54),
+                    CommonSettingSchemas.RENDER_COLOR_SPEED.commonI18nKey()),
+            () -> hasColorFill() && AnimatedRenderColors.animated(fillColorMode.get()));
+    private final RGBAColorValue fillColor2 = visibleWhen(
+            common(color("handChamsFillColor2", SETTING_FILL_COLOR_2, "#669CF4FF"),
+                    CommonSettingSchemas.RENDER_SECONDARY_COLOR.commonI18nKey()),
+            () -> hasColorFill() && AnimatedRenderColors.usesSecondary(fillColorMode.get()));
+    private final NumberValue<Float> fillGradientAngle = visibleWhen(
+            num("handChamsFillGradientAngle", SETTING_FILL_GRADIENT_ANGLE, 90.0f, 0.0f, 360.0f),
+            () -> hasColorFill() && fillColorMode.get() != AnimatedRenderColors.Mode.STATIC
+                    && fillColorMode.get() != AnimatedRenderColors.Mode.THEME);
+    private final NumberValue<Float> fillGradientSpan = visibleWhen(
+            num("handChamsFillGradientSpan", SETTING_FILL_GRADIENT_SPAN, 1.0f, 0.25f, 4.0f),
+            () -> hasColorFill() && fillColorMode.get() != AnimatedRenderColors.Mode.STATIC
+                    && fillColorMode.get() != AnimatedRenderColors.Mode.THEME);
 
     private final ModeValue visualColorSource =
             visibleWhen(modeSetting("handChamsVisualColorSource", SETTING_VISUAL_COLOR_SOURCE, "Custom", "Custom", "Theme"), this::isHandEffectMode);
@@ -220,6 +255,14 @@ public class Chams extends Module {
                     CommonSettingSchemas.RENDER_SECONDARY_COLOR.commonI18nKey()),
             () -> isGhostingVisible() && AnimatedRenderColors.usesSecondary(ghostingColorMode.get())
     );
+    private final NumberValue<Float> ghostingGradientAngle = visibleWhen(
+            num("handChamsGhostingGradientAngle", SETTING_GHOSTING_GRADIENT_ANGLE, 90.0f, 0.0f, 360.0f),
+            () -> isGhostingVisible() && ghostingColorMode.get() != AnimatedRenderColors.Mode.STATIC
+                    && ghostingColorMode.get() != AnimatedRenderColors.Mode.THEME);
+    private final NumberValue<Float> ghostingGradientSpan = visibleWhen(
+            num("handChamsGhostingGradientSpan", SETTING_GHOSTING_GRADIENT_SPAN, 1.0f, 0.25f, 4.0f),
+            () -> isGhostingVisible() && ghostingColorMode.get() != AnimatedRenderColors.Mode.STATIC
+                    && ghostingColorMode.get() != AnimatedRenderColors.Mode.THEME);
     private final NumberValue<Float> ghostingStrength = visibleWhen(
             num("handChamsGhostingStrength", SETTING_GHOSTING_STRENGTH, 1.0f, 0.0f, 3.0f),
             this::isGhostingVisible
@@ -261,6 +304,17 @@ public class Chams extends Module {
             num("handChamsGhostingDensity", SETTING_GHOSTING_DENSITY, 1.0f, 0.2f, 2.5f),
             this::isGhostingVisible
     );
+
+    private final NumberValue<Float> ghostingSmoke = visibleWhen(
+            num("handChamsGhostingSmoke", SETTING_GHOSTING_SMOKE, 0.9f, 0.0f, 2.0f), this::isGhostingVisible);
+    private final NumberValue<Float> ghostingRings = visibleWhen(
+            num("handChamsGhostingRings", SETTING_GHOSTING_RINGS, 0.0f, 0.0f, 2.0f), this::isGhostingVisible);
+    private final NumberValue<Float> ghostingRingFrequency = visibleWhen(
+            num("handChamsGhostingRingFrequency", SETTING_GHOSTING_RING_FREQUENCY, 7.0f, 1.0f, 18.0f),
+            () -> isGhostingVisible() && ghostingRings.get() > 0.0f);
+    private final NumberValue<Float> ghostingRingSpeed = visibleWhen(
+            num("handChamsGhostingRingSpeed", SETTING_GHOSTING_RING_SPEED, 0.65f, 0.0f, 3.0f),
+            () -> isGhostingVisible() && ghostingRings.get() > 0.0f);
 
     private final HandChamsComputeBackend chamsCompute = new HandChamsComputeBackend();
     private final PostProcessPass handsPass = new HandsPass();
@@ -436,15 +490,8 @@ public class Chams extends Module {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     private void copyPhase(FeatureRenderPhase<?> source, FeatureRenderPhase<?> target) {
-        // FeatureRenderPhase.sortInto() is destructive in 26.2: both the simple and translucent
-        // implementations clear their backing submits after forwarding them to Output. A naive
-        // "copy" therefore emptied Minecraft's live hand storage before the vanilla dispatcher
-        // could draw it, leaving only the Chams post-process fill visible.
-        //
-        // Drain once into a temporary list, then restore the exact SubmitNode objects back into the
-        // source phase and also submit them to the isolated mask phase. Re-submission preserves the
-        // phase's own batching / translucent distance bookkeeping without sharing mutable phase
-        // containers between the vanilla scene and the auxiliary mask renderer.
+        // sortInto consumes the source phase's submissions. Restore the same SubmitNode objects
+        // after copying them to the mask phase so the vanilla hand pass can still draw them.
         handSnapshotScratch.clear();
         source.sortInto((submit, strictlyOrdered) -> handSnapshotScratch.add(submit));
 
@@ -580,9 +627,7 @@ public class Chams extends Module {
 
             SubmitNodeStorage handSubmits = new SubmitNodeStorage();
             var playerState = renderer.gameRenderState().levelRenderState.playerRenderState;
-            // Iris 1.11.7 submits hands through the vanilla 26.3 API. Its legacy
-            // ItemInHandInterface is not implemented by FirstPersonHandsAndItemsRenderer.
-            // The Iris hand-phase mixin filters solid/translucent items using renderingSolid.
+            // Iris hands are submitted through the vanilla first-person hand renderer in this integration.
             renderer.firstPersonHandsAndItemsRenderer.submitHandsWithItems(
                     tickDelta, new PoseStack(), handSubmits,
                     playerState, playerState.firstPersonHandsAndItems);
@@ -749,6 +794,17 @@ public class Chams extends Module {
         return handMaskSampler;
     }
 
+    /** Smooth silhouette coverage for Metallic/Smoke, without blurring occupancy-cell lookups. */
+    private GpuSampler getHandMaterialMaskSampler() {
+        return RenderSystem.getSamplerCache().getSampler(
+                AddressMode.CLAMP_TO_EDGE,
+                AddressMode.CLAMP_TO_EDGE,
+                FilterMode.LINEAR,
+                FilterMode.LINEAR,
+                false
+        );
+    }
+
     private boolean isSmokeMode() {
         return "Smoke".equals(mode.get());
     }
@@ -763,6 +819,10 @@ public class Chams extends Module {
 
     private boolean isEdgeMaterialMode() {
         return isSmokeMode() || isMetallicMode();
+    }
+
+    private boolean hasColorFill() {
+        return isHandEffectMode() || isGlassMode();
     }
 
     private boolean isHandEffectMode() {
@@ -869,9 +929,10 @@ public class Chams extends Module {
         if ("Glass".equals(mode.get())) {
             int fillArgb = fillColor.getArgb();
 
-            float fillR = channel(fillArgb, 16);
-            float fillG = channel(fillArgb, 8);
-            float fillB = channel(fillArgb, 0);
+            HandPalette palette = materialPalette(fillArgb);
+            float fillR = channel(palette.primary(), 16);
+            float fillG = channel(palette.primary(), 8);
+            float fillB = channel(palette.primary(), 0);
             float fillA = channel(fillArgb, 24);
 
             int w = mc.getWindow().getWidth();
@@ -893,7 +954,10 @@ public class Chams extends Module {
                     w, h, rawTime, edgeWidth,
                     fillR, fillG, fillB, glassAlpha,
                     glassStrength, refractionPx, hazeStrength, frostBlurPx,
-                    bodyFrost, chromaticPx, edgeRefractionMul, clarity
+                    bodyFrost, chromaticPx, edgeRefractionMul, clarity,
+                    channel(palette.secondary(), 16), channel(palette.secondary(), 8),
+                    channel(palette.secondary(), 0), channel(palette.secondary(), 24),
+                    palette.mode(), palette.speed(), palette.span(), palette.angle()
             );
 
             try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:hands_glass")) {
@@ -909,6 +973,8 @@ public class Chams extends Module {
             int fillArgb = fillColor.getArgb();
             int baseRgb = metallicBaseRgb();
             int hiRgb = metallicHighlightRgb();
+            HandPalette palette = materialPalette(AnimatedRenderColors.withAlpha(baseRgb, (fillArgb >>> 24) & 0xFF));
+            baseRgb = palette.primary();
             int glowRgb = glowRgb(baseRgb);
             int shadowRgb = shadowRgb(baseRgb);
 
@@ -935,7 +1001,10 @@ public class Chams extends Module {
                     metallicIntensity.get(), metallicSharpness.get(), metallicEdge.get(), rawTime,
                     metallicSweepSpeed.get(), metallicSweepScale.get(), metallicBrushedLines.get(), metallicFlakes.get(),
                     glowStrength.get(), shadowStrength.get(), edgeWidth.get(), metallicPrism.get(),
-                    occupancyReady
+                    occupancyReady,
+                    channel(palette.secondary(), 16), channel(palette.secondary(), 8),
+                    channel(palette.secondary(), 0), channel(palette.secondary(), 24),
+                    palette.mode(), palette.speed(), palette.span(), palette.angle()
             );
 
             try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:hands_metallic")) {
@@ -964,7 +1033,7 @@ public class Chams extends Module {
                             .pipeline(EffectRenderPipelines.HAND_METALLIC)
                             .uniform("HandMetallic", HandMetallicUniforms.get())
                             .sampler("u_Src", src, PostProcessManager.getSampler())
-                            .sampler("u_Mask", maskView, getHandMaskSampler())
+                            .sampler("u_Mask", maskView, getHandMaterialMaskSampler())
                             .sampler("u_Occupancy", occupancyView, getHandMaskSampler())
                             .end();
                 }
@@ -972,6 +1041,8 @@ public class Chams extends Module {
         } else if ("Rift".equals(mode.get())) {
             int fillArgb = fillColor.getArgb();
             int fillRgb = materialFillRgb();
+            HandPalette palette = materialPalette(AnimatedRenderColors.withAlpha(fillRgb, (fillArgb >>> 24) & 0xFF));
+            fillRgb = palette.primary();
             int causticRgb = glowRgb(fillRgb);
             int shadowRgb = shadowRgb(fillRgb);
 
@@ -987,7 +1058,10 @@ public class Chams extends Module {
                     channel(shadowRgb, 16), channel(shadowRgb, 8), channel(shadowRgb, 0), shadowA,
                     w, h, rawTime, riftFieldWidth.get(),
                     riftDistortion.get(), riftFlowSpeed.get(), riftCaustics.get(), quality.get(),
-                    glowStrength.get(), shadowStrength.get(), 0.0f, 0.0f
+                    glowStrength.get(), shadowStrength.get(), 0.0f, 0.0f,
+                    channel(palette.secondary(), 16), channel(palette.secondary(), 8),
+                    channel(palette.secondary(), 0), channel(palette.secondary(), 24),
+                    palette.mode(), palette.speed(), palette.span(), palette.angle()
             );
 
             try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:hands_rift")) {
@@ -1002,6 +1076,8 @@ public class Chams extends Module {
         } else {
             int fillArgb = fillColor.getArgb();
             int fillRgb = materialFillRgb();
+            HandPalette palette = materialPalette(AnimatedRenderColors.withAlpha(fillRgb, (fillArgb >>> 24) & 0xFF));
+            fillRgb = palette.primary();
             int glowRgb = glowRgb(fillRgb);
             int shadowRgb = shadowRgb(fillRgb);
 
@@ -1018,7 +1094,10 @@ public class Chams extends Module {
                     channel(shadowRgb, 16), channel(shadowRgb, 8), channel(shadowRgb, 0), shadowA,
                     edgeWidth.get(), quality.get(), smokeOctaves.get(), rawTime * smokeSpeed.get(),
                     w, h, smokeScale.get(), smokeContrast.get(),
-                    smokeSwirl.get(), glowStrength.get(), shadowStrength.get(), smokeDensity.get()
+                    smokeSwirl.get(), glowStrength.get(), shadowStrength.get(), smokeDensity.get(),
+                    channel(palette.secondary(), 16), channel(palette.secondary(), 8),
+                    channel(palette.secondary(), 0), channel(palette.secondary(), 24),
+                    palette.mode(), palette.speed(), palette.span(), palette.angle(), rawTime
             );
 
             try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:hands_smoke")) {
@@ -1027,7 +1106,7 @@ public class Chams extends Module {
                         .pipeline(EffectRenderPipelines.HAND_SMOKE)
                         .uniform("HandSmoke", HandSmokeUniforms.get())
                         .sampler("u_Src", src, PostProcessManager.getSampler())
-                        .sampler("u_Mask", maskView, getHandMaskSampler())
+                        .sampler("u_Mask", maskView, getHandMaterialMaskSampler())
                         .end();
             }
         }
@@ -1069,6 +1148,9 @@ public class Chams extends Module {
                     frame.contrast(),
                     frame.density(),
                     frame.historyScale(),
+                    frame.endR(), frame.endG(), frame.endB(), frame.endA(),
+                    frame.paletteMode(), frame.paletteSpeed(), frame.paletteSpan(), frame.paletteAngle(),
+                    frame.smoke(), frame.rings(), frame.ringFrequency(), frame.ringSpeed(),
                     ghostComputeNeedsReset
             );
             if (computed) {
@@ -1095,6 +1177,30 @@ public class Chams extends Module {
         return handMask.getColorTextureView();
     }
 
+    private record HandPalette(int primary, int secondary, float mode, float speed, float span, float angle) { }
+
+    private HandPalette handPalette(AnimatedRenderColors.Mode mode, int speed,
+                                    int primary, int secondary, float span, float angle) {
+        AnimatedRenderColors.Mode resolved = mode != null ? mode : AnimatedRenderColors.Mode.STATIC;
+        if (resolved == AnimatedRenderColors.Mode.THEME) {
+            Themes.GradientSpec gradient = Themes.hudForegroundGradient();
+            int opacity = (primary >>> 24) & 0xFF;
+            return new HandPalette(
+                    AnimatedRenderColors.withAlpha(gradient.start(), opacity),
+                    AnimatedRenderColors.withAlpha(gradient.end(), opacity),
+                    AnimatedRenderColors.shaderMode(resolved), 1.0f / (0.36f * Math.max(1, speed)),
+                    1.0f, gradient.angleDeg());
+        }
+        int end = AnimatedRenderColors.angularSecondaryColor(resolved, primary, secondary);
+        return new HandPalette(primary, end, AnimatedRenderColors.shaderMode(resolved),
+                1.0f / (0.36f * Math.max(1, speed)), span, angle);
+    }
+
+    private HandPalette materialPalette(int primaryColor) {
+        return handPalette(fillColorMode.get(), fillColorSpeed.get(), primaryColor, fillColor2.getArgb(),
+                fillGradientSpan.get(), fillGradientAngle.get());
+    }
+
     private GhostFrameParams ghostFrameParams() {
         float dt = TickDelta.frameDeltaSeconds();
         if (!Float.isFinite(dt) || dt <= 0.0f) dt = 1.0f / 60.0f;
@@ -1102,20 +1208,20 @@ public class Chams extends Module {
 
         float duration = Math.max(0.01f, ghostingDuration.get());
         float decay = (float) Math.pow(0.02, dt / duration);
-        int ghostArgb = AnimatedRenderColors.resolve(
-                ghostingColorMode.get(),
-                ghostingColorSpeed.get(),
-                0,
-                ghostingColor.getArgb(),
-                ghostingColor2.getArgb(),
-                true
-        );
+        HandPalette palette = handPalette(ghostingColorMode.get(), ghostingColorSpeed.get(),
+                ghostingColor.getArgb(), ghostingColor2.getArgb(),
+                ghostingGradientSpan.get(), ghostingGradientAngle.get());
+        int ghostArgb = palette.primary();
         return new GhostFrameParams(
                 dt, getRawTime(),
                 channel(ghostArgb, 16), channel(ghostArgb, 8), channel(ghostArgb, 0), channel(ghostArgb, 24),
                 decay, ghostingStrength.get(), ghostingBlur.get(),
                 ghostQualityLevel(), ghostingOctaves.get(), ghostingSpeed.get(), ghostingScale.get(),
-                ghostingSwirl.get(), ghostingContrast.get(), ghostingDensity.get(), ghostHistoryScale()
+                ghostingSwirl.get(), ghostingContrast.get(), ghostingDensity.get(), ghostHistoryScale(),
+                channel(palette.secondary(), 16), channel(palette.secondary(), 8),
+                channel(palette.secondary(), 0), channel(palette.secondary(), 24),
+                palette.mode(), palette.speed(), palette.span(), palette.angle(),
+                ghostingSmoke.get(), ghostingRings.get(), ghostingRingFrequency.get(), ghostingRingSpeed.get()
         );
     }
 
@@ -1152,7 +1258,10 @@ public class Chams extends Module {
                 frame.swirl(),
                 frame.contrast(),
                 frame.density(),
-                frame.historyScale()
+                frame.historyScale(),
+                frame.endR(), frame.endG(), frame.endB(), frame.endA(),
+                frame.paletteMode(), frame.paletteSpeed(), frame.paletteSpan(), frame.paletteAngle(),
+                frame.smoke(), frame.rings(), frame.ringFrequency(), frame.ringSpeed()
         );
 
         try (TracyGpuProfiler.Scope ignoredGpu = TracyGpuProfiler.beginZone("3d:chams:ghost_history")) {
@@ -1186,7 +1295,10 @@ public class Chams extends Module {
             float colorR, float colorG, float colorB, float colorA,
             float decay, float strength, float blurPx,
             int quality, int octaves, float speed, float scale,
-            float swirl, float contrast, float density, float historyScale
+            float swirl, float contrast, float density, float historyScale,
+            float endR, float endG, float endB, float endA,
+            float paletteMode, float paletteSpeed, float paletteSpan, float paletteAngle,
+            float smoke, float rings, float ringFrequency, float ringSpeed
     ) { }
 
     private float getRawTime() {

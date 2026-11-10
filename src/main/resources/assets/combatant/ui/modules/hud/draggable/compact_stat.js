@@ -157,7 +157,7 @@ function shell(p) {
       key: "fill",
       shape: "rounded-gradient",
       materialMode: c(p.materialMode, ""),
-      materialMicrotexture: true, materialThemeSync: true,
+      materialThemeSync: true,
       class: abs(0, 0, w, h),
       radius: r,
       softness,

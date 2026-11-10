@@ -254,9 +254,7 @@ public final class UiRenderPipelines {
             .withBlend(BlendFunctions.ALPHA_ADDITIVE)
             .withCull(true)
             .build();
-    // ======================
     // UI (2D)
-    // ======================
     /**
      * UI text (pos2 + tex + color).
      */

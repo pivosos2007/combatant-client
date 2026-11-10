@@ -13,15 +13,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Трекер попыток использования предметов до подтверждения от сервера.
- * Хранит данные о слоте, количестве и времени клика.
+ * Tracks item-use attempts pending server confirmation.
+ * Records the affected slot, item count and attempt tick.
  */
 public class PendingUseTracker {
 
     private final Map<Integer, Pending> pending = new HashMap<>();
 
     /**
-     * Регистрирует новую попытку использования предмета (по номеру слота).
+     * Records an item-use attempt for a slot.
      */
     public void start(Item item, int slot, int count, long now) {
         if (slot >= 0 && slot <= 8) {
@@ -31,8 +31,9 @@ public class PendingUseTracker {
     }
 
     /**
-     * Проверяет, изменился ли стак на сервере (уменьшилось количество или не откатилось).
-     */
+ * Removes the pending attempt and returns it if the observed item count is no greater than
+ * the count recorded at submission. A greater count discards the attempt and returns null.
+ */
     public Pending consumeIfConfirmed(int slot, int newCount) {
         Pending p = pending.get(slot);
         if (p == null) return null;
@@ -42,7 +43,7 @@ public class PendingUseTracker {
             return p;
         }
 
-        //  сервер восстановил стак (откат)
+        // The server restored the consumed stack.
         if (newCount > p.count) {
             pending.remove(slot);
         }

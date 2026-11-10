@@ -7,12 +7,7 @@
 
 package combatant.client.render.engine.text;
 
-/**
- * Canonical conversion between authored logical text size and TextRenderer's legacy scale.
- *
- * <p>UI code should express text size in the same logical coordinate units used for layout.
- * Only the text backend boundary should deal in multiplicative renderer scale.</p>
- */
+/** Converts logical text size to renderer scale at the text-renderer boundary. */
 public final class TextSizing {
     public static final float REFERENCE_SIZE = 18.0f;
     public static final float MIN_SIZE = 0.18f;

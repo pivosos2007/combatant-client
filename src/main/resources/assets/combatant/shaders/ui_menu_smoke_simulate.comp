@@ -1,4 +1,11 @@
 #version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(binding = 0) uniform sampler2D u_History;
 layout(binding = 1, rgba16f) writeonly uniform image2D u_State;
@@ -10,45 +17,116 @@ layout(std430, binding = 2) readonly buffer MenuSmokeParams {
     vec4 soft;
     vec4 cold;
     vec4 warm;
-    vec4 sources[48];
-    vec4 sourceProps[48];
+    vec4 hexGrid;
+    vec4 rimColor;
+    vec4 sources[64];
+    vec4 sourceProps[64];
 } u_Smoke;
+
+const float HEX_SQRT3 = 1.7320508075688772;
+const float HEX_COS30 = 0.8660254037844386;
+const float HEX_PI = 3.141592653589793;
+
+vec2 hexLocal(vec2 pixel, vec2 extent, out float radius) {
+    radius = max(2.0, u_Smoke.hexGrid.z * extent.x);
+    vec2 pos = pixel - u_Smoke.hexGrid.xy * extent;
+    float q = (pos.x / HEX_SQRT3 - pos.y / 3.0) / radius;
+    float r = (2.0 * pos.y / 3.0) / radius;
+    vec3 cube = vec3(q, -q - r, r);
+    vec3 rounded = floor(cube + 0.5);
+    vec3 difference = abs(rounded - cube);
+    if (difference.x > difference.y && difference.x > difference.z) rounded.x = -rounded.y - rounded.z;
+    else if (difference.y > difference.z) rounded.y = -rounded.x - rounded.z;
+    else rounded.z = -rounded.x - rounded.y;
+    return pos - vec2(HEX_SQRT3 * radius * (rounded.x + rounded.z * 0.5),
+                      1.5 * radius * rounded.z);
+}
+
+float frameSource(vec2 local, float radius, out vec2 outwardNormal) {
+    vec2 a = abs(local);
+    float faceDistance = a.x - HEX_COS30 * radius;
+    float diagonal = (a.x / HEX_SQRT3 + a.y - radius) * HEX_COS30;
+    float distance = abs(max(faceDistance, diagonal));
+    outwardNormal = faceDistance > diagonal
+            ? vec2(sign(local.x), 0.0)
+            : vec2(sign(local.x) * 0.5, sign(local.y) * HEX_COS30);
+    float vertexDistance = min(length(a - vec2(0.0, radius)),
+                               length(a - vec2(HEX_COS30 * radius, 0.5 * radius)));
+    float thickness = max(1.65, radius * 0.093) * max(0.6, u_Smoke.mouse.z);
+    float edgeMask = exp(-0.5 * pow(distance / thickness, 2.0));
+    float vertexMask = exp(-0.5 * pow(vertexDistance / (thickness * 1.45), 2.0));
+    return max(edgeMask, vertexMask * 0.97);
+}
+
+float excitation(vec2 pixel, vec2 extent, float radius, vec4 source, vec4 properties) {
+    vec2 displacement = pixel - source.xy * extent;
+    float distancePx = length(displacement);
+    if (distancePx > radius * 3.65) return 0.0;
+    float age = properties.z;
+    float angle = atan(displacement.y, displacement.x);
+    float bend = radius * 0.10 * sin(angle * 3.0 + age * 1.25)
+               + radius * 0.045 * sin((pixel.x + pixel.y) / radius * 2.4 - age * 2.1);
+    float arrival = max(0.0, distancePx + bend) / (radius * 2.35);
+    float elapsed = age - arrival;
+    float approach = smoothstep(-0.14, 0.30, elapsed);
+    float drain = 1.0 - smoothstep(1.65, 4.85, elapsed);
+    float release = smoothstep(0.28, 1.15, elapsed);
+    float limit = 1.0 - smoothstep(radius * 2.75, radius * 3.55, distancePx);
+    return approach * drain * release * limit;
+}
 
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(u_State);
     if (any(greaterThanEqual(pixel, size))) return;
     vec2 extent = vec2(size);
-    vec2 uv = (vec2(pixel) + 0.5) / extent;
+    vec2 p = vec2(pixel) + 0.5;
+    vec2 uv = p / extent;
     float dt = clamp(u_Smoke.screen.z, 0.0, 0.05);
     bool reset = u_Smoke.motion.z > 0.5;
-    vec4 previous = reset ? vec4(0.0) : texture(u_History, uv);
-    vec2 back = clamp(uv - previous.xy * dt, 0.5 / extent, 1.0 - 0.5 / extent);
+    vec4 prior = reset ? vec4(0.0) : texture(u_History, uv);
+    vec2 back = clamp(uv - prior.xy * dt, 0.5 / extent, 1.0 - 0.5 / extent);
     vec4 advected = reset ? vec4(0.0) : texture(u_History, back);
-    vec2 velocity = advected.xy * exp(-dt * 0.26);
+    vec2 velocity = advected.xy * exp(-dt * 0.38);
     float energy = advected.z * exp(-dt * 0.55);
-    int sourceCount = int(clamp(u_Smoke.motion.w, 0.0, 48.0));
-    for (int i = 0; i < sourceCount; ++i) {
+    int count = int(clamp(u_Smoke.motion.w, 0.0, 64.0));
+    float radius;
+    vec2 normal = vec2(0.0);
+    float frame = 0.0;
+    if (count > 0 && (u_Smoke.hexGrid.w > 0.5 || u_Smoke.motion.x > 0.5)) {
+        vec2 local = hexLocal(p, extent, radius);
+        frame = frameSource(local, radius, normal);
+    } else {
+        radius = max(2.0, u_Smoke.hexGrid.z * extent.x);
+    }
+    for (int i = 0; i < count; ++i) {
         vec4 source = u_Smoke.sources[i];
         vec4 properties = u_Smoke.sourceProps[i];
-        vec2 d = (uv - source.xy) * extent;
-        float radius = max(properties.z, 1.5);
-        float dist2 = dot(d, d);
-        if (dist2 > radius * radius * 9.0) continue;
-        float distance = sqrt(dist2);
-        float core = exp(-dist2 / (radius * radius * 0.68));
-        float ring = exp(-pow((distance - radius * (0.78 + properties.w * 0.20))
-                           / max(radius * 0.24, 1.2), 2.0));
-        float strength = clamp(properties.x, 0.0, 1.5);
-        float splat = strength * (core * 0.72 + ring * 0.28);
-        vec2 radial = d / max(distance, 1.0);
-        vec2 tangent = vec2(-radial.y, radial.x);
-        float turn = dot(tangent, source.zw);
-        velocity += source.zw * splat * (0.84 + properties.w * 0.30);
-        velocity += radial * ring * strength * (0.012 + properties.w * 0.012);
-        velocity += tangent * sign(turn + 0.00001) * ring * strength * 0.010;
-        energy = min(3.5, energy + splat * 0.44);
+        vec2 delta = p - source.xy * extent;
+        float distance2 = dot(delta, delta);
+        float emission;
+        bool lattice = u_Smoke.hexGrid.w > 0.5 || properties.w < 0.0;
+        if (lattice) {
+            if (distance2 > radius * radius * 13.4) continue;
+            emission = frame * excitation(p, extent, radius, source, properties);
+        } else {
+            float spread = max(3.0, 0.014 * extent.x * max(0.6, u_Smoke.mouse.z));
+            if (distance2 > 9.0 * spread * spread) continue;
+            emission = exp(-0.5 * distance2 / (spread * spread));
+        }
+        emission *= clamp(properties.x, 0.0, 1.3);
+        vec2 motion = source.zw;
+        if (!lattice) {
+            velocity += dt * 32.0 * motion * (emission * 0.38 * clamp(properties.x, 0.0, 1.4));
+            energy = min(2.6, energy + emission * 0.18);
+        } else {
+            vec2 edgePush = normal * (80.0 + max(properties.w, 0.0) * 75.0) / extent;
+            vec2 tangent = vec2(-normal.y, normal.x);
+            velocity += dt * emission * (motion * 2.9 + edgePush * 0.90
+                                          + tangent * (26.0 / extent) * sin(properties.y * 6.28318));
+            energy = min(2.6, energy + dt * emission * 1.5);
+        }
     }
-    velocity = clamp(velocity, vec2(-1.10), vec2(1.10));
+    velocity = clamp(velocity, vec2(-1.15), vec2(1.15));
     imageStore(u_State, pixel, vec4(velocity, energy, 0.0));
 }

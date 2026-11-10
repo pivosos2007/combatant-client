@@ -1249,9 +1249,7 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         return new ArrayList<>(map.values());
     }
 
-    /**
-     * Legacy support: apply values from the old "settings" map saved by previous versions.
-     */
+    /** Applies settings stored in the older map-based configuration representation. */
     public void applyLegacySettings(Object json) {
         if (json == null) return;
 

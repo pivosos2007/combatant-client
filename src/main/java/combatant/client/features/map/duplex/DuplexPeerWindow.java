@@ -10,9 +10,14 @@ package combatant.client.features.map.duplex;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Tracks the greatest accepted sequence number per peer sender.
+ * A frame is accepted only when its sequence advances the recorded value.
+ */
 public final class DuplexPeerWindow {
     private final ConcurrentHashMap<UUID, Long> lastSequence = new ConcurrentHashMap<>();
 
+    /** Rejects stale or repeated sequences for each sender identity. */
     public boolean accept(DuplexFrame frame) {
         if (frame == null) return false;
         return lastSequence.compute(frame.senderId(), (id, previous) -> {

@@ -14,6 +14,10 @@ import combatant.client.render.engine.renderer.ui.runtime.core.UiNodeType;
 import combatant.client.render.engine.renderer.ui.runtime.debug.UiPerfCounters;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderTransform;
 
+/**
+ * Routes pointer, scroll and keyboard input through the retained UI tree.
+ * Pointer coordinates are converted from render space to logical UI space before hit testing.
+ */
 public final class UiInputDispatcher {
     private final UiHitTester hitTester = new UiHitTester();
     private final UiFocusManager focusManager = new UiFocusManager();
@@ -61,6 +65,7 @@ public final class UiInputDispatcher {
         return coordinateTransform.logicalY(renderY);
     }
 
+    /** Interprets {@code x} and {@code y} in render-space coordinates before hit testing. */
     public UiHitResult updateHover(UiNode root, float x, float y) {
         return updateHoverLogical(root, logicalX(x), logicalY(y));
     }

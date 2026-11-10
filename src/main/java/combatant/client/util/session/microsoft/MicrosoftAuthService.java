@@ -68,6 +68,10 @@ public final class MicrosoftAuthService {
     private MicrosoftAuthService() {
     }
 
+    /**
+     * Requests a device-login challenge from Microsoft without changing the current
+     * Minecraft session. HTTP and decoding failures complete the future exceptionally.
+     */
     public static CompletableFuture<MicrosoftDeviceCode> requestDeviceCode() {
         String payload = "client_id=" + CLIENT_ID + "&scope=XboxLive.signin%20XboxLive.offline_access";
         HttpRequest request = formPost("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode", payload);
@@ -76,6 +80,11 @@ public final class MicrosoftAuthService {
                         .thenApply(MicrosoftDeviceCode::fromJson));
     }
 
+    /**
+     * Polls a device authorization until success, expiry or failure, then performs
+     * the Xbox/XSTS and Minecraft token exchanges on the authentication executor.
+     * A null challenge returns an exceptionally completed future.
+     */
     public static CompletableFuture<MicrosoftSessionResult> loginWithDeviceCode(MicrosoftDeviceCode code) {
         if (code == null) {
             return failedLoggedFuture("start Microsoft device-code login", new NullPointerException("code"));
@@ -87,6 +96,11 @@ public final class MicrosoftAuthService {
                 .thenCompose(MicrosoftAuthService::loginWithMicrosoftTokens);
     }
 
+    /**
+     * Exchanges an existing refresh token for a new Minecraft session result.
+     * Invalid credentials and service failures complete the returned future
+     * exceptionally; the active client session is not changed here.
+     */
     public static CompletableFuture<MicrosoftSessionResult> loginWithRefreshToken(String refreshToken) {
         String clean;
         try {

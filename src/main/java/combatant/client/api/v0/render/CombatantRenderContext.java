@@ -16,6 +16,7 @@ import combatant.client.render.engine.text.TextRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
+/** Carries stage-specific renderers and frame context to an addon rendering callback. */
 public record CombatantRenderContext(
         String addonId,
         String callbackId,

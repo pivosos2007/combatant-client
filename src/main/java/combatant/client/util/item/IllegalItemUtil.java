@@ -18,7 +18,7 @@ import combatant.client.config.values.RGBColorValue;
 import java.util.function.BiConsumer;
 
 /**
- * Общая утилита проверки нелегальных предметов и цвета их подсветки.
+ * Classifies invalid item data and the corresponding display color.
  */
 public enum IllegalItemUtil {
     ;
@@ -34,7 +34,7 @@ public enum IllegalItemUtil {
     }
 
     /**
-     * true, если стек содержит энчанты выше разрешенного уровня.
+     * Whether the item contains enchantments above permitted levels.
      */
     public static boolean isIllegal(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
@@ -49,7 +49,7 @@ public enum IllegalItemUtil {
     }
 
     /**
-     * Обход энчантов с признаком нелегальности.
+     * Visits enchantments that exceed permitted levels.
      */
     public static void collectEnchants(ItemStack stack, BiConsumer<String, Boolean> consumer) {
         if (stack == null || stack.isEmpty() || consumer == null) return;

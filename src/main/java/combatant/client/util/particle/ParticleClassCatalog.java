@@ -32,14 +32,10 @@ import java.util.concurrent.Executor;
 import java.util.stream.Stream;
 
 /**
- * Catalog of client particle implementation classes.
- *
- * <p>Vanilla entries are discovered directly from Minecraft class files, so the picker is complete
- * before a particle has ever spawned. Runtime observations are merged on top for modded particle
- * implementations which are not part of the Minecraft container.</p>
- *
- * <p>The picker stores the actual runtime binary class name. This is important on remapped Fabric
- * runtimes: {@link Particle#getClass()} and the catalog still use exactly the same namespace.</p>
+ * Discovers Minecraft particle implementations from class metadata and merges
+ * classes observed at runtime, including modded particles. Entries retain the
+ * runtime binary class name, matching {@link Particle#getClass()} on remapped clients.
+ * Discovery may yield an empty list if the Minecraft class roots are unavailable.
  */
 public enum ParticleClassCatalog {
     ;
@@ -71,6 +67,10 @@ public enum ParticleClassCatalog {
         mergedSnapshot = null;
     }
 
+    /**
+     * Returns discovered entries together with any stored selection IDs that are not
+     * currently discoverable, so selections survive changes in loaded mods.
+     */
     public static List<Entry> entries(Set<String> selectedIds) {
         LinkedHashMap<String, Entry> merged = new LinkedHashMap<>();
         for (Entry entry : discoveredEntries()) {
@@ -113,9 +113,8 @@ public enum ParticleClassCatalog {
     }
 
     /**
-     * The picker needs a complete vanilla list on first open. Prewarm normally finishes this before
-     * ClickGUI is opened; if it did not, the first particle picker waits for that one shared scan
-     * instead of returning a permanently/temporarily empty catalog.
+     * Waits for the shared discovery future, creating it synchronously if prewarm
+     * has not started. A failed scan is logged and produces an empty list.
      */
     private static List<Entry> awaitVanillaEntries() {
         CompletableFuture<List<Entry>> future = vanillaDiscovery;

@@ -12,7 +12,11 @@ import net.minecraft.world.level.CollisionGetter;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-/** The computed collision shape, independent of virtual block-state replacement. */
+/**
+ * Allows replacing the collision shape produced for one state and position.
+ * A null shape passed to {@link #setShape(VoxelShape)} is ignored; the
+ * event does not modify the underlying block state.
+ */
 public final class BlockCollisionShapeEvent extends Event {
     private final BlockState state;
     private final BlockPos pos;

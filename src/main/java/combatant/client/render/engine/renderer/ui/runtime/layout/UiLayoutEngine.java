@@ -18,6 +18,9 @@ import combatant.client.render.engine.renderer.ui.runtime.style.UiJustify;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 import combatant.client.render.engine.text.TextRenderer;
 
+/**
+ * Measures and positions retained UI nodes in logical coordinates using their resolved styles.
+ */
 public final class UiLayoutEngine {
     private final UiTextRenderer textRenderer;
 

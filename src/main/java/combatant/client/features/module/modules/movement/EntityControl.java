@@ -23,6 +23,8 @@ import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.events.impl.MountJumpChargeEvent;
 import combatant.client.events.impl.VehicleMoveEvent;
+import combatant.client.events.impl.BoatRudderControlEvent;
+import combatant.client.events.impl.BoatRotationUpdateEvent;
 import combatant.client.events.impl.VehicleGroundStateEvent;
 import combatant.client.util.player.VehicleFallGroundController;
 import combatant.client.features.module.Module;
@@ -184,6 +186,16 @@ public final class EntityControl extends Module {
         horseChargeLastTick = Integer.MIN_VALUE;
         horseJumpHeld = false;
         horseReleaseTick = Integer.MIN_VALUE;
+    }
+
+    @EventHandler(priority = 100)
+    private void onBoatRudderControl(BoatRudderControlEvent event) {
+        if (useBoatStrafing(event.getPlayer(), event.getBoat())) event.claim();
+    }
+
+    @EventHandler(priority = 100)
+    private void onBoatRotationUpdate(BoatRotationUpdateEvent event) {
+        applyBoatRotation(event.getPlayer(), event.getBoat());
     }
 
     public boolean useBoatStrafing(LocalPlayer player, AbstractBoat boat) {

@@ -38,7 +38,6 @@ import combatant.client.util.time.TimerController;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-//todo 297 vulcan step remove goofy ass shit
 @ModuleInfo(
         id = "step",
         displayName = "Step",

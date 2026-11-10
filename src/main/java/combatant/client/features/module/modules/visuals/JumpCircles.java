@@ -33,6 +33,7 @@ import combatant.client.render.engine.animation.AnimatedRenderColors;
 import combatant.client.render.engine.math.ColorMath;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer3D;
+import combatant.client.render.engine.world.VanillaBeforeTranslucentPass;
 import combatant.client.render.engine.renderer.WorldSpriteEffects;
 import combatant.client.render.engine.uniform.MeshBuilder;
 import combatant.client.render.effects.shockwave.WorldJumpShockwaves;
@@ -280,9 +281,29 @@ public class JumpCircles extends Module {
                 strength, 0.18f, opacity, useDepth);
     }
 
+    /** Circles are collected at the opaque/translucent boundary, not blended over water. */
+    public boolean needsEarlyPass() {
+        return isEnabled() && mc.level != null && mc.player != null && !circles.isEmpty();
+    }
+
+    public boolean needsEarlyShockwavePass() {
+        return needsEarlyPass() && isShockwaveMode();
+    }
+
+    public void renderBeforeTranslucent(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
+        if (!needsEarlyPass() || isShockwaveMode()) return;
+        renderSpriteCircles(renderer);
+    }
+
     @Override
     public void onRenderWorldEngine(Renderer3D renderer, Renderer3D depthRenderer, float tickDelta) {
-        if (!isEnabled() || mc.level == null || mc.player == null || circles.isEmpty() || isShockwaveMode()) return;
+        // Early world submission is authoritative. Retain the legacy late path only for
+        // shaderpack/preview paths which have no opaque-to-translucent interception.
+        if (VanillaBeforeTranslucentPass.jumpCirclesRenderedEarly() || !needsEarlyPass() || isShockwaveMode()) return;
+        renderSpriteCircles(renderer);
+    }
+
+    private void renderSpriteCircles(Renderer3D renderer) {
 
         TextureEffect effect = textureEffect.get();
         // Refraction distorts the scene behind this artwork, but never replaces

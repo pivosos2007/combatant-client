@@ -7,8 +7,5 @@
 
 package combatant.client.util.combat.protocol;
 
-/**
- * Simple protocol version holder (client-side).
- */
 public record ClientProtocolVersion(String name, int version) {
 }

@@ -8,10 +8,9 @@
 package combatant.client.features.module.modules.movement.speed;
 
 /**
- * What Speed's bunny-hop mode puts into the input packet for one tick. It only ever sets the jump and sprint bits
- * of the keyboard state, never a velocity, so the movement that follows is vanilla physics that GrimAC's prediction
- * can reproduce. Pure so the key combinations (opposite keys cancel, nothing happens in the air) are covered by
- * unit tests.
+ * Computes jump and sprint flags for one bunny-hop input tick.
+ * When enabled and grounded, a jump requires unopposed input on at least one axis;
+ * sprint is requested only for unopposed forward input.
  */
 public record BhopInput(boolean jump, boolean sprint) {
 

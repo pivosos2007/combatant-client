@@ -291,8 +291,8 @@ public final class OrbitCamera {
     }
 
     /**
-     * World-to-view matrix in column-major order (OpenGL layout) followed by the focal length scaling, for
-     * callers that want the camera as one transform rather than through {@link #project}.
+     * Writes the world-to-view transform to {@code out} in column-major order.
+     * The output array must have at least 16 elements. Projection is applied separately.
      */
     public void viewMatrix(float[] out) {
         out[0] = rightX;

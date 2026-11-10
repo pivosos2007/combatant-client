@@ -7,6 +7,12 @@
 
 package combatant.client.features.module.modules.combat;
 
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.EntityGlowDecisionEvent;
+import combatant.client.events.impl.ItemUseBlockEvent;
+import combatant.client.events.impl.ItemUseAcceptedEvent;
+import combatant.client.events.impl.TotemActivationEvent;
+
 import combatant.client.config.values.*;
 import combatant.client.features.relations.PlayerRelations;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -244,6 +250,28 @@ public class PvpCooldowns extends Module {
         }
         double seconds = Math.ceil(remainingMs / 100.0) / 10.0;
         return Component.literal(String.format(Locale.ROOT, "PvP cooldown: %.1fs", seconds));
+    }
+
+    @EventHandler
+    private void onEntityGlowDecision(EntityGlowDecisionEvent event) {
+        if (shouldHideTargetGlow()) event.cancel();
+    }
+
+    @EventHandler
+    private void onItemUseBlock(ItemUseBlockEvent event) {
+        if (shouldBlockItemUse(event.getItem())) event.cancel();
+    }
+
+    @EventHandler
+    private void onItemUseAccepted(ItemUseAcceptedEvent event) {
+        tryStartLocalCooldown(event.getItem(), ItemCooldownRulesValue.Trigger.INTERACT_ACCEPT);
+    }
+
+    @EventHandler(priority = 100)
+    private void onTotemActivation(TotemActivationEvent event) {
+        if (event.isLocal()) {
+            tryStartLocalCooldown(Items.TOTEM_OF_UNDYING, ItemCooldownRulesValue.Trigger.TOTEM_POP);
+        }
     }
 
     public boolean shouldBlockItemUse(Item item) {

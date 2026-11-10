@@ -1,0 +1,10 @@
+{
+  "clickgui.settings.main.deferred": "Deferred (Dev)",
+  "setting.deferred.enabled": "Enable (requires ReimaginedVisual)",
+  "setting.deferred.gtao": "GTAO",
+  "setting.deferred.indirect_light": "Indirect light",
+  "setting.deferred.reflections": "SSR reflections",
+  "setting.deferred.colored_light": "Colored block light",
+  "setting.deferred.dynamic_lights": "Dynamic lights",
+  "setting.deferred.debug_gbuffer": "G-buffer debug"
+}

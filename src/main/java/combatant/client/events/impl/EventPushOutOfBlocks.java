@@ -10,6 +10,10 @@ package combatant.client.events.impl;
 import combatant.client.events.Event;
 import lombok.Getter;
 
+/**
+ * Requests cancellation of the local player's push-out-of-blocks operation.
+ * The coordinates identify the query position; they cannot be changed by listeners.
+ */
 @Getter
 public class EventPushOutOfBlocks extends Event {
     private final double x;

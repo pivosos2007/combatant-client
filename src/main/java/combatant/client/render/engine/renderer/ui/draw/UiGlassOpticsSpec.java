@@ -21,7 +21,14 @@ public record UiGlassOpticsSpec(Mode mode,
                                float chromaticAberration, float magnification,
                                boolean shapeDeformation,
                                float tiltXDegrees, float tiltYDegrees, boolean specular,
-                               ChromaticMotion chromaticMotion) {
+                               ChromaticMotion chromaticMotion,
+                               float opticalThickness,
+                               float refractiveIndex,
+                               float surfaceRoughness,
+                               float frost,
+                               float filmThicknessNm,
+                               float filmStrength,
+                               float reactiveCoating) {
     /** liquidGL-derived defaults for Combatant's captured-scene coordinates. */
     public static final UiGlassOpticsSpec LIQUID = new UiGlassOpticsSpec(
             Mode.LIQUID_REFRACTION,
@@ -35,6 +42,18 @@ public record UiGlassOpticsSpec(Mode mode,
     );
 
     /** Pre-existing eight-field constructor remains source compatible. */
+    public UiGlassOpticsSpec(Mode mode, float refraction, float bevelWidth, float bevelDepth,
+                            float interactionStrength, float interactionRadius,
+                            float interactionViscosity, float cleanReveal,
+                            float chromaticAberration, float magnification, boolean shapeDeformation,
+                            float tiltXDegrees, float tiltYDegrees, boolean specular,
+                            ChromaticMotion chromaticMotion) {
+        this(mode, refraction, bevelWidth, bevelDepth, interactionStrength, interactionRadius,
+                interactionViscosity, cleanReveal, chromaticAberration, magnification, shapeDeformation,
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                1.0f, 1.46f, 0.0f, 0.0f, 430f, 0.0f, 0.0f);
+    }
+
     public UiGlassOpticsSpec(Mode mode, float refraction, float bevelWidth, float bevelDepth,
                             float interactionStrength, float interactionRadius,
                             float interactionViscosity, float cleanReveal) {
@@ -78,13 +97,22 @@ public record UiGlassOpticsSpec(Mode mode,
         tiltXDegrees = finiteClamp(tiltXDegrees, -16.0f, 15.75f);
         tiltYDegrees = finiteClamp(tiltYDegrees, -16.0f, 15.75f);
         chromaticMotion = chromaticMotion != null ? chromaticMotion : ChromaticMotion.STATIC;
+        opticalThickness = finiteClamp(opticalThickness, 0.0f, 2.5f);
+        refractiveIndex = finiteClamp(refractiveIndex, 1.0f, 2.0f);
+        surfaceRoughness = finiteClamp(surfaceRoughness, 0.0f, 1.0f);
+        frost = finiteClamp(frost, 0.0f, 1.0f);
+        filmThicknessNm = finiteClamp(filmThicknessNm, 0.0f, 1200.0f);
+        filmStrength = finiteClamp(filmStrength, 0.0f, 1.0f);
+        reactiveCoating = finiteClamp(reactiveCoating, 0.0f, 1.0f);
     }
 
     public UiGlassOpticsSpec withMode(Mode value) {
         return new UiGlassOpticsSpec(value, refraction, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     /** Independent optical curvature; does not alter the bevel width or blur. */
@@ -92,56 +120,72 @@ public record UiGlassOpticsSpec(Mode mode,
         return new UiGlassOpticsSpec(mode, value, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withBevel(float width, float depth) {
         return new UiGlassOpticsSpec(mode, refraction, width, depth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withFluid(float radius, float viscosity) {
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 interactionStrength, radius, viscosity, cleanReveal,
                 chromaticAberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withCleanReveal(float value) {
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, value,
                 chromaticAberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withInteractionStrength(float strength) {
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 strength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withChromaticAberration(float aberration) {
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 aberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withMagnification(float zoom) {
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, zoom, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withShapeDeformation(boolean enabled) {
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, magnification, enabled,
-                tiltXDegrees, tiltYDegrees, specular, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     /** liquidGL-compatible optical tilt, independent of pointer-driven deformation. */
@@ -149,21 +193,75 @@ public record UiGlassOpticsSpec(Mode mode,
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, magnification, shapeDeformation,
-                xDegrees, yDegrees, specular, chromaticMotion);
+                xDegrees, yDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withSpecular(boolean enabled) {
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, enabled, chromaticMotion);
+                tiltXDegrees, tiltYDegrees, enabled, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
     }
 
     public UiGlassOpticsSpec withChromaticMotion(ChromaticMotion motion) {
         return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
                 interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
                 chromaticAberration, magnification, shapeDeformation,
-                tiltXDegrees, tiltYDegrees, specular, motion);
+                tiltXDegrees, tiltYDegrees, specular, motion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost,
+                filmThicknessNm, filmStrength, reactiveCoating);
+    }
+
+    public UiGlassOpticsSpec withOpticalThickness(float value) {
+        return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
+                interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
+                chromaticAberration, magnification, shapeDeformation,
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                value, refractiveIndex, surfaceRoughness, frost, filmThicknessNm, filmStrength, reactiveCoating);
+    }
+
+    public UiGlassOpticsSpec withRefractiveIndex(float value) {
+        return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
+                interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
+                chromaticAberration, magnification, shapeDeformation,
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, value, surfaceRoughness, frost, filmThicknessNm, filmStrength, reactiveCoating);
+    }
+
+    public UiGlassOpticsSpec withSurfaceRoughness(float value) {
+        return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
+                interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
+                chromaticAberration, magnification, shapeDeformation,
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, value, frost, filmThicknessNm, filmStrength, reactiveCoating);
+    }
+
+    public UiGlassOpticsSpec withFrost(float value) {
+        return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
+                interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
+                chromaticAberration, magnification, shapeDeformation,
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, value, filmThicknessNm, filmStrength, reactiveCoating);
+    }
+
+    public UiGlassOpticsSpec withThinFilm(float thicknessNm, float strength) {
+        return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
+                interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
+                chromaticAberration, magnification, shapeDeformation,
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost, thicknessNm, strength, reactiveCoating);
+    }
+
+    public UiGlassOpticsSpec withReactiveCoating(float value) {
+        return new UiGlassOpticsSpec(mode, refraction, bevelWidth, bevelDepth,
+                interactionStrength, interactionRadius, interactionViscosity, cleanReveal,
+                chromaticAberration, magnification, shapeDeformation,
+                tiltXDegrees, tiltYDegrees, specular, chromaticMotion,
+                opticalThickness, refractiveIndex, surfaceRoughness, frost, filmThicknessNm, filmStrength, value);
     }
 
     public enum Mode {

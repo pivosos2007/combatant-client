@@ -226,7 +226,6 @@ public final class Vulcan297JesusController {
             if (depth > MOVING_DEEP) return vertical(Math.max(s.verticalY(), 0.074D));
             if (depth < MOVING_HIGH) return vertical(Math.min(s.verticalY(), FLOAT_DOWN));
             if (Math.abs(s.verticalY()) < 0.025D) {
-                // Low-amplitude buoyancy, rather than zero-Y horizontal skating.
                 floatUp = !floatUp;
                 return vertical(floatUp ? FLOAT_UP : FLOAT_DOWN);
             }

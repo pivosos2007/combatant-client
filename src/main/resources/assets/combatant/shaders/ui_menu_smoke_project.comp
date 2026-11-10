@@ -1,8 +1,16 @@
 #version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(binding = 0) uniform sampler2D u_Advected;
 layout(binding = 1, rgba16f) writeonly uniform image2D u_State;
 layout(binding = 3) uniform sampler2D u_Pressure;
+layout(binding = 4) uniform sampler2D u_DyeHistory;
 layout(std430, binding = 2) readonly buffer MenuSmokeParams {
     vec4 screen;
     vec4 mouse;
@@ -11,56 +19,59 @@ layout(std430, binding = 2) readonly buffer MenuSmokeParams {
     vec4 soft;
     vec4 cold;
     vec4 warm;
-    vec4 sources[48];
-    vec4 sourceProps[48];
+    vec4 hexGrid;
+    vec4 rimColor;
+    vec4 sources[64];
+    vec4 sourceProps[64];
 } u_Smoke;
 
 float pressureAt(ivec2 p, ivec2 size) {
     return texelFetch(u_Pressure, clamp(p, ivec2(0), size - 1), 0).r;
 }
 
-void wallResponse(inout vec2 v, vec2 sourceVelocity, float distance,
-                  vec2 inwardNormal, float tangentSeed, float wallEnergy) {
-    float incident = max(-dot(sourceVelocity, inwardNormal), 0.0);
-    if (incident <= 0.0001) return;
-    float weight = exp(-distance * distance / 11.0);
-    float impulse = incident * weight * (1.02 + min(wallEnergy, 2.0) * 0.23 + incident * 0.38);
-    vec2 tangent = vec2(-inwardNormal.y, inwardNormal.x);
-    float slide = dot(v, tangent);
-    float direction = sign(slide + 0.018 * sin(tangentSeed * 0.089));
-    v += inwardNormal * impulse * 1.58 + tangent * direction * impulse * 1.02;
+void collide(inout vec2 velocity, float wallDistance, vec2 inward, vec2 size,
+             float density, float position) {
+    float approaching = max(-dot(velocity, inward), 0.0);
+    if (approaching < 0.00001) return;
+    float contact = exp(-wallDistance * wallDistance / 1.6);
+    vec2 tangent = vec2(-inward.y, inward.x);
+    float signSlide = sign(dot(velocity, tangent) + 0.0003 * sin(position * 0.13));
+    velocity += inward * approaching * (1.0 + 0.80 * contact);
+    velocity += tangent * approaching * contact * 0.24 * signSlide;
+    velocity += inward * contact * min(density, 1.8) * 0.007;
 }
 
 void main() {
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(u_State);
     if (any(greaterThanEqual(p, size))) return;
-    vec4 field = texelFetch(u_Advected, p, 0);
-    vec2 gradient = vec2(pressureAt(p + ivec2(1, 0), size)
-                       - pressureAt(p - ivec2(1, 0), size),
-                         pressureAt(p + ivec2(0, 1), size)
-                       - pressureAt(p - ivec2(0, 1), size));
-    field.xy -= gradient * 0.5 / vec2(size);
-    if (p.x <= 5) {
-        vec4 wall = texelFetch(u_Advected, ivec2(0, p.y), 0);
-        wallResponse(field.xy, wall.xy, float(p.x), vec2(1.0, 0.0), float(p.y), wall.z);
+    vec2 extent = vec2(size);
+    vec2 uv = (vec2(p) + 0.5) / extent;
+    vec4 state = texelFetch(u_Advected, p, 0);
+    vec2 gradient = vec2(pressureAt(p + ivec2(1, 0), size) - pressureAt(p - ivec2(1, 0), size),
+                         pressureAt(p + ivec2(0, 1), size) - pressureAt(p - ivec2(0, 1), size));
+    state.xy -= 0.5 * gradient / extent;
+    float density = 0.0;
+    vec2 dyeGradient = vec2(0.0);
+    if (u_Smoke.motion.z < 0.5) {
+        density = texture(u_DyeHistory, uv).a;
+        vec2 dyeTexel = 1.0 / vec2(textureSize(u_DyeHistory, 0));
+        dyeGradient = 0.5 * vec2(
+            texture(u_DyeHistory, uv + vec2(dyeTexel.x, 0.0)).a
+          - texture(u_DyeHistory, uv - vec2(dyeTexel.x, 0.0)).a,
+            texture(u_DyeHistory, uv + vec2(0.0, dyeTexel.y)).a
+          - texture(u_DyeHistory, uv - vec2(0.0, dyeTexel.y)).a);
     }
-    if (p.x >= size.x - 6) {
-        vec4 wall = texelFetch(u_Advected, ivec2(size.x - 1, p.y), 0);
-        wallResponse(field.xy, wall.xy, float(size.x - 1 - p.x), vec2(-1.0, 0.0), float(p.y), wall.z);
-    }
-    if (p.y <= 5) {
-        vec4 wall = texelFetch(u_Advected, ivec2(p.x, 0), 0);
-        wallResponse(field.xy, wall.xy, float(p.y), vec2(0.0, 1.0), float(p.x), wall.z);
-    }
-    if (p.y >= size.y - 6) {
-        vec4 wall = texelFetch(u_Advected, ivec2(p.x, size.y - 1), 0);
-        wallResponse(field.xy, wall.xy, float(size.y - 1 - p.y), vec2(0.0, -1.0), float(p.x), wall.z);
-    }
-    if (p.x == 0) field.x = max(field.x, 0.0);
-    if (p.x == size.x - 1) field.x = min(field.x, 0.0);
-    if (p.y == 0) field.y = max(field.y, 0.0);
-    if (p.y == size.y - 1) field.y = min(field.y, 0.0);
-    field.xy = clamp(field.xy, vec2(-1.55), vec2(1.55));
-    imageStore(u_State, p, field);
+    float gather = clamp(u_Smoke.screen.z * 26.0 * density, 0.0, 0.72);
+    state.xy += (dyeGradient / extent) * gather;
+    if (p.x < 3) collide(state.xy, float(p.x), vec2(1.0, 0.0), extent, density, float(p.y));
+    if (p.x > size.x - 4) collide(state.xy, float(size.x - 1 - p.x), vec2(-1.0, 0.0), extent, density, float(p.y));
+    if (p.y < 3) collide(state.xy, float(p.y), vec2(0.0, 1.0), extent, density, float(p.x));
+    if (p.y > size.y - 4) collide(state.xy, float(size.y - 1 - p.y), vec2(0.0, -1.0), extent, density, float(p.x));
+    if (p.x == 0) state.x = max(state.x, 0.0);
+    if (p.x == size.x - 1) state.x = min(state.x, 0.0);
+    if (p.y == 0) state.y = max(state.y, 0.0);
+    if (p.y == size.y - 1) state.y = min(state.y, 0.0);
+    state.xy = clamp(state.xy, vec2(-1.2), vec2(1.2));
+    imageStore(u_State, p, state);
 }

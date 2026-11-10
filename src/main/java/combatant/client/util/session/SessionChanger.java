@@ -28,6 +28,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * Replaces the active Minecraft user together with services bound to that identity.
+ * Session application runs on the client thread. The launcher user is captured for
+ * restoration, and singleplayer disconnects temporarily restore the join-time user.
+ */
 public enum SessionChanger {
     ;
 
@@ -44,6 +49,14 @@ public enum SessionChanger {
         return changeSession(data, false);
     }
 
+    /**
+     * Applies a session on the Minecraft thread and completes the returned future
+     * when the service replacement finishes. An invalid name or missing client
+     * completes without changing the session.
+     *
+     * @param allowInWorld permits replacement while a world or connection is active
+     * @return a future completed when replacement finishes, or exceptionally on rejection or failure
+     */
     public static CompletableFuture<Void> changeSession(SessionLoginData data, boolean allowInWorld) {
         if (data == null || normalizeName(data.name()).isEmpty()) {
             return CompletableFuture.completedFuture(null);
@@ -125,6 +138,10 @@ public enum SessionChanger {
         singleplayerJoinUser = null;
     }
 
+    /**
+     * Restores the identity used to join the integrated server before disconnect.
+     * The previously active user is retained for restoration after world teardown.
+     */
     public static void restoreSingleplayerJoinSessionForDisconnect() {
         Minecraft client = Minecraft.getInstance();
         if (client == null || !client.hasSingleplayerServer() || client.getUser() == null || singleplayerJoinUser == null) {
@@ -142,6 +159,10 @@ public enum SessionChanger {
                 safeName(current), safeName(singleplayerJoinUser));
     }
 
+    /**
+     * Restores a deferred user only after the world, player and integrated server
+     * have all been torn down. Earlier calls leave the deferred user intact.
+     */
     public static void restoreDeferredSessionAfterDisconnect() {
         Minecraft client = Minecraft.getInstance();
         User deferred = deferredPostDisconnectUser;

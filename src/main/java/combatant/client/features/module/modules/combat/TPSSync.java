@@ -29,7 +29,7 @@ public class TPSSync extends Module {
     private final NumberValue<Float> minScale =
             num("tpssync_min_scale", "min_scale", 0.1f, 0.05f, 1.0f);
 
-    /** сколько серверных тиков прошло за клиентский */
+    /** Server ticks elapsed during one client tick. */
     public float getServerTickDelta() {
         if (!isEnabled()) return 1.0f;
         if (mc == null || mc.level == null) return 1.0f;

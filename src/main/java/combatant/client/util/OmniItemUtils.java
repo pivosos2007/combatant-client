@@ -47,7 +47,6 @@ public enum OmniItemUtils {
                 if (!hasRiptide) return true;
             }
 
-            // ==== Throwable ====
             if (item == Items.ENDER_PEARL //||
                 //item == Items.SNOWBALL ||
                 /*item == Items.EGG*/) return true;

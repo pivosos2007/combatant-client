@@ -26,8 +26,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
- * The selected library, defaulting to {@code schematics/} in the game directory. Scanning and parsing run on one daemon worker so a
- * 50 MB schematic never stalls the render thread; headers are cached by path and modification time.
+ * Maintains the selected schematic directory and a cached snapshot of parsed headers.
+ * File operations and rescans share a single background worker; readers receive the
+ * last published header list while a scan is running.
  */
 public final class SchematicLibrary {
 
@@ -89,6 +90,10 @@ public final class SchematicLibrary {
         }, worker);
     }
 
+    /**
+     * Imports and validates a schematic on the library worker, then schedules
+     * a rescan. I/O failures complete the returned future exceptionally.
+     */
     public CompletableFuture<Path> importFile(Path source) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -105,6 +110,10 @@ public final class SchematicLibrary {
         void run() throws IOException;
     }
 
+    /**
+     * Returns the most recently published header snapshot. A scan in progress
+     * does not modify the previously returned list.
+     */
     public List<SchematicHeader> headers() {
         return headers;
     }

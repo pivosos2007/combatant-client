@@ -763,7 +763,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
                 pearls
         );
 
-        // перл соприкасается → сейчас будет телепорт → готовим спуф
+        // Prepare the movement adjustment immediately before pearl teleportation.
         if (!pearls.isEmpty()) {
             pendingSpoof = true;
         }
@@ -788,7 +788,7 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
 
         p.connection.send(new ServerboundMovePlayerPacket.Pos(
                 pos.x,
-                pos.y + 0.0313, // легитная фаза
+                pos.y + 0.0313, 
                 pos.z,
                 p.onGround(),
                 false   // horizontalCollision

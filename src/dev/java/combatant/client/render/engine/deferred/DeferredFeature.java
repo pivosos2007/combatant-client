@@ -12,10 +12,15 @@ import java.util.Set;
 /**
  * Stable typed identities for independently smoke-testable renderer subsystems.
  *
- * <p>This is deliberately separate from quality/config policy. Production policy still decides the
+ * <p>This is separate from quality/config policy. Production policy still decides the
  * default state; {@link DeferredSmokeTestState} may temporarily override it for diagnosis.</p>
  */
 public enum DeferredFeature {
+    SHADOWS,
+    GTAO,
+    INDIRECT_LIGHT,
+    DYNAMIC_LIGHTS,
+    REFLECTIONS,
     COLORED_BLOCK_LIGHT,
     TAA,
     EXPOSURE,
@@ -26,6 +31,11 @@ public enum DeferredFeature {
     boolean productionEnabled(DeferredRuntimeConfig.Snapshot settings) {
         if (settings == null) settings = DeferredRuntimeConfig.current();
         return switch (this) {
+            case SHADOWS -> false;
+            case GTAO -> settings.ambientOcclusionEnabled();
+            case INDIRECT_LIGHT -> settings.indirectLightEnabled();
+            case DYNAMIC_LIGHTS -> settings.dynamicLightsEnabled();
+            case REFLECTIONS -> settings.reflectionsEnabled();
             case COLORED_BLOCK_LIGHT -> settings.coloredBlockLightEnabled() && DeferredBlockLightConfig.current().enabled();
             case TAA -> DeferredTemporalConfig.current().taaEnabled();
             case EXPOSURE -> DeferredPostConfig.current().exposureEnabled();
@@ -38,6 +48,9 @@ public enum DeferredFeature {
     /** Histories whose semantics become stale when this subsystem changes enabled state. */
     Set<DeferredTemporalHistoryId> temporalHistories() {
         return switch (this) {
+            case REFLECTIONS -> EnumSet.of(DeferredTemporalHistoryId.REFLECTIONS);
+            case INDIRECT_LIGHT -> EnumSet.of(DeferredTemporalHistoryId.INDIRECT_LIGHT);
+            case GTAO -> EnumSet.of(DeferredTemporalHistoryId.AMBIENT_OCCLUSION);
             case TAA -> EnumSet.of(DeferredTemporalHistoryId.TAA);
             case EXPOSURE -> EnumSet.of(DeferredTemporalHistoryId.EXPOSURE);
             default -> Set.of();

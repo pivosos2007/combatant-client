@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-//todo это все хуйня это надо переделывать, делать нормальный аук хелпер
 /**
  * Reads prices and sellers from common inventory-menu lore formats, and
  * recognises those menus by title. Everything here is pure text work except {@link #lore(ItemStack)} and

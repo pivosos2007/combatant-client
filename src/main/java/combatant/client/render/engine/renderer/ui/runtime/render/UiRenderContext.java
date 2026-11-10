@@ -12,6 +12,9 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiBounds;
 import combatant.client.render.engine.text.TextRenderer;
 
+/**
+ * Rendering context passed through the retained UI tree, including logical-to-render transforms.
+ */
 public record UiRenderContext(Renderer2D renderer,
                               TextRenderer textRenderer,
                               GuiGraphicsExtractor drawContext,

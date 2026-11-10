@@ -22,8 +22,9 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 
 /**
- * Shared helper for highlighting top (max-level) legal enchants used by DropESP/NameTags/BetterChat.
- * Illegal enchantments always take priority (see IllegalItemUtil).
+ * Identifies enchantments at their maximum legal level for item classification.
+ * Items classified as illegal are excluded even if an enchantment is at
+ * its maximum legal level.
  */
 public enum TopEnchantUtil {
     ;

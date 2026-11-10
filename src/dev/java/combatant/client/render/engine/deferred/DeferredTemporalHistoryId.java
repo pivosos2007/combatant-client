@@ -8,6 +8,9 @@ package combatant.client.render.engine.deferred;
 
 /** Stable semantic history identities retained by the shared temporal/post services. */
 public enum DeferredTemporalHistoryId {
+    AMBIENT_OCCLUSION,
+    INDIRECT_LIGHT,
+    REFLECTIONS,
     SCENE,
     EXPOSURE,
     TAA

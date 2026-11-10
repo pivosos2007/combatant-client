@@ -17,7 +17,7 @@ import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 import java.util.Locale;
 import java.util.Map;
 
-/** Paints graph/line connector nodes. Shape decoding is intentionally owned by {@link UiShapeRenderer}. */
+/** Interprets connector-node geometry; other shape types are handled by {@link UiShapeRenderer}. */
 final class UiConnectorRenderer {
     /** Reused point storage for dense HUD chart paths. */
     private final double[] points = new double[512];

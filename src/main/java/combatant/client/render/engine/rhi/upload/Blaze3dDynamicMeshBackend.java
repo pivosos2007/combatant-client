@@ -122,7 +122,8 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
                 DEFAULT_VERTEX_ARENA_BYTES,
                 DEFAULT_INDEX_ARENA_BYTES,
                 true,
-                persistentMappedWrites
+                persistentMappedWrites,
+                stats
         );
         stats.dynamicArenaCreated(1, DEFAULT_VERTEX_ARENA_BYTES, DEFAULT_INDEX_ARENA_BYTES, false);
         return arena;
@@ -176,7 +177,8 @@ public final class Blaze3dDynamicMeshBackend implements DynamicMeshBackend {
                 vertexCapacity,
                 indexCapacity,
                 false,
-                persistentMappedWrites
+                persistentMappedWrites,
+                stats
         );
         stats.dynamicArenaCreated(1, vertexCapacity, indexCapacity, true);
         return spill;

@@ -18,6 +18,11 @@ import lombok.Setter;
 import net.minecraft.world.entity.player.Input;
 import combatant.client.events.Event;
 
+/**
+ * Carries the seven input flags read by the local-player input hook.
+ * Mutations are converted back to a new Minecraft {@link Input} before
+ * the movement tick proceeds; this event does not directly modify velocity.
+ */
 @Setter
 @Getter
 public final class MovementInputEvent extends Event {

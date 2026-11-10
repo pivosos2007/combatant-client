@@ -5,9 +5,9 @@
  */
 package combatant.client.mixins;
 
-import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.movement.EntityControl;
-import combatant.client.features.module.modules.movement.EntityFlight;
+import combatant.client.events.Events;
+import combatant.client.events.impl.BoatRudderControlEvent;
+import combatant.client.events.impl.BoatRotationUpdateEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
@@ -17,6 +17,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+/**
+ * Clears vanilla rudder state when a local movement module controls the boat,
+ * then allows module-owned rotation to be applied after the boat tick.
+ * Without an active controller, vanilla steering state remains untouched.
+ */
 @Mixin(AbstractBoat.class)
 public abstract class EntityControlBoatMixin {
     @Shadow private float deltaRotation;
@@ -27,11 +32,8 @@ public abstract class EntityControlBoatMixin {
     private void combatant$entityControlClearRudder(CallbackInfo ci) {
         LocalPlayer player = Minecraft.getInstance().player;
         AbstractBoat boat = (AbstractBoat) (Object) this;
-        EntityControl control = Modules.get(EntityControl.class);
-        EntityFlight flight = Modules.get(EntityFlight.class);
-        boolean controlled = control != null && control.useBoatStrafing(player, boat);
-        boolean flightControlled = flight != null && flight.controlsBoat(player, boat);
-        if (!controlled && !flightControlled) return;
+        if (!Events.BUS.hasListeners(BoatRudderControlEvent.class)) return;
+        if (!Events.BUS.post(new BoatRudderControlEvent(player, boat)).isControlled()) return;
         deltaRotation = 0.0F;
         inputLeft = false;
         inputRight = false;
@@ -41,9 +43,8 @@ public abstract class EntityControlBoatMixin {
     private void combatant$entityControlSnapRotation(CallbackInfo ci) {
         LocalPlayer player = Minecraft.getInstance().player;
         AbstractBoat boat = (AbstractBoat) (Object) this;
-        EntityControl control = Modules.get(EntityControl.class);
-        if (control != null) control.applyBoatRotation(player, boat);
-        EntityFlight flight = Modules.get(EntityFlight.class);
-        if (flight != null) flight.applyBoatRotation(player, boat);
+        if (Events.BUS.hasListeners(BoatRotationUpdateEvent.class)) {
+            Events.BUS.post(new BoatRotationUpdateEvent(player, boat));
+        }
     }
 }

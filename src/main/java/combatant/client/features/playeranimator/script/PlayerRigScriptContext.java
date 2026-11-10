@@ -25,7 +25,7 @@ public final class PlayerRigScriptContext {
     }
 
     /**
-     * Indices 0..33 intentionally retain the original bridge layout for resource-pack addons.
+     * Indices 0..33 retain the original bridge layout for resource-pack addons.
      * New interpolated vanilla render-state values are appended from index 34 onward.
      */
     interface Sink {

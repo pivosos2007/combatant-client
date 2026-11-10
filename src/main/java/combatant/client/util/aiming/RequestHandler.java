@@ -19,10 +19,9 @@ import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
 
 /**
- * Provider-aware request handler.
- * <p>
- * Adapted from LiquidBounce (https://github.com/CCBlueX/LiquidBounce).
- * Original copyright (c) CCBlueX.
+ * Holds one pending request per provider, returning the highest-priority
+ * nonexpired request from an enabled provider. Durations are measured in
+ * calls to {@link #tick()}; inactive module providers are skipped on lookup.
  */
 public final class RequestHandler<T> {
 
@@ -38,6 +37,11 @@ public final class RequestHandler<T> {
         currentTick++;
     }
 
+    /**
+     * Replaces the current request from the same provider identity.
+     * The request's remaining duration is converted to an absolute expiry
+     * against the current tick, so do not resubmit the same Request instance.
+     */
     public void request(Request<T> request) {
         if (request == null) return;
 
@@ -46,6 +50,10 @@ public final class RequestHandler<T> {
         activeRequests.add(request);
     }
 
+    /**
+     * Returns the highest-priority eligible request, removing expired or disabled
+     * providers from the queue head. Returns null when none remains eligible.
+     */
     public Request<T> getActiveRequest() {
         Request<T> top = activeRequests.peek();
         while (top != null && (top.expiresIn <= currentTick || !isProviderRunning(top.provider))) {

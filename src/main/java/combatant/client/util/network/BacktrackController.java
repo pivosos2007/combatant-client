@@ -37,7 +37,9 @@ import combatant.client.util.target.TargetingUtil;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Headless incoming-packet backtrack controller adapted from LiquidBounce's Backtrack module.
+ * Delays incoming movement updates for a selected target through {@link BlinkManager}.
+ * Releases pending updates when the configured delay expires or a safety condition
+ * invalidates the target; target position tracking is independent of packet replay.
  */
 public final class BacktrackController {
     public static final BacktrackController INSTANCE = new BacktrackController();
@@ -132,6 +134,10 @@ public final class BacktrackController {
         return enabled;
     }
 
+    /**
+     * Changes the delay policy. Disabling flushes queued incoming packets and clears
+     * tracked target state.
+     */
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
         clear(!enabled);
@@ -150,6 +156,10 @@ public final class BacktrackController {
         return enabled && hasQueuedIncoming();
     }
 
+    /**
+     * Returns the last tracked packet position, or {@link Vec3#ZERO} when unavailable.
+     * This is not the target entity's currently rendered position.
+     */
     public Vec3 getTrackedPosition() {
         return delayedPosition.getBase();
     }

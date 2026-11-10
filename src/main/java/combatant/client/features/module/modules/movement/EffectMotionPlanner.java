@@ -1,5 +1,13 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.features.module.modules.movement;
 
+/** Computes effect-driven movement using tick history and a correction-sensitive motion budget. */
 final class EffectMotionPlanner {
     enum Effect { LEVITATION, SLOW_FALLING }
 

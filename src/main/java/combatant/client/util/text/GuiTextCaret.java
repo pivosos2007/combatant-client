@@ -25,7 +25,6 @@ public final class GuiTextCaret {
         return Math.max(0.55f, Math.min(1.1f, fontSize * 0.055f));
     }
 
-    /** Restrict the caret to the visual text line, rather than the whole input box. */
     public static float height(float fontSize, float glyphHeight) {
         return Math.max(0.5f, Math.min(glyphHeight * 0.76f, fontSize * 0.78f));
     }

@@ -9,6 +9,9 @@ package combatant.client.render.engine.renderer.ui.runtime.script;
 
 import java.util.Locale;
 
+/**
+ * Normalized resource identifier for a UI script module, with a default Combatant namespace.
+ */
 public record UiScriptModuleId(String namespace, String path) {
     public UiScriptModuleId {
         namespace = normalizeNamespace(namespace);

@@ -23,6 +23,7 @@ import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
 import combatant.client.render.engine.rhi.pipeline.TransformPolicy;
 import net.minecraft.resources.Identifier;
 
+/** Builds GPU render pipeline descriptors for addon render integrations. */
 @SuppressWarnings("unused")
 public final class CombatantRenderPipelineBuilder {
     private final ExtendedRenderPipelineBuilder delegate;

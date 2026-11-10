@@ -40,7 +40,6 @@ import java.util.concurrent.ConcurrentHashMap;
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.bedwarsesp.description")
 public class BedwarsESP extends Module implements combatant.client.features.map.info.MapInfoSource {
-//todo не доделан
 
     private static final int SECTION_SCAN_BUDGET_PER_TICK = 4;
     private static final int SECTION_SCAN_REFRESH_TICKS = 40;

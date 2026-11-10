@@ -12,6 +12,11 @@ import net.minecraft.network.protocol.Packet;
 import combatant.client.events.Event;
 import combatant.client.util.network.TransferOrigin;
 
+/**
+ * Carries a packet through the connection pre/post hooks.
+ * Pre-events may cancel delivery; post-events observe completed handling or sending.
+ * Silent replay bypasses these hooks, and {@code original} distinguishes reissued packets.
+ */
 public class PacketEvent extends Event {
     private final Packet<?> packet;
     @Getter
@@ -29,6 +34,10 @@ public class PacketEvent extends Event {
         this.original = original;
     }
 
+    /**
+     * Returns the original packet reference without a runtime type check.
+     * Callers must request a type compatible with the packet in this event.
+     */
     @SuppressWarnings("unchecked")
     public <T extends Packet<?>> T getPacket() {
         return (T) this.packet;

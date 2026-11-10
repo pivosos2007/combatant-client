@@ -11,9 +11,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
 
-/**
- * Lightweight debug ownership tracker. It intentionally does not throw in production paths.
- */
+/** Tracks resources by object identity for ownership diagnostics. */
 public final class ResourceLeakTracker {
     private final Set<Object> live = Collections.newSetFromMap(new IdentityHashMap<>());
 

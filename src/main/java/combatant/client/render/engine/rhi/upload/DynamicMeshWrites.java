@@ -10,7 +10,7 @@ package combatant.client.render.engine.rhi.upload;
 import java.util.ArrayList;
 
 /**
- * Tracks dynamic-mesh arenas that hold open write mappings and makes their data visible to the GPU.
+ * Tracks dynamic-mesh arenas with outstanding mapped writes or staged BufferSubData uploads.
  *
  * <p>Blaze3D's {@code MappedView.close()} flushes the <em>whole</em> buffer (the arenas are 32 MiB / 8 MiB)
  * and unmaps it. Closing a view after every mesh therefore cost two full-buffer flushes plus map/unmap
@@ -42,6 +42,7 @@ public final class DynamicMeshWrites {
                     Blaze3dMeshArena arena = PENDING.get(i);
                     arena.trackedForFlush = false;
                     arena.closeMappings();
+                    arena.flushStagedUploads();
                 }
             } finally {
                 PENDING.clear();

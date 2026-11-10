@@ -104,7 +104,6 @@ public final class PlayerRelations implements ConfigObject, ConfigNameProvider {
         return "playerrelations";
     }
 
-    // ---- API ----
     public boolean isFriend(String name) {
         return friends.get().contains(name);
     }

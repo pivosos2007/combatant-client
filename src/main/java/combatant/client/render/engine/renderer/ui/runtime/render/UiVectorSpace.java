@@ -19,7 +19,7 @@ import java.util.Map;
 /**
  * Maps a reusable vector/data coordinate system into a retained UI viewport.
  *
- * <p>The mapping is deliberately independent from {@link UiRenderTransform}: viewBox coordinates
+ * <p>The mapping is independent from {@link UiRenderTransform}: viewBox coordinates
  * first become logical UI coordinates, then the root/widget render transform converts those logical
  * coordinates into framebuffer/render coordinates. This keeps authored data coordinates stable when
  * a HUD widget animates or changes GUI scale.</p>

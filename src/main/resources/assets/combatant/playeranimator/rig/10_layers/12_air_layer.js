@@ -53,6 +53,8 @@
         rKnee+=rearKnee*leadPulse + secondKnee*followPulse;
       }
 
+      // Once the queue is spent, transition into a velocity-driven free-flight pose rather than
+      // replaying the same kick. Which leg remains forward still depends on the real takeoff step.
       const freeLeadHip=(-7-7*rising+3*falling)*free;
       const freeTrailHip=(5-3*rising+2*falling)*free;
       const freeLeadKnee=(22+8*rising+7*hover)*free;

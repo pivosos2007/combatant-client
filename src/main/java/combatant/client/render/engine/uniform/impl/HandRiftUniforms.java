@@ -24,6 +24,8 @@ public enum HandRiftUniforms {
             .putVec4() // screen
             .putVec4() // warp
             .putVec4() // effects
+            .putVec4() // palette secondary
+            .putVec4() // palette controls
             .get();
 
     private static final String UNIFORM_NAME = "Combatant - Hand Rift UBO";
@@ -36,7 +38,9 @@ public enum HandRiftUniforms {
             float shadowR, float shadowG, float shadowB, float shadowA,
             float screenW, float screenH, float time, float fieldWidth,
             float distortionPx, float flowSpeed, float caustics, float quality,
-            float glowStrength, float shadowStrength, float reserved0, float reserved1
+            float glowStrength, float shadowStrength, float reserved0, float reserved1,
+            float paletteEndR, float paletteEndG, float paletteEndB, float paletteEndA,
+            float paletteMode, float paletteSpeed, float paletteSpan, float paletteAngle
     ) {
         DATA.fillR = fillR;
         DATA.fillG = fillG;
@@ -62,6 +66,14 @@ public enum HandRiftUniforms {
         DATA.shadowStrength = shadowStrength;
         DATA.reserved0 = reserved0;
         DATA.reserved1 = reserved1;
+        DATA.paletteEndR = paletteEndR;
+        DATA.paletteEndG = paletteEndG;
+        DATA.paletteEndB = paletteEndB;
+        DATA.paletteEndA = paletteEndA;
+        DATA.paletteMode = paletteMode;
+        DATA.paletteSpeed = paletteSpeed;
+        DATA.paletteSpan = paletteSpan;
+        DATA.paletteAngle = paletteAngle;
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
 
@@ -76,6 +88,8 @@ public enum HandRiftUniforms {
         private float screenW, screenH, time, fieldWidth;
         private float distortionPx, flowSpeed, caustics, quality;
         private float glowStrength, shadowStrength, reserved0, reserved1;
+        private float paletteEndR, paletteEndG, paletteEndB, paletteEndA;
+        private float paletteMode, paletteSpeed, paletteSpan, paletteAngle;
 
         @Override
         public void write(java.nio.ByteBuffer buffer) {
@@ -85,7 +99,9 @@ public enum HandRiftUniforms {
                     .putFloat(shadowR).putFloat(shadowG).putFloat(shadowB).putFloat(shadowA)
                     .putFloat(screenW).putFloat(screenH).putFloat(time).putFloat(fieldWidth)
                     .putFloat(distortionPx).putFloat(flowSpeed).putFloat(caustics).putFloat(quality)
-                    .putFloat(glowStrength).putFloat(shadowStrength).putFloat(reserved0).putFloat(reserved1);
+                    .putFloat(glowStrength).putFloat(shadowStrength).putFloat(reserved0).putFloat(reserved1)
+                    .putFloat(paletteEndR).putFloat(paletteEndG).putFloat(paletteEndB).putFloat(paletteEndA)
+                    .putFloat(paletteMode).putFloat(paletteSpeed).putFloat(paletteSpan).putFloat(paletteAngle);
         }
 
         @Override

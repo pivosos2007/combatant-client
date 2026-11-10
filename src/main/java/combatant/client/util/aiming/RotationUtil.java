@@ -21,13 +21,14 @@ import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 
-/**
- * Small rotation helpers (yaw/pitch).
- */
 public enum RotationUtil {
     ;
 
 
+    /**
+     * Computes the angular mouse-step quantum from Minecraft's configured sensitivity.
+     * Returns zero when no client instance exists.
+     */
     public static double gcd() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return 0.0;

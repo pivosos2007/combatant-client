@@ -18,7 +18,7 @@ import org.joml.Vector4f;
 /**
  * Immutable, view-aware visibility/LOD input snapshot.
  *
- * <p>PRIMARY uses stable non-jittered matrices. TAA jitter is deliberately excluded so it cannot
+ * <p>PRIMARY uses stable non-jittered matrices. TAA jitter is excluded so it cannot
  * produce culling or LOD flicker. Section visibility is a coarse optimization and is separately
  * capability-gated from fine frustum/projection work.</p>
  */

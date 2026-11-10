@@ -7,11 +7,6 @@
 
 package combatant.client.render.engine.renderer;
 
-/**
- * Semantic angular deformations for ordinary UI primitives. This is a
- * {@link RenderWarp} factory rather than a separate shape family: an unwarped primitive keeps
- * its compact vertex layout, while an active preset is routed through the existing warped path.
- */
 public enum UiAngularPreset {
     TRAILING_DIAGONAL {
         @Override

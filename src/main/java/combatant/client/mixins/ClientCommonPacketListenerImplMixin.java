@@ -18,8 +18,8 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.movement.Flight;
+import combatant.client.events.Events;
+import combatant.client.events.impl.ClientMovePacketRewriteEvent;
 
 @Mixin(ClientCommonPacketListenerImpl.class)
 public abstract class ClientCommonPacketListenerImplMixin {
@@ -32,10 +32,9 @@ public abstract class ClientCommonPacketListenerImplMixin {
     private void combatant$flightSendPacket(Packet<?> packet, CallbackInfo ci) {
         if (!((Object) this instanceof ClientPacketListener)) return;
         if (!(packet instanceof ServerboundMovePlayerPacket move)) return;
-        Flight flight = Modules.get(Flight.class);
-        if (flight == null || !flight.isEnabled()) return;
-
-        ServerboundMovePlayerPacket replacement = flight.onSendMovePacket(move);
+        if (!Events.BUS.hasListeners(ClientMovePacketRewriteEvent.class)) return;
+        ServerboundMovePlayerPacket replacement =
+                Events.BUS.post(new ClientMovePacketRewriteEvent(move)).getReplacement();
         if (replacement != null && replacement != move) {
             ci.cancel();
             connection.send(replacement);

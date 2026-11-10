@@ -126,6 +126,10 @@ public final class CombatantMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (mixinClassName.startsWith("combatant.client.mixins.sodium.DevDeferred")) {
+            FabricLoader loader = FabricLoader.getInstance();
+            return loader.isModLoaded("sodium") && !loader.isModLoaded("iris");
+        }
         if (STUB_SODIUM && OPTIONAL_SODIUM_MIXINS.contains(mixinClassName)) {
             return false;
         }

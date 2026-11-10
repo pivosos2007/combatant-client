@@ -55,6 +55,11 @@ public final class DuplexLocalTcpTransport implements AutoCloseable {
         this.reconnectMs = Math.max(100, reconnectMs);
     }
 
+    /**
+     * Installs the inbound payload consumer, called on the transport I/O thread.
+     * A null sink discards payloads; a consumer {@link RuntimeException} is
+     * ignored without disconnecting the peer.
+     */
     public void setMessageSink(Consumer<byte[]> sink) {
         this.messageSink = sink == null ? ignored -> {} : sink;
     }
@@ -66,6 +71,13 @@ public final class DuplexLocalTcpTransport implements AutoCloseable {
         ioThread.start();
     }
 
+    /**
+     * Queues a defensive copy of a message payload for the connected peer.
+     * A four-byte length prefix is added when the I/O thread writes it.
+     * The bounded outbound queue is cleared on disconnect and reconnect.
+     *
+     * @return {@code false} when disconnected, stopped, saturated, or outside the 1..8192-byte limit
+     */
     public boolean sendPayload(byte[] payload) {
         if (payload == null || payload.length == 0 || payload.length > MAX_FRAME_BYTES) return false;
         if (!connected || !running.get()) return false;
@@ -74,6 +86,10 @@ public final class DuplexLocalTcpTransport implements AutoCloseable {
 
     public boolean connected() { return connected; }
     public boolean running() { return running.get(); }
+    /**
+     * Returns a generation incremented whenever a new peer socket is attached.
+     * Consumers can use it to invalidate state retained from an earlier connection.
+     */
     public long connectionGeneration() { return connectionGeneration.get(); }
     public String endpoint() { return LOOPBACK_HOST + ":" + port; }
     public String lastError() { return lastError; }
@@ -259,6 +275,10 @@ public final class DuplexLocalTcpTransport implements AutoCloseable {
     }
 
     @Override
+    /**
+     * Requests shutdown and closes sockets to unblock the I/O thread.
+     * The worker performs its final buffer cleanup; this method does not join it.
+     */
     public synchronized void close() {
         running.set(false);
         Thread thread = ioThread;

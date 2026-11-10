@@ -11,15 +11,25 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
-import combatant.client.features.module.ModuleManager;
 
 import java.nio.file.Path;
 import java.util.List;
 
 public final class ClickGuiScreen extends Screen {
+    private final Screen returnScreen;
 
     public ClickGuiScreen() {
+        this(null);
+    }
+
+    /** A non-null return screen marks the title-menu entry point. */
+    public ClickGuiScreen(Screen returnScreen) {
         super(Component.literal("ClickGui"));
+        this.returnScreen = returnScreen;
+    }
+
+    public Screen returnScreen() {
+        return returnScreen;
     }
 
     @Override
@@ -70,6 +80,6 @@ public final class ClickGuiScreen extends Screen {
 
     @Override
     public void onClose() {
-        ModuleManager.setEnabled("clickgui", false);
+        ClickGuiRenderer.closeFromScreen();
     }
 }

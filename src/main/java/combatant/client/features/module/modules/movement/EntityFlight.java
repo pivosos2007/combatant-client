@@ -12,6 +12,8 @@ import combatant.client.config.values.EnumValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.events.impl.MovementInputEvent;
+import combatant.client.events.impl.BoatRudderControlEvent;
+import combatant.client.events.impl.BoatRotationUpdateEvent;
 import combatant.client.events.impl.VehicleMoveEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -132,6 +134,16 @@ public final class EntityFlight extends Module {
         EntityControl control = Modules.get(EntityControl.class);
         return player != null && player.getVehicle() != null
                 && control != null && control.providesVulcanMotion(player.getVehicle());
+    }
+
+    @EventHandler
+    private void onBoatRudderControl(BoatRudderControlEvent event) {
+        if (controlsBoat(event.getPlayer(), event.getBoat())) event.claim();
+    }
+
+    @EventHandler
+    private void onBoatRotationUpdate(BoatRotationUpdateEvent event) {
+        applyBoatRotation(event.getPlayer(), event.getBoat());
     }
 
     public boolean controlsBoat(LocalPlayer player, AbstractBoat boat) {

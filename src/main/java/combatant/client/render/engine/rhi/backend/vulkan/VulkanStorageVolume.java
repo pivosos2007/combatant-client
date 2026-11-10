@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.lwjgl.util.vma.Vma.*;
 import static org.lwjgl.vulkan.VK12.*;
 
-/** VkImage 3D allocation using the exact VkDevice/VMA allocator owned by Mojang. */
+/** VkImage 3D allocation using the exact VkDevice/VMA allocator owned by Minecraft render context. */
 final class VulkanStorageVolume implements RhiStorageVolume, Destroyable {
     private final StorageVolumeDescriptor descriptor;
     private final VulkanDevice ownerDevice;

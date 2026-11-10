@@ -176,7 +176,7 @@ public final class FluidSurfaceMetadataCapture {
         public static final SurfaceSample UNKNOWN = new SurfaceSample(0.0f, false);
     }
 
-    /** Producer-known fluid/material data; intentionally contains no render mesh, UV or lighting payload. */
+    /** Producer-known fluid/material data; contains no render mesh, UV or lighting payload. */
     public record WaterSurfaceMetadata(
             long blockPos,
             int materialId,

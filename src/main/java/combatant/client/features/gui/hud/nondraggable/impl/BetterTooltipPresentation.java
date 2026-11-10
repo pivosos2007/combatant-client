@@ -36,7 +36,10 @@ final class BetterTooltipPresentation {
             .withRefraction(0.009f).withBevel(0.21f, 0.051f)
             .withFluid(0.37f, 0.54f).withCleanReveal(0.0f)
             .withInteractionStrength(0.0f).withChromaticAberration(0.65f)
-            .withMagnification(1.006f).withShapeDeformation(false).withSpecular(false);
+            .withMagnification(1.006f).withShapeDeformation(false).withSpecular(false)
+            .withOpticalThickness(1.08f).withSurfaceRoughness(0.21f)
+            .withThinFilm(415f, 0.09f);
+    static UiGlassOpticsSpec defaultGlassOptics() { return TOOLTIP_GLASS; }
     private static final UiGlassVisual TOOLTIP_VISUAL = UiGlassVisual.shader("ui_glass_tooltip.frag", 0.0f);
     private static final float EDGE = 5.0f;
     private static final float GAP = 9.0f;
@@ -85,7 +88,7 @@ final class BetterTooltipPresentation {
 
     Result render(Minecraft mc, GuiGraphicsExtractor ctx, Input incoming,
                   float scale, float blurStrength, float darkness, float glowStrength,
-                  boolean rotatingRare, float rotationSpeed) {
+                  boolean rotatingRare, float rotationSpeed, UiGlassOpticsSpec optics) {
         if (mc == null || mc.getWindow() == null || ctx == null) {
             clear();
             return Result.NONE;
@@ -178,7 +181,7 @@ final class BetterTooltipPresentation {
         ViewportContext.beginScaled(ctx);
         try {
             renderSurface(shell, layout, bodyX, y, bodyW, height, s,
-                    blurStrength, darkness, glowStrength, reveal);
+                    blurStrength, darkness, glowStrength, reveal, optics);
             if (reveal < 0.965f) return Result.NONE;
             renderText(snapshot, layout, bodyX, y, s);
             if (snapshot.item() && layout.showModel) {
@@ -203,7 +206,7 @@ final class BetterTooltipPresentation {
 
     private void renderSurface(UiPrimitive shell, Layout layout, float bodyX, float y,
                                float bodyW, float height, float s, float blur,
-                               float darkness, float glow, float progress) {
+                               float darkness, float glow, float progress, UiGlassOpticsSpec optics) {
         Renderer2D renderer = Renderer2D.COLOR;
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         float blurAmount = clamp(blur, 0.0f, 1.0f);
@@ -219,7 +222,7 @@ final class BetterTooltipPresentation {
                 .withVector(1, red, green, blue, rarity)
                 .withVector(2, 1.0f - blurAmount, 0.0f, 0.0f, 0.0f);
         UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
-                .withOptics(TOOLTIP_GLASS)
+                .withOptics(optics)
                 .withTintStrength(0.035f).withVisual(visual);
         renderer.begin();
         renderer.withLiquidGlassSceneSource(UiBackdropRequest.SceneSource.CURRENT_TARGET,

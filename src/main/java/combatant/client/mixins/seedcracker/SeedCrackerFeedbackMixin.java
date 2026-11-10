@@ -15,7 +15,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** The native commands also use this separate sendFeedback path. */
+/**
+ * Routes SeedCrackerX command feedback through {@link SeedCrackerOutput},
+ * suppressing its native feedback path to avoid duplicate messages.
+ */
 @Pseudo
 @Mixin(targets = "kaptainwutax.seedcrackerX.command.ClientCommand", remap = false)
 public abstract class SeedCrackerFeedbackMixin {

@@ -5,10 +5,6 @@
  */
 package combatant.client.render.engine.water;
 
-/**
- * Temporary full-replacement water profile. This keeps the current reference-style surface
- * parameters centralized while the later dimension/material water policy remains free to replace it.
- */
 public record WaterForwardProfile(
         float displacementAmplitudeFactor,
         float displacementSpatialFrequency,

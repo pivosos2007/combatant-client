@@ -8,6 +8,8 @@
 package combatant.client.features.module.modules.combat;
 
 import combatant.client.config.values.BooleanValue;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.ManualAttackEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -36,6 +38,11 @@ public final class AntiMiss extends Module {
 
     private final Minecraft mc = Minecraft.getInstance();
     private final BooleanValue fakeSwing = bool("antiMissFakeSwing", "fake_swing", true);
+
+    @EventHandler(priority = 3000)
+    private void onManualAttack(ManualAttackEvent event) {
+        if (!event.isResolved() && blocksManualAttack()) event.resolve(false);
+    }
 
     /** Called from the manual attack entry point; true swallows the click. */
     public static boolean blocksManualAttack() {

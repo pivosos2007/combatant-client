@@ -37,11 +37,10 @@ public enum ConfigSerializer {
     private static final long SAVE_DEBOUNCE_MS = 220L;
     private static final ConfigWriteScheduler SCHEDULER =
             new ConfigWriteScheduler(SAVE_DEBOUNCE_MS, ConfigWriteScheduler.fileSink());
-    // One Json5 instance for utilities (player relations, filters, debug config, etc.)
     private static final Json5 JSON5 = Json5.builder(builder -> builder
             .trailingComma()  // allow trailing commas
-            .indentFactor(2)  // pretty output
-            .quoteSingle()    // use " quotes
+            .indentFactor(2)  
+            .quoteSingle()
             .build()
     );
     // Gson serializer for modules (strict JSON)
@@ -50,9 +49,7 @@ public enum ConfigSerializer {
             .disableHtmlEscaping()
             .create();
 
-    // =============================================================
     //   Bulk load / save helpers
-    // =============================================================
 
     @SuppressWarnings("unused")
     public static void loadAll() {
@@ -102,9 +99,6 @@ public enum ConfigSerializer {
         return null;
     }
 
-    // =============================================================
-    //   Dispatch
-    // =============================================================
 
     public static void save(ConfigObject obj) {
         if (obj == null || obj instanceof HudGlobalConfig) return;
@@ -236,9 +230,6 @@ public enum ConfigSerializer {
         return isModule(obj) ? moduleFile(obj) : utilFile(obj);
     }
 
-    // =============================================================
-    //   Module (Gson JSON)
-    // =============================================================
 
     private static PendingWrite buildModuleWrite(ConfigObject obj) {
         try {
@@ -297,9 +288,6 @@ public enum ConfigSerializer {
         }
     }
 
-    // =============================================================
-    //   JSON (Gson) for non-Module configs
-    // =============================================================
 
     private static PendingWrite buildJsonWrite(ConfigObject obj) {
         try {
@@ -358,9 +346,6 @@ public enum ConfigSerializer {
         }
     }
 
-    // =============================================================
-    //   Utilities (Json5)
-    // =============================================================
 
     private static PendingWrite buildJson5Write(ConfigObject obj) {
         try {
@@ -593,9 +578,7 @@ public enum ConfigSerializer {
         return Json5Primitive.fromString(String.valueOf(v));
     }
 
-    // =============================================================
     //   Helpers
-    // =============================================================
 
     private static Object unwrapJsonElement(JsonElement el) {
         if (el == null || el.isJsonNull()) return null;
@@ -676,9 +659,7 @@ public enum ConfigSerializer {
         return SCHEDULER.pendingCount();
     }
 
-    // =============================================================
     //   Recovering read / unknown-field helpers
-    // =============================================================
 
     private static final AtomicFileStore.Validator JSON_VALIDATOR = bytes -> ConfigDocument.parseObject(bytes) != null;
     private static final AtomicFileStore.Validator ANY_JSON_VALIDATOR = bytes -> {
@@ -732,9 +713,7 @@ public enum ConfigSerializer {
     private record PendingWrite(Path path, ConfigDocument document) {
     }
 
-    // =============================================================
     //   Auxiliary JSON stores (theme, presets, proxy, addon state)
-    // =============================================================
 
     /** Debounced atomic write of a JSON-object file that is not a ConfigObject; unknown top-level keys on disk are kept. */
     public static void requestJsonWrite(Path path, String jsonText) {

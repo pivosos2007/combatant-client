@@ -8,7 +8,9 @@
     "DevDeferredClientPacketListenerMixin",
     "DevDeferredGameRendererMixin",
     "DevDeferredLevelRendererMixin",
-    "ProfilersMixin"
+    "ProfilersMixin",
+    "sodium.DevDeferredSodiumShaderChunkRendererMixin",
+    "sodium.DevDeferredSodiumGeometryBindingMixin"
   ],
   "injectors": {
     "defaultRequire": 1

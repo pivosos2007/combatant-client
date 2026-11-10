@@ -7,6 +7,9 @@
 
 package combatant.client.mixins;
 
+import combatant.client.events.Events;
+import combatant.client.events.impl.SlimeStepEvent;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
@@ -16,18 +19,12 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.movement.NoStun;
 
 @Mixin(SlimeBlock.class)
 public class SlimeBlockMixin {
 
     @Inject(method = "stepOn", at = @At("HEAD"), cancellable = true)
     private void nostun$onSteppedOn(Level world, BlockPos pos, BlockState state, Entity entity, CallbackInfo ci) {
-        NoStun ns = Modules.get(NoStun.class);
-        if (ns == null || !ns.isEnabled()) return;
-        if (!ns.isFunctionEnabled(NoStun.fnEnvBlocks())) return;
-        if (!ns.isEnvBlockEnabled(NoStun.envSlime())) return;
-        ci.cancel();
+        if (Events.BUS.post(new SlimeStepEvent()).isCancelled()) ci.cancel();
     }
 }

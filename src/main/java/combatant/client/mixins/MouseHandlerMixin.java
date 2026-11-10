@@ -69,7 +69,6 @@ public class MouseHandlerMixin {
     @Unique
     private static final float COMBATANT_PROXY_BUTTON_H = 24f;
 
-    // ===== Mouse scroll for ClickGUI =====
     @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true)
     private void onMouseScroll(long window, double horizontal, double vertical, CallbackInfo ci) {
         ScrollInputEvent event = MinecraftInputAdapter.scroll(lastX, lastY, horizontal, vertical);
@@ -158,7 +157,6 @@ public class MouseHandlerMixin {
                 && my <= COMBATANT_PROXY_BUTTON_Y + COMBATANT_PROXY_BUTTON_H;
     }
 
-    // ===== Mouse move for ClickGUI =====
     @Inject(method = "onMove", at = @At("HEAD"), cancellable = true)
     private void clickGuiCursorMove(long window, double x, double y, double deltaX, double deltaY, CallbackInfo ci) {
 

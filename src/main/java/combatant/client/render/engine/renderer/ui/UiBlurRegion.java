@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Padded framebuffer-space blur workload in texture coordinates (origin at bottom-left).
  *
- * <p>The Kawase targets intentionally remain full-sized per level. Restricting only the work
+ * <p>The Kawase targets remain full-sized per level. Restricting only the work
  * region keeps every existing screen-UV consumer valid while avoiding fragment/compute work for
  * pixels that no glass/blur surface can sample.</p>
  */

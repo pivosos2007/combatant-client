@@ -48,7 +48,7 @@ import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.RenderPhaseScope;
 import combatant.client.render.engine.core.ViewportContext;
-// import combatant.client.render.engine.debug.RenderThread2DDebugRenderer; // disabled: debug probes are manual-only
+
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.item.IllegalItemUtil;
@@ -67,9 +67,6 @@ public abstract class HudMixin {
     @Final
     private Minecraft minecraft;
 
-    @Inject(method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V", at = @At("TAIL"))
-    private void combatant$debug2dGuiStateProbe(GuiGraphicsExtractor ctx, DeltaTracker tickCounter, CallbackInfo ci) {
-    }
 
     @Unique
     private static void combatant$renderCustomBarOnly(GuiGraphicsExtractor ctx,
@@ -111,7 +108,9 @@ public abstract class HudMixin {
 
     @Unique
     private static void combatant$appendVanillaHudReplacementMarker(GuiGraphicsExtractor ctx) {
-        if (!(ctx instanceof IGuiGraphics graphics)) return;
+        if (!(ctx instanceof IGuiGraphics graphics)
+                || !combatant.client.render.engine.renderer.ui.UiDeferredScheduler.markNewHudWork(
+                        COMBATANT$VANILLA_HUD_REPLACEMENT_LAYER)) return;
         ctx.nextStratum();
         graphics.combatant$addDeferredHudMarker(COMBATANT$VANILLA_HUD_REPLACEMENT_LAYER);
         ctx.nextStratum();

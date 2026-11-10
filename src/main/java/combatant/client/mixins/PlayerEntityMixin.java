@@ -150,9 +150,9 @@ public abstract class PlayerEntityMixin implements IPlayerAttackCooldown {
     }
 
     /**
-     * Синхронизация attack cooldown с серверным TPS.
-     * НЕ трогает ItemCooldownManager.
-     * НЕ влияет на shield.
+     * Adjusts attack cooldown recovery to server TPS.
+     * 
+     * 
      */
     @ModifyReturnValue(
             method = "getCurrentItemAttackStrengthDelay",
@@ -165,7 +165,7 @@ public abstract class PlayerEntityMixin implements IPlayerAttackCooldown {
         if (tpsSync != null && tpsSync.isEnabled()) {
             float serverDelta = tpsSync.getServerTickDelta();
             if (serverDelta > 0.0f && serverDelta < 1.0f) {
-                // замедляем заполнение cooldown’а под TPS
+                // Scale attack cooldown recovery by server TPS.
                 result = result / serverDelta;
             }
         }

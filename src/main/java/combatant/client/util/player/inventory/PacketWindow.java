@@ -59,7 +59,6 @@ public final class PacketWindow {
     private PacketWindow() {
     }
 
-    // ---- queries -------------------------------------------------------------------------------------------
 
     /** A held-slot packet sent right now is neither a PacketOrderE conflict nor a Post violation. */
     public boolean slotChangeAllowed() {
@@ -121,7 +120,6 @@ public final class PacketWindow {
         return !movementLocked && movementKeys;
     }
 
-    // ---- state machine -------------------------------------------------------------------------------------
 
     void noteTickStart() {
         movementSent = false;
@@ -192,7 +190,6 @@ public final class PacketWindow {
         useItemAction = false;
     }
 
-    // ---- packet classification -----------------------------------------------------------------------------
 
     @EventHandler(priority = Integer.MAX_VALUE)
     private void onGameTick(GameTickEvent event) {

@@ -9,9 +9,13 @@ package combatant.client.render.engine.rhi.shader;
 
 import java.nio.ByteBuffer;
 
+/**
+ * Backend storage buffer with explicit byte-offset uploads and close semantics.
+ */
 public interface RhiStorageBuffer extends AutoCloseable {
     StorageBufferDescriptor descriptor();
 
+    /** Uploads source bytes beginning at the specified destination byte offset. */
     void upload(ByteBuffer source, long destinationOffset);
 
     @Override

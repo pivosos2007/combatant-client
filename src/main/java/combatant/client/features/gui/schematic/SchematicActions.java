@@ -38,7 +38,6 @@ public final class SchematicActions {
     private static long feedbackSequence;
     private static final List<Feedback> FEEDBACK = new ArrayList<>();
 
-    /** UI-local status feed. The HUD notifier is intentionally not used by Schematics. */
     public record Feedback(long sequence, String message, String variant) {}
 
     private static synchronized void feedback(String message, String variant) {

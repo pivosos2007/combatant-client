@@ -7,6 +7,9 @@
 
 package combatant.client.features.module.modules.visuals;
 
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.SoundObservedEvent;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.resources.language.I18n;
@@ -82,6 +85,11 @@ public class SoundESP extends Module {
     @Override
     public HudPhase getHudPhase() {
         return HudPhase.FIRST;
+    }
+
+    @EventHandler
+    private void onSoundObserved(SoundObservedEvent event) {
+        handleSound(event.getSoundId(), event.getPosition());
     }
 
     public void handleSound(Identifier id, Vec3 pos) {

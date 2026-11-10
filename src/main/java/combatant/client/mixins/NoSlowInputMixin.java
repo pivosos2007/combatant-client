@@ -8,8 +8,9 @@
 package combatant.client.mixins;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
-import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.movement.NoSlow;
+import combatant.client.events.Events;
+import combatant.client.events.impl.ItemUseInputMultiplierEvent;
+import combatant.client.events.impl.ItemUseInputVectorEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.phys.Vec2;
 import org.spongepowered.asm.mixin.Mixin;
@@ -17,13 +18,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Connects {@link NoSlow} to the vanilla item-use slowdown. The module's input methods had no caller, so
- * every mode left eating, drawing a bow or blocking at 20% speed.
- *
- * <p>The vanilla multiplier is neutralised first, then the mode decides what the movement input looks like
- * (unchanged, scaled per axis, or slowed on alternate ticks).</p>
- */
+/** Publishes the two item-use movement input values before returning them to Minecraft. */
 @Mixin(LocalPlayer.class)
 public class NoSlowInputMixin {
 
@@ -32,21 +27,17 @@ public class NoSlowInputMixin {
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;itemUseSpeedMultiplier()F")
     )
     private float combatant$noSlowNeutralize(float original) {
-        NoSlow noSlow = Modules.get(NoSlow.class);
+        if (!Events.BUS.hasListeners(ItemUseInputMultiplierEvent.class)) return original;
         LocalPlayer self = (LocalPlayer) (Object) this;
-        if (noSlow != null && noSlow.shouldModifyInput(self)) {
-            return noSlow.getItemUseSpeedMultiplier(original);
-        }
-        return original;
+        return Events.BUS.post(new ItemUseInputMultiplierEvent(self, original)).getMultiplier();
     }
 
     @Inject(method = "modifyInput", at = @At("RETURN"), cancellable = true)
     private void combatant$noSlowApply(Vec2 input, CallbackInfoReturnable<Vec2> cir) {
-        NoSlow noSlow = Modules.get(NoSlow.class);
+        if (!Events.BUS.hasListeners(ItemUseInputVectorEvent.class)) return;
         LocalPlayer self = (LocalPlayer) (Object) this;
-        if (noSlow == null || !noSlow.shouldModifyInput(self)) return;
-        if (noSlow.hasCustomMultipliers()) {
-            cir.setReturnValue(noSlow.getModifiedInput(cir.getReturnValue(), self));
-        }
+        Vec2 original = cir.getReturnValue();
+        Vec2 modified = Events.BUS.post(new ItemUseInputVectorEvent(self, original)).getInput();
+        if (modified != original) cir.setReturnValue(modified);
     }
 }

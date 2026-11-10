@@ -6,7 +6,7 @@
 package combatant.client.features.gui.schematic;
 
 /**
- * Frame-rate pressure is deliberately independent of distance LOD: it only moves the existing
+ * Frame-rate pressure is independent of distance LOD: it only moves the existing
  * LOD transitions and view distance after sustained low FPS. A one-frame hitch never drops a tier.
  */
 final class SchematicAdaptiveQuality {

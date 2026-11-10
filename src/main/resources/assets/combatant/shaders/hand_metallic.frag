@@ -23,17 +23,15 @@ layout (std140) uniform HandMetallic {
     vec4 u_Params1;   // sweepSpeed, sweepScale, brushedLines, flakes
     vec4 u_Params2;   // glowStrength, shadowStrength, edgeWidth, prism
     vec4 u_Culling;   // x = conservative occupancy mask is available
+    vec4 u_PaletteEnd;
+    vec4 u_PaletteOptions;
 };
 
 layout(location = 0) in vec2 v_TexCoord;
 
-const vec2 HAND_METAL_EDGE_START[4] = vec2[](
-    vec2(0.981292664, 0.192521967),
-    vec2(0.925870585, 0.377840787),
-    vec2(0.835807361, 0.549022818),
-    vec2(0.714472680, 0.699663341)
-);
-const vec2 HAND_METAL_EDGE_ROTATE = vec2(0.866025404, 0.5);
+#include <combatant:hand_palette.glsl>
+#include <combatant:hand_edge_coverage.glsl>
+
 const int HAND_METAL_OCCUPANCY_CELL_SIZE = 8;
 
 float handMetalHash21(vec2 p) {
@@ -65,52 +63,24 @@ float handMetalFbm(vec2 p) {
     return v;
 }
 
-float maskAt(vec2 uv) {
-    vec4 mask = texture(u_Mask, uv);
-    return max(mask.a, max(mask.r, max(mask.g, mask.b)));
-}
-
-float handMetalEdgeDistance(vec2 oneTexel, float edgeWidth, out float hitAmount) {
-    float best = 1.0e5;
-    float hit = 0.0;
-    float radiusPx = max(edgeWidth, 1.0);
-    const int rings = 4;
-    const int dirs = 12;
-
-    for (int r = 1; r <= rings; ++r) {
-        float rr = float(r) / float(rings);
-        float distPx = radiusPx * rr;
-        vec2 dir = HAND_METAL_EDGE_START[r - 1];
-        for (int i = 0; i < dirs; ++i) {
-            float a = maskAt(v_TexCoord + dir * oneTexel * distPx);
-            if (a > 0.02) {
-                best = min(best, rr);
-                hit = max(hit, a);
-            }
-            dir = vec2(dir.x * HAND_METAL_EDGE_ROTATE.x - dir.y * HAND_METAL_EDGE_ROTATE.y,
-                       dir.x * HAND_METAL_EDGE_ROTATE.y + dir.y * HAND_METAL_EDGE_ROTATE.x);
-        }
-    }
-
-    hitAmount = hit;
-    return best;
-}
-
 void main() {
     vec4 base = texture(u_Src, v_TexCoord);
-    float mask = maskAt(v_TexCoord);
-    ivec2 sz = max(textureSize(u_Mask, 0), ivec2(1));
+    float mask = handMaskCoverage(v_TexCoord);
+    float glowStrength = max(u_Params2.x, 0.0);
+    float shadowStrength = max(u_Params2.y, 0.0);
+    float edgeWidth = max(u_Params2.z, 0.0);
+    bool outerEnabled = edgeWidth > 0.001 &&
+            (u_Glow.a * glowStrength > 0.0001 || u_Shadow.a * shadowStrength > 0.0001);
 
-    if (mask <= 0.01
-            && u_Glow.a * max(u_Params2.x, 0.0) <= 0.0001
-            && u_Shadow.a * max(u_Params2.y, 0.0) <= 0.0001) {
+    if (mask <= 0.001 && !outerEnabled) {
         color = vec4(base.rgb, 1.0);
         return;
     }
 
-    // The 1/8-resolution mask is conservatively dilated by the complete edge radius. A zero
-    // texel therefore proves that none of the expensive 48 full-resolution probes can hit.
-    if (mask <= 0.01 && u_Culling.x > 0.5) {
+    ivec2 sz = max(textureSize(u_Mask, 0), ivec2(1));
+    // The 1/8-resolution occupancy field conservatively covers the halo radius.
+    // It is an optimization only; it must not influence the material's edge strength.
+    if (mask <= 0.01 && outerEnabled && u_Culling.x > 0.5) {
         ivec2 maskPixel = clamp(ivec2(floor(v_TexCoord * vec2(sz))), ivec2(0), sz - ivec2(1));
         ivec2 occupancyPixel = maskPixel / HAND_METAL_OCCUPANCY_CELL_SIZE;
         if (texelFetch(u_Occupancy, occupancyPixel, 0).r <= 0.001) {
@@ -119,29 +89,32 @@ void main() {
         }
     }
 
-    vec2 resolution = max(vec2(sz), vec2(1.0));
+    vec2 resolution = vec2(sz);
     vec2 oneTexel = 1.0 / resolution;
+    vec3 outCol = base.rgb;
 
-    float intensity = max(u_Params0.x, 0.0);
-    float sharpness = max(u_Params0.y, 0.15);
-    float edgeStrength = max(u_Params0.z, 0.0);
-    float time = u_Params0.w;
-    float sweepSpeed = u_Params1.x;
-    float sweepScale = max(u_Params1.y, 0.1);
-    float brushedLines = max(u_Params1.z, 0.0);
-    float flakes = max(u_Params1.w, 0.0);
-    float glowStrength = max(u_Params2.x, 0.0);
-    float shadowStrength = max(u_Params2.y, 0.0);
-    float edgeWidth = max(u_Params2.z, 0.0);
-    float prism = max(u_Params2.w, 0.0);
+    // The exterior halo overlaps the partially covered inner edge. Splitting at
+    // mask > 0.01 created a one-pixel discontinuity once the mask was filtered.
+    if (outerEnabled && mask < 0.75) {
+        float halo = handMaskOuterHalo(v_TexCoord, oneTexel, edgeWidth, 4);
+        halo *= 1.0 - smoothstep(0.02, 0.75, mask);
+        float shadowA = halo * u_Shadow.a * shadowStrength * 0.48;
+        float glowA = halo * u_Glow.a * glowStrength * 0.40;
+        outCol = mix(outCol, u_Shadow.rgb, shadowA);
+        outCol += u_Glow.rgb * glowA;
+    }
 
-    if (mask > 0.01) {
-        float mL = maskAt(v_TexCoord + vec2(-oneTexel.x, 0.0));
-        float mR = maskAt(v_TexCoord + vec2(oneTexel.x, 0.0));
-        float mU = maskAt(v_TexCoord + vec2(0.0, -oneTexel.y));
-        float mD = maskAt(v_TexCoord + vec2(0.0, oneTexel.y));
-        float edge = clamp(1.0 - min(min(mL, mR), min(mU, mD)), 0.0, 1.0);
-        edge = pow(edge, 0.68);
+    if (mask > 0.001) {
+        float intensity = max(u_Params0.x, 0.0);
+        float sharpness = max(u_Params0.y, 0.15);
+        float edgeStrength = max(u_Params0.z, 0.0);
+        float time = u_Params0.w;
+        float sweepSpeed = u_Params1.x;
+        float sweepScale = max(u_Params1.y, 0.1);
+        float brushedLines = max(u_Params1.z, 0.0);
+        float flakes = max(u_Params1.w, 0.0);
+        float prism = max(u_Params2.w, 0.0);
+        float edge = handMaskInnerContour(v_TexCoord, oneTexel, mask);
 
         vec2 aspect = vec2(resolution.x / max(resolution.y, 1.0), 1.0);
         vec2 p = v_TexCoord * aspect;
@@ -153,7 +126,6 @@ void main() {
         float brushed = 0.5 + 0.5 * sin((p.y * resolution.y * 0.20 + p.x * 18.0 + fine * 7.0) * (0.34 + brushedLines * 0.32));
         brushed = mix(1.0, mix(0.78, 1.14, brushed), clamp(brushedLines, 0.0, 1.0));
 
-        // Continuous procedural sparkle avoids cell-edge artifacts.
         float sparkleNoise = handMetalFbm(p * resolution.y * 0.11 + vec2(time * 0.06, time * 0.035));
         float sparkle = smoothstep(0.76, 0.98, sparkleNoise) * flakes;
         sparkle *= 0.55 + 0.45 * sin(time * 2.2 + sparkleNoise * 17.0);
@@ -161,7 +133,8 @@ void main() {
         float rim = pow(edge, sharpness * 0.55) * edgeStrength;
         float highlight = clamp(sweep * 0.70 + rim + sparkle * 0.85, 0.0, 1.0);
 
-        vec3 metal = u_Base.rgb * brushed;
+        vec3 baseColor = handPaletteColor(v_TexCoord, time, u_Base, u_PaletteEnd, u_PaletteOptions).rgb;
+        vec3 metal = baseColor * brushed;
         metal += u_Highlight.rgb * intensity * highlight * u_Highlight.a;
         metal += u_Highlight.rgb * sparkle * 0.26 * intensity;
 
@@ -174,25 +147,10 @@ void main() {
             metal = mix(metal, metal * (0.68 + prismTint * 0.62), clamp(prism * highlight, 0.0, 0.65));
         }
 
-        vec3 outCol = mix(base.rgb, metal, clamp(u_Base.a * mask, 0.0, 1.0));
+        outCol = mix(outCol, metal, clamp(u_Base.a * mask, 0.0, 1.0));
         outCol = mix(outCol, u_Shadow.rgb, edge * u_Shadow.a * shadowStrength * 0.34);
         outCol += u_Glow.rgb * edge * u_Glow.a * glowStrength * 0.25;
-        color = vec4(clamp(outCol, 0.0, 1.0), 1.0);
-        return;
     }
 
-    float hitAmount = 0.0;
-    float d = handMetalEdgeDistance(oneTexel, edgeWidth, hitAmount);
-    if (hitAmount > 0.01) {
-        float falloff = clamp(1.0 - d, 0.0, 1.0);
-        falloff = falloff * falloff * (3.0 - 2.0 * falloff);
-        float shadowA = falloff * u_Shadow.a * shadowStrength * 0.48;
-        float glowA = pow(falloff, 1.28) * u_Glow.a * glowStrength * 0.40;
-        vec3 outCol = mix(base.rgb, u_Shadow.rgb, shadowA);
-        outCol += u_Glow.rgb * glowA;
-        color = vec4(clamp(outCol, 0.0, 1.0), 1.0);
-        return;
-    }
-
-    color = vec4(base.rgb, 1.0);
+    color = vec4(clamp(outCol, 0.0, 1.0), 1.0);
 }

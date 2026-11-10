@@ -5,9 +5,7 @@
  */
 package combatant.client.render.engine.scene.visibility;
 
-/**
- * Explicit culling cost tiers. SECTION_ONLY intentionally does not touch FOV/projection math.
- */
+/** Selects section-visibility and frustum-culling checks. */
 public enum SceneVisibilityMode {
     NONE(false, false),
     SECTION_ONLY(true, false),

@@ -29,6 +29,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Dispatches {@link EventHandler} methods registered to an event type or its superclass.
+ * Handlers of the concrete type run before handlers of each superclass, with
+ * descending priority within each type. Module listeners are gated by module state.
+ */
 public final class EventBus {
     private static final Subscriber[] EMPTY_SUBSCRIBERS = new Subscriber[0];
     private static final Comparator<Subscriber> PRIORITY =
@@ -38,11 +43,9 @@ public final class EventBus {
 
     private final Reference2ObjectOpenHashMap<Class<?>, Subscriber[]> exactHandlers = new Reference2ObjectOpenHashMap<>();
     /*
-     * Posting is overwhelmingly more frequent than registration. In particular collision
-     * hooks can post hundreds of events per client tick. Keeping this cache behind the
-     * registration lock made every already-resolved dispatch enter a monitor for no reason.
-     * The exact handler table is still mutated under lock; published flattened arrays are
-     * immutable snapshots and can therefore be read lock-free.
+     * Registration mutates exactHandlers under lock and invalidates dispatchCache.
+     * Flattened subscriber arrays are immutable once published, so dispatch can read
+     * cached arrays without acquiring the registration lock.
      */
     private final ConcurrentHashMap<Class<?>, Subscriber[]> dispatchCache = new ConcurrentHashMap<>();
     private final Reference2ObjectOpenHashMap<Object, Subscriber[]> ownerIndex = new Reference2ObjectOpenHashMap<>();
@@ -138,10 +141,9 @@ public final class EventBus {
     }
 
     /**
-     * True if posting this event type could reach at least one handler. Hot mixins use this to
-     * skip allocating events (e.g. one EventCollision per block per collision query). Modules
-     * are always registered, so counting disabled ones made every guard pass even when the only
-     * listeners were switched off; posting to them is a no-op anyway, so they are skipped here.
+     * Returns whether the event type or any of its superclasses has a subscriber
+     * whose module gate is lifecycle-enabled (or has no module gate).
+     * This is a registration precheck; it does not invoke subscribers.
      */
     public boolean hasListeners(Class<? extends Event> eventType) {
         for (Subscriber sub : subscribersFor(eventType)) {
@@ -151,6 +153,13 @@ public final class EventBus {
         return false;
     }
 
+    /**
+     * Dispatches an event to matching subscribers on the calling thread.
+     * If the client runtime gate is closed, returns the event without dispatching.
+     * Failure handling follows the subscriber's registered isolation boundary.
+     *
+     * @return the same event instance, or {@code null} for null input
+     */
     public <T extends Event> T post(T event) {
         if (event == null) return null;
         if (!RuntimeGate.canRunClientLogic()) return event;
@@ -251,8 +260,7 @@ public final class EventBus {
         method.setAccessible(true);
         try {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
-            // Pre-adapt the handle to (Event)void once. A plain MethodHandle.invoke() re-resolves the
-            // caller/callee type adaptation on every call; invokeExact() on the adapted handle does not.
+            // Adapt the method handle once to the Event signature used by invokeExact.
             MethodHandle handle = lookup.unreflect(method).bindTo(listener)
                     .asType(MethodType.methodType(void.class, Event.class));
             return event -> {

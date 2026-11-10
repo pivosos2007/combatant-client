@@ -23,6 +23,9 @@ public enum HandSmokeUniforms {
             .putFloat().putFloat().putFloat().putFloat() // u_Params0
             .putFloat().putFloat().putFloat().putFloat() // u_Params1
             .putFloat().putFloat().putFloat().putFloat() // u_Params2
+            .putFloat().putFloat().putFloat().putFloat() // palette secondary
+            .putFloat().putFloat().putFloat().putFloat() // palette controls
+            .putVec4() // raw time for independent palette animation
             .get();
 
     private static final Data DATA = new Data();
@@ -35,7 +38,9 @@ public enum HandSmokeUniforms {
             float shadowR, float shadowG, float shadowB, float shadowA,
             float edgeWidth, float quality, float octaves, float time,
             float resX, float resY, float scale, float contrast,
-            float swirl, float glowStrength, float shadowStrength, float density
+            float swirl, float glowStrength, float shadowStrength, float density,
+            float paletteEndR, float paletteEndG, float paletteEndB, float paletteEndA,
+            float paletteMode, float paletteSpeed, float paletteSpan, float paletteAngle, float paletteTime
     ) {
         DATA.fillR = fillR;
         DATA.fillG = fillG;
@@ -61,6 +66,14 @@ public enum HandSmokeUniforms {
         DATA.glowStrength = glowStrength;
         DATA.shadowStrength = shadowStrength;
         DATA.density = density;
+        DATA.paletteEndR = paletteEndR;
+        DATA.paletteEndG = paletteEndG;
+        DATA.paletteEndB = paletteEndB;
+        DATA.paletteEndA = paletteEndA;
+        DATA.paletteMode = paletteMode;
+        DATA.paletteSpeed = paletteSpeed;
+        DATA.paletteSpan = paletteSpan;
+        DATA.paletteAngle = paletteAngle; DATA.paletteTime=paletteTime;
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
 
@@ -75,6 +88,9 @@ public enum HandSmokeUniforms {
         private float edgeWidth, quality, octaves, time;
         private float resX, resY, scale, contrast;
         private float swirl, glowStrength, shadowStrength, density;
+        private float paletteEndR, paletteEndG, paletteEndB, paletteEndA;
+        private float paletteMode, paletteSpeed, paletteSpan, paletteAngle;
+        private float paletteTime;
 
         @Override
         public void write(java.nio.ByteBuffer buffer) {
@@ -84,7 +100,10 @@ public enum HandSmokeUniforms {
                     .putFloat(shadowR).putFloat(shadowG).putFloat(shadowB).putFloat(shadowA)
                     .putFloat(edgeWidth).putFloat(quality).putFloat(octaves).putFloat(time)
                     .putFloat(resX).putFloat(resY).putFloat(scale).putFloat(contrast)
-                    .putFloat(swirl).putFloat(glowStrength).putFloat(shadowStrength).putFloat(density);
+                    .putFloat(swirl).putFloat(glowStrength).putFloat(shadowStrength).putFloat(density)
+                    .putFloat(paletteEndR).putFloat(paletteEndG).putFloat(paletteEndB).putFloat(paletteEndA)
+                    .putFloat(paletteMode).putFloat(paletteSpeed).putFloat(paletteSpan).putFloat(paletteAngle)
+                    .putFloat(paletteTime).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
         }
 
         @Override

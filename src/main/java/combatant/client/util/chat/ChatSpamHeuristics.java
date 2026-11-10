@@ -15,7 +15,7 @@ import java.util.Set;
 
 /**
  * Small, allocation-conscious chat heuristics shared by BetterChat storage/filtering.
- * The detector is intentionally conservative: it only suppresses strongly malformed/noisy
+ * The detector is conservative: it only suppresses strongly malformed/noisy
  * payloads and leaves ordinary player messages, links and server formatting alone.
  */
 public enum ChatSpamHeuristics {

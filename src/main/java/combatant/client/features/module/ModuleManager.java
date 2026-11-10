@@ -337,9 +337,6 @@ public enum ModuleManager {
         return false;
     }
 
-    // ---------------------------
-    // 3D WORLD рендер
-    // ---------------------------
 
     public static void renderWorld(WorldPhase phase, PoseStack matrices, SubmitNodeCollector consumers, float tickDelta) {
         if (!RuntimeGate.canRunRender()) return;
@@ -392,7 +389,7 @@ public enum ModuleManager {
 
     /**
      * Collects per-frame world-space post-process requests immediately before PRE_HAND post.
-     * This is deliberately separate from WorldPhase because a module may render normal geometry
+     * This is separate from WorldPhase because a module may render normal geometry
      * in END_MAIN and still contribute an invisible depth-tested post mask in the same frame.
      */
     public static void prepareWorldPostProcess(float tickDelta) {
@@ -420,9 +417,7 @@ public enum ModuleManager {
         return false;
     }
 
-    // ---------------------------
     // KEY HANDLING
-    // ---------------------------
 
     public static void handleModuleKeybinds() {
         if (!RuntimeGate.canRunModules() || !CombatantInput.bindings().hasPendingGamePress()) return;
@@ -578,9 +573,7 @@ public enum ModuleManager {
         }
     }
 
-    // ====================================
     //   Sound suppression for batched toggles
-    // ====================================
     public static boolean isToggleSoundSuppressed() {
         return suppressToggleSound;
     }
@@ -633,9 +626,7 @@ public enum ModuleManager {
         }
     }
 
-    // ============================
     //   CONFIG ORCHESTRATION
-    // ============================
 
     /**
      * Loads and applies config for all modules (enabled state + settings).

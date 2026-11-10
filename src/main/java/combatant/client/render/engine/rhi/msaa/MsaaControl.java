@@ -14,11 +14,8 @@ import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 
 /**
- * RHI-owned MSAA capability surface.
- * <p>
- * The current implementation is OpenGL/Sodium specific because Minecraft 1.21.x still exposes the active renderer
- * through GL-backed Mojang objects. When a Vulkan backend exists, replace the implementation behind this interface
- * and keep mixins/features calling this capability instead of reintroducing backend-specific logic outside RHI.
+ * Backend-facing operations for multisampled targets, framebuffer attachment and resolve.
+ * Unsupported optional resolve operations return {@code false}.
  */
 public interface MsaaControl {
     boolean supported();

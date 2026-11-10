@@ -65,9 +65,7 @@ public final class AtomicFileStore {
         return file.resolveSibling(file.getFileName() + BACKUP_SUFFIX);
     }
 
-    // =============================================================
     //   Write
-    // =============================================================
 
     /**
      * Atomically replaces {@code target}. The existing primary is copied to {@code .bak} first, but only
@@ -132,9 +130,7 @@ public final class AtomicFileStore {
         }
     }
 
-    // =============================================================
     //   Read / recovery
-    // =============================================================
 
     /**
      * Reads {@code file}; if missing, empty-handed. If the primary fails validation the backup is

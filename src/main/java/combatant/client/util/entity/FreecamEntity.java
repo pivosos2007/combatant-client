@@ -46,6 +46,6 @@ public class FreecamEntity extends RemotePlayer {
 
     @Override
     public boolean shouldRenderAtSqrDistance(double distance) {
-        return false; // якорь: в мире может существовать, но не рисуется
+        return false; // The anchor may remain in the world without being rendered.
     }
 }

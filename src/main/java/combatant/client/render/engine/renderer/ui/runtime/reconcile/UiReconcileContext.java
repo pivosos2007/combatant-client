@@ -9,6 +9,9 @@ package combatant.client.render.engine.renderer.ui.runtime.reconcile;
 
 import combatant.client.render.engine.renderer.ui.runtime.core.UiLifecycle;
 
+/**
+ * Carries lifecycle callbacks and reconciliation statistics through a tree update.
+ */
 public final class UiReconcileContext {
     private final UiLifecycle lifecycle;
     private final UiDiffStats stats = new UiDiffStats();

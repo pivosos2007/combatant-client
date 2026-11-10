@@ -165,9 +165,7 @@ public final class WorldRenderPipelines {
             .withCull(false)
             .build();
 
-    // ======================
     // World (3D)
-    // ======================
     /**
      * No depth test; translucent; lines.
      */
@@ -213,7 +211,7 @@ public final class WorldRenderPipelines {
             .withCull(false)
             .build();
 
-    /** Depth-tested colored geometry that is intentionally coplanar with scene surfaces. */
+    /** Depth-tested colored geometry that is coplanar with scene surfaces. */
     @PipelineRegister
     public static final RenderPipeline WORLD_COLORED_COPLANAR_DEPTH = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_colored_coplanar_depth"))
@@ -327,9 +325,7 @@ public final class WorldRenderPipelines {
             .withCull(false)
             .build();
 
-    /**
-     * No depth test; camera-facing world UI rounded fills and single-pass soft shadows.
-     */
+    /** Disables depth testing for camera-facing world UI. */
     @PipelineRegister
     public static final RenderPipeline WORLD_BILLBOARD_SDF = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_billboard_sdf"))
@@ -418,6 +414,35 @@ public final class WorldRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
+    /** A single world glyph quad composes face and outline/drop shadow in its fragment shader. */
+    @PipelineRegister
+    public static final RenderPipeline WORLD_TEXT_EFFECT = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_text_effect"))
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("world_text_effect.vert"))
+            .withFragmentShader(shader("world_text_effect.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
+    @PipelineRegister
+    public static final RenderPipeline WORLD_TEXT_EFFECT_DEPTH = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_text_effect_depth"))
+            .withVertexFormat(CombatantVertexFormats.POS3_TEXTURE_COLOR_PARAMS2,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("world_text_effect.vert"))
+            .withFragmentShader(shader("world_text_effect.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withCull(false)
+            .build();
+
     /**
      * No depth test; additive; textured triangles.
      */

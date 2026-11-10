@@ -1,28 +1,40 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.features.gui.mainmenu;
 
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiHoneycombMaterialSpec;
 
 final class MainMenuHexTrail {
-    static final int MAX_SOURCES = 48;
-    private static final int CAPACITY = 192;
-    private static final float LIFETIME = 4.4f;
-    private static final int EMISSIONS_PER_STEP = 4;
-    private static final long EMISSION_INTERVAL_NS = 36_000_000L;
-    private static final float SQRT3 = 1.7320508f;
+    static final int MAX_SOURCES = 64;
+    private static final int AMBIENT_RESERVED_SOURCES = 5;
+    private static final int CAPACITY = 768;
+    private static final long TRAIL_SAMPLE_NS = 12_000_000L;
+    private static final float LIFETIME = 7.0f;
+
     private final Pulse[] pulses = new Pulse[CAPACITY];
     private final PlasmaSource[] sources = new PlasmaSource[MAX_SOURCES];
     private int next;
     private int sourceCount;
-    private int sourceCursor;
     private long lastFrame;
-    private long lastPlasmaEmission;
     private long serial;
+    private long directSince;
+    private long lastTrailEmission;
     private float lastX;
     private float lastY;
+    private float cursorDirX;
+    private float cursorDirY;
+    private float cursorEnergy;
     private float width;
     private float height;
     private boolean tracking;
+    private boolean directMode;
+    private boolean pointerPressed;
 
     MainMenuHexTrail() {
         for (int i = 0; i < CAPACITY; i++) pulses[i] = new Pulse();
@@ -30,164 +42,172 @@ final class MainMenuHexTrail {
     }
 
     void advance(float viewportWidth, float viewportHeight, float mouseX, float mouseY,
-                 MainMenuBackdrop.GridLayout grid, long now) {
+                 MainMenuBackdrop.GridLayout grid, long now, boolean directCursorFluid,
+                 boolean pointerDown) {
         if (viewportWidth != width || viewportHeight != height || now - lastFrame > 2_000_000_000L) {
             reset();
             width = viewportWidth;
             height = viewportHeight;
         }
+        float dt = lastFrame == 0L ? 1f / 60f : clamp((now - lastFrame) * 1.0e-9f, 1f / 240f, 0.05f);
         lastFrame = now;
         sourceCount = 0;
-        if (mouseX >= 0f && mouseX <= width && mouseY >= 0f && mouseY <= height) {
-            updateMouse(mouseX, mouseY, grid.radius(), now);
-        } else {
+        if (directMode != directCursorFluid) {
+            for (Pulse pulse : pulses) pulse.created = 0L;
+            next = 0;
             tracking = false;
+            pointerPressed = false;
+            directMode = directCursorFluid;
         }
-        if (now - lastPlasmaEmission >= EMISSION_INTERVAL_NS) {
-            float radius = grid.radius();
-            int examined = 0;
-            int emitted = 0;
-            while (examined < CAPACITY && emitted < EMISSIONS_PER_STEP) {
-                int index = (sourceCursor + examined) % CAPACITY;
-                examined++;
-                Pulse pulse = pulses[index];
-                if (pulse.created == 0L) continue;
-                float age = (now - pulse.created) * 1.0e-9f;
-                if (age < 1.40f || age > LIFETIME || now - pulse.emitted < 110_000_000L) continue;
-                float fade = 1f - smoothstep(1.95f, LIFETIME, age);
-                if (fade <= 0.01f) continue;
-                float baseAngle = (float)Math.atan2(pulse.dy, pulse.dx);
-                if (pulse.energy <= 0.001f) baseAngle = (float)(pulse.serial * 2.399963229728653);
-                float swirl = (float)Math.sin(age * 2.15f + pulse.serial * 0.37f);
-                float angle = baseAngle + swirl * 0.65f;
-                float distance = radius * Math.min(2.95f, 0.36f + age * (0.78f + pulse.energy * 0.34f));
-                float x = pulse.x + (float)Math.cos(angle) * distance;
-                float y = pulse.y + (float)Math.sin(angle) * distance;
-                int before = sourceCount;
-                emitOnEdge(x, y, grid, angle, 0.24f + fade * (0.38f + pulse.energy * 0.26f),
-                        (float)((pulse.serial * 0.61803398875) % 1.0), radius,
-                        pulse.dx, pulse.dy, pulse.energy);
-                if (sourceCount > before) {
-                    pulse.emitted = now;
-                    emitted++;
-                }
-            }
-            sourceCursor = (sourceCursor + examined) % CAPACITY;
-            lastPlasmaEmission = now;
+        if (mouseX < 0f || mouseX > width || mouseY < 0f || mouseY > height) {
+            tracking = false;
+            pointerPressed = false;
+            return;
+        }
+        if (directCursorFluid) {
+            advanceDirectCursor(mouseX, mouseY, now, dt, pointerDown);
+        } else {
+            updateMouse(mouseX, mouseY, grid.radius(), now, true);
+            collectPulses(now);
         }
     }
 
-    void emitAmbient(float x, float y, float angle, float strength, MainMenuBackdrop.GridLayout grid) {
-        emitOnEdge(x, y, grid, angle, strength, 0.24f + 0.50f * (float)Math.sin(angle * 1.7f),
-                grid.radius(), (float)Math.cos(angle), (float)Math.sin(angle), strength * 0.55f);
-    }
-
-    private void emitOnEdge(float x, float y, MainMenuBackdrop.GridLayout grid,
-                            float phase, float strength, float tint, float radius,
-                            float impulseX, float impulseY, float impulseEnergy) {
-        if (sourceCount >= MAX_SOURCES || x < -radius || x > width + radius
-                || y < -radius || y > height + radius) return;
-        float px = x - grid.originX();
-        float py = y - grid.originY();
-        float q = (px / SQRT3 - py / 3f) / radius;
-        float r = (2f * py / 3f) / radius;
-        float cx = Math.round(q);
-        float cy = Math.round(-q - r);
-        float cz = Math.round(r);
-        float ex = Math.abs(cx - q);
-        float ey = Math.abs(cy + q + r);
-        float ez = Math.abs(cz - r);
-        if (ex > ey && ex > ez) cx = -cy - cz;
-        else if (!(ey > ez)) cz = -cx - cy;
-        float ox = grid.originX() + SQRT3 * radius * (cx + cz * 0.5f);
-        float oy = grid.originY() + 1.5f * radius * cz;
-
-        float energy = clamp(strength, 0.01f, 1f);
-        float il = Math.max(0.001f, (float)Math.hypot(impulseX, impulseY));
-        float ix = impulseX / il;
-        float iy = impulseY / il;
-        float memory = clamp(impulseEnergy, 0f, 1f);
-        float edgeSpread = 0.88f + memory * 0.22f;
-        float radiusScale = clamp(radius * 0.52f + memory * 5.5f, 12f, 26f);
-
-        for (int k = 0; k < 6 && sourceCount < MAX_SOURCES; k++) {
-            double a = -Math.PI * 0.5 + k * Math.PI / 3.0;
-            double b = a + Math.PI / 3.0;
-            float ax = ox + (float)Math.cos(a) * radius;
-            float ay = oy + (float)Math.sin(a) * radius;
-            float bx = ox + (float)Math.cos(b) * radius;
-            float by = oy + (float)Math.sin(b) * radius;
-            float mx = (ax + bx) * 0.5f;
-            float my = (ay + by) * 0.5f;
-            float dx = bx - ax;
-            float dy = by - ay;
-            float inv = 1f / Math.max((float)Math.hypot(dx, dy), 0.001f);
-            float tx = dx * inv;
-            float ty = dy * inv;
-            float nx = mx - ox;
-            float ny = my - oy;
-            float nn = 1f / Math.max((float)Math.hypot(nx, ny), 0.001f);
-            nx *= nn;
-            ny *= nn;
-
-            float alignment = Math.max(0f, nx * ix + ny * iy);
-            float side = ((k & 1) == 0 ? 1f : -1f) * ((float)Math.sin(phase * 1.29f + k * 0.91f) >= 0f ? 1f : -1f);
-            float blend = 0.26f + memory * 0.34f + alignment * 0.22f;
-            float dirX = tx * side * (1f - blend) + ix * blend + nx * (0.30f + alignment * 0.28f);
-            float dirY = ty * side * (1f - blend) + iy * blend + ny * (0.30f + alignment * 0.28f);
-            float dl = Math.max(0.001f, (float)Math.hypot(dirX, dirY));
-            dirX /= dl;
-            dirY /= dl;
-
-            float sourceStrength = energy * (0.46f + alignment * 0.44f);
-            float offset = radius * (0.08f + alignment * 0.05f);
-            appendSource(mx + nx * offset, my + ny * offset,
-                    dirX * edgeSpread, dirY * edgeSpread,
-                    sourceStrength, clamp(tint + k * 0.07f, 0f, 1f), radiusScale + alignment * 3.5f,
-                    memory);
+    private void collectPulses(long now) {
+        int active = 0;
+        for (int i = 0; i < CAPACITY; i++) {
+            Pulse pulse = pulses[(next - 1 - i + CAPACITY) % CAPACITY];
+            if (pulse.created != 0L && (now - pulse.created) * 1.0e-9f <= LIFETIME) active++;
+        }
+        int budget = MAX_SOURCES - AMBIENT_RESERVED_SOURCES;
+        int stride = Math.max(1, (active + budget - 1) / budget);
+        int rank = 0;
+        for (int i = 0; i < CAPACITY && sourceCount < budget; i++) {
+            Pulse pulse = pulses[(next - 1 - i + CAPACITY) % CAPACITY];
+            if (pulse.created == 0L) continue;
+            float age = (now - pulse.created) * 1.0e-9f;
+            if (age < 0f || age > LIFETIME) continue;
+            if (rank++ % stride != 0) continue;
+            PlasmaSource source = sources[sourceCount++];
+            source.x = pulse.x;
+            source.y = pulse.y;
+            source.vx = pulse.dx * (80f + 300f * pulse.energy);
+            source.vy = pulse.dy * (80f + 300f * pulse.energy);
+            source.intensity = 0.28f + 0.72f * pulse.energy;
+            source.tint = fract(pulse.serial * 0.61803398875f);
+            source.age = age;
+            source.momentum = pulse.energy;
         }
     }
 
-    private void appendSource(float x, float y, float dirX, float dirY,
-                              float intensity, float tint, float radius, float momentum) {
-        if (sourceCount >= MAX_SOURCES) return;
-        PlasmaSource src = sources[sourceCount++];
-        src.x = clamp(x, 0f, width);
-        src.y = clamp(y, 0f, height);
-        src.vx = dirX * (115f + intensity * 240f + momentum * 180f);
-        src.vy = dirY * (115f + intensity * 240f + momentum * 180f);
-        src.intensity = clamp(intensity, 0.01f, 1.35f);
-        src.tint = clamp(tint, 0f, 1f);
-        src.radius = clamp(radius, 12f, 30f);
-        src.momentum = clamp(momentum, 0f, 1f);
+    void emitAmbient(float x, float y, float angle, float strength, float age) {
+        if (sourceCount >= MAX_SOURCES || x < 0f || y < 0f || x > width || y > height) return;
+        PlasmaSource source = sources[sourceCount++];
+        source.x = x;
+        source.y = y;
+        source.vx = (float)Math.cos(angle) * 28f;
+        source.vy = (float)Math.sin(angle) * 28f;
+        source.intensity = clamp(strength, 0f, 0.55f);
+        source.tint = fract(angle * 0.15915494f);
+        source.age = age;
+        source.momentum = -1f;
     }
 
-    private void updateMouse(float x, float y, float radius, long now) {
-        if (!tracking) {
+    private void advanceDirectCursor(float x, float y, long now, float dt, boolean down) {
+        if (!down) {
+            pointerPressed = false;
             tracking = true;
             lastX = x;
             lastY = y;
-            addPulse(x, y, 0f, 0f, 0f, now);
+            return;
+        }
+        if (!pointerPressed || !tracking) {
+            pointerPressed = true;
+            tracking = true;
+            directSince = now;
+            lastX = x;
+            lastY = y;
+            emitCursor(x, y, 0f, 0f, 0.90f, now);
             return;
         }
         float dx = x - lastX;
         float dy = y - lastY;
         float distance = (float)Math.hypot(dx, dy);
-        float step = Math.max(9f, radius * 0.54f);
-        if (distance < step) return;
+        if (distance < 0.4f || distance > Math.max(width, height) * 0.45f) {
+            lastX = x;
+            lastY = y;
+            return;
+        }
+        float speed = distance / Math.max(dt, 0.001f);
+        float energy = clamp(speed / 1300f, 0.24f, 1.35f);
+        float vx = dx / dt;
+        float vy = dy / dt;
+        float forceScale = Math.min(1f, 1850f / Math.max(speed, 1f));
+        vx *= forceScale;
+        vy *= forceScale;
+        int splats = Math.min(MAX_SOURCES - AMBIENT_RESERVED_SOURCES, Math.max(1, (int)Math.ceil(distance / 13f)));
+        float sampleStrength = energy / (float)Math.sqrt(splats);
+        for (int i = 1; i <= splats; i++) {
+            float t = i / (float)splats;
+            emitCursor(lastX + dx * t, lastY + dy * t, vx, vy, sampleStrength, now);
+        }
+        lastX = x;
+        lastY = y;
+    }
+
+    private void emitCursor(float x, float y, float vx, float vy, float intensity, long now) {
+        if (sourceCount >= MAX_SOURCES - AMBIENT_RESERVED_SOURCES) return;
+        PlasmaSource source = sources[sourceCount++];
+        source.x = x;
+        source.y = y;
+        source.vx = vx;
+        source.vy = vy;
+        source.intensity = intensity;
+        source.tint = fract((float)(now * 1.0e-9 * 0.12));
+        source.age = (now - directSince) * 1.0e-9f;
+        source.momentum = 0f;
+    }
+
+    private void updateMouse(float x, float y, float radius, long now, boolean recordPulses) {
+        if (!tracking) {
+            tracking = true;
+            lastX = x;
+            lastY = y;
+            cursorDirX = 0f;
+            cursorDirY = 0f;
+            cursorEnergy = 0.10f;
+            if (recordPulses) addPulse(x, y, 0f, -1f, 0.16f, now);
+            return;
+        }
+        float dx = x - lastX;
+        float dy = y - lastY;
+        float distance = (float)Math.hypot(dx, dy);
+        float step = Math.max(8f, radius * 0.48f);
+        if (distance < step) {
+            if (!recordPulses) {
+                cursorDirX *= 0.86f;
+                cursorDirY *= 0.86f;
+            }
+            cursorEnergy = Math.max(0.10f, cursorEnergy * 0.93f);
+            return;
+        }
         if (distance >= Math.max(width, height) * 0.45f) {
             lastX = x;
             lastY = y;
             return;
         }
-        int count = Math.min(14, Math.max(1, (int)Math.floor(distance / step)));
-        float inv = 1f / Math.max(distance, 0.001f);
-        float dirX = dx * inv;
-        float dirY = dy * inv;
-        float energy = clamp(distance / (radius * 2.6f), 0.08f, 1f);
-        for (int i = 0; i < count; i++) {
-            float f = (i + 1f) / (float)count;
-            addPulse(lastX + dx * f, lastY + dy * f, dirX, dirY, energy, now);
+        float invDistance = 1f / Math.max(distance, 0.001f);
+        cursorDirX = dx * invDistance;
+        cursorDirY = dy * invDistance;
+        cursorEnergy = clamp(distance / (radius * 2.8f), 0.10f, 1f);
+        if (recordPulses) {
+            long elapsed = now - lastTrailEmission;
+            if (elapsed < TRAIL_SAMPLE_NS) return;
+            int steps = Math.min(3, Math.max(1, (int)(elapsed / TRAIL_SAMPLE_NS)));
+            for (int i = 0; i < steps; i++) {
+                float fraction = (i + 1f) / steps;
+                addPulse(lastX + dx * fraction, lastY + dy * fraction,
+                        cursorDirX, cursorDirY, cursorEnergy, now);
+            }
         }
         lastX = x;
         lastY = y;
@@ -197,22 +217,23 @@ final class MainMenuHexTrail {
         Pulse pulse = pulses[next];
         pulse.x = x;
         pulse.y = y;
-        pulse.created = now;
-        pulse.emitted = now;
-        pulse.serial = ++serial;
         pulse.dx = dx;
         pulse.dy = dy;
         pulse.energy = energy;
+        pulse.created = now;
+        pulse.serial = ++serial;
+        lastTrailEmission = now;
         next = (next + 1) % CAPACITY;
     }
 
     void render(float viewportWidth, float viewportHeight, float opacity,
                 MainMenuBackdrop.GridLayout grid, MainMenuBackdrop.Cutout cutout,
                 int color, int coldColor, UiHoneycombMaterialSpec material) {
+        if (directMode) return;
         for (int index = 0; index < CAPACITY; index++) {
             Pulse pulse = pulses[(next + index) % CAPACITY];
             if (pulse.created == 0L) continue;
-            float age = (lastFrame - pulse.created) * 1e-9f;
+            float age = (lastFrame - pulse.created) * 1.0e-9f;
             if (age < 0f || age > LIFETIME) continue;
             Renderer2D.COLOR.honeycombPulse(viewportWidth, viewportHeight,
                     grid.radius(), MainMenuBackdrop.HONEYCOMB_RIM_WIDTH, opacity,
@@ -223,26 +244,32 @@ final class MainMenuHexTrail {
     }
 
     int sourceCount() { return sourceCount; }
-    PlasmaSource source(int i) { return sources[i]; }
+    PlasmaSource source(int index) { return sources[index]; }
 
     void clear() { reset(); }
 
     private void reset() {
         for (Pulse pulse : pulses) pulse.created = 0L;
         next = 0;
+        sourceCount = 0;
         lastFrame = 0L;
         serial = 0L;
-        sourceCursor = 0;
-        sourceCount = 0;
-        lastPlasmaEmission = 0L;
+        directSince = 0L;
+        lastTrailEmission = 0L;
         tracking = false;
+        pointerPressed = false;
+        directMode = false;
+        cursorDirX = 0f;
+        cursorDirY = -1f;
+        cursorEnergy = 0f;
     }
 
-    private static float clamp(float x, float min, float max) { return Math.max(min, Math.min(max, x)); }
-    private static float smoothstep(float a, float b, float x) {
-        float t = clamp((x - a) / (b - a), 0f, 1f);
+    private static float clamp(float value, float min, float max) { return Math.max(min, Math.min(max, value)); }
+    private static float smoothstep(float min, float max, float value) {
+        float t = clamp((value - min) / (max - min), 0f, 1f);
         return t * t * (3f - 2f * t);
     }
+    private static float fract(float value) { return value - (float)Math.floor(value); }
 
     static final class PlasmaSource {
         float x;
@@ -251,7 +278,7 @@ final class MainMenuHexTrail {
         float vy;
         float intensity;
         float tint;
-        float radius;
+        float age;
         float momentum;
     }
 
@@ -262,7 +289,6 @@ final class MainMenuHexTrail {
         float dy;
         float energy;
         long created;
-        long emitted;
         long serial;
     }
 }

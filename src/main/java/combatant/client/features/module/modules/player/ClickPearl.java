@@ -67,9 +67,6 @@ public class ClickPearl extends Module {
         }
     }
 
-    // ===========================
-    //      ТВОЯ ЛОГИКА — НЕ ТРОНУТА
-    // ===========================
     private void tryThrowPearl() {
         LocalPlayer player = client.player;
         MultiPlayerGameMode manager = client.gameMode;

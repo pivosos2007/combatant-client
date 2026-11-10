@@ -48,7 +48,6 @@ public record UiEdgeSpec(UiEdgeKind kind,
         return new UiEdgeSpec(UiEdgeKind.CUT, -1f, (float) width, (float) depth);
     }
 
-    /** Rectangular tab extending out of the panel rather than cutting into it. */
     public static UiEdgeSpec protrusion(double offset, double width, double depth) {
         return new UiEdgeSpec(UiEdgeKind.PROTRUSION, (float) offset, (float) width, (float) depth);
     }

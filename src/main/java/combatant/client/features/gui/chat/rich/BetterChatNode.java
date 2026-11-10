@@ -10,7 +10,7 @@ package combatant.client.features.gui.chat.rich;
 /**
  * One independently laid out node in a BetterChat message.
  *
- * <p>Nodes are intentionally data-only. Input policy and rendering live at the
+ * <p>Nodes are data-only. Input policy and rendering live at the
  * BetterChat surface, so message producers never depend on renderer internals.</p>
  */
 public sealed interface BetterChatNode permits TextNode, ItemNode {

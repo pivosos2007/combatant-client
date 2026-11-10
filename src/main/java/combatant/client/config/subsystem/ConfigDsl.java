@@ -20,7 +20,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Lightweight declaration DSL shared by subsystem configs. */
+/**
+ * Collects ordered config values for subsystem settings definitions.
+ * Registered values are retained by reference; {@link #values()} returns a
+ * detached, unmodifiable list while {@link #settings(SettingDef...)} removes null entries.
+ */
 public final class ConfigDsl {
     private final List<ConfigValue<?>> values = new ArrayList<>();
 
@@ -48,6 +52,11 @@ public final class ConfigDsl {
         return value(new SetValue(name, defaultValue));
     }
 
+    /**
+     * Registers a value without copying it, preserving insertion order.
+     *
+     * @throws NullPointerException if the supplied value is null
+     */
     public <V extends ConfigValue<?>> V value(V value) {
         V nonNull = Objects.requireNonNull(value, "value");
         values.add(nonNull);

@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * GlCommandEncoder is package-private in Mojang's OpenGL backend, so this mixin
- * intentionally targets it by binary name instead of importing the class.
+ * targets it by binary name instead of importing the class.
  */
 @Mixin(targets = "com.mojang.renderpearl.backend.opengl.GlCommandEncoder")
 public abstract class GlCommandEncoderMixin {

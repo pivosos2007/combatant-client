@@ -9,6 +9,9 @@ package combatant.client.render.engine.renderer.ui.runtime.style;
 
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNodeSpec;
 
+/**
+ * Combines the class-derived or explicit base style with a node specification's inline overrides.
+ */
 public final class UiStyleResolver {
     private final UiStyleCache cache;
 

@@ -20,6 +20,7 @@ import combatant.client.features.module.ModuleSubcategoryDefinition;
 import combatant.client.features.module.ModuleSubcategoryRegistry;
 import combatant.client.features.gui.preview.VisualPreviewRegistry;
 
+import net.minecraft.client.Minecraft;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -52,7 +53,8 @@ enum ModulesMenuResolver {
                     bind == null ? "" : bind,
                     !module.getSettings().isEmpty() || VisualPreviewRegistry.supports(module) || SettingErrorView.hasFailure(module),
                     module.isEnabled(),
-                    !ErrorHandler.blocked(module),
+                    !ErrorHandler.blocked(module) && !(ClickGuiRenderer.isMenuSession()
+                            && Minecraft.getInstance().level == null),
                     SettingErrorView.hasFailure(module),
                     module.isShownInModuleList(),
                     module.getAliases()
@@ -66,6 +68,7 @@ enum ModulesMenuResolver {
     static void toggleEntry(String id) {
         Module module = moduleById(id);
         if (module == null) return;
+        if (ClickGuiRenderer.isMenuSession() && Minecraft.getInstance().level == null) return;
         if (ErrorHandler.blocked(module)) { FailureDiagnostics.showSummaryFor(module); return; }
         module.toggle();
     }

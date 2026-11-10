@@ -200,7 +200,7 @@ public enum ChatHoverUtil {
     }
 
     /**
-     * Fallback: find matching item/entity by display text ("[имя]" или "<<имя>>") or plain name.
+     * Fallback: find matching item/entity by display text ("[name]" or "<<name>>") or plain name.
      */
     @SuppressWarnings("unused")
     public static HoverTip inferFromDisplay(String rawWord, boolean looksLikeItem, Minecraft mc) {

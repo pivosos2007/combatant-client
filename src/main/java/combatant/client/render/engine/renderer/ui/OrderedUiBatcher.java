@@ -35,6 +35,7 @@ import combatant.client.render.engine.pipeline.UiBatchRenderPipelines;
 import combatant.client.render.engine.pipeline.PostProcessRenderPipelines;
 import combatant.client.render.engine.postprocess.PostProcessManager;
 import combatant.client.render.engine.profiler.ProfilerPhase;
+import combatant.client.render.engine.profiler.UiPipelineTelemetry;
 import combatant.client.render.engine.profiler.TracyGpuProfiler;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.renderer.Renderer2D;
@@ -187,6 +188,43 @@ public final class OrderedUiBatcher {
         return !order.isEmpty();
     }
 
+    /** Classify a failed adjacency merge without allocating a diagnostic object. */
+    private static void recordDrawBreak(Object previous, UiBatchType type, GpuTextureView view,
+                                        GpuSampler sampler, UiScissorSnapshot scissor, UiClipSnapshot clip) {
+        UiPipelineTelemetry.BatchBreakCause cause;
+        if (!(previous instanceof DrawBatch batch)) {
+            cause = UiPipelineTelemetry.BatchBreakCause.ORDER;
+        } else if (batch.type != type) {
+            cause = UiPipelineTelemetry.BatchBreakCause.TYPE;
+        } else if (batch.scissorSnapshot.id() != scissor.id()) {
+            cause = UiPipelineTelemetry.BatchBreakCause.SCISSOR;
+        } else if (batch.clipSnapshot.id() != clip.id()) {
+            cause = UiPipelineTelemetry.BatchBreakCause.CLIP;
+        } else if (type.usesSampler && (batch.view != view || batch.sampler != sampler)) {
+            cause = UiPipelineTelemetry.BatchBreakCause.SAMPLER;
+        } else {
+            cause = UiPipelineTelemetry.BatchBreakCause.PARAMETERS;
+        }
+        UiPipelineTelemetry.recordBatchBreak(cause);
+    }
+
+    private static void recordTextBreak(Object previous, GlyphFont font, RenderPipeline pipeline,
+                                        TextPlacementMode placement, UiScissorSnapshot scissor, UiClipSnapshot clip) {
+        UiPipelineTelemetry.BatchBreakCause cause;
+        if (!(previous instanceof TextBatch batch)) {
+            cause = UiPipelineTelemetry.BatchBreakCause.ORDER;
+        } else if (batch.pipeline != pipeline || batch.font != font || batch.placement != placement) {
+            cause = UiPipelineTelemetry.BatchBreakCause.TYPE;
+        } else if (batch.scissorSnapshot.id() != scissor.id()) {
+            cause = UiPipelineTelemetry.BatchBreakCause.SCISSOR;
+        } else if (batch.clipSnapshot.id() != clip.id()) {
+            cause = UiPipelineTelemetry.BatchBreakCause.CLIP;
+        } else {
+            cause = UiPipelineTelemetry.BatchBreakCause.PARAMETERS;
+        }
+        UiPipelineTelemetry.recordBatchBreak(cause);
+    }
+
     public DrawBatch getOrCreateMaterial(UiBatchType type,
             combatant.client.render.engine.renderer.ui.draw.UiSurfaceMaterialSpec.Mode mode,
             combatant.client.render.engine.renderer.ui.draw.UiMaterialLightingSpec.Source source,
@@ -203,6 +241,7 @@ public final class OrderedUiBatcher {
             last.includeGlassBounds(bounds);
             return last;
         }
+        if (!order.isEmpty()) recordDrawBreak(order.get(order.size() - 1), type, null, null, scissor, clip);
         DrawBatch batch = obtain(type);
         batch.begin(null, null, scissor, clip);
         batch.materialMode = mode;
@@ -225,6 +264,7 @@ public final class OrderedUiBatcher {
         if (!order.isEmpty()) {
             Object last = order.get(order.size() - 1);
             if (last instanceof DrawBatch drawBatch && drawBatch.canMerge(type, view, sampler, scissor, clip)) return drawBatch;
+            recordDrawBreak(last, type, view, sampler, scissor, clip);
         }
         DrawBatch batch = obtain(type);
         batch.begin(view, sampler, scissor, clip);
@@ -289,6 +329,7 @@ public final class OrderedUiBatcher {
                     normalizedBackdrop, normalizedBlend, scissor, clip)) {
                 return drawBatch;
             }
+            recordDrawBreak(last, type, view, sampler, scissor, clip);
         }
         DrawBatch batch = obtain(type);
         batch.beginBlur(view, sampler, normalizedQuality, normalizedOffset, normalizedBackdrop, normalizedBlend,
@@ -307,6 +348,7 @@ public final class OrderedUiBatcher {
             if (last instanceof DrawBatch drawBatch && drawBatch.canMergeMsdf(view, sampler, pxRange, atlasWidth, atlasHeight, scissor, clip)) {
                 return drawBatch;
             }
+            recordDrawBreak(last, UiBatchType.SVG_MSDF, view, sampler, scissor, clip);
         }
         DrawBatch batch = obtain(UiBatchType.SVG_MSDF);
         batch.beginMsdf(view, sampler, pxRange, atlasWidth, atlasHeight, scissor, clip);
@@ -324,6 +366,9 @@ public final class OrderedUiBatcher {
             if (last instanceof ItemBatch itemBatch && itemBatch.canMerge(context, scissor, clip)) {
                 return itemBatch;
             }
+            UiPipelineTelemetry.recordBatchBreak(last instanceof ItemBatch
+                    ? UiPipelineTelemetry.BatchBreakCause.PARAMETERS
+                    : UiPipelineTelemetry.BatchBreakCause.ORDER);
         }
         ItemBatch batch = obtainItemBatch();
         batch.begin(context, scissor, clip);
@@ -344,6 +389,7 @@ public final class OrderedUiBatcher {
                     && textBatch.canMerge(font, pipeline, normalizedPlacement, scissor, clip)) {
                 return textBatch;
             }
+            recordTextBreak(last, font, pipeline, normalizedPlacement, scissor, clip);
         }
 
         TextBatch batch = obtainTextBatch();
@@ -393,6 +439,7 @@ public final class OrderedUiBatcher {
                 textBatch.expandGlassBounds(bounds);
                 return textBatch;
             }
+            recordTextBreak(last, font, pipeline, normalizedPlacement, scissor, clip);
         }
 
         TextBatch batch = obtainTextBatch();

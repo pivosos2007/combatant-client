@@ -26,7 +26,7 @@ import org.lwjgl.opengl.ARBTextureView;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Native GL_TEXTURE_3D allocation owned by the active Mojang OpenGL context. */
+/** Native GL_TEXTURE_3D allocation owned by the active Minecraft OpenGL context. */
 final class GlStorageVolume implements RhiStorageVolume {
     private final StorageVolumeDescriptor descriptor;
     private final RhiStats stats;

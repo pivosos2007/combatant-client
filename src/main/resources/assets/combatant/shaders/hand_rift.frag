@@ -20,9 +20,13 @@ layout (std140) uniform HandRift {
     vec4 u_Screen;   // xy = framebuffer size, z = time, w = outer field width in pixels
     vec4 u_Warp;     // x = distortion pixels, y = flow speed, z = caustic strength, w = quality
     vec4 u_Effects;  // x = glow strength, y = shadow strength, zw reserved
+    vec4 u_PaletteEnd;
+    vec4 u_PaletteOptions;
 };
 
 layout(location = 0) in vec2 v_TexCoord;
+
+#include <combatant:hand_palette.glsl>
 
 const vec3 RIFT_LUMA = vec3(0.2126, 0.7152, 0.0722);
 const vec2 RIFT_EDGE_START_8[4] = vec2[](
@@ -238,7 +242,8 @@ void main() {
         focused = mix(focused, u_Shadow.rgb, saturate(compression));
 
         float tintAmount = saturate(u_Fill.a) * (0.08 + caustic * 0.055);
-        focused = mix(focused, focused * mix(vec3(1.0), u_Fill.rgb, 0.34), tintAmount);
+        vec3 paletteColor = handPaletteColor(uv, time, u_Fill, u_PaletteEnd, u_PaletteOptions).rgb;
+        focused = mix(focused, focused * mix(vec3(1.0), paletteColor, 0.34), tintAmount);
 
         color = vec4(saturate(focused), 1.0);
         return;

@@ -7,6 +7,9 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.action;
 
+/**
+ * Handles a UI action request. The result is propagated as the dispatch result.
+ */
 @FunctionalInterface
 public interface UiAction {
     boolean run(UiActionContext context);

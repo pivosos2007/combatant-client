@@ -73,6 +73,13 @@ public abstract class GuiMixin {
 
     @Inject(method = "setScreen", at = @At("HEAD"))
     private void combatant$closeClickGuiOnScreen(Screen screen, CallbackInfo ci) {
+        if (ClickGuiRenderer.isMenuSession()
+                && !(screen instanceof ClickGuiScreen)
+                && !(screen instanceof ClickGuiPickerScreen)
+                && !(screen instanceof ClickGuiEditorScreen)
+                && !(screen instanceof VisualPreviewScreen)) {
+            ClickGuiRenderer.abandonMenuSession();
+        }
         if (!ModuleManager.isEnabled("clickgui")) {
             return;
         }

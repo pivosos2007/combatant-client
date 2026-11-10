@@ -8,11 +8,11 @@
 package combatant.client.config.values;
 
 /**
- * Базовый тип для всех конфиг-значений.
+ * Base type for configuration values.
  */
 public abstract class ConfigValue<T> {
 
-    private final String name; // <---- ЭТО ТЕБЕ НУЖНО
+    private final String name; 
     protected T value;
     private boolean sensitive;
 
@@ -22,22 +22,16 @@ public abstract class ConfigValue<T> {
     }
 
     /**
-     * ключ в конфиге
+     * Persisted configuration key.
      */
     public String getName() {
         return name;
     }
 
-    /**
-     * Текущее значение
-     */
     public T get() {
         return value;
     }
 
-    /**
-     * Установить новое значение
-     */
     public void set(T v) {
         this.value = v;
     }
@@ -57,20 +51,17 @@ public abstract class ConfigValue<T> {
     }
 
     /**
-     * Сериализация:
-     * Возвращает примитив (Boolean, Number, String) или структуру (Map/List).
+     * Serialization:
+     * Returns a primitive or a Map/List representation.
      */
     public abstract Object toJson();
 
     /**
-     * Десериализация:
-     * На вход прилетает то же самое, что было возвращено в toJson().
+     * Deserialization:
+     * Accepts the representation returned by toJson().
      */
     public abstract void fromJson(Object json);
 
-    /**
-     * Для UI
-     */
     public String toDisplay() {
         return String.valueOf(value);
     }

@@ -10,8 +10,8 @@ package combatant.client.render.engine.rhi.pipeline;
 import combatant.client.render.engine.core.RenderPhase;
 
 /**
- * Backend-neutral pipeline policy. Native RenderPipeline still exists in the SodiumGL backend era,
- * but policy decisions must go through this spec rather than object identity.
+ * Backend-independent render-pipeline description.
+ * Policy is keyed by declared pipeline properties, not native pipeline object identity.
  */
 public record RenderPipelineSpec(PipelineKey key,
                                  RenderPhase phase,

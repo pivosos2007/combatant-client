@@ -9,6 +9,9 @@ package combatant.client.render.engine.renderer.ui.runtime.input;
 
 import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
 
+/**
+ * Maintains one focused UI node, clearing the previous node's focused state on changes.
+ */
 public final class UiFocusManager {
     private UiNode focused;
 

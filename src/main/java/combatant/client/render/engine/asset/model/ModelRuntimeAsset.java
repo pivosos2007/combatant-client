@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Immutable imported asset plus Combatant material bindings. This deliberately stops before GPU
+ * Immutable imported asset plus Combatant material bindings. This stops before GPU
  * residency: OpenGL and Vulkan upload the same compiled primitive through the shared RHI layer.
  */
 public final class ModelRuntimeAsset {

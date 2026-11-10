@@ -17,13 +17,23 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Simple position extrapolation based on current velocity.
+ * Extrapolates entity position from per-tick observed movement and its change since
+ * the previous tick. Samples are kept in a weak-keyed, unsynchronized cache;
+ * callers must serialize access to the prediction methods.
  */
 public enum PositionPredictor {
     ;
 
     private static final Map<Entity, State> STATES = new WeakHashMap<>();
 
+    /**
+     * Predicts a world-space position at a potentially fractional tick offset.
+     * The first sample has no preceding movement estimate, so acceleration contributes
+     * only after a second observed entity tick.
+     *
+     * @param ticks prediction horizon in ticks; nonpositive values return the current position
+     * @return {@link Vec3#ZERO} for a null entity
+     */
     public static Vec3 predictEntityPos(Entity entity, double ticks) {
         if (entity == null || ticks <= 0) {
             return entity != null ? entity.position() : Vec3.ZERO;
@@ -49,6 +59,10 @@ public enum PositionPredictor {
         return pos.add(eyeOffset);
     }
 
+    /**
+     * Translates the current entity bounding box by the predicted position delta;
+     * it does not predict changes in box dimensions.
+     */
     public static AABB predictBox(Entity entity, double ticks) {
         if (entity == null) return new AABB(0, 0, 0, 0, 0, 0);
         Vec3 predicted = predictEntityPos(entity, ticks);

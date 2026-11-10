@@ -12,16 +12,11 @@ import net.minecraft.core.SectionPos;
 import net.minecraft.world.phys.AABB;
 
 /**
- * Shared section/cell spatial index for Combatant-owned world geometry.
+ * Render-thread-owned section/cell index for Combatant world geometry.
  *
- * <p>This first production cut is deliberately synchronous and render-thread owned. Sodium's
- * visibility tree is itself a current-frame render structure, so an asynchronous query would need a
- * separate immutable/double-buffered snapshot and would otherwise race the exact data it is meant to
- * reuse. The API keeps that future snapshot option open without adding latency/locking now.</p>
- *
- * <p>Objects spanning too many sections use a conservative large-object side path instead of
- * exploding section membership. Mass consumers such as grass are expected to register clusters, not
- * individual blades.</p>
+ * <p>Records spanning more than the configured number of sections are kept in a separate
+ * large-object collection. World identity is compared by reference, and a change invalidates
+ * the existing records.</p>
  */
 public final class SceneSpatialRegistry {
     public static final int DEFAULT_MAX_SECTIONS_PER_RECORD = 256;

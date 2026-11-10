@@ -28,11 +28,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Non-owning logical bindings for deferred resources.
- *
- * <p>Explicit maps contain true external targets and the small set of legacy source-owned
- * resources. Graph-managed resources resolve directly through {@link FrameGraphPhysicalResourcePool};
- * consumers never observe physical allocation IDs.</p>
+ * Resolves deferred resources without owning their allocations.
+ * Explicit bindings refer to externally supplied or source-owned resources; frame-graph resources
+ * resolve through {@link FrameGraphPhysicalResourcePool}.
  */
 public final class DeferredResourceBindings {
     private final EnumMap<DeferredResource, GpuTextureView> textures = new EnumMap<>(DeferredResource.class);
@@ -164,7 +162,7 @@ public final class DeferredResourceBindings {
         return physical.textureView();
     }
 
-    /** Explicit external/legacy texture only; descriptor planning must not depend on a graph allocation. */
+    /** Returns an explicitly registered texture, excluding frame-graph allocations. */
     @Nullable GpuTextureView explicitTexture(DeferredResource resource) {
         return textures.get(resource);
     }
@@ -223,7 +221,7 @@ public final class DeferredResourceBindings {
         return isBound(resource) && isValid(resource);
     }
 
-    /** Semantic producer result for diagnostics. This is intentionally separate from logical validity. */
+    /** Semantic producer result for diagnostics. This is separate from logical validity. */
     public void publishStatus(DeferredResource resource,
                               String producerPassId,
                               DeferredResourceStatus status,

@@ -7,6 +7,8 @@
 package combatant.client.features.module.modules.combat;
 
 import combatant.client.config.values.BooleanValue;
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.ManualAttackEvent;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.module.Module;
@@ -68,6 +70,11 @@ public final class HitSelect extends Module {
         } else if (lastBlockTick == mc.player.tickCount || lastBlockTick == mc.player.tickCount - 1) {
             blockedTicks++;
         }
+    }
+
+    @EventHandler(priority = 4000)
+    private void onManualAttack(ManualAttackEvent event) {
+        if (!event.isResolved() && blocksManualAttack()) event.resolve(false);
     }
 
     /** Called from the manual attack entry point; true swallows the click. */

@@ -56,7 +56,6 @@ public class KeyboardMixin {
         options.keySprint.setDown(false);
     }
 
-    // ===== CHAR TYPING =====
     @Inject(method = "charTyped", at = @At("HEAD"), cancellable = true)
     private void combatant$onChar(long window, CharacterEvent input, CallbackInfo ci) {
         if (MinecraftInputAdapter.text(new String(Character.toChars(input.codepoint()))).isCancelled()) {
@@ -84,7 +83,7 @@ public class KeyboardMixin {
         // VisualPreviewScreen owns its text fields. The enabled ClickGui module must not route
         // characters into the hidden ClickGui section while this separate screen is active.
         if (ClientScreen.current() instanceof VisualPreviewScreen) return;
-        if (!RuntimeGate.canRunClientLogic() || !ModuleManager.isEnabled("clickgui")) return;
+        if (!RuntimeGate.canRunClientLogic() || !ClickGuiRenderer.isGuiSessionActive()) return;
         Screen activeScreen = ClientScreen.current();
         if (!(activeScreen instanceof ClickGuiScreen
                 || activeScreen instanceof ClickGuiPickerScreen
@@ -104,7 +103,6 @@ public class KeyboardMixin {
         }
     }
 
-    // ===== KEY DOWN =====
     @Inject(method = "keyPress", at = @At("HEAD"), cancellable = true)
     private void combatant$onKey(long window, int action, KeyEvent input, CallbackInfo ci) {
         KeyboardInputEvent event = MinecraftInputAdapter.keyboard(action, input);
@@ -228,7 +226,7 @@ public class KeyboardMixin {
                 }
             }
         }
-        if (!RuntimeGate.canRunClientLogic() || !ModuleManager.isEnabled("clickgui")) return;
+        if (!RuntimeGate.canRunClientLogic() || !ClickGuiRenderer.isGuiSessionActive()) return;
         Screen activeScreen = ClientScreen.current();
         if (!(activeScreen instanceof ClickGuiScreen
                 || activeScreen instanceof ClickGuiPickerScreen
@@ -237,7 +235,6 @@ public class KeyboardMixin {
 
         int key = event.key().physicalKey();
 
-        // ESC вЂ” Р·Р°РєСЂС‹С‚СЊ GUI
         if (key == InputKeys.ESCAPE && event.action() == InputAction.PRESS) {
             if (ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers())) {
                 ci.cancel();
@@ -248,19 +245,17 @@ public class KeyboardMixin {
                 ci.cancel();
                 return;
             }
-            ModuleManager.setEnabled("clickgui", false);
+            ClickGuiRenderer.closeFromScreen();
             ci.cancel();
             return;
         }
 
-        // РџРѕРёСЃРє РІ GUI
         if (ClickGuiSearch.isActive()) {
             ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers());
             ci.cancel();
             return;
         }
 
-        // РћР±С‹С‡РЅРѕРµ СЃРѕР±С‹С‚РёРµ РєР»Р°РІРёС€Рё
         if (ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers())) {
             ci.cancel();
         }

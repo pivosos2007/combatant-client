@@ -214,7 +214,7 @@ export function render(ctx) {
   };
   nodes.push(p.materialMode
     ? ui.shape({ ...basePaint, shape: "rounded-gradient",
-        materialMode: c(p.materialMode, ""), materialMicrotexture: true, materialThemeSync: true,
+        materialMode: c(p.materialMode, ""), materialThemeSync: true,
         style: ui.absolute(0, 0, width, height) })
     : ui.roundedGradient(basePaint));
 

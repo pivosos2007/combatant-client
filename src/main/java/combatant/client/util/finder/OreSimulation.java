@@ -48,20 +48,14 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Replays vanilla ore decoration for one chunk from the world seed, the "OreSim" technique.
+ * Predicts supported ore placements from the world seed and the placed feature's
+ * generation step and index. Predictions depend on matching the server's biome,
+ * feature order, placement modifiers and random-call sequence. Unsupported
+ * modifiers terminate that feature's prediction rather than advancing an
+ * incompatible random sequence.
  *
- * <p>Vanilla decorates each chunk with a {@link WorldgenRandom} seeded from the world seed and
- * the chunk origin, then re-seeds it per feature from that feature's global index within its
- * generation step. With the seed and those indices, every random call can be reproduced, so
- * ore positions are known without seeing the blocks (anti-xray hides them).</p>
- *
- * <p>The random sequence must match vanilla call for call: {@link #simulate} walks the placed
- * feature's modifiers in order and gives up on any modifier type it does not model, because a
- * single missed call shifts every later prediction.</p>
- *
- * <p>A replay is only right when the server generated its chunks exactly like this client's version with the
- * given seed. {@link #calibrate} checks that against the world: ores that generate next to air (nether quartz and
- * gold) are never hidden by anti-xray, so their predicted air-exposed blocks must show the ore.</p>
+ * <p>{@link #calibrate} compares predicted exposed ores against visible blocks,
+ * allowing callers to assess whether the assumed generation settings fit the world.</p>
  */
 public final class OreSimulation {
 
@@ -106,9 +100,9 @@ public final class OreSimulation {
     }
 
     /**
-     * Builds the vanilla registries and resolves the given nether features; {@code calibration} lists features used
-     * only by {@link #calibrate}. Slow (hundreds of milliseconds), so callers run it off the client thread once and
-     * cache the result.
+     * Resolves ore and calibration features against the client's vanilla Nether preset.
+     * This constructs the world-generation registry graph; avoid calling it from a
+     * latency-sensitive client callback.
      */
     public static OreSimulation forNether(List<ResourceKey<PlacedFeature>> ores,
                                           List<ResourceKey<PlacedFeature>> calibration) {
@@ -129,8 +123,8 @@ public final class OreSimulation {
                 .orElseThrow(() -> new IllegalStateException("vanilla preset has no " + stem.identifier()))
                 .generator();
 
-        // Same call the server makes in ChunkGenerator, with the same biome order, so the
-        // feature indices come out identical.
+        // Feature indices follow the client's vanilla biome/feature ordering.
+        // Server-side changes to that ordering invalidate the predicted RNG sequence.
         List<Holder<Biome>> biomes = List.copyOf(generator.getBiomeSource().possibleBiomes());
         List<FeatureSorter.StepFeatureData> steps = FeatureSorter.buildFeaturesPerStep(
                 biomes, biome -> biome.value().getGenerationSettings().features(), true);

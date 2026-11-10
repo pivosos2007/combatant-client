@@ -35,6 +35,7 @@ import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.gui.hud.HudClimateSurface;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
@@ -88,6 +89,8 @@ public final class TargetHud extends DraggableHudElement {
             .withFluid(0.37f, 0.54f).withCleanReveal(0.72f)
             .withInteractionStrength(0.92f).withChromaticAberration(0.75f)
             .withMagnification(1.006f).withShapeDeformation(false).withSpecular(false)
+            .withOpticalThickness(1.32f).withSurfaceRoughness(0.14f)
+            .withThinFilm(470f, 0.11f).withReactiveCoating(0.62f)
             .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
 
     private static final float BASE_WIDTH = 112.0f;
@@ -460,6 +463,7 @@ public final class TargetHud extends DraggableHudElement {
     }
 
     private final ModeValue surfaceMaterial = HudMaterialChoice.setting("target");
+    private final HudGlassSettings glassSettings = new HudGlassSettings("target", TARGET_GLASS);
 
     @Override
     public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
@@ -470,6 +474,7 @@ public final class TargetHud extends DraggableHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        glassSettings.addSettings(defs);
         defs.add(SettingDef.number(scale));
         defs.add(SettingDef.number(holdMs));
         defs.add(SettingDef.bool(totemPopCounter)
@@ -1577,6 +1582,7 @@ public final class TargetHud extends DraggableHudElement {
                         .withBevel(AnimationUtility.lerp(TARGET_GLASS.bevelWidth(), 0.29f, hit),
                                 AnimationUtility.lerp(TARGET_GLASS.bevelDepth(), 0.092f, hit))
                 : TARGET_GLASS;
+        optics = glassSettings.apply(optics);
         // Keep ice PBR intact. Its weather is an ordered climate overlay
         // over the composed glass (below); all other coats use climate glass
         // with the original TargetHUD impact chroma preserved.
@@ -1612,9 +1618,9 @@ public final class TargetHud extends DraggableHudElement {
                                float radius,
                                float scaleFactor,
                                float alphaFactor) {
-        UiGlassOpticsSpec chipOptics = TARGET_GLASS
+        UiGlassOpticsSpec chipOptics = glassSettings.apply(TARGET_GLASS
                 .withRefraction(0.005f).withBevel(0.18f, 0.028f)
-                .withInteractionStrength(0f).withChromaticAberration(0.38f);
+                .withInteractionStrength(0f).withChromaticAberration(0.38f));
         HudRenderUtil.drawReactiveGlass(x, y, width, height, radius, scaleFactor, true,
                 alphaFactor, alphaFactor,
                 null, chipOptics, true, 0f, 0f, targetClimateVisual());

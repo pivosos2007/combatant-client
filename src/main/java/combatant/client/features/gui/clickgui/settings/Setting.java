@@ -127,7 +127,6 @@ public abstract class Setting {
         };
     }
 
-    // --- UI ---
     public String getName() {
         return name;
     }
@@ -456,7 +455,7 @@ public abstract class Setting {
     public abstract float getHeight();
 
     /**
-     * Уникальный ID (для сериализации)
+     * Persistent setting identifier.
      */
     public String getId() {
         return name.toLowerCase().replace(" ", "_");
@@ -467,9 +466,6 @@ public abstract class Setting {
         return name.replace(" ", "_");
     }
 
-    // ======================================================
-    //      Сериализация (через ConfigValue)
-    // ======================================================
 
     public Object save() {
         if (value != null)
@@ -489,9 +485,7 @@ public abstract class Setting {
         return value;
     }
 
-    // ======================================================
     //      Visibility
-    // ======================================================
     public Setting visibleWhen(Supplier<Boolean> supplier) {
         this.visibility = supplier == null ? () -> true : supplier;
         return this;

@@ -14,6 +14,9 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import combatant.client.features.module.Module;
 
+/**
+ * Coordinates collecting, storing, comparing, importing and sharing configuration profiles.
+ */
 public final class ConfigProfileService {
     public static final ConfigProfileService INSTANCE = new ConfigProfileService();
 
@@ -99,7 +102,6 @@ public final class ConfigProfileService {
         return storage.importProfileFile(source, moveSource);
     }
 
-    // ---- share codes ----
 
     public String profileCode(ConfigProfileType type, String idOrName) throws IOException {
         return shareCodec.encodeProfile(storage.read(type, idOrName));

@@ -29,13 +29,19 @@ public final class UiMaterialCatalog {
         return switch (normalize(name)) {
             case "reactive-smoked", "smoked-glass" -> UiGlassOpticsSpec.LIQUID
                     .withMode(UiGlassOpticsSpec.Mode.REACTIVE_SMOKED).withCleanReveal(0.42f)
-                    .withChromaticAberration(0.075f);
+                    .withChromaticAberration(0.075f)
+                    .withOpticalThickness(1.28f).withSurfaceRoughness(0.34f)
+                    .withFrost(0.24f).withReactiveCoating(0.36f);
             case "soft-lens" -> UiGlassOpticsSpec.LIQUID
                     .withMode(UiGlassOpticsSpec.Mode.SOFT_LENS).withCleanReveal(0.34f)
-                    .withMagnification(1.055f).withChromaticAberration(0.14f);
+                    .withMagnification(1.055f).withChromaticAberration(0.14f)
+                    .withOpticalThickness(1.65f).withSurfaceRoughness(0.13f)
+                    .withThinFilm(460f, 0.18f).withReactiveCoating(0.22f);
             case "etched-glass" -> UiGlassOpticsSpec.LIQUID
                     .withMode(UiGlassOpticsSpec.Mode.ETCHED_GLASS).withCleanReveal(0.20f)
-                    .withChromaticAberration(0.018f);
+                    .withChromaticAberration(0.018f)
+                    .withSurfaceRoughness(0.67f).withFrost(0.78f)
+                    .withOpticalThickness(0.88f);
             default -> UiGlassOpticsSpec.LIQUID;
         };
     }

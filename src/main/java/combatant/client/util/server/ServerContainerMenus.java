@@ -35,7 +35,6 @@ public final class ServerContainerMenus {
         return ClientScreen.current(mc) instanceof AbstractContainerScreen<?> screen ? screen.getTitle().getString() : "";
     }
 
-    /** Slots that belong to the server menu rather than the player inventory. */
     public static boolean isMenuSlot(Slot slot) {
         return !(slot.container instanceof Inventory);
     }

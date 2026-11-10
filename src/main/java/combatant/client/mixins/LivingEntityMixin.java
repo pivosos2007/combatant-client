@@ -228,15 +228,7 @@ public abstract class LivingEntityMixin {
     }
 
     /**
-     * Local totem cooldowns are handled from the confirmed entity-status packet when explicitly configured.
-     */
-    @Inject(method = "checkTotemDeathProtection", at = @At("RETURN"))
-    private void combatant$onTotemUse(DamageSource source, CallbackInfoReturnable<Boolean> cir) {
-        // no local use blocking or prediction here
-    }
-
-    /**
-     * Сброс кулдаунов при смерти.
+     * Resets cooldown state when the entity dies.
      */
     @Inject(method = "die", at = @At("HEAD"))
     private void combatant$onDeath(DamageSource source, CallbackInfo ci) {
@@ -466,10 +458,8 @@ public abstract class LivingEntityMixin {
             return;
         }
 
-        // общий тумблер env
         if (!ns.isFunctionEnabled(NoStun.fnEnvBlocks())) return;
 
-        // конкретный тумблер песка душ
         if (!ns.isEnvBlockEnabled(NoStun.envSoulSand())) return;
 
         BlockPos pos = player.blockPosition();

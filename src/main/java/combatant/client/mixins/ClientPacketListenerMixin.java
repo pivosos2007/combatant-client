@@ -7,7 +7,15 @@
 
 package combatant.client.mixins;
 
-import combatant.client.util.player.ServerFlyUtils;
+import combatant.client.events.impl.ClientEntityAddedEvent;
+import combatant.client.events.impl.ClientEntitiesRemovedEvent;
+import combatant.client.events.impl.ClientPlayerInfoUpdatedEvent;
+import combatant.client.events.impl.ClientPlayerInfoRemovedEvent;
+
+import combatant.client.events.impl.SoundFilterEvent;
+import combatant.client.events.impl.SoundObservedEvent;
+import combatant.client.events.impl.TotemActivationEvent;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -24,19 +32,13 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import combatant.client.config.values.ItemCooldownRulesValue;
 import combatant.client.events.Events;
+import combatant.client.events.impl.ClientPlayerAbilitiesEvent;
 import combatant.client.events.impl.PvpChatEvent;
 import combatant.client.events.impl.PvpTabEvent;
 import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.combat.PvpCooldowns;
-import combatant.client.features.module.modules.misc.NoSound;
 import combatant.client.features.module.modules.player.NoRotate;
-import combatant.client.features.module.modules.movement.Flight;
-import combatant.client.features.module.modules.visuals.SoundESP;
-import combatant.client.features.module.modules.visuals.TotemFX;
 import combatant.client.features.module.modules.visuals.WorldTweaks;
-import combatant.client.features.relations.StaffTracker;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.logging.ServerDumpUtil;
 import combatant.client.util.player.NetworkStatsUtil;
@@ -70,6 +72,10 @@ public abstract class ClientPacketListenerMixin {
         }
     }
 
+    /**
+     * Captures crystal removals before vanilla removes the corresponding entities;
+     * the TAIL hook notifies AutoCrystal after the removal has been applied.
+     */
     @Inject(method = "handleRemoveEntities", at = @At("HEAD"))
     private void combatant$autoCrystalRemoveHead(ClientboundRemoveEntitiesPacket packet, CallbackInfo ci) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -136,7 +142,7 @@ public abstract class ClientPacketListenerMixin {
         player.xRotO = combatant$restoreXRotO;
     }
 
-    // "TPS: 20.0" или "TPS: *20.0"
+    // "TPS: 20.0" or "TPS: *20.0"
     @Unique
     private static final Pattern TPS_PATTERN =
             Pattern.compile("TPS:\\s*\\*?(\\d+(?:\\.\\d+)?)");
@@ -147,13 +153,7 @@ public abstract class ClientPacketListenerMixin {
 
     @Inject(method = "handlePlayerAbilities", at = @At("HEAD"), cancellable = true)
     private void combatant$flightAbilities(ClientboundPlayerAbilitiesPacket packet, CallbackInfo ci) {
-        // Always observe the real server grant, including when Flight/Abilities is enabled.
-        ServerFlyUtils.observeServerAbilities(Minecraft.getInstance().player, packet);
-        Flight flight = Modules.get(Flight.class);
-        if (flight == null || !flight.isEnabled()) return;
-        if (flight.onReceiveAbilities(packet)) {
-            ci.cancel();
-        }
+        if (Events.BUS.post(new ClientPlayerAbilitiesEvent(packet)).isCancelled()) ci.cancel();
     }
 
     @Inject(method = "handleTabListCustomisation", at = @At("TAIL"))
@@ -171,39 +171,11 @@ public abstract class ClientPacketListenerMixin {
     private void onChat(ClientboundSystemChatPacket packet, CallbackInfo ci) {
         String msg = packet.content().getString();
 
-        // PvP state listeners via events; legacy direct setters disabled.
         if (msg != null && !msg.isBlank() && Events.BUS.hasListeners(PvpChatEvent.class)) {
             Events.BUS.post(new PvpChatEvent(msg, PvpChatEvent.Source.GAME_MESSAGE));
         }
-        /*
-        if (msg.contains("Вы вошли в режим PVP")) {
-            CooldownsState.MANAGER.enterPvp();
-        } else if (msg.contains("PVP окончено")) {
-            CooldownsState.MANAGER.exitPvp();
-        }
-        */
     }
 
-    @Inject(method = "handleSoundEvent", at = @At("HEAD"))
-    private void combatant$onChorus(ClientboundSoundPacket packet, CallbackInfo ci) {
-        // Opponent cooldown tracking disabled (legacy system).
-        /*
-        if (!CooldownsState.shouldTrackOpponents()) return;
-        if (packet.getSound().value() != SoundEvents.ITEM_CHORUS_FRUIT_TELEPORT) return;
-
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null || mc.player == null) return;
-
-        Vec3d pos = new Vec3d(packet.x(), packet.y(), packet.z());
-
-        if (!SoundEntityResolver.isUnambiguousOpponent(pos, 1.6)) return;
-
-        PlayerEntity p = SoundEntityResolver.findClosestOpponent(pos, 1.6);
-        if (p == null) return;
-
-        OpponentCooldownManager.start(p.getUuid(), Items.CHORUS_FRUIT);
-        */
-    }
 
     @Inject(method = "handlePlayerChat", at = @At("HEAD"))
     private void combatant$pvpChatMessage(ClientboundPlayerChatPacket packet, CallbackInfo ci) {
@@ -216,74 +188,22 @@ public abstract class ClientPacketListenerMixin {
 
     @Inject(method = "handleRemoveEntities", at = @At("TAIL"))
     private void combatant$onEntitiesDestroy(ClientboundRemoveEntitiesPacket packet, CallbackInfo ci) {
-
-        Minecraft mc = Minecraft.getInstance();
-        ClientLevel world = mc.level;
-        if (world == null) return;
-
-        for (int id : packet.entityIds()) {
-
-            Entity e = world.getEntity(id);
-            if (!(e instanceof Player player)) continue;
-
-            StaffTracker.onEntityDisappear(player.getUUID());
-        }
+        Events.BUS.post(new ClientEntitiesRemovedEvent(packet));
     }
 
     @Inject(method = "handleAddEntity", at = @At("TAIL"))
     private void combatant$onEntitySpawn(ClientboundAddEntityPacket packet, CallbackInfo ci) {
-
-        Minecraft mc = Minecraft.getInstance();
-        ClientLevel world = mc.level;
-        if (world == null) return;
-
-        if (packet.getType() != net.minecraft.world.entity.EntityTypes.PLAYER) return;
-
-        Entity entity = world.getEntity(packet.getId());
-        if (!(entity instanceof Player player)) return;
-
-        StaffTracker.onEntityAppear(player.getUUID(), player.getGameProfile().name());
+        Events.BUS.post(new ClientEntityAddedEvent(packet));
     }
 
     @Inject(method = "handlePlayerInfoUpdate", at = @At("TAIL"))
     private void combatant$onPlayerList(ClientboundPlayerInfoUpdatePacket packet, CallbackInfo ci) {
-
-        var actions = packet.actions();
-        boolean listedAffects = actions.contains(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED)
-                || actions.contains(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER);
-
-        boolean gmAffects = actions.contains(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE)
-                || actions.contains(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER);
-
-        for (var entry : packet.entries()) {
-
-            var uuid = entry.profileId();
-            String name = entry.profile() != null ? entry.profile().name() : null;
-
-            Boolean listed = listedAffects ? entry.listed() : null;
-            var gm = gmAffects ? entry.gameMode() : null;
-
-            // ВАЖНО: берём ПОЛНЫЙ Text из TAB
-            var displayName = entry.displayName();
-            if (displayName == null && name != null) {
-                displayName = net.minecraft.network.chat.Component.literal(name);
-            }
-
-            StaffTracker.onTabUpdate(uuid, name, displayName, listed, gm);
-        }
+        Events.BUS.post(new ClientPlayerInfoUpdatedEvent(packet));
     }
 
     @Inject(method = "handlePlayerInfoRemove", at = @At("TAIL"))
     private void combatant$onPlayerRemove(ClientboundPlayerInfoRemovePacket packet, CallbackInfo ci) {
-
-        for (UUID id : packet.profileIds()) {
-
-            // убрали из TAB
-            StaffTracker.onTabUpdate(id, null, null, false, null);
-            TotemPopCounter.onPlayerLogout(id);
-            // ВАЖНО — фикс VANISH после кика
-            StaffTracker.onEntityDisappear(id);
-        }
+        Events.BUS.post(new ClientPlayerInfoRemovedEvent(packet));
     }
 
     @Inject(method = "handleSetTime", at = @At("HEAD"))
@@ -320,58 +240,22 @@ public abstract class ClientPacketListenerMixin {
         }
     }
 
-    @Inject(method = "handleContainerSetSlot", at = @At("HEAD"))
-    private void combatant$debugSlotUpdate(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
-        // PvP cooldown confirmation disabled (legacy system).
-        /*
-        int syncId = packet.getSyncId();
-        int slot = packet.getSlot();
-        ItemStack stack = packet.getStack();
 
-        var pending = CooldownsState.PENDING.consumeIfConfirmed(slot, stack.getCount());
-        if (pending != null) {
-            CooldownsState.MANAGER.commitConfirmedUse(pending.item(), pending.startedAtMs());
-        }
-        */
-    }
-
-    @Inject(method = "handleContainerContent", at = @At("HEAD"))
-    private void combatant$debugFullInventory(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
-        // PvP cooldown confirmation disabled (legacy system).
-        /*
-        int syncId = packet.syncId();
-        List<ItemStack> contents = packet.contents();
-
-        for (int i = 0; i < contents.size(); i++) {
-            ItemStack stack = contents.get(i);
-            if (stack.isEmpty()) continue;
-
-            var pending = CooldownsState.PENDING.consumeIfConfirmed(i, stack.getCount());
-            if (pending != null) {
-                CooldownsState.MANAGER.commitConfirmedUse(pending.item(), pending.startedAtMs());
-            }
-        }
-        */
-    }
 
     @Inject(method = "handleSoundEvent", at = @At("HEAD"), cancellable = true)
     private void combatant$filterSound(ClientboundSoundPacket packet, CallbackInfo ci) {
-        NoSound module = Modules.get(NoSound.class);
-        if (module == null || !module.isEnabled()) return;
         if (packet == null || packet.getSound() == null) return;
-        String id = packet.getSound().value().location().toString().toLowerCase();
-        if (module.shouldMute(id)) {
+        if (!Events.BUS.hasListeners(SoundFilterEvent.class)) return;
+        if (Events.BUS.post(new SoundFilterEvent(packet.getSound().value().location())).isCancelled()) {
             ci.cancel();
         }
     }
 
     @Inject(method = "handleSoundEntityEvent", at = @At("HEAD"), cancellable = true)
     private void combatant$filterSoundFromEntity(ClientboundSoundEntityPacket packet, CallbackInfo ci) {
-        NoSound module = Modules.get(NoSound.class);
-        if (module == null || !module.isEnabled()) return;
         if (packet == null || packet.getSound() == null) return;
-        String id = packet.getSound().value().location().toString().toLowerCase();
-        if (module.shouldMute(id)) {
+        if (!Events.BUS.hasListeners(SoundFilterEvent.class)) return;
+        if (Events.BUS.post(new SoundFilterEvent(packet.getSound().value().location())).isCancelled()) {
             ci.cancel();
         }
     }
@@ -387,48 +271,24 @@ public abstract class ClientPacketListenerMixin {
         StatusEffectHeuristics.handle(p, packet.x(), packet.y(), packet.z());
     }
 
-    @Inject(method = "handleSoundEvent", at = @At("HEAD"))
-    private void combatant$onPearl(ClientboundSoundPacket packet, CallbackInfo ci) {
-        // Opponent cooldown tracking disabled (legacy system).
-        /*
-        if (!CooldownsState.shouldTrackOpponents()) return;
-        if (packet.getSound().value() != SoundEvents.ENTITY_ENDER_PEARL_THROW) return;
-
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null || mc.player == null) return;
-
-        Vec3d pos = new Vec3d(packet.x(), packet.y(), packet.z());
-
-        if (!SoundEntityResolver.isUnambiguousOpponent(pos, 1.6)) return;
-
-        PlayerEntity p = SoundEntityResolver.findClosestOpponent(pos, 1.6);
-        if (p == null) return;
-
-        OpponentCooldownManager.start(p.getUuid(), Items.ENDER_PEARL);
-        */
-    }
 
     @Inject(method = "handleSoundEvent", at = @At("HEAD"))
     private void combatant$onPlaySound(ClientboundSoundPacket packet, CallbackInfo ci) {
-        SoundESP esp = Modules.get(SoundESP.class);
-        if (esp == null || !esp.isEnabled()) return;
         if (packet == null || packet.getSound() == null) return;
-        Vec3 pos = new Vec3(packet.getX(), packet.getY(), packet.getZ());
-        esp.handleSound(packet.getSound().value().location(), pos);
+        if (!Events.BUS.hasListeners(SoundObservedEvent.class)) return;
+        Events.BUS.post(new SoundObservedEvent(packet.getSound().value().location(),
+                new Vec3(packet.getX(), packet.getY(), packet.getZ())));
     }
 
     @Inject(method = "handleSoundEntityEvent", at = @At("HEAD"))
     private void combatant$onPlaySoundFromEntity(ClientboundSoundEntityPacket packet, CallbackInfo ci) {
-        SoundESP esp = Modules.get(SoundESP.class);
-        if (esp == null || !esp.isEnabled()) return;
         if (packet == null || packet.getSound() == null) return;
-
+        if (!Events.BUS.hasListeners(SoundObservedEvent.class)) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
         Entity entity = mc.level.getEntity(packet.getId());
         if (entity == null) return;
-
-        esp.handleSound(packet.getSound().value().location(), entity.position());
+        Events.BUS.post(new SoundObservedEvent(packet.getSound().value().location(), entity.position()));
     }
 
     @Inject(method = "handleUpdateMobEffect", at = @At("HEAD"))
@@ -463,30 +323,10 @@ public abstract class ClientPacketListenerMixin {
         return e.getName().getString();
     }
 
-    @Inject(method = "handleSoundEvent", at = @At("HEAD"))
-    private void combatant$onTotemSound(ClientboundSoundPacket packet, CallbackInfo ci) {
-        // Opponent cooldown tracking disabled (legacy system).
-        /*
-        if (!CooldownsState.shouldTrackOpponents()) return;
-        if (packet.getSound().value() != SoundEvents.ITEM_TOTEM_USE) return;
-
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null || mc.player == null) return;
-
-        Vec3d pos = new Vec3d(packet.x(), packet.y(), packet.z());
-
-        if (!SoundEntityResolver.isUnambiguousOpponent(pos, 1.6)) return;
-
-        PlayerEntity p = SoundEntityResolver.findClosestOpponent(pos, 1.6);
-        if (p == null) return;
-
-        OpponentCooldownManager.start(p.getUuid(), Items.TOTEM_OF_UNDYING);
-        */
-    }
 
     @Inject(method = "handleEntityEvent", at = @At("HEAD"))
     private void combatant$onTotemStatus(ClientboundEntityEventPacket packet, CallbackInfo ci) {
-        if (packet.getEventId() == 35) { // 35 = сработал тотем бессмертия
+        if (packet.getEventId() == 35) { // Event byte 35 denotes totem activation.
             ClientPacketListener handler = (ClientPacketListener) (Object) this;
             Minecraft client = Minecraft.getInstance();
             // The handler runs once on the network thread and again after it is rescheduled to the main thread,
@@ -499,21 +339,11 @@ public abstract class ClientPacketListenerMixin {
                 TotemPopCounter.recordPop(player);
             }
             if (entity.equals(client.player)) {
-                PvpCooldowns cooldowns = Modules.get(PvpCooldowns.class);
-                if (cooldowns != null) {
-                    cooldowns.tryStartLocalCooldown(Items.TOTEM_OF_UNDYING, ItemCooldownRulesValue.Trigger.TOTEM_POP);
-                }
-                TotemFX fx = Modules.get(TotemFX.class);
-                if (fx != null) {
-                    fx.onTotemPop();
-                }
+                Events.BUS.post(new TotemActivationEvent(client.player, true));
                 return;
             }
             if (entity instanceof Player player) {
-                TotemFX fx = Modules.get(TotemFX.class);
-                if (fx != null) {
-                    fx.onOpponentTotemPop(player);
-                }
+                Events.BUS.post(new TotemActivationEvent(player, false));
                 if (CooldownsState.shouldTrackOpponents()) {
                     OpponentCooldownManager.recordUse(player.getUUID(), Items.TOTEM_OF_UNDYING);
                 }

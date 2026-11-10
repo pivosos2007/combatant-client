@@ -176,11 +176,9 @@ public final class SodiumRenderBridge {
             return;
         }
 
-        // This method used to invoke SodiumWorldRenderer.reload(). Surface ownership changes are
-        // discovered from the renderLayer() boundary, where destroying RenderSectionManager is
-        // re-entrant and can leave its ChunkBuilder stopped if teardown throws halfway through.
-        // Re-mesh every loaded section instead: it updates the captured material/routing flags
-        // without replacing Sodium's live manager or stopping its worker threads.
+        // Re-mesh the loaded sections without replacing Sodium's live RenderSectionManager.
+        // Reloading that manager during renderLayer() would be re-entrant and could interrupt
+        // ChunkBuilder teardown before its workers are stopped.
         if (minecraft.gameRenderer.mainCamera() == null) {
             terrainInterop.recordInteropError();
             return;

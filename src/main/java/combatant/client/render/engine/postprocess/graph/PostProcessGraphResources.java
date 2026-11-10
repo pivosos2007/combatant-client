@@ -12,6 +12,7 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.render.engine.depth.PreTranslucentDepth;
 import combatant.client.render.engine.depth.WorldSceneDepth;
 import combatant.client.render.engine.postprocess.PostProcessContext;
@@ -55,7 +56,10 @@ public final class PostProcessGraphResources implements AutoCloseable {
         GpuFormat colorFormat = targetOverride != null
                 ? main.getColorTexture().getFormat() : GpuFormat.RGBA8_UNORM;
         if (colorFormat != GpuFormat.RGBA8_UNORM && colorFormat != GpuFormat.RGBA16_FLOAT) return false;
-        ensurePingPong(w, h, rhi, preferStorageTargets, colorFormat);
+        // Compute storage and sampler2D ping-pong surfaces cannot consume an MSAA view directly.
+        // First resolve the scene into a single-sample framebuffer, then run ordinary effects.
+        boolean multisampled = samples(main.getColorTextureView()) > 1;
+        ensurePingPong(w, h, rhi, preferStorageTargets && !multisampled, colorFormat);
         if (pingView == null || pongView == null) return false;
 
         clearFrameState();
@@ -82,6 +86,21 @@ public final class PostProcessGraphResources implements AutoCloseable {
         );
         usePingAsSource = true;
         return true;
+    }
+
+    public boolean resolveMultisampledSource(CombatantRhi rhi) {
+        if (mainFramebuffer == null || ping == null || storageMode
+                || currentSource() != ping.getColorTextureView()) return false;
+        return rhi.msaa().resolve(mainFramebuffer, ping, true, false);
+    }
+
+    public boolean multisampledMain() {
+        return mainFramebuffer != null && samples(mainFramebuffer.getColorTextureView()) > 1;
+    }
+
+    private static int samples(GpuTextureView view) {
+        return view != null && view.texture() instanceof IMsaaTexture msaa && msaa.combatant$isMsaa()
+                ? Math.max(1, msaa.combatant$getSamples()) : 1;
     }
 
     public void resetPingPong() {

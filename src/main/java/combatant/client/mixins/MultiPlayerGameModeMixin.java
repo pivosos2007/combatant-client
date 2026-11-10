@@ -7,6 +7,11 @@
 
 package combatant.client.mixins;
 
+import combatant.client.events.impl.ItemUseBlockEvent;
+import combatant.client.events.impl.ItemUseAcceptedEvent;
+import combatant.client.events.impl.InteractionBlockEvent;
+import combatant.client.events.impl.ClientAttackEffectsEvent;
+
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -27,25 +32,17 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import combatant.client.config.values.ItemCooldownRulesValue;
 import combatant.client.events.Events;
 import combatant.client.events.impl.AttackEntityEvent;
 import combatant.client.events.impl.EventBreakBlock;
 import combatant.client.events.impl.BlockUseAttemptEvent;
-import combatant.client.features.gui.hud.draggable.impl.TargetHud;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.AttributeSwap;
 import combatant.client.features.module.modules.combat.Criticals;
-import combatant.client.features.module.modules.combat.Hitbox;
-import combatant.client.features.module.modules.combat.PvpCooldowns;
-import combatant.client.features.module.modules.misc.HitSounds;
-import combatant.client.features.module.modules.visuals.Freecam;
-import combatant.client.features.module.modules.visuals.HitEffect;
 import combatant.client.mixins.accessors.WorldAccessor;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySlotLocks;
 import combatant.client.util.player.inventory.InventoryComponentMap;
-import combatant.client.util.target.TargetManager;
 
 @Mixin(MultiPlayerGameMode.class)
 public class MultiPlayerGameModeMixin {
@@ -108,11 +105,7 @@ public class MultiPlayerGameModeMixin {
         ItemStack stack = player.getItemInHand(hand);
         if (stack.isEmpty()) return;
 
-        PvpCooldowns cooldowns = Modules.get(PvpCooldowns.class);
-        if (cooldowns == null) return;
-
-        // No hard-coded PvP item blocking here anymore. This path is opt-in and item-list based.
-        if (cooldowns.shouldBlockItemUse(stack.getItem())) {
+        if (Events.BUS.post(new ItemUseBlockEvent(stack.getItem())).isCancelled()) {
             cir.setReturnValue(InteractionResult.FAIL);
         }
     }
@@ -129,10 +122,7 @@ public class MultiPlayerGameModeMixin {
         ItemStack stack = player.getItemInHand(hand);
         if (stack.isEmpty()) return;
 
-        PvpCooldowns cooldowns = Modules.get(PvpCooldowns.class);
-        if (cooldowns == null) return;
-
-        cooldowns.tryStartLocalCooldown(stack.getItem(), ItemCooldownRulesValue.Trigger.INTERACT_ACCEPT);
+        Events.BUS.post(new ItemUseAcceptedEvent(stack.getItem()));
     }
 
     @Inject(method = "useItemOn", at = @At("HEAD"))
@@ -153,8 +143,7 @@ public class MultiPlayerGameModeMixin {
     @Inject(method = "useItemOn", at = @At("HEAD"), cancellable = true)
     private void freecam$block(LocalPlayer player, InteractionHand hand, BlockHitResult hit,
                                CallbackInfoReturnable<InteractionResult> cir) {
-        Freecam fc = Modules.get(Freecam.class);
-        if (fc != null && fc.isEnabled() && !fc.allowInteract()) {
+        if (Events.BUS.post(new InteractionBlockEvent()).isCancelled()) {
             cir.setReturnValue(InteractionResult.PASS);
             cir.cancel();
         }
@@ -162,8 +151,7 @@ public class MultiPlayerGameModeMixin {
 
     @Inject(method = "useItem", at = @At("HEAD"), cancellable = true)
     private void freecam$item(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
-        Freecam fc = Modules.get(Freecam.class);
-        if (fc != null && fc.isEnabled() && !fc.allowInteract()) {
+        if (Events.BUS.post(new InteractionBlockEvent()).isCancelled()) {
             cir.setReturnValue(InteractionResult.PASS);
             cir.cancel();
         }
@@ -172,8 +160,7 @@ public class MultiPlayerGameModeMixin {
     @Inject(method = "interact", at = @At("HEAD"), cancellable = true)
     private void freecam$entity(Player player, Entity entity, EntityHitResult hit, InteractionHand hand,
                                 CallbackInfoReturnable<InteractionResult> cir) {
-        Freecam fc = Modules.get(Freecam.class);
-        if (fc != null && fc.isEnabled() && !fc.allowInteract()) {
+        if (Events.BUS.post(new InteractionBlockEvent()).isCancelled()) {
             cir.setReturnValue(InteractionResult.PASS);
             cir.cancel();
         }
@@ -195,21 +182,7 @@ public class MultiPlayerGameModeMixin {
             Events.BUS.post(new AttackEntityEvent(player, target));
         }
 
-        Hitbox hitbox = Modules.get(Hitbox.class);
-        if (hitbox != null) hitbox.markHit(target);
-
-        HitSounds hitSounds = Modules.get(HitSounds.class);
-        if (hitSounds != null) {
-            hitSounds.handleHit(target);
-        }
-
-        HitEffect hitEffect = Modules.get(HitEffect.class);
-        if (hitEffect != null) {
-            hitEffect.handleHit(target);
-        }
-
-        TargetHud.notifyHit(target);
-        TargetManager.onAttack(target);
+        Events.BUS.post(new ClientAttackEffectsEvent(player, target));
     }
 
     @Inject(method = "attack(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/entity/Entity;)V",

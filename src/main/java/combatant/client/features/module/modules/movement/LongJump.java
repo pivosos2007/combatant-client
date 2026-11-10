@@ -190,8 +190,10 @@ public final class LongJump extends Module {
         return !nearbyBoats(player).isEmpty();
     }
 
-    /** Restore the original detection envelope: proximity to a real boat entity, not onGround
-     *  or the client's approximation of standing on an entity. No passenger state is required. */
+    /**
+     * Recognizes nearby boat entities without requiring a passenger or ground-state flag.
+     * The check uses entity proximity rather than a simulated support surface.
+     */
     private java.util.List<AbstractBoat> nearbyBoats(LocalPlayer player) {
         return player.level().getEntitiesOfClass(AbstractBoat.class,
                 player.getBoundingBox().inflate(BOAT_RADIUS));

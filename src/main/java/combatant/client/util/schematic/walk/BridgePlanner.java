@@ -10,12 +10,9 @@ package combatant.client.util.schematic.walk;
 import java.util.function.LongPredicate;
 
 /**
- * Which way to extend a temporary bridge when no standing spot, walkable or pillared, reaches the wanted cells.
- *
- * <p>A bridge grows one block at a time from the floor the player stands on, level with it, towards the nearest
- * target. Only targets within vertical reach of the bridge's height count (taller gaps are the pillar's job), and
- * a step has to bring the player clearly closer sideways, so a bridge never wanders. Free of game types like the
- * rest of the walker so it can be tested on small hand-drawn worlds.</p>
+ * Plans temporary bridges when walking or pillars cannot reach the target cells.
+ * Bridge steps remain level with the player's supporting floor and advance toward a reachable target;
+ * target height and horizontal progress constrain each extension.
  */
 public final class BridgePlanner {
 

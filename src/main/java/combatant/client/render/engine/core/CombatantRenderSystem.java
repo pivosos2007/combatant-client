@@ -500,7 +500,7 @@ public enum CombatantRenderSystem {
 
     /**
      * Refreshes the stable PRIMARY scene view after CombatantWorldMatrices has been published.
-     * The first beginFrame call intentionally happens before TAA jitter selection so it can supply
+     * The first beginFrame call happens before TAA jitter selection so it can supply
      * the canonical frame id; world-matrix capture follows immediately afterwards.
      */
     public static void refreshPrimarySceneView() {

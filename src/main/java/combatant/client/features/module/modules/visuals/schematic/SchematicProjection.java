@@ -48,17 +48,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * Ghost render of the active schematic placement. Missing blocks are drawn with their real block model at reduced
- * alpha (stairs, slabs and fences keep their shape), wrong blocks get a red-orange tint, and only the exposed
- * boundary of the visible layers is outlined with a soft glow. A translucent grid marks the active layer and an
- * optional dashed box marks the schematic bounds and origin.
- *
- * <p>The box list is rebuilt on the tick thread only when the placement, layer window, diff or the player's
- * position (in 8-block steps) changes, into preallocated arrays together with each box's block model and its
- * neighbour mask. Block geometry is baked once per state ({@link SchematicGhostModel}); frames only walk those
- * arrays and write vertices.</p>
- */
+/** Renders schematic placement state and differences from the current world. */
 @ModuleInfo(
         id = "schematicprojection",
         displayName = "SchematicProjection",
@@ -426,7 +416,6 @@ public final class SchematicProjection extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ supply chests
 
     /**
      * Boxes ({@link #SUPPLY_STRIDE} doubles each: min xyz, max xyz, kind) of the marked supply container and every
@@ -510,7 +499,6 @@ public final class SchematicProjection extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ ghost blocks
 
     private void drawBoxes(MeshBuilder tris, MeshBuilder core, MeshBuilder glow, Vec3 cam, float time) {
         float fillOpacity = opacity.get() / 100.0f;
@@ -673,7 +661,6 @@ public final class SchematicProjection extends Module {
         if ((mask & 32) == 0) quad(tris, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, rgb, FACE_SHADE[5], a);
     }
 
-    // ------------------------------------------------------------------ edges
 
     private void drawEdges(MeshBuilder core, MeshBuilder glow, SchematicGhostModel m, int x, int y, int z,
                            int mask, int rgb, float alpha, double dist) {
@@ -723,7 +710,6 @@ public final class SchematicProjection extends Module {
         line(core, x1, y1, z1, x2, y2, z2, rgb, coreA);
     }
 
-    // ------------------------------------------------------------------ layer plane / bounds
 
     private void drawLayerPlane(MeshBuilder tris, MeshBuilder lines, Vec3 cam) {
         int color = planeColor.getArgb();
@@ -826,7 +812,6 @@ public final class SchematicProjection extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ primitives
 
     private static void flatPlane(MeshBuilder tris, double x1, double y, double z1, double x2, double z2, int rgb,
                                   float alpha) {

@@ -7,6 +7,9 @@
 
 package combatant.client.features.module.modules.visuals;
 
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.ToastAddEvent;
+
 import net.minecraft.client.Camera;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.Minecraft;
@@ -224,6 +227,11 @@ public class NoRender extends Module {
 
     public boolean screenDarkeningDisabled() {
         return isEnabled() && toggles.get(KEY_SCREEN_DARKENING);
+    }
+
+    @EventHandler
+    private void onToastAdd(ToastAddEvent event) {
+        if (hideToastHints()) event.cancel();
     }
 
     public boolean hideToastHints() {

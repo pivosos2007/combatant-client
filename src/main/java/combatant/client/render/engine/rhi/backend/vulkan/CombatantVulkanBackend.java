@@ -304,14 +304,10 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         return pipeline != null && pipeline.metadata().requiresUniform("UIBatch");
     }
 
-    private record SamplerState(com.mojang.renderpearl.api.textures.GpuTextureView view,
-                                com.mojang.renderpearl.api.textures.GpuSampler sampler) {
-    }
-
     /** Avoids descriptor/buffer setter churn inside one compatible Vulkan dynamic-rendering scope. */
     private static final class PassBindingCache {
         private final Map<String, GpuBufferSlice> uniforms = new HashMap<>();
-        private final Map<String, SamplerState> samplers = new HashMap<>();
+        private final Map<String, RhiSamplerBinding> samplers = new HashMap<>();
         private com.mojang.renderpearl.api.buffers.GpuBuffer vertexBuffer;
         private com.mojang.renderpearl.api.buffers.GpuBuffer indexBuffer;
         private com.mojang.renderpearl.api.pipeline.IndexType indexType;
@@ -324,10 +320,11 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         }
 
         boolean bindSampler(RenderPass pass, RhiSamplerBinding binding) {
-            SamplerState next = new SamplerState(binding.view(), binding.sampler());
-            if (next.equals(samplers.get(binding.name()))) return false;
+            RhiSamplerBinding previous = samplers.get(binding.name());
+            if (previous != null && previous.view() == binding.view()
+                    && previous.sampler() == binding.sampler()) return false;
             pass.setUniform(binding.name(), binding.view(), binding.sampler());
-            samplers.put(binding.name(), next);
+            samplers.put(binding.name(), binding);
             return true;
         }
 
@@ -348,11 +345,8 @@ public final class CombatantVulkanBackend implements CombatantRhi {
     public void drawFullscreen(FullscreenDrawCommand command) {
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
             fullscreen.ensureInitialized();
-            // FullscreenDrawCommand is clip-space by contract. The persistent quad already spans
-            // [-1,+1] in XY, so inheriting the active world projection/model-view transforms the
-            // blit as if it were world geometry (shrinking/offsetting lighting, post and debug
-            // presentation). MeshData remains bound for legacy fullscreen vertex shaders, but its
-            // transforms must be identity; only the viewport payload is meaningful here.
+            // Fullscreen vertices are in clip space. Bind identity projection and model-view transforms,
+            // including when the shader declares MeshData, rather than inheriting world transforms.
             MeshUniforms.update(
                     projectionScratch.identity(),
                     modelViewScratch.identity(),

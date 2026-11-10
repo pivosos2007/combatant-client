@@ -7,12 +7,6 @@
 
 package combatant.duplexcourier;
 
-import combatant.duplexcourier.runtime.annotation.ClientBound;
-import combatant.duplexcourier.runtime.annotation.ClientBoundLevel;
-import combatant.duplexcourier.runtime.annotation.RuntimeAssertion;
-import combatant.duplexcourier.runtime.annotation.RuntimeAssertionPhase;
-import combatant.duplexcourier.runtime.annotation.RuntimeResume;
-import combatant.duplexcourier.runtime.annotation.RuntimeSuspend;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
@@ -43,12 +37,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-/**
- * Deliberately small Duplex secondary. It has no UI, map storage or independent settings: while
- * the primary Combatant process owns a verified local session it forwards vanilla locator
- * bearings, and otherwise stays disconnected/idle.
- */
-@ClientBound(value = ClientBoundLevel.FULL, packages = "combatant.duplexcourier")
 public final class DuplexCourier implements ClientModInitializer {
     private static final String HOST = "127.0.0.1";
     private static final int PORT = 28464;
@@ -63,7 +51,6 @@ public final class DuplexCourier implements ClientModInitializer {
     private final Map<UUID, Long> revisions = new HashMap<>();
     private final Map<UUID, Long> fingerprints = new HashMap<>();
 
-    private volatile boolean active = true;
     private volatile SessionState state = SessionState.DISCONNECTED;
     private volatile LocalTransport transport;
     private volatile UUID sessionId;
@@ -78,32 +65,8 @@ public final class DuplexCourier implements ClientModInitializer {
         ClientTickEvents.START_CLIENT_TICK.register(this::tick);
     }
 
-    @RuntimeSuspend(order = 100)
-    private void suspendRuntime(String reason) {
-        active = false;
-        closeSession();
-    }
-
-    @RuntimeResume(order = 100)
-    private void resumeRuntime(String reason) {
-        active = true;
-    }
-
-    @RuntimeAssertion(phase = RuntimeAssertionPhase.SUSPENDED,
-            message = "Duplex Courier transport is still active")
-    private boolean assertSuspended() {
-        LocalTransport current = transport;
-        return !active && (current == null || !current.running());
-    }
-
-    @RuntimeAssertion(phase = RuntimeAssertionPhase.ACTIVE,
-            message = "Duplex Courier did not resume")
-    private boolean assertActive() {
-        return active;
-    }
-
     private void tick(Minecraft mc) {
-        if (!active || !usable(mc)) {
+        if (!usable(mc)) {
             closeSession();
             return;
         }

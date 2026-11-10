@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 pluginManagement {
     repositories {
         maven {
@@ -6,10 +13,6 @@ pluginManagement {
         }
         gradlePluginPortal()
     }
-}
-
-plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 
 include 'registry-processor'

@@ -16,7 +16,11 @@ import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.UUID;
 
-/** Binary DUPLEX frame codec. Transport framing (TCP length prefix) is intentionally separate. */
+/**
+ * Encodes authenticated DUPLEX frames independently of their TCP length prefix.
+ * The binary body uses big-endian fields and ends with a 32-byte HMAC-SHA256;
+ * frame payloads are limited to 4,096 bytes.
+ */
 public final class DuplexCodec {
     private static final int MAGIC = 0x43424458;
     private static final int VERSION = 1;
@@ -26,6 +30,12 @@ public final class DuplexCodec {
 
     private DuplexCodec() {}
 
+    /**
+     * Encodes a frame and appends a MAC derived from the session token.
+     * A null or blank token uses the codec's fixed fallback key.
+     *
+     * @throws IllegalArgumentException if the payload exceeds 4,096 bytes
+     */
     public static byte[] encodeBinary(DuplexFrame frame, String token) {
         byte[] payload = frame.payload();
         if (payload.length > MAX_PAYLOAD_BYTES) {
@@ -44,6 +54,13 @@ public final class DuplexCodec {
         return out.array();
     }
 
+    /**
+     * Verifies the frame MAC before parsing its version, type and payload length.
+     * Trailing or truncated payload bytes are rejected.
+     *
+     * @throws SecurityException if the MAC does not match
+     * @throws IllegalArgumentException if the frame is malformed or unsupported
+     */
     public static DuplexFrame decodeBinary(byte[] bytes, String token) {
         if (bytes == null || bytes.length < 4 + 1 + 1 + 8 + 16 + 16 + 2 + MAC_BYTES) {
             throw new IllegalArgumentException("Truncated Duplex frame");
@@ -73,12 +90,19 @@ public final class DuplexCodec {
         return new DuplexFrame(values[type], sequence, session, sender, payload);
     }
 
-    /** Compatibility helper for old diagnostics/tools; local TCP runtime uses the binary methods. */
+    /**
+     * Encodes the binary frame as unpadded URL-safe Base64 with a {@code CBX1:} prefix.
+     * The local TCP transport instead carries the binary form.
+     */
     public static String encode(DuplexFrame frame, String token) {
         return LEGACY_TEXT_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(encodeBinary(frame, token));
     }
 
-    /** Compatibility helper for old diagnostics/tools; local TCP runtime uses the binary methods. */
+    /**
+     * Decodes the prefixed text representation and applies normal binary MAC validation.
+     *
+     * @throws IllegalArgumentException if the prefix or Base64 text is malformed
+     */
     public static DuplexFrame decode(String line, String token) {
         if (line == null || !line.startsWith(LEGACY_TEXT_PREFIX)) {
             throw new IllegalArgumentException("Invalid Duplex frame prefix");

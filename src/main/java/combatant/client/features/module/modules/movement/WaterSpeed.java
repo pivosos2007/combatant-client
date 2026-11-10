@@ -34,7 +34,6 @@ import java.util.concurrent.TimeUnit;
         category = ModuleCategory.MOVEMENT,
         subcategory = ModuleSubcategory.RAGE,
         description = "module.waterspeed.description")
-//does not bypass anything serious todo bypasses
 public final class WaterSpeed extends Module {
 
     private static final double NON_SPRINT_HORIZONTAL_MULTIPLIER = 1.156D;

@@ -77,7 +77,7 @@ public final class Renderer2D {
         HUD_LAST,
 
         /**
-         * Explicit top screen bucket. This is intentionally not used by normal HudPhase slots.
+         * Explicit top screen bucket. This is not used by normal HudPhase slots.
          */
         AFTER_VANILLA_GUI,
 
@@ -148,7 +148,6 @@ public final class Renderer2D {
         ItemBatchRenderer.init();
     }
 
-    // ---- Public drawing facade -------------------------------------------------
 
     public void setAlpha(double alpha) {
         this.alpha = Mth.clamp(alpha, 0.0, 1.0);
@@ -190,7 +189,7 @@ public final class Renderer2D {
 
     /**
      * Applies a reusable destination-aware blend material to blend-capable UI primitives/effects
-     * emitted by {@code draw}. The material contract is intentionally primitive-agnostic: text and
+     * emitted by {@code draw}. The material contract is primitive-agnostic: text and
      * liquid glass consume it today, and future shape/effect shaders can bind the same UIBlend block.
      */
     public void withBackdropBlend(UiBackdropBlendSpec blend, Runnable draw) {
@@ -420,7 +419,7 @@ public final class Renderer2D {
         }
     }
 
-    /** Draws a bounded implicit/compound SDF through the existing UI primitive batch. */
+
     public void compoundSdf(UiCompoundSdf compound, UiPaint paint) {
         compoundSdf(compound, paint, UiStroke.NONE, true);
     }
@@ -843,7 +842,7 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
-    /** Draws an atlas sub-rect rotated around an explicit pivot inside the quad. */
+    /** Applies rotation around the supplied pivot in the quad's local coordinates. */
     public void textureQuadRotated(GpuTextureView samplerView,
                                    GpuSampler sampler,
                                    double pivotScreenX,
@@ -2167,12 +2166,12 @@ public final class Renderer2D {
         return mesh.vec2(px, py).local2(px, py).color(r, g, b, a)
                 .vec4((float)x, (float)y, (float)w, (float)h)
                 .vec4(radius, lineWidth, opacity, time)
-                .vec4(mouseX, mouseY, lightRadius, 0f)
+                .vec4(mouseX, mouseY, lightRadius, spec.subsurface())
                 .vec4(pulseX, pulseY, pulseAge, pulseMode)
                 .vec4(originX, originY, maskRadius, maskMode)
                 .vec4(maskX, maskY, maskW, maskH)
                 .vec4(spec.lineOpacity(), spec.emission(), spec.glow(), spec.motionSpeed())
-                .vec4(coldR / 255f, coldG / 255f, coldB / 255f, 1f)
+                .vec4(coldR / 255f, coldG / 255f, coldB / 255f, spec.gloss())
                 .next();
     }
 
@@ -3190,7 +3189,7 @@ public final class Renderer2D {
     }
 
     /**
-     * Draws a Bezier node graph edge between two rounded rectangles, anchored on their borders.
+     * Anchors a Bezier connector to the borders of the two supplied rounded rectangles.
      */
     public void roundedRectNodeGraphEdge(double x1, double y1, double w1, double h1, double radius1,
                                          double x2, double y2, double w2, double h2, double radius2,
@@ -3210,7 +3209,7 @@ public final class Renderer2D {
     }
 
     /**
-     * Draws an orthogonal connector between two rounded rectangles, anchored on their borders.
+     * Anchors the orthogonal connector to the border of each supplied rounded rectangle.
      */
     public void roundedRectOrthogonalConnector(double x1, double y1, double w1, double h1, double radius1,
                                                double x2, double y2, double w2, double h2, double radius2,
@@ -3220,7 +3219,7 @@ public final class Renderer2D {
     }
 
     /**
-     * Draws an orthogonal connector between two rounded rectangles, anchored on their borders.
+     * Anchors the orthogonal connector to the border of each supplied rounded rectangle.
      */
     public void roundedRectOrthogonalConnector(double x1, double y1, double w1, double h1, double radius1,
                                                double x2, double y2, double w2, double h2, double radius2,
@@ -3546,13 +3545,13 @@ public final class Renderer2D {
         return mesh.vec2(x, y).raw2(fresnelMix, packedDistort).local2(x, y).color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(p0x, p0y, p0z, p0w)
-                .vec4(preset.thicknessPx, preset.fresnelPower, clamp01(preset.fresnelAlpha), alphaPayload)
+                .vec4(optics.opticalThickness(), optics.refractiveIndex(), optics.surfaceRoughness(), alphaPayload)
                 .vec4(p3x, p3y, p3z, p3w)
                 .vec4(p4x, p4y, p4z, p4w)
                 .vec4(p5x, p5y, p5z, p5w)
                 .vec4(sourceCount, smoothing, packGlassOpticalFlags(optics), shapeMode)
-                .vec4(optics.chromaticAberration(), materialInnerGlowStrength(material),
-                        materialInnerGlowSize(material), packLiquidGlassRgb(materialInnerGlowArgb(material)))
+                .vec4(optics.chromaticAberration(), materialGlassFrost(material),
+                        optics.filmThicknessNm(), optics.filmStrength())
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
@@ -3634,7 +3633,7 @@ public final class Renderer2D {
                 Math.max(0.0f, materialFrostedJitter(liquidGlassMaterial)));
         UiGlassOpticsSpec optics = materialOptics(liquidGlassMaterial);
         float bevelReach = (Math.abs(optics.refraction()) + Math.abs(optics.bevelDepth()))
-                * (1.0f + optics.chromaticAberration())
+                * Math.max(1.0f, optics.opticalThickness()) * (1.0f + optics.chromaticAberration())
                 * Math.max(logicalWidth, logicalHeight);
         float lensRadius = 0.5f * (float) Math.hypot(bounds.width(), bounds.height());
         float zoomReach = lensRadius * Math.abs(1.0f / optics.magnification() - 1.0f);
@@ -3652,9 +3651,11 @@ public final class Renderer2D {
         float chromaticReachFramebufferPx = optics.chromaticAberration() > 0.001f
                 ? Math.min(24.0f, 10.0f + optics.chromaticAberration() * 42.0f)
                 : 0.0f;
+        float microReachPx = 2.25f * materialGlassFrost(liquidGlassMaterial)
+                + 1.75f * optics.reactiveCoating();
         float blurSampleReachFramebufferPx = Math.max(
-                Math.max(frostedJitterFramebufferPx, liquidReachFramebufferPx),
-                chromaticReachFramebufferPx) + liquidGlassMaterial.visual().sampleReachPx() + 2.0f;
+                Math.max(frostedJitterFramebufferPx + microReachPx, liquidReachFramebufferPx),
+                chromaticReachFramebufferPx) + liquidGlassMaterial.visual().sampleReachPx() + 4.0f;
 
         float logicalPerFramebufferX = logicalWidth / framebufferWidth;
         float logicalPerFramebufferY = logicalHeight / framebufferHeight;
@@ -3822,13 +3823,13 @@ public final class Renderer2D {
         return mesh.vec2(x, y).raw2(fresnelMix, packedDistort).local2(x, y).color(r, g, b, a)
                 .vec4(bounds.x(), bounds.y(), bounds.width(), bounds.height())
                 .vec4(points[0], points[1], points[2], points[3])
-                .vec4(thickness, fresnelPower, fresnelAlpha, baseAlpha)
+                .vec4(optics.opticalThickness(), optics.refractiveIndex(), optics.surfaceRoughness(), baseAlpha)
                 .vec4(points[4], points[5], points[6], points[7])
                 .vec4(points[8], points[9], points[10], points[11])
                 .vec4(points[12], points[13], points[14], points[15])
                 .vec4(pointCount, rounding, packGlassOpticalFlags(optics), 1.0f)
-                .vec4(optics.chromaticAberration(), materialInnerGlowStrength(material),
-                        materialInnerGlowSize(material), packLiquidGlassRgb(materialInnerGlowArgb(material)))
+                .vec4(optics.chromaticAberration(), materialGlassFrost(material),
+                        optics.filmThicknessNm(), optics.filmStrength())
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
@@ -4307,11 +4308,11 @@ public final class Renderer2D {
         int i1 = mesh.vec2(x, y).raw2(mix, packedDistort).local2(x, y).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
-                .vec4(thickness, fresnelPower, fa, ba)
+                .vec4(optics.opticalThickness(), optics.refractiveIndex(), optics.surfaceRoughness(), ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, packGlassOpticalFlags(optics), 0f)
-                .vec4(optics.chromaticAberration(), materialInnerGlowStrength(liquidGlassMaterial),
-                        materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
+                .vec4(optics.chromaticAberration(), materialGlassFrost(liquidGlassMaterial),
+                        optics.filmThicknessNm(), optics.filmStrength())
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
@@ -4323,11 +4324,11 @@ public final class Renderer2D {
         int i2 = mesh.vec2(x, y + h).raw2(mix, packedDistort).local2(x, y + h).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
-                .vec4(thickness, fresnelPower, fa, ba)
+                .vec4(optics.opticalThickness(), optics.refractiveIndex(), optics.surfaceRoughness(), ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, packGlassOpticalFlags(optics), 0f)
-                .vec4(optics.chromaticAberration(), materialInnerGlowStrength(liquidGlassMaterial),
-                        materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
+                .vec4(optics.chromaticAberration(), materialGlassFrost(liquidGlassMaterial),
+                        optics.filmThicknessNm(), optics.filmStrength())
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
@@ -4339,11 +4340,11 @@ public final class Renderer2D {
         int i3 = mesh.vec2(x + w, y + h).raw2(mix, packedDistort).local2(x + w, y + h).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
-                .vec4(thickness, fresnelPower, fa, ba)
+                .vec4(optics.opticalThickness(), optics.refractiveIndex(), optics.surfaceRoughness(), ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, packGlassOpticalFlags(optics), 0f)
-                .vec4(optics.chromaticAberration(), materialInnerGlowStrength(liquidGlassMaterial),
-                        materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
+                .vec4(optics.chromaticAberration(), materialGlassFrost(liquidGlassMaterial),
+                        optics.filmThicknessNm(), optics.filmStrength())
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
@@ -4355,11 +4356,11 @@ public final class Renderer2D {
         int i4 = mesh.vec2(x + w, y).raw2(mix, packedDistort).local2(x + w, y).color(r, g, b, finalA)
                 .vec4(x, y, w, h)
                 .vec4(cornerRadiiTmp[0], cornerRadiiTmp[1], cornerRadiiTmp[2], cornerRadiiTmp[3])
-                .vec4(thickness, fresnelPower, fa, ba)
+                .vec4(optics.opticalThickness(), optics.refractiveIndex(), optics.surfaceRoughness(), ba)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, 0f, 0f)
                 .vec4(0f, 0f, 0f, 0f).vec4(0f, 0f, packGlassOpticalFlags(optics), 0f)
-                .vec4(optics.chromaticAberration(), materialInnerGlowStrength(liquidGlassMaterial),
-                        materialInnerGlowSize(liquidGlassMaterial), packLiquidGlassRgb(materialInnerGlowArgb(liquidGlassMaterial)))
+                .vec4(optics.chromaticAberration(), materialGlassFrost(liquidGlassMaterial),
+                        optics.filmThicknessNm(), optics.filmStrength())
                 .vec4(optics.mode().shaderId(), optics.refraction(), optics.bevelWidth(), optics.bevelDepth())
                 .vec4(optics.interactionStrength(), optics.interactionRadius(),
                         optics.interactionViscosity(), optics.cleanReveal())
@@ -4376,12 +4377,15 @@ public final class Renderer2D {
 
     // 24-bit integer is represented exactly by a 32-bit float vertex attribute.
     // Params6.z is the unused channel for rect/primitive/compound geometries.
-    // bits [0..1] chromatic motion; [8..14] tilt X; [15..21] tilt Y;
-    // [22] shape deformation; [23] directional specular. Keep payload GL3.3/16 attributes.
+    // bits [0..1] chromatic motion; [2..7] coating response (UNORM6);
+    // [8..14] tilt X; [15..21] tilt Y; [22] shape deformation;
+    // [23] directional specular. Keep payload GL3.3/16 attributes.
     private static float packGlassOpticalFlags(UiGlassOpticsSpec optics) {
         int tiltX = Math.max(0, Math.min(127, Math.round(optics.tiltXDegrees() * 4f) + 64));
         int tiltY = Math.max(0, Math.min(127, Math.round(optics.tiltYDegrees() * 4f) + 64));
-        int bits = optics.chromaticMotion().shaderId() | (tiltX << 8) | (tiltY << 15)
+        int coating = Math.round(optics.reactiveCoating() * 63f);
+        int bits = optics.chromaticMotion().shaderId() | (coating << 2)
+                | (tiltX << 8) | (tiltY << 15)
                 | (optics.shapeDeformation() ? (1 << 22) : 0)
                 | (optics.specular() ? (1 << 23) : 0);
         return bits;
@@ -4395,6 +4399,11 @@ public final class Renderer2D {
 
     private static float materialFrostedJitter(UiLiquidGlassMaterial material) {
         return material != null ? material.frostedJitterPx() : 0.0f;
+    }
+
+    private static float materialGlassFrost(UiLiquidGlassMaterial material) {
+        UiGlassOpticsSpec optics = materialOptics(material);
+        return Math.max(optics.frost(), materialFrostedJitter(material) * 0.25f);
     }
 
     private static UiGlassInteraction materialInteraction(UiLiquidGlassMaterial material) {
@@ -5390,7 +5399,6 @@ public final class Renderer2D {
     }
 
 
-    // ---- Engine integration -------------------------------------------------------
 
     public static boolean isBatching() {
         return UI_BATCHER.isActive();

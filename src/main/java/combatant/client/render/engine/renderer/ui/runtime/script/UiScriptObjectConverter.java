@@ -59,24 +59,32 @@ public final class UiScriptObjectConverter {
         validateChildrenField(map);
 
         UiNodeType type = nodeType(string(map.get("type"), "panel"));
-        Map<String, Object> props = new LinkedHashMap<>();
+        // Most fields on a script node are reserved. Allocate a props map only when the node
+        // actually contains an authored property; UiProps.EMPTY is shared by empty specs.
+        Map<String, Object> props = null;
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             if (entry.getKey() == null) continue;
             String key = String.valueOf(entry.getKey());
             if (!RESERVED_NODE_KEYS.contains(key)) {
+                if (props == null) props = new LinkedHashMap<>();
                 props.put(key, entry.getValue());
             }
         }
-        // Explicit props win over shorthand top-level props, matching ui.js normalization.
-        props.putAll(mapObject(map.get("props")));
+        Map<String, Object> explicitProps = mapObject(map.get("props"));
+        if (!explicitProps.isEmpty()) {
+            if (props == null) props = new LinkedHashMap<>(explicitProps.size());
+            // Explicit props override shorthand fields, including explicit null values.
+            props.putAll(explicitProps);
+        }
+        Map<String, Object> style = inlineStyle(map, type);
 
         return new UiNodeSpec(
                 string(map.get("key"), ""),
                 type,
-                new UiProps(props),
+                props == null ? UiProps.EMPTY : new UiProps(props),
                 UiStyle.DEFAULT,
                 styleClass(map),
-                new UiInlineStyle(inlineStyle(map, type)),
+                style.isEmpty() ? UiInlineStyle.EMPTY : new UiInlineStyle(style),
                 events(map),
                 mapObject(map.get("meta")),
                 children(map.get("children"))
@@ -105,9 +113,12 @@ public final class UiScriptObjectConverter {
             return;
         }
         if (value instanceof Iterable<?> iterable) {
+            // Child index paths are only consumed by strict validation diagnostics.
+            // Avoid allocating one path string per child in normal UI tree conversion.
+            boolean validate = UiRuntimeValidation.enabled();
             int index = 0;
             for (Object child : iterable) {
-                appendChildren(child, out, path + "[" + index + "]");
+                appendChildren(child, out, validate ? path + "[" + index + "]" : path);
                 index++;
             }
             return;
@@ -123,13 +134,13 @@ public final class UiScriptObjectConverter {
     private static Map<String, String> events(Map<?, ?> node) {
         Map<String, String> events = eventMap(node.get("events"));
         for (Map.Entry<String, String> alias : UiAuthoringContract.eventAliases().entrySet()) {
-            directEvent(node, events, alias.getKey(), alias.getValue());
+            events = directEvent(node, events, alias.getKey(), alias.getValue());
         }
         return events.isEmpty() ? Map.of() : events;
     }
 
     private static Map<String, String> eventMap(Object value) {
-        if (!(value instanceof Map<?, ?> raw)) return new LinkedHashMap<>();
+        if (!(value instanceof Map<?, ?> raw) || raw.isEmpty()) return Map.of();
         Map<String, String> events = new LinkedHashMap<>(raw.size());
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
             if (entry.getKey() == null) continue;
@@ -142,23 +153,24 @@ public final class UiScriptObjectConverter {
                 );
             }
         }
-        return events;
+        return events.isEmpty() ? Map.of() : events;
     }
 
-    private static void directEvent(Map<?, ?> node, Map<String, String> events, String field, String eventName) {
-        if (!node.containsKey(field)) return;
+    private static Map<String, String> directEvent(Map<?, ?> node, Map<String, String> events,
+                                                    String field, String eventName) {
+        if (!node.containsKey(field)) return events;
         Object value = node.get(field);
-        if (value == null) return;
+        if (value == null) return events;
         if (value instanceof String action) {
+            if (events.isEmpty()) events = new LinkedHashMap<>();
             events.put(eventName, action);
-            return;
-        }
-        if (UiRuntimeValidation.enabled()) {
+        } else if (UiRuntimeValidation.enabled()) {
             throw UiRuntimeValidation.invalid(
                     "UI node field '" + field + "' must name a String action, got "
                             + value.getClass().getSimpleName() + "."
             );
         }
+        return events;
     }
 
     private static String styleClass(Map<?, ?> node) {
@@ -170,12 +182,13 @@ public final class UiScriptObjectConverter {
     }
 
     private static Map<String, Object> inlineStyle(Map<?, ?> node, UiNodeType type) {
-        Map<String, Object> style = new LinkedHashMap<>();
+        Map<String, Object> style = null;
         for (Map.Entry<String, String> promotion : UiAuthoringContract.promotedStyles().entrySet()) {
             String sourceKey = promotion.getKey();
             if (!node.containsKey(sourceKey)) continue;
 
             Object value = node.get(sourceKey);
+            if (style == null) style = new LinkedHashMap<>();
             if ("align".equals(sourceKey)
                     && type == UiNodeType.TEXT
                     && value instanceof String text
@@ -188,12 +201,16 @@ public final class UiScriptObjectConverter {
         }
 
         // Explicit style is last, matching browser/CSS precedence over convenience aliases.
-        style.putAll(mapObject(node.get("style")));
-        return style;
+        Map<String, Object> explicitStyle = mapObject(node.get("style"));
+        if (!explicitStyle.isEmpty()) {
+            if (style == null) return explicitStyle;
+            style.putAll(explicitStyle);
+        }
+        return style != null ? style : Map.of();
     }
 
     private static Map<String, Object> mapObject(Object value) {
-        if (!(value instanceof Map<?, ?> raw) || raw.isEmpty()) return new LinkedHashMap<>();
+        if (!(value instanceof Map<?, ?> raw) || raw.isEmpty()) return Map.of();
         Map<String, Object> map = new LinkedHashMap<>(raw.size());
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
             if (entry.getKey() != null) {

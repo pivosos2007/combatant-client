@@ -15,7 +15,7 @@ import java.util.Deque;
 
 /**
  * Retained-tree rectangular scissor stack used while {@link UiRenderer} walks runtime nodes.
- * This is intentionally separate from renderer-side analytic/MSAA {@code UiClipStack}.
+ * This is separate from renderer-side analytic/MSAA {@code UiClipStack}.
  */
 public final class UiRuntimeScissorStack {
     private final Deque<Boolean> pushed = new ArrayDeque<>();

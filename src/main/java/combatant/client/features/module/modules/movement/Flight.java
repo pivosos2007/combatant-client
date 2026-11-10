@@ -294,6 +294,11 @@ public class Flight extends Module {
         }
     }
 
+    @EventHandler
+    private void onClientMovePacketRewrite(ClientMovePacketRewriteEvent event) {
+        event.setReplacement(onSendMovePacket(event.getPacket()));
+    }
+
     public ServerboundMovePlayerPacket onSendMovePacket(ServerboundMovePlayerPacket packet) {
         if (packet == null) return null;
         if (!isMeteorMode() || antiKickMode.get() != AntiKickMode.PACKET) return null;
@@ -330,6 +335,11 @@ public class Flight extends Module {
 
         antiKickPacket(fullPacket, mc.player.getY());
         return fullPacket;
+    }
+
+    @EventHandler
+    private void onAbilitiesPacket(ClientPlayerAbilitiesEvent event) {
+        if (onReceiveAbilities(event.getPacket())) event.cancel();
     }
 
     public boolean onReceiveAbilities(ClientboundPlayerAbilitiesPacket packet) {

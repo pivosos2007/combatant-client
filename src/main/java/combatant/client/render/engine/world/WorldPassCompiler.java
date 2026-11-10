@@ -224,6 +224,15 @@ public final class WorldPassCompiler {
             depth = EntityDepthLayer.depthView();
             stats.depthPrePassBinding();
         } else if (policy == DepthPolicy.PRE_TRANSLUCENT) {
+            // Before translucent rendering, the active target contains opaque/player depth
+            // and has exactly the same sample count as color, including MSAA.
+            if (VanillaBeforeTranslucentPass.renderingEarly()) {
+                GpuTextureView earlyDepth = framebuffer != null ? framebuffer.getDepthTextureView() : null;
+                if (earlyDepth != null && samples(earlyDepth) == samples(colorView)) {
+                    stats.depthPrePassBinding();
+                    return earlyDepth;
+                }
+            }
             // A PRE_DEPTH effect must ignore translucent terrain (notably water),
             // but must still respect the translucent SeeInvisibles player in front.
             // This auxiliary target is based on the opaque snapshot, NOT main depth.

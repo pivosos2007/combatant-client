@@ -10,9 +10,6 @@ package combatant.client.features.gui.hud;
 import combatant.client.config.values.EnumValue;
 import combatant.client.render.engine.text.TextRenderer;
 
-/**
- * Lightweight animated gradient text effects for HUD labels/icons.
- */
 public enum HudTextEffects {
     ;
 

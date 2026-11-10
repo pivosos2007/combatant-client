@@ -14,7 +14,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Suppresses ONLY the original commands; never modifies SeedCrackerX's search algorithms. */
+/**
+ * Disables SeedCrackerX command registration when native commands are hidden.
+ * The optional injection tolerates builds without the expected registration method.
+ */
 @Pseudo
 @Mixin(targets = "kaptainwutax.seedcrackerX.init.ClientCommands", remap = false)
 public abstract class SeedCrackerCommandsMixin {

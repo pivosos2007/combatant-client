@@ -7,6 +7,7 @@
 
 package combatant.client.api.v0.render;
 
+/** Receives a registered post-process pass callback with its source and destination context. */
 @FunctionalInterface
 public interface CombatantPostProcessCallback {
     boolean render(CombatantPostProcessContext context);

@@ -16,6 +16,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+/**
+ * Applies {@link VehicleGroundStateEvent} to the ground flag of outbound
+ * vehicle movement packets. A replacement packet is allocated only if the flag changes.
+ */
 @Mixin(ServerboundMoveVehiclePacket.class)
 public abstract class VehicleGroundStateMixin {
     @Inject(method = "fromEntity", at = @At("RETURN"), cancellable = true)

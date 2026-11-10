@@ -143,7 +143,6 @@ public final class PrimeChunkTracker {
         goneTorches.values().removeIf(entry -> entry[0] < now);
     }
 
-    // ---- packets -------------------------------------------------------------------------------------------
 
     public void onPacket(Packet<?> packet) {
         if (!(packet instanceof ClientboundLevelChunkWithLightPacket
@@ -170,7 +169,6 @@ public final class PrimeChunkTracker {
         }
     }
 
-    // ---- light ---------------------------------------------------------------------------------------------
 
     private void snapshotLoadedChunks() {
         ClientLevel level = mc.level;
@@ -314,7 +312,6 @@ public final class PrimeChunkTracker {
         return state.is(Blocks.REDSTONE_ORE) || state.is(Blocks.DEEPSLATE_REDSTONE_ORE);
     }
 
-    // ---- redstone ------------------------------------------------------------------------------------------
 
     private void blockChanged(ClientLevel level, BlockPos pos, BlockState old, BlockState fresh) {
         if (old == fresh) return;
@@ -344,7 +341,6 @@ public final class PrimeChunkTracker {
                 || block instanceof TargetBlock || block instanceof CrafterBlock || block instanceof PoweredBlock;
     }
 
-    // ---- bookkeeping / render ------------------------------------------------------------------------------
 
     private boolean isOwnChunk(long key) {
         return passed.contains(key) || (mc.player != null && mc.player.chunkPosition().pack() == key);

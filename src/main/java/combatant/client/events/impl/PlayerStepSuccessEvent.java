@@ -11,6 +11,11 @@ import lombok.Getter;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.events.Event;
 
+/**
+ * Reports a successful upward step after entity movement has completed.
+ * {@code adjustedVec} is the displacement between the captured positions;
+ * the single-argument constructor uses zero vectors for absent positions.
+ */
 @Getter
 public final class PlayerStepSuccessEvent extends Event {
     private final Vec3 adjustedVec;

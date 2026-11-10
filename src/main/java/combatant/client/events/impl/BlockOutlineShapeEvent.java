@@ -15,7 +15,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-/** Outline geometry for the targeted block, independent of collision shapes. */
+/**
+ * Allows replacing the outline shape resolved for a targeted block.
+ * The original block state remains unchanged, and null replacements are ignored.
+ * Outline and collision shapes are handled by separate events.
+ */
 @Getter
 public final class BlockOutlineShapeEvent extends Event {
     private final BlockState state;

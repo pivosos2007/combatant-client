@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * GL synchronization timing for Tracy. Only wait duration is recorded; fence
- * counts and other vanity counters are intentionally omitted.
+ * counts and other vanity counters are omitted.
  */
 public enum GlSyncTracker {
     ;

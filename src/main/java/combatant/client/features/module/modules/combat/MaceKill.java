@@ -29,7 +29,6 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 
-//Такая хуйня на более менее ач работать не будет
 // thx liquidbounce
 @ModuleInfo(
         id = "macekill",

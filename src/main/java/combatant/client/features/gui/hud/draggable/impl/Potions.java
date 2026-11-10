@@ -265,8 +265,7 @@ public final class Potions extends DraggableHudElement {
         float rowTextH = (float) rowTextRenderer.getHeight(false);
         float maxWidth = MIN_WIDTH * baseScale;
         if (!isTimePill()) {
-            // Preserve the pre-pill sizing contract for the ordinary text mode.
-            // Timed-pill width stabilization must not alter legacy panel widths.
+            // Width reservations for the timed-pill layout must not change text-mode sizing.
             rightTextWidthReserve.clear();
             if (showExampleRow) {
                 float previewWidth = (float) rowTextRenderer.getWidth("Example effect**:**", false) + (30.0f * baseScale);

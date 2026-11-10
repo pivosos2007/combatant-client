@@ -20,6 +20,10 @@ import combatant.client.render.engine.rhi.upload.PersistentMeshBackend;
 
 import java.util.List;
 
+/**
+ * Coordinates the active rendering backend and its frame lifecycle.
+ * Callers submit draw commands in order and close the backend when its resources are no longer needed.
+ */
 public interface CombatantRhi extends AutoCloseable {
     DynamicMeshBackend dynamicMeshes();
 
@@ -49,10 +53,13 @@ public interface CombatantRhi extends AutoCloseable {
 
     RenderResourceManager resources();
 
+    /** Begins accounting for a new logical frame. */
     void beginFrame(long frameId);
 
+    /** Closes the current frame's submission phase before presentation. */
     void endRenderSubmission();
 
+    /** Notifies the backend that the frame has been presented. */
     void framePresented();
 
     default void drawMesh(RhiDrawCommand command) {

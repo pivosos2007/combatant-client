@@ -21,7 +21,6 @@ public interface PostProcessPass {
         return render(source, destination, context != null ? context.tickDelta() : 0.0f);
     }
 
-    /** Modern graph entry point. Legacy effects are adapted to the texture-view contract. */
     default boolean render(PostProcessExecutionContext execution) {
         if (execution == null) return false;
         return render(execution.context(), execution.source(), execution.destination());

@@ -162,11 +162,7 @@ public final class UiPrimitive {
             return this;
         }
 
-        /**
-         * Geometric edge/corner softness in logical pixels. The analytic shader
-         * applies it to the complete primitive rather than requiring every corner
-         * to carry another radius value.
-         */
+        /** Sets edge and corner softness in logical pixels. */
         public Builder rounding(double rounding) {
             this.rounding = finitePositive(rounding);
             return this;

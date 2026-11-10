@@ -21,6 +21,9 @@ public enum WorldTextRenderer {
     ;
 
     private static Renderer3D.BatchBindings cachedBindings;
+    private static Renderer3D.BatchBindings cachedEffectBindings;
+    private static com.mojang.renderpearl.api.textures.GpuTextureView cachedEffectView;
+    private static com.mojang.renderpearl.api.textures.GpuSampler cachedEffectSampler;
     private static com.mojang.renderpearl.api.textures.GpuTextureView cachedView;
     private static com.mojang.renderpearl.api.textures.GpuSampler cachedSampler;
     private static boolean cachedMsdf;
@@ -75,9 +78,14 @@ public enum WorldTextRenderer {
                 : Renderer3D.DepthMode.MAIN;
         Renderer3D.DepthMode effectiveDepth = requestedDepth;
 
-        Renderer3D.BatchBindings bindings = textBindings(font, texture);
+        boolean withShadow = resolved.shadow() && resolved.shadowColor().a > 0;
+        Renderer3D.BatchBindings bindings = withShadow
+                ? effectBindings(texture) : textBindings(font, texture);
 
-        var pipeline = font.isMsdf()
+        var pipeline = withShadow
+                ? (effectiveDepth == Renderer3D.DepthMode.NONE
+                    ? WorldRenderPipelines.WORLD_TEXT_EFFECT : WorldRenderPipelines.WORLD_TEXT_EFFECT_DEPTH)
+                : font.isMsdf()
                 ? (effectiveDepth == Renderer3D.DepthMode.NONE
                 ? WorldRenderPipelines.WORLD_TEXT_MSDF
                 : WorldRenderPipelines.WORLD_TEXT_MSDF_DEPTH)
@@ -101,15 +109,54 @@ public enum WorldTextRenderer {
         double offsetY = resolved.offsetY();
         double worldScale = resolved.worldScale();
 
-        if (resolved.shadow() && resolved.shadowColor().a > 0) {
-            double shadowShift = selection.shadowOffset() * worldScale;
-            emitString(mesh, font, text, startX + shadowShift, shadowShift, glyphScale, anchor, right, up,
-                    offsetX, offsetY, worldScale, resolved.shadowColor());
+        if (withShadow) {
+            emitEffectString(mesh, font, text, startX, 0.0, glyphScale,
+                    anchor, right, up, offsetX, offsetY, worldScale, resolved.color(),
+                    selection.shadowOffset(), -resolved.shadowColor().a / 255.0f);
+        } else {
+            emitString(mesh, font, text, startX, 0.0, glyphScale, anchor, right, up,
+                    offsetX, offsetY, worldScale, resolved.color());
         }
-
-        emitString(mesh, font, text, startX, 0.0, glyphScale, anchor, right, up,
-                offsetX, offsetY, worldScale, resolved.color());
         return width * worldScale;
+    }
+
+    /**
+     * One world quad per glyph for the same shader coverage used by UI text.
+     * Both face and dark outline are composited in the fragment shader.
+     */
+    public static double drawOutlinedBillboard(Renderer3D renderer, TextRenderer textRenderer,
+                                               String text, Vec3 anchor, Options options,
+                                               Vec3 right, Vec3 down,
+                                               float radius, float opacity) {
+        if (renderer == null || text == null || text.isEmpty() || anchor == null) return 0.0;
+        Options resolved = options != null ? options : Options.defaults();
+        if (resolved.worldScale() <= 0.0 || opacity <= 0.0f) return 0.0;
+        CustomTextRenderer custom = resolve(textRenderer);
+        if (custom == null) return 0.0;
+        CustomTextRenderer.GlyphSelection selection = custom.prepareGlyphFont(resolved.scale(), resolved.big());
+        GlyphFont font = selection.font();
+        if (font == null || !font.isReady() || font.getTexture() == null) return 0.0;
+        AbstractTexture texture = font.getTexture();
+        if (texture.getTextureView() == null || texture.getSampler() == null) return 0.0;
+        Renderer3D.DepthMode depth = resolved.depthMode() != null
+                ? resolved.depthMode() : Renderer3D.DepthMode.MAIN;
+        MeshBuilder mesh = renderer.batch(depth == Renderer3D.DepthMode.NONE
+                ? WorldRenderPipelines.WORLD_TEXT_EFFECT : WorldRenderPipelines.WORLD_TEXT_EFFECT_DEPTH,
+                depth, effectBindings(texture));
+        if (mesh == null) return 0.0;
+        if (right == null || down == null) {
+            Vector3f rv = new Vector3f(1f, 0f, 0f).rotate(RenderState.cameraRotation);
+            Vector3f dv = new Vector3f(0f, -1f, 0f).rotate(RenderState.cameraRotation);
+            right = new Vec3(rv.x, rv.y, rv.z);
+            down = new Vec3(dv.x, dv.y, dv.z);
+        }
+        double glyphScale = selection.glyphScale();
+        double width = font.getWidth(text, text.length()) * glyphScale;
+        emitEffectString(mesh, font, text, resolved.centered() ? -width * 0.5 : 0.0, 0.0,
+                glyphScale, anchor, right, down, resolved.offsetX(), resolved.offsetY(),
+                resolved.worldScale(), resolved.color(), Math.max(0.0f, radius),
+                Math.min(1.0f, Math.max(0.0f, opacity)));
+        return width * resolved.worldScale();
     }
 
     /** Exact logical metrics used by the billboard backend for a requested font scale. */
@@ -164,6 +211,72 @@ public enum WorldTextRenderer {
                     .raw2(u1, v0).color(cr, cg, cb, ca).next();
             mesh.quad(i1, i2, i3, i4);
         });
+    }
+
+    /** Only the glyph atlas is necessary: the effect shader gets its MSDF range per vertex. */
+    private static Renderer3D.BatchBindings effectBindings(AbstractTexture texture) {
+        var view = texture.getTextureView();
+        var sampler = texture.getSampler();
+        if (cachedEffectBindings != null && cachedEffectView == view && cachedEffectSampler == sampler) {
+            return cachedEffectBindings;
+        }
+        cachedEffectView = view;
+        cachedEffectSampler = sampler;
+        cachedEffectBindings = Renderer3D.BatchBindings.none().withSampler("u_Texture", view, sampler);
+        return cachedEffectBindings;
+    }
+
+    private static void emitEffectString(MeshBuilder mesh, GlyphFont font, String text,
+                                         double localX, double localY, double glyphScale,
+                                         Vec3 anchor, Vec3 right, Vec3 down,
+                                         double offsetX, double offsetY, double worldScale,
+                                         RenderColor tint, double radius, float signedOpacity) {
+        double ax = anchor.x, ay = anchor.y, az = anchor.z;
+        double rx = right.x, ry = right.y, rz = right.z;
+        double dx = down.x, dy = down.y, dz = down.z;
+        int cr = tint.r, cg = tint.g, cb = tint.b, ca = tint.a;
+        float mode = font.isMsdf() ? font.getPxRange() : 0.0f;
+        font.emitGlyphs(text, localX, localY, glyphScale, (x0, y0, x1, y1, u0, v0, u1, v1) -> {
+            if (x1 <= x0 || y1 <= y0) return;
+            double pad = radius + 0.75;
+            float du = (float) ((u1 - u0) / (x1 - x0));
+            float dv = (float) ((v1 - v0) / (y1 - y0));
+            float shiftU = (float) (du * radius);
+            float shiftV = (float) (dv * radius);
+            float minU = Math.min(u0, u1), minV = Math.min(v0, v1);
+            float maxU = Math.max(u0, u1), maxV = Math.max(v0, v1);
+            mesh.ensureQuadCapacity();
+            int a = worldEffectVertex(mesh, ax, ay, az, rx, ry, rz, dx, dy, dz,
+                    offsetX + (x0 - pad) * worldScale, offsetY + (y0 - pad) * worldScale,
+                    u0 - du * (float) pad, v0 - dv * (float) pad, cr, cg, cb, ca,
+                    minU, minV, maxU, maxV, shiftU, shiftV, signedOpacity, mode);
+            int b = worldEffectVertex(mesh, ax, ay, az, rx, ry, rz, dx, dy, dz,
+                    offsetX + (x0 - pad) * worldScale, offsetY + (y1 + pad) * worldScale,
+                    u0 - du * (float) pad, v1 + dv * (float) pad, cr, cg, cb, ca,
+                    minU, minV, maxU, maxV, shiftU, shiftV, signedOpacity, mode);
+            int c = worldEffectVertex(mesh, ax, ay, az, rx, ry, rz, dx, dy, dz,
+                    offsetX + (x1 + pad) * worldScale, offsetY + (y1 + pad) * worldScale,
+                    u1 + du * (float) pad, v1 + dv * (float) pad, cr, cg, cb, ca,
+                    minU, minV, maxU, maxV, shiftU, shiftV, signedOpacity, mode);
+            int d = worldEffectVertex(mesh, ax, ay, az, rx, ry, rz, dx, dy, dz,
+                    offsetX + (x1 + pad) * worldScale, offsetY + (y0 - pad) * worldScale,
+                    u1 + du * (float) pad, v0 - dv * (float) pad, cr, cg, cb, ca,
+                    minU, minV, maxU, maxV, shiftU, shiftV, signedOpacity, mode);
+            mesh.quad(a, b, c, d);
+        });
+    }
+
+    private static int worldEffectVertex(MeshBuilder mesh,
+                                         double ax, double ay, double az,
+                                         double rx, double ry, double rz,
+                                         double dx, double dy, double dz,
+                                         double x, double y, float u, float v,
+                                         int cr, int cg, int cb, int ca,
+                                         float u0, float v0, float u1, float v1,
+                                         float shiftU, float shiftV, float opacity, float mode) {
+        return mesh.vec3(ax + rx * x + dx * y, ay + ry * x + dy * y, az + rz * x + dz * y)
+                .raw2(u, v).color(cr, cg, cb, ca)
+                .vec4(u0, v0, u1, v1).vec4(shiftU, shiftV, opacity, mode).next();
     }
 
     /**

@@ -37,6 +37,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
+import combatant.client.events.impl.ClientInputCycleHandledEvent;
+import combatant.client.events.impl.ManualAttackEvent;
+import combatant.client.events.impl.EntityGlowDecisionEvent;
 import combatant.client.events.impl.CrosshairTargetUpdateEvent;
 import combatant.client.events.impl.BlockPlacementInputEvent;
 import combatant.client.events.impl.WorldChangeEvent;
@@ -50,7 +53,6 @@ import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import combatant.client.features.module.modules.player.NoInteract;
 import combatant.client.features.module.modules.visuals.Freecam;
 import combatant.client.features.module.modules.visuals.ViewModel;
 import combatant.client.features.relations.StaffTracker;
@@ -163,22 +165,21 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
 
     @Inject(method = "handleKeybinds", at = @At("TAIL"))
     private void combatant$autobow$finishInputCycle(CallbackInfo ci) {
-        AutoBow autoBow = Modules.get(AutoBow.class);
-        if (autoBow != null && autoBow.isEnabled()) {
-            autoBow.onInputCycleHandled();
+        if (Events.BUS.hasListeners(ClientInputCycleHandledEvent.class)) {
+            Events.BUS.post(new ClientInputCycleHandledEvent());
         }
     }
 
     @Inject(method = "shouldEntityAppearGlowing", at = @At("HEAD"), cancellable = true)
     private void combatant$disablePvpGlow(Entity entity, CallbackInfoReturnable<Boolean> cir) {
         if (!(entity instanceof Player)) return;
-        PvpCooldowns mod = Modules.get(PvpCooldowns.class);
-        if (mod == null || !mod.shouldHideTargetGlow()) return;
-        cir.setReturnValue(false);
+        if (Events.BUS.hasListeners(EntityGlowDecisionEvent.class)
+                && Events.BUS.post(new EntityGlowDecisionEvent()).isCancelled()) {
+            cir.setReturnValue(false);
+        }
     }
 
 
-    // === КУРСОР ДЛЯ CLICKGUI ===
 
     @Inject(method = "continueAttack", at = @At("HEAD"), cancellable = true)
     private void onHandleBlockBreaking(boolean breaking, CallbackInfo ci) {
@@ -186,7 +187,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         LocalPlayer player = client.player;
         if (player == null) return;
 
-        // Hitbox должен работать даже при ломании блоков: не блокируем vanilla логику
+        // Preserve vanilla block breaking while the hitbox feature is active.
         Hitbox hitbox = Modules.get(Hitbox.class);
         if (hitbox != null && hitbox.isEnabled()) {
             return;
@@ -203,42 +204,19 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
 
         if (shouldBlockBreaking && attackKeyPressed) {
 
-            // блокируем ломание
             ci.cancel();
 
             if (client.gameMode != null)
                 client.gameMode.stopDestroyBlock();
 
-            // имитация удара
         }
     }
 
     @Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)
     private void onDoAttack(CallbackInfoReturnable<Boolean> cir) {
-        if (combatant.client.features.module.modules.combat.HitSelect.blocksManualAttack()) {
-            cir.setReturnValue(false);
-            cir.cancel();
-            return;
-        }
-
-        if (combatant.client.features.module.modules.combat.AntiMiss.blocksManualAttack()) {
-            cir.setReturnValue(false);
-            cir.cancel();
-            return;
-        }
-
-        AttributeSwap attributeSwap = Modules.get(AttributeSwap.class);
-        if (attributeSwap != null && attributeSwap.isEnabled() && attributeSwap.handleManualAttack()) {
-            cir.setReturnValue(true);
-            cir.cancel();
-            return;
-        }
-
-        AutoAttack autoAttack = Modules.get(AutoAttack.class);
-        if (autoAttack != null && autoAttack.isEnabled()) {
-            cir.setReturnValue(false);
-            cir.cancel();
-        }
+        if (!Events.BUS.hasListeners(ManualAttackEvent.class)) return;
+        ManualAttackEvent decision = Events.BUS.post(new ManualAttackEvent());
+        if (decision.isResolved()) cir.setReturnValue(decision.isReturnValue());
     }
 
     @Inject(method = "disconnect(Lnet/minecraft/client/gui/screens/Screen;ZZ)V", at = @At("HEAD"))
@@ -266,12 +244,9 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
 
         var fc = Modules.get(Freecam.class);
 
-        // =========================================================
         // FREECAM
-        // =========================================================
         if (fc != null && fc.isEnabled()) {
 
-            // позиция и направление FREECAM
             Vec3 start = new Vec3(
                     Mth.lerp(tickDelta, fc.camPosPrev.x, fc.camPos.x),
                     Mth.lerp(tickDelta, fc.camPosPrev.y, fc.camPos.y),
@@ -287,9 +262,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
                     Mth.cos(yawRad) * Mth.cos(pitchRad)
             );
 
-            // ===============================
             // FREECAM + NO INTERACT
-            // ===============================
             if (!fc.allowInteract()) {
                 mc.hitResult = combatant$miss(start);
                 mc.crosshairPickEntity = null;
@@ -297,9 +270,7 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
                 return;
             }
 
-            // ===============================
             // FREECAM + INTERACT
-            // ===============================
 
             // Reach (FREECAM)
             Reach reachModule = Modules.get(Reach.class);
@@ -359,27 +330,6 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         Events.BUS.post(event);
         mc.hitResult = event.getHitResult();
         mc.crosshairPickEntity = event.getTargetedEntity();
-    }
-
-    @Inject(method = "pick", at = @At("RETURN"))
-    private void noInteract$afterRaycast(float tickDelta, CallbackInfo ci) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null) return;
-
-        NoInteract noInteract = Modules.get(NoInteract.class);
-        if (noInteract == null || !noInteract.shouldBlockBlockInteraction()) return;
-
-        var hit = mc.hitResult;
-        if (hit instanceof EntityHitResult) return;
-
-        Vec3 camPos = mc.player.getEyePosition(tickDelta);
-        mc.hitResult = new BlockHitResult(
-                camPos,
-                Direction.UP,
-                BlockPos.ZERO,
-                false
-        );
-        mc.crosshairPickEntity = null;
     }
 
     @Inject(method = "disconnect", at = @At("HEAD"))

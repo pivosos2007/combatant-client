@@ -140,7 +140,7 @@ public class Tracers extends Module {
         arrowArgb[arrowCount++] = argb;
     }
 
-    /** Draws every queued arrow of this frame as one mesh and one draw call. */
+    /** Submits the queued arrow geometry as one batched draw for the frame. */
     private static void flushArrows(Identifier textureId, int count) {
         if (textureId == null || count <= 0) return;
         Renderer2D.deferRenderThreadAction(() -> drawArrows(textureId, count));

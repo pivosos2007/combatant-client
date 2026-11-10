@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.util.player;
 
 import combatant.client.events.EventHandler;
@@ -18,6 +25,7 @@ import java.util.Locale;
 import java.util.UUID;
 import net.minecraft.world.entity.player.Player;
 
+/** Associates received position changes with recent teleport triggers and targeted pearl landings. */
 public final class TeleportImpulseTracker {
     public static final TeleportImpulseTracker INSTANCE = new TeleportImpulseTracker();
 

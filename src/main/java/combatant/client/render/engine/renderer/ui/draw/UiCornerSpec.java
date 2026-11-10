@@ -8,7 +8,7 @@
 package combatant.client.render.engine.renderer.ui.draw;
 
 /**
- * Geometry of one box corner. Rounded and chamfered corners intentionally share
+ * Geometry of one box corner. Rounded and chamfered corners share
  * the same x/y extents so one shape can freely mix rounded, cut and square corners.
  */
 public record UiCornerSpec(UiCornerKind kind,

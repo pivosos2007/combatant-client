@@ -27,7 +27,7 @@ import java.util.*;
  * Picker-backed editor for per-item cooldown rules.
  * <p>
  * Grid clicks only focus an item. Adding/removing a rule and editing its fields happens in the
- * picker detail panel. The field rows intentionally reuse the regular settings renderer instead
+ * picker detail panel. The field rows reuse the regular settings renderer instead
  * of custom miniature buttons, and numeric values use the normal slider setting.
  */
 public final class CooldownRulesSetting extends TextListSetting implements PickerDetailOwner {

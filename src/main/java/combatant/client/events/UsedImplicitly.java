@@ -13,7 +13,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks code that is intentionally reached through reflection, Fabric entrypoints,
+ * Marks code that is reached through reflection, Fabric entrypoints,
  * addon API calls, event dispatch, serialization, or other non-direct call paths.
  *
  * <p>This is a source-level documentation and IntelliJ IDEA inspection hint. It is

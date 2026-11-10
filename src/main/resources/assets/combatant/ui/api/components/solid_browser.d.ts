@@ -249,6 +249,20 @@ export type SolidBrowserProps = SolidStyled & {
   glassRefraction?: number;
   glassBevelWidth?: number;
   glassBevelDepth?: number;
+  /** Relative optical depth of the refracting medium; zero disables geometric bending. */
+  glassOpticalThickness?: number;
+  /** Refractive index of the lens medium. */
+  glassIOR?: number;
+  /** Surface and transmitted-image roughness [0..1]. */
+  glassRoughness?: number;
+  /** Frosted subsurface scattering [0..1]. */
+  glassFrost?: number;
+  /** Thin-film coating thickness in nanometers. */
+  glassFilmThicknessNm?: number;
+  /** Angular interference contribution [0..1]. */
+  glassFilmStrength?: number;
+  /** Pointer-reactive surface film response [0..1]. */
+  glassCoatingResponse?: number;
   /** Fluid optical response only when explicitly enabled on this surface. */
   glassInteraction?: boolean;
   /** Optional liquidGL-like SDF deformation; never implied by reactive refraction. */

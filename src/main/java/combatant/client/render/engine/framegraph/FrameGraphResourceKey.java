@@ -9,7 +9,7 @@ package combatant.client.render.engine.framegraph;
 
 import java.util.Objects;
 
-/** Stable logical resource identity. Physical allocation is intentionally not encoded here. */
+/** Stable logical resource identity. Physical allocation is not encoded here. */
 public record FrameGraphResourceKey(String name,
                                     FrameGraphResourceKind kind,
                                     FrameGraphResourceLifetime lifetime) {

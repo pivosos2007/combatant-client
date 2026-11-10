@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Renderer-side runtime smoke/debug state. It is intentionally independent from module/UI config.
+ * Renderer-side runtime smoke/debug state. It is independent from module/UI config.
  * Mutations are atomic and become visible at normal frame boundaries.
  */
 public final class DeferredSmokeTestState {

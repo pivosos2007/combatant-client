@@ -245,7 +245,6 @@ public final class UiNode {
         return changed;
     }
 
-    /** Patch one prebound object slot without building a temporary Map. */
     public boolean patchProp(String key, Object value) {
         if (key == null) return false;
         if (!runtimePropsPrepared) {
@@ -286,7 +285,6 @@ public final class UiNode {
         return changed;
     }
 
-    /** Patch a prebound boolean slot without a temporary map. */
     public boolean patchBooleanProp(String key, boolean value) {
         if (key == null) return false;
         if (!runtimePropsPrepared) {

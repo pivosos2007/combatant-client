@@ -16,7 +16,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Diagnostic hook: observes the original finder's actual chunk submissions. */
+/**
+ * Forwards incoming chunk submissions from SeedCrackerX's finder queue to the
+ * local runtime monitor. The hook is optional when the target method is absent.
+ */
 @Pseudo
 @Mixin(targets = "kaptainwutax.seedcrackerX.finder.FinderQueue", remap = false)
 public abstract class SeedCrackerFinderQueueMixin {

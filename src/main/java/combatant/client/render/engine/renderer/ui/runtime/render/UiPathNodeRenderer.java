@@ -22,7 +22,7 @@ import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 
 import java.util.Locale;
 
-/** Paints generic vector path nodes and value-series plots through one typed path backend. */
+/** Converts vector-path and value-series node data into typed path geometry. */
 final class UiPathNodeRenderer {
     private final UiPathGeometry geometry = new UiPathGeometry();
 

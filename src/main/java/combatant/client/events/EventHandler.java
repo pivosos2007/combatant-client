@@ -12,6 +12,11 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+/**
+ * Registers a single-argument event subscriber with {@link EventBus}.
+ * Within an event class, higher priorities run first; subscribers for a
+ * concrete event type run before subscribers for its superclasses.
+ */
 @UsedImplicitly
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)

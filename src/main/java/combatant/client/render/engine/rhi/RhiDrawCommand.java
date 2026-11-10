@@ -23,6 +23,10 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
+/**
+ * Describes one mesh submission with its attachments, pipeline, bindings and draw state.
+ * A retargeted command shares the original mesh and buffer bindings; it does not acquire ownership of them.
+ */
 public final class RhiDrawCommand {
     public final String label;
     public final RenderPipeline pipeline;

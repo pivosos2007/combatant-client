@@ -104,7 +104,7 @@ public final class DistributionCapabilities {
     }
 
     /**
-     * Returns true when the build intentionally removed the source TTF/OTF because a
+     * Returns true when the build removed the source TTF/OTF because a
      * validated MSDF atlas is authoritative for that builtin face.
      */
     public static boolean isAtlasOnlyBuiltinFont(Identifier resource) {

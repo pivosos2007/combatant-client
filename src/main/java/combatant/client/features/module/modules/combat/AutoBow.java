@@ -29,6 +29,7 @@ import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
+import combatant.client.events.impl.ClientInputCycleHandledEvent;
 import combatant.client.events.impl.EventSync;
 import combatant.client.events.impl.KeybindIsPressedEvent;
 import combatant.client.events.impl.RotationUpdateEvent;
@@ -65,6 +66,11 @@ import java.util.concurrent.ThreadLocalRandom;
         category = ModuleCategory.COMBAT, subcategory = ModuleSubcategory.ATTACK,
         description = "module.autobow.description")
 public class AutoBow extends Module {
+    @EventHandler
+    private void onInputCycle(ClientInputCycleHandledEvent event) {
+        onInputCycleHandled();
+    }
+
 
     private static final int COLOR_IDLE = 0x66FFFFFF;
     private static final int COLOR_WAIT = 0xFFFFD45A;

@@ -12,7 +12,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
 
 /**
- * Rarity -> RGBA for DropESP. Зачарованные вещи имеют минимум RARE.
+ * Rarity -> RGBA for DropESP. Enchanted items have at least RARE rarity.
  */
 public final class RarityColorUtil implements ItemRarityColorProvider {
 

@@ -94,10 +94,9 @@ public class FakePlayer extends Module {
     }
 
     /**
-     * Extracts the MAINHAND attack-damage modifier amount from an ItemStack.
-     * <p>
-     * Compatibility fallback for client-side attack callbacks that sometimes observe
-     * EntityAttributes.ATTACK_DAMAGE without the weapon modifiers applied.
+     * Accumulates main-hand attack-damage modifiers from the supplied item.
+     * The returned value excludes the attacker's base damage attribute and is
+     * used when evaluating attacks against the local fake player.
      */
     private static float getMainHandAttackDamageBonus(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return 0.0f;
@@ -246,10 +245,10 @@ public class FakePlayer extends Module {
         ItemStack weapon = attacker.getMainHandItem();
         float baseDamage = (float) attacker.getAttributeValue(Attributes.ATTACK_DAMAGE);
 
-        float handBase = (float) attacker.getAttributeBaseValue(Attributes.ATTACK_DAMAGE); // обычно 1.0
+        float handBase = (float) attacker.getAttributeBaseValue(Attributes.ATTACK_DAMAGE); 
         float weaponBonus = getMainHandAttackDamageBonus(weapon);
 
-// Если значение атрибута совпадает с базой (без оружия), значит weapon-модификаторы не учлись — добавляем вручную.
+// Apply weapon modifiers only when the attribute still has its unmodified base value.
         if (weaponBonus > 0.0f && Math.abs(baseDamage - handBase) < 0.0001f) {
             baseDamage += weaponBonus;
         }

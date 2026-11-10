@@ -11,7 +11,7 @@ import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.PvpCooldowns;
 
 /**
- * Глобальное хранилище кулдаунов и флагов PvP.
+ * Shared cooldown and PvP state.
  */
 public enum CooldownsState {
     ;

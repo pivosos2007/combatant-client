@@ -15,7 +15,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 /**
  * View-aware traversal over the shared spatial registry.
  *
- * <p>The service intentionally has two independent rejection layers:</p>
+ * <p>The service has two independent rejection layers:</p>
  * <ul>
  *     <li>section visibility: cheap/coarse, no FOV/projection dependency;</li>
  *     <li>stable frustum: camera/FOV/projection-aware fine rejection.</li>

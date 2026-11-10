@@ -109,7 +109,7 @@ export class HudPanelLayout {
       key,
       shape: "rounded-corners",
       materialMode: key === "header" || key === "body" || key === "plate" ? c(this.p.materialMode, "") : "",
-      materialMicrotexture: true, materialThemeSync: true,
+      materialThemeSync: true,
       style: ui.absolute(x, y, w, h, style),
       radiusTL: n(radii[0], 0),
       radiusTR: n(radii[1], 0),

@@ -327,6 +327,56 @@ vec3 combatantGlassShade(CombatantGlassContext context, vec3 color);
 vec3 combatantGlassBlend(CombatantGlassContext context, vec3 backdrop, vec3 surface, vec3 tint);
 #endif
 
+vec2 glassMicroNormal(vec2 localPx, float time, vec2 velocity) {
+    vec2 p = localPx * 0.145 + velocity * time * 0.24;
+    vec2 cell = floor(p);
+    vec2 f = fract(p);
+    vec2 blend = f * f * (3.0 - 2.0 * f);
+    vec2 slope = 6.0 * f * (1.0 - f);
+    vec2 k = vec2(127.1, 311.7);
+    float a = fract(sin(dot(cell, k)) * 43758.5453);
+    float b = fract(sin(dot(cell + vec2(1.0, 0.0), k)) * 43758.5453);
+    float c = fract(sin(dot(cell + vec2(0.0, 1.0), k)) * 43758.5453);
+    float d = fract(sin(dot(cell + vec2(1.0, 1.0), k)) * 43758.5453);
+    return vec2(mix(b - a, d - c, blend.y) * slope.x,
+                mix(c - a, d - b, blend.x) * slope.y);
+}
+
+vec3 sampleRoughGlassScene(vec2 uv, vec2 logicalSize, float reveal, float roughness) {
+    vec3 original = sampleVisualGlassScene(uv, logicalSize, reveal);
+    if (roughness <= 0.001) return original;
+    vec2 radius = vec2(1.4 + 7.0 * roughness * roughness)
+                  / max(uScreen.xy, vec2(1.0));
+    vec3 blurred = sampleLiquidScene(uv, logicalSize).rgb;
+    vec3 diagonal = 0.5 * (
+            sampleLiquidScene(uv + radius, logicalSize).rgb
+            + sampleLiquidScene(uv - radius, logicalSize).rgb);
+    blurred = mix(blurred, diagonal, 0.72);
+    if (roughness > 0.55) {
+        vec2 transverse = vec2(radius.x, -radius.y);
+        vec3 cross = 0.5 * (
+                sampleLiquidScene(uv + transverse, logicalSize).rgb
+                + sampleLiquidScene(uv - transverse, logicalSize).rgb);
+        blurred = mix(blurred, cross, smoothstep(0.55, 0.98, roughness) * 0.55);
+    }
+    return mix(original, blurred, clamp(roughness * 0.94, 0.0, 1.0));
+}
+
+vec3 thinFilmReflectance(float filmThicknessNm, float refractiveIndex,
+                         float cosine, float strength) {
+    if (strength <= 0.001 || filmThicknessNm <= 0.001) return vec3(0.0);
+    float incident = clamp(cosine, 0.12, 1.0);
+    float filmCosine = sqrt(max(0.0, 1.0 - (1.0 - incident * incident)
+                             / (refractiveIndex * refractiveIndex)));
+    vec3 wavelengthNm = vec3(650.0, 530.0, 460.0);
+    vec3 phase = (12.566370614359172 * refractiveIndex * filmThicknessNm * filmCosine)
+                 / wavelengthNm;
+    vec3 response = 0.5 + 0.5 * cos(phase);
+    float f0 = pow((refractiveIndex - 1.0) / (refractiveIndex + 1.0), 2.0);
+    float reflectance = f0 + (1.0 - f0) * pow(1.0 - incident, 5.0);
+    return response * reflectance * strength;
+}
+
 void combatantDrawGlass() {
     vec4 screen = uScreen;
     vec2 fbSize = max(screen.xy, vec2(1.0));
@@ -343,6 +393,13 @@ void combatantDrawGlass() {
     float magnification = clamp(abs(v_Params11.w), 0.65, 1.8);
     uint opticalBits = uint(v_Params6.z);
     float spectralAberration = clamp(v_Params7.x, 0.0, 0.95);
+    float opticalThickness = clamp(v_Params2.x, 0.0, 2.5);
+    float refractiveIndex = clamp(v_Params2.y, 1.0, 2.0);
+    float roughness = clamp(v_Params2.z, 0.0, 1.0);
+    float frost = clamp(v_Params7.y, 0.0, 1.0);
+    float filmThicknessNm = clamp(v_Params7.z, 0.0, 1200.0);
+    float filmStrength = clamp(v_Params7.w, 0.0, 1.0);
+    float coatingResponse = float((opticalBits >> 2u) & 63u) / 63.0;
     int chromaticMotion = int(opticalBits & 3u);
     vec2 opticalTiltDeg = vec2(float((opticalBits >> 8u) & 127u) - 64.0,
                                float((opticalBits >> 15u) & 127u) - 64.0) * 0.25;
@@ -445,10 +502,30 @@ void combatantDrawGlass() {
     float offsetAmount = liquidEdge * v_Params8.y
             + pow(liquidEdge, 10.0) * v_Params8.w;
     float centerBlend = smoothstep(0.15, 0.45, length(p));
+    float bending = (1.0 - 1.0 / refractiveIndex) / (1.0 - 1.0 / 1.46);
     liquidOffset = vec2(refractNormal.x, -refractNormal.y)
-            * offsetAmount * centerBlend;
+            * offsetAmount * centerBlend * opticalThickness * bending;
 
     vec2 lensUv = (frag - v_Rect.xy) / size;
+    vec2 localFilmUv = lensUv;
+    vec2 pointerUv = localInteraction ? v_Params10.xy : (uGlassPointer.xy - v_Rect.xy) / size;
+    vec2 pointerDeltaPx = (localFilmUv - pointerUv) * size;
+    float pointerRadiusPx = max(9.0, min(size.x, size.y) * max(interactionRadius, 0.12));
+    float pointerResponse = exp(-dot(pointerDeltaPx, pointerDeltaPx)
+                                 / (pointerRadiusPx * pointerRadiusPx));
+    float filmActivity = clamp(max(v_Params11.x, v_Params11.y), 0.0, 1.0);
+    float reactiveFilm = coatingResponse * filmActivity * pointerResponse;
+    float interiorMask = smoothstep(1.5, max(liquidBevelPx, 3.5), opticalInsideDistance);
+    vec2 microNormal = vec2(0.0);
+    if (frost > 0.001 || roughness > 0.001 || reactiveFilm > 0.001) {
+        vec2 localFilmPx = lensUv * size / max(logicalScale, vec2(1e-6));
+        microNormal = glassMicroNormal(localFilmPx,
+                uGlassClock.x * (0.10 + reactiveFilm * 0.20),
+                interactionDisplacement * reactiveFilm);
+        float response = (frost * 1.65 + roughness * 0.55
+                + reactiveFilm * 1.4) * interiorMask;
+        liquidOffset += microNormal * response / fbSize;
+    }
     vec2 localUv = (lensUv - 0.5) / magnification + 0.5;
     vec2 mappedPosition = v_Rect.xy + localUv * size;
     centerUv = vec2(mappedPosition.x / logicalSize.x,
@@ -524,11 +601,13 @@ void combatantDrawGlass() {
     float edgeInsidePx = max(-selfDistance, 0.0)
             / max(min(logicalScale.x, logicalScale.y), 1e-6);
     float spectralSilhouette = smoothstep(0.75, 2.5, edgeInsidePx);
-    chromaCoverage *= spectralSilhouette;
-    flowCoverage *= spectralSilhouette;
+    float chromaticEnabled = step(0.001, spectralAberration);
+    chromaCoverage *= spectralSilhouette * chromaticEnabled;
+    flowCoverage *= spectralSilhouette * chromaticEnabled;
 
     float reveal = clamp(field.cleanReveal, 0.0, 1.0);
-    vec3 centerScene = sampleVisualGlassScene(centerUv, logicalSize, reveal);
+    float scattering = clamp(max(roughness, frost * 0.86 + roughness * 0.55), 0.0, 1.0);
+    vec3 centerScene = sampleRoughGlassScene(centerUv, logicalSize, reveal, scattering);
     vec3 tint = clamp(v_Color.rgb, 0.0, 1.0);
 
     float lowerGlassCoverage = stackRegionMask(centerUv, logicalSize)
@@ -548,6 +627,7 @@ void combatantDrawGlass() {
             ? 0.020 + 0.025 * (1.0 - dot(refractNormal, normalize(vec2(-0.48, 0.88)))) * 0.5
             : 0.020;
     float surfaceTransmission = bodyTransmission * (1.0 - edgeBand * directionalShade);
+    surfaceTransmission *= 1.0 - frost * 0.11;
     finalColor *= surfaceTransmission;
     float finalAlpha = shapeAlpha * v_Color.a;
     if (finalAlpha <= 0.001) {
@@ -579,9 +659,9 @@ void combatantDrawGlass() {
 
     if (chromaCoverage > 0.001 && dot(chroma, chroma) > 1e-12) {
         vec3 dispersedScene = vec3(
-                sampleVisualGlassScene(centerUv - chroma, logicalSize, reveal).r,
+                sampleRoughGlassScene(centerUv - chroma, logicalSize, reveal, scattering).r,
                 centerScene.g,
-                sampleVisualGlassScene(centerUv + chroma, logicalSize, reveal).b);
+                sampleRoughGlassScene(centerUv + chroma, logicalSize, reveal, scattering).b);
         vec3 dispersedColor = mix(dispersedScene, dispersedScene * tint, tintStrength)
                 * surfaceTransmission;
         if (stackedContactShadow > 0.001) {
@@ -598,9 +678,9 @@ void combatantDrawGlass() {
     }
     if (flowCoverage > 0.001 && dot(flowChroma, flowChroma) > 1e-12) {
         vec3 flowScene = vec3(
-                sampleVisualGlassScene(centerUv - flowChroma, logicalSize, reveal).r,
+                sampleRoughGlassScene(centerUv - flowChroma, logicalSize, reveal, scattering).r,
                 centerScene.g,
-                sampleVisualGlassScene(centerUv + flowChroma, logicalSize, reveal).b);
+                sampleRoughGlassScene(centerUv + flowChroma, logicalSize, reveal, scattering).b);
         // Preserve blurred transmission, but restore the missing RGB displacement
         // contrast from the sharp scene. Keep stacked glass out of this path.
         vec2 sharpCenterUv = clamp(centerUv, vec2(0.001), vec2(0.999));
@@ -630,6 +710,15 @@ void combatantDrawGlass() {
                 uBlendParams, uBlendTone0, uBlendTone1);
 #endif
         finalColor = mix(finalColor, flowColor, clamp(flowCoverage, 0.0, 1.0));
+    }
+    if (filmStrength > 0.001 && filmThicknessNm > 0.001) {
+        float surfaceSlope = clamp(liquidEdge * 0.66
+                + length(microNormal) * (frost + reactiveFilm) * 0.12, 0.0, 0.90);
+        float incidenceCosine = sqrt(max(0.0, 1.0 - surfaceSlope * surfaceSlope));
+        vec3 iridescence = thinFilmReflectance(
+                filmThicknessNm, refractiveIndex, incidenceCosine, filmStrength);
+        finalColor = finalColor * (vec3(1.0) - min(iridescence * 0.45, vec3(0.25)))
+                + iridescence * (0.18 + 0.82 * smoothstep(0.05, 0.92, liquidEdge));
     }
 #ifdef COMBATANT_GLASS_CUSTOM_SHADE
     finalColor = combatantGlassShade(context, finalColor);

@@ -9,9 +9,9 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.implement.
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 
-
 import combatant.client.features.theme.Theme;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.render.engine.renderer.ui.draw.LayoutRender2D;
@@ -36,6 +36,12 @@ public final class ThemeComponent {
 
     private final List<Hit> hits = new ArrayList<>();
     private final Map<String, Float> swatchHoverByKey = new HashMap<>();
+    private final SpectrumThemeSwatchTooltip swatchTooltip = new SpectrumThemeSwatchTooltip();
+    private SpectrumThemeSwatchTooltip.Anchor hoveredSwatch;
+    private float viewportX;
+    private float viewportY;
+    private float viewportW;
+    private float viewportH;
     private final Map<String, Float> selectedAnimByTheme = new HashMap<>();
     private final Set<String> liveThemeIds = new HashSet<>();
     private float scroll;
@@ -51,23 +57,49 @@ public final class ThemeComponent {
     private float scrollbarMaxScroll;
     private float scrollbarDragOffset;
 
-    private static void drawThemeGradientRect(float x,
-                                              float y,
-                                              float w,
-                                              float h,
-                                              float radius,
-                                              Themes.GradientSpec gradient,
-                                              int fallbackStart,
-                                              int fallbackEnd) {
+    private static void drawThemeGradientRect(float x, float y, float w, float h, float radius,
+                                              Themes.GradientSpec gradient, int solidFallback) {
+        // The specimens emphasize RGB so even low-alpha surfaces are legible on a small tile.
+        // The tooltip reports the unmodified ARGB values, including their real alpha.
         if (gradient != null && gradient.enabled()) {
-            int start = SettingsGuiPalette.withAlpha(gradient.start(), 220);
-            int end = SettingsGuiPalette.withAlpha(gradient.end(), 220);
-            LayoutRender2D.drawRoundedRectGradient(x, y, w, h, radius, start, end, gradient.angleDeg());
-            return;
+            LayoutRender2D.drawRoundedRectGradient(x, y, w, h, radius,
+                    opaque(gradient.start()), opaque(gradient.end()), gradient.angleDeg());
+        } else {
+            LayoutRender2D.rounded(x, y, w, h, radius, opaque(solidFallback));
         }
-        int start = SettingsGuiPalette.withAlpha(fallbackStart, 220);
-        int end = SettingsGuiPalette.withAlpha(fallbackEnd, 220);
-        LayoutRender2D.drawRoundedRectGradient(x, y, w, h, radius, start, end, 0f);
+    }
+
+    private static int opaque(int color) {
+        return color | 0xFF000000;
+    }
+
+    private static Themes.GradientSpec gradientFor(Themes.ThemeEntry entry, int slot) {
+        return switch (slot) {
+            case 0 -> entry.windowGradient();
+            case 1 -> entry.headerGradient();
+            case 2 -> entry.surfaceGradient();
+            case 3 -> entry.cardGradient();
+            default -> throw new IllegalArgumentException("Unknown theme swatch slot: " + slot);
+        };
+    }
+
+    private static int fallbackFor(Themes.Theme theme, int slot) {
+        return switch (slot) {
+            case 0 -> theme.windowBg();
+            case 1 -> theme.windowHeader();
+            case 2 -> theme.surface();
+            case 3 -> theme.cardEnabled();
+            default -> throw new IllegalArgumentException("Unknown theme swatch slot: " + slot);
+        };
+    }
+
+    private static String[] swatchLabels() {
+        return new String[]{
+                ClickGuiI18n.tr("clickgui.themes.swatch.window", "Window"),
+                ClickGuiI18n.tr("clickgui.themes.swatch.header", "Header"),
+                ClickGuiI18n.tr("clickgui.themes.swatch.surface", "Surface"),
+                ClickGuiI18n.tr("clickgui.themes.swatch.card", "Card")
+        };
     }
 
     private static List<Themes.ThemeEntry> filteredEntries() {
@@ -91,6 +123,8 @@ public final class ThemeComponent {
         scroll = 0f;
         smoothedScroll = 0f;
         draggingScrollbar = false;
+        swatchHoverByKey.clear();
+        swatchTooltip.reset();
     }
 
     public void scroll(float mx, float my, float menuX, float menuY, float menuW, float menuH, double amount, float scale) {
@@ -135,18 +169,27 @@ public final class ThemeComponent {
 
     public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float scale) {
         hits.clear();
+        hoveredSwatch = null;
 
         SettingsGuiPalette palette = SettingsGuiPalette.current();
         updateSelectedAnimations(Theme.themes());
         List<Themes.ThemeEntry> entries = filteredEntries();
         boolean includeAddCard = shouldShowAddCard();
         int cardsTotal = entries.size() + (includeAddCard ? 1 : 0);
-        if (cardsTotal <= 0) return;
+        if (cardsTotal <= 0) {
+            swatchTooltip.reset();
+            return;
+        }
 
         float areaX = menuX + 31f * scale;
         float areaY = menuY + 33f * scale;
         float areaW = menuW - 42f * scale;
         float areaH = menuH - 39f * scale;
+        viewportX = areaX;
+        viewportY = areaY;
+        viewportW = areaW;
+        viewportH = areaH;
+        String[] labels = swatchLabels();
 
         int columns = 2;
         float gap = 6f * scale;
@@ -186,7 +229,7 @@ public final class ThemeComponent {
                 continue;
             }
             boolean custom = !entry.builtin();
-            drawThemeCard(entry, x, y, cardW, cardH, mx, my, scale, palette, selectedAnim(entry.getId()));
+            drawThemeCard(entry, x, y, cardW, cardH, mx, my, scale, palette, selectedAnim(entry.getId()), labels);
             if (custom) {
                 float deleteSize = deleteButtonSize(scale);
                 hits.add(new Hit(deleteButtonX(x, cardW, scale), deleteButtonY(y, scale), deleteSize, deleteSize, entry.getId(), false, true, true));
@@ -207,6 +250,8 @@ public final class ThemeComponent {
         }
         if (clipped) ScissorFunction.pop();
         renderScrollbar(menuX, menuY, menuH, areaH, contentH, maxScroll, scale, palette);
+        // Draw after the list scissor: Spectrum-style tips can extend outside the row viewport.
+        swatchTooltip.render(hoveredSwatch, menuX, menuY, menuW, menuH, scale);
     }
 
     private void updateSelectedAnimations(List<Themes.ThemeEntry> entries) {
@@ -240,7 +285,8 @@ public final class ThemeComponent {
                                float my,
                                float scale,
                                SettingsGuiPalette palette,
-                               float selectedAnim) {
+                               float selectedAnim,
+                               String[] labels) {
         Themes.Theme t = entry.theme();
         float selected = AnimationUtility.easeInOutCubic(selectedAnim);
         int selectedAccent = SettingsGuiPalette.withAlpha(t.accent(), Math.round(82f * selected));
@@ -301,7 +347,7 @@ public final class ThemeComponent {
         float dividerInset = 5f * scale;
         LayoutRender2D.rectQuad(
                 x + dividerInset,
-                y + 15.5f * scale,
+                y + 20f * scale,
                 w - dividerInset * 2f,
                 0.5f * scale,
                 SettingsGuiPalette.mix(palette.moduleDividerStart(), SettingsGuiPalette.withAlpha(t.accent(), 210), selected * 0.78f),
@@ -331,96 +377,37 @@ public final class ThemeComponent {
             drawCardDeleteButton(x, y, w, mx, my, scale, palette);
         }
 
-        float swatchPadX = 6f * scale;
-        float chipsX = x + swatchPadX;
-        float chipsY = y + 20f * scale;
-        float chipsW = w - swatchPadX * 2f;
-        float chipsBottom = y + h - 5f * scale;
-        float chipsH = Math.max(2f * scale, chipsBottom - chipsY);
-
-        Themes.GradientSpec[] gradients = new Themes.GradientSpec[]{
-                entry.windowGradient(),
-                entry.cardGradient(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        };
-        int[] colorA = new int[]{
-                t.windowBg(),
-                t.cardEnabled(),
-                t.windowHeader(),
-                t.surface(),
-                t.surfaceHover(),
-                t.accent(),
-                t.accentSoft(),
-                t.windowStroke(),
-                t.strokeSoft(),
-                t.textPrimary(),
-                t.textMuted(),
-                t.windowBg()
-        };
-        int[] colorB = new int[]{
-                t.windowHeader(),
-                t.accentSoft(),
-                t.windowStroke(),
-                t.surfaceHover(),
-                t.windowHeader(),
-                t.accentSoft(),
-                t.strokeSoft(),
-                t.strokeSoft(),
-                t.textMuted(),
-                t.textMuted(),
-                t.surface(),
-                t.accentSoft()
-        };
-
-        int columns = colorA.length;
-        float chipSize = Math.min(10.2f * scale, chipsH);
-        float minGap = scale;
-        if (columns > 1) {
-            float maxChipFromWidth = (chipsW - minGap * (columns - 1)) / columns;
-            chipSize = Math.min(chipSize, maxChipFromWidth);
-        }
-        chipSize = Math.max(6f * scale, chipSize);
-        float chipGap = columns <= 1 ? 0f : Math.max(minGap, (chipsW - chipSize * columns) / (columns - 1));
+        // Keep the original swatch size and use a compact, centered group.
+        final int swatchCount = 4;
+        float inset = 7f * scale;
+        float availableW = w - inset * 2f;
+        float gap = 5f * scale;
+        float swatchW = Math.min(18f * scale, (availableW - gap * (swatchCount - 1)) / swatchCount);
+        float swatchStartX = x + (w - swatchW * swatchCount - gap * (swatchCount - 1)) * 0.5f;
+        float swatchY = y + 25.4f * scale;
+        float swatchH = 10.2f * scale;
         float hoverBoost = 0.75f * scale;
-        float yCenterOffset = (chipsH - chipSize) * 0.5f;
+        boolean insideViewport = !draggingScrollbar && ClickGuiMath.insideRect(mx, my, viewportX, viewportY, viewportW, viewportH);
 
-        for (int i = 0; i < colorA.length; i++) {
-            int col = i % columns;
-            int row = i / columns;
-            float cx = chipsX + col * (chipSize + chipGap);
-            float cy = chipsY + yCenterOffset + row * (chipSize + chipGap);
-            boolean hover = ClickGuiMath.insideRect(mx, my, cx, cy, chipSize, chipSize);
+        for (int i = 0; i < swatchCount; i++) {
+            float cx = swatchStartX + i * (swatchW + gap);
+            Themes.GradientSpec spec = gradientFor(entry, i);
+            int fallback = fallbackFor(t, i);
+            boolean hovered = insideViewport && ClickGuiMath.insideRect(mx, my, cx, swatchY, swatchW, swatchH);
+
             String key = entry.getId() + "#" + i;
             float anim = swatchHoverByKey.getOrDefault(key, 0f);
-            anim = AnimationUtility.approach(anim, hover ? 1f : 0f, 0.20f);
-            anim = AnimationUtility.snap(anim, hover ? 1f : 0f, 0.01f);
+            anim = AnimationUtility.approach(anim, hovered ? 1f : 0f, 0.20f);
+            anim = AnimationUtility.snap(anim, hovered ? 1f : 0f, 0.01f);
             swatchHoverByKey.put(key, anim);
 
-            float size = chipSize + hoverBoost * anim;
-            float ox = cx - (size - chipSize) * 0.5f;
-            float oy = cy - (size - chipSize) * 0.5f;
-
-            drawThemeGradientRect(
-                    ox,
-                    oy,
-                    size,
-                    size,
-                    2.3f * scale,
-                    gradients[i],
-                    colorA[i],
-                    colorB[i]
-            );
-
-            // TODO: Show swatch tooltip on hover (name/value), once UX spec is provided.
+            float grow = hoverBoost * anim;
+            drawThemeGradientRect(cx - grow * 0.5f, swatchY - grow * 0.5f,
+                    swatchW + grow, swatchH + grow, 2.3f * scale, spec, fallback);
+            if (hovered) {
+                hoveredSwatch = new SpectrumThemeSwatchTooltip.Anchor(
+                        entry.getId(), i, labels[i], cx, swatchY, swatchW, swatchH, spec, fallback);
+            }
         }
         }
     }

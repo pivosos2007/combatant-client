@@ -12,8 +12,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.backend.opengl.GlTextureView;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
-import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.visuals.SeeInvisibles;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.world.VanillaBeforeTranslucentPass;
 import combatant.client.util.logging.DebugLog;
@@ -49,10 +47,10 @@ public final class IrisEarlyWorldBridge {
     public static void render(RenderTargets targets, ImmutableSet<Integer> flipped) {
         if (rendering || !IrisRuntime.isShaderpackRendererActive()
                 || IrisRuntime.isRenderingShadowPass() || targets == null || flipped == null) return;
-        SeeInvisibles setting = Modules.get(SeeInvisibles.class);
-        if (setting == null || !setting.isEnabled()
-                || setting.getInvisiblePlayerAlpha01() <= 0.0f
-                || setting.getInvisiblePlayerAlpha01() >= 1.0f
+        // An alpha-faded player must not cause all world modules to be rendered
+        // into Iris' opaque color before water. Late overlay depth already includes
+        // its silhouette; only explicitly early effects belong in this bridge.
+        if (!VanillaBeforeTranslucentPass.needsEarlyEffects()
                 || !IrisSceneDepth.isValid() || IrisSceneDepth.preTranslucentDepthView() == null) return;
 
         net.irisshaders.iris.targets.RenderTarget irisColor = targets.getOrCreate(0);

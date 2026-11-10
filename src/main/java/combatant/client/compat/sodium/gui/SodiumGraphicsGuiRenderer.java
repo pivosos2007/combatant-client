@@ -1783,7 +1783,7 @@ public final class SodiumGraphicsGuiRenderer {
     }
 
     /**
-     * Sodium deliberately supplies monochrome UI glyphs for many mod headers. For the modern
+     * Sodium supplies monochrome UI glyphs for many mod headers. For the modern
      * surface that is the wrong source image: resolve the owning Fabric mod's real metadata icon
      * instead. Non-monochrome Sodium icons are already artwork and are kept verbatim.
      */

@@ -48,7 +48,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
         description = "module.chunkfinder.description")
 public final class ChunkFinder extends ShaderBoxModule {
 
-    // ---- shared ---------------------------------------------------------------------------------------------
 
     private final NumberValue<Integer> scanRadius = numCommon("scan_radius", CommonSettingSchemas.FINDER_SCAN_RADIUS,
             ChunkMarkers.MAX_SCAN_RADIUS, 2, ChunkMarkers.MAX_SCAN_RADIUS);
@@ -59,7 +58,6 @@ public final class ChunkFinder extends ShaderBoxModule {
     private final BooleanValue chatAlerts = boolCommon("chat_alerts", CommonSettingSchemas.FINDER_CHAT_ALERTS, true);
     private final BooleanValue soundAlerts = boolCommon("sound_alerts", CommonSettingSchemas.FINDER_SOUND_ALERTS, false);
 
-    // ---- sus ------------------------------------------------------------------------------------------------
 
     private final BooleanValue susEnabled = bool("sus_enabled", true);
     private final NumberValue<Integer> susSensitivity =
@@ -73,7 +71,6 @@ public final class ChunkFinder extends ShaderBoxModule {
     private final RGBAColorValue susLineColor =
             visibleWhen(color("sus_line_color", "#FFCB40FF"), susEnabled::get);
 
-    // ---- og -------------------------------------------------------------------------------------------------
 
     private final BooleanValue ogEnabled = bool("og_enabled", true);
     private final BooleanMapValue ogSignals =
@@ -85,7 +82,6 @@ public final class ChunkFinder extends ShaderBoxModule {
     private final RGBAColorValue ogLineColor =
             visibleWhen(color("og_line_color", "#FF50FF00"), ogEnabled::get);
 
-    // ---- prime ----------------------------------------------------------------------------------------------
 
     private final BooleanValue primeEnabled = bool("prime_enabled", true);
     private final BooleanValue primeWatchRedstone =
@@ -95,7 +91,6 @@ public final class ChunkFinder extends ShaderBoxModule {
     private final RGBAColorValue primeLineColor =
             visibleWhen(color("prime_line_color", "#FFD8D8FF"), primeEnabled::get);
 
-    // ---- spawner --------------------------------------------------------------------------------------------
 
     private final BooleanValue spawnerEnabled = bool("spawner_enabled", true);
     private final NumberValue<Integer> spawnerMaxDistance =
@@ -114,7 +109,6 @@ public final class ChunkFinder extends ShaderBoxModule {
     private final RGBAColorValue spawnerActiveColor =
             visibleWhen(color("spawner_active_color", "#FF50FF50"), spawnerEnabled::get);
 
-    // ---- runtime --------------------------------------------------------------------------------------------
 
     private final SusChunkScanner susScanner = new SusChunkScanner(susSensitivity, susSignals);
     private final OgChunkScanner ogScanner = new OgChunkScanner(ogSignals);

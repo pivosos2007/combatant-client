@@ -21,7 +21,7 @@ public class ModeValue extends ConfigValue<String> {
         super(name, def);
         this.options = new ArrayList<>(Arrays.asList(opts));
 
-        // если default не валидный → ставим первый вариант
+        // An invalid default falls back to the first option.
         if (!options.contains(def)) {
             this.value = options.get(0);
         }

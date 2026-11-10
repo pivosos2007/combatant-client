@@ -1079,7 +1079,7 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
      * HUD/world overlaysare drained before GuiRenderer.render(),
      * preserving their internal order while keeping container/inventory GUI above them.
      * Explicit SCREEN_TOP/AFTER_VANILLA_GUI overlays (Dynamic Island, ClickGui top layer, etc.) are
-     * intentionally not drained here.
+     * not drained here.
      */
     @Unique
     private static void combatant$drainHudLayersBelowScreenGui() {

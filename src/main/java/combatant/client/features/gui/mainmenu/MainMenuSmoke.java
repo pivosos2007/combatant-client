@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.features.gui.mainmenu;
 
 import combatant.client.config.subsystem.VisualConfig;
@@ -11,6 +18,7 @@ final class MainMenuSmoke {
     private long lastFrame;
     private float previousWidth;
     private float previousHeight;
+    private boolean previousLatticeMode;
 
     boolean computeSupported() {
         return PostProcessExecutionPolicy.useCompute(CombatantRenderSystem.rhi()) && compute.operational();
@@ -20,19 +28,23 @@ final class MainMenuSmoke {
         return PostProcessExecutionPolicy.useCompute(CombatantRenderSystem.rhi()) && compute.canRetry();
     }
 
-    void render(float width, float height, float opacity, MainMenuHexTrail hex) {
+    void render(float width, float height, float opacity, MainMenuHexTrail hex, MainMenuBackdrop.GridLayout grid) {
         if (width <= 0f || height <= 0f || opacity <= 0.001f) return;
         long now = System.nanoTime();
+        VisualConfig options = VisualConfig.get();
+        boolean latticeMode = options.menuCursorGlowEnabled();
         boolean reset = lastFrame == 0L || now - lastFrame > 1_000_000_000L
-                || width != previousWidth || height != previousHeight;
-        float delta = reset ? 0f : Math.min(0.05f, Math.max(0f, (now - lastFrame) * 1e-9f));
+                || width != previousWidth || height != previousHeight
+                || latticeMode != previousLatticeMode;
+        float delta = reset ? (1f / 60f) : Math.min(0.05f, Math.max(0f, (now - lastFrame) * 1e-9f));
+        previousLatticeMode = latticeMode;
         lastFrame = now;
         previousWidth = width;
         previousHeight = height;
         if (!canAttemptCompute()) return;
-        VisualConfig options = VisualConfig.get();
         Themes.Theme theme = Theme.theme();
         int accent = theme != null ? theme.accent() : 0xFF65B4FB;
+        int latticeGlow = options.menuCustomColors() ? options.menuGlowColorValue().getArgb() : accent;
         int soft = theme != null ? theme.accentSoft() : 0xFF7DA8CC;
         int cold = theme != null ? MainMenuBackdrop.coldColor(accent) : 0xFF89E0FF;
         int warm = MainMenuBackdrop.warmColor(accent);
@@ -51,12 +63,13 @@ final class MainMenuSmoke {
         }
         float time = (float) ((now * 1e-9) % 2048.0);
         compute.render(CombatantRenderSystem.rhi(), width, height,
-                hex, delta, time, opacity, accent, soft, cold, warm, reset);
+                hex, grid, delta, time, opacity, accent, soft, cold, warm, latticeGlow, reset);
     }
 
     void close() {
         compute.close();
         lastFrame = 0L;
+        previousLatticeMode = false;
     }
 
 }

@@ -22,7 +22,7 @@ import java.util.UUID;
 public enum StaffTracker {
     ;
 
-    private static final long TIMEOUT = 1500;       // время ожидания TAB после исчезновения entity
+    private static final long TIMEOUT = 1500;       // Grace period for player-list updates after an entity disappears.
     private static final Map<UUID, StaffInfo> map = new HashMap<>();
 
     private static StaffInfo get(UUID id) {
@@ -54,9 +54,7 @@ public enum StaffTracker {
         recalc(i);
     }
 
-    // ======================
     // PUBLIC EVENTS
-    // ======================
 
     public static void onEntityDisappear(UUID id) {
         StaffInfo i = get(id);
@@ -96,15 +94,12 @@ public enum StaffTracker {
     private static void recalc(StaffInfo i) {
         long now = System.currentTimeMillis();
 
-        // entity исчезла → показываем таймер ожидания TAB (WAITING)
         if (!i.entityPresent && now - i.lastEntityGone < TIMEOUT) {
 
-            // пока WAITING – это таймер с lastEntityGone
             i.status = Status.WAITING;
             return;
         }
 
-        // есть в TAB → GM
         if (i.listed) {
             switch (i.gm) {
                 case SURVIVAL -> i.status = Status.GM0;
@@ -116,13 +111,11 @@ public enum StaffTracker {
             return;
         }
 
-        // entity есть (или сервер предлагает ник в автодополнении), но нет TAB → VANISH
         if (i.entityPresent || i.completionHidden) {
             i.status = Status.VANISH;
             return;
         }
 
-        // OFFLINE — запись времени
         if (i.status != Status.OFFLINE) {
             i.offlineSince = now;
         }
@@ -133,17 +126,13 @@ public enum StaffTracker {
         return map;
     }
 
-    // ======================
     // LOGIC
-    // ======================
 
     public static void resetAll() {
         map.clear();
     }
 
-    // ======================
     // API
-    // ======================
 
     public enum Status {
         GM0, GM1, GM2, GM3,
@@ -155,8 +144,8 @@ public enum StaffTracker {
 
     public static class StaffInfo {
         public UUID uuid;
-        public String name = "?";      // логика
-        public Component displayName;       // ПОЛНЫЙ серверный Text
+        public String name = "?";      
+        public Component displayName;       
 
         public boolean listed = false;
         public boolean entityPresent = false;

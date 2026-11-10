@@ -9,6 +9,10 @@
  */
 
 layout(location = 0) in vec2 v_TexCoord;
+
+#include <combatant:hand_ghost_detail.glsl>
+
+#include <combatant:hand_palette.glsl>
 layout(location = 0) out vec4 fragColor;
 
 uniform sampler2D u_Src;
@@ -20,6 +24,9 @@ layout (std140) uniform HandGhosting {
     vec4 u_Params; // decay, strength, blur px, current reject
     vec4 u_Noise0; // quality, octaves, speed, scale
     vec4 u_Noise1; // swirl, contrast, density, history scale
+    vec4 u_PaletteEnd;
+    vec4 u_PaletteOptions;
+    vec4 u_GhostDetails;
 };
 
 vec3 historyAt(vec2 uv) {
@@ -86,16 +93,23 @@ void main() {
     // dilation prevents the blur kernel from painting a permanent halo around a stationary hand.
     float current = currentMaskDilated(v_TexCoord, historyTexel, quality);
     float ghost = max(temporal - current * clamp(u_Params.w, 0.0, 1.25), 0.0);
+    // Most pixels contain no trail. Avoid procedural palette/ring work outside its footprint.
+    if (ghost <= 0.0001) {
+        fragColor = base;
+        return;
+    }
 
     float density = max(u_Noise1.z, 0.0);
     float contrast = max(u_Noise1.y, 0.05);
-    ghost = pow(clamp(ghost * (0.78 + density * 0.55), 0.0, 1.0), contrast);
-    ghost *= mix(0.78, 1.12, turbulence);
+    ghost = pow(clamp(ghost * (0.62 + density * 0.27), 0.0, 1.0), contrast);
+    ghost *= mix(0.82, 1.12, turbulence);
+    ghost *= handGhostDetail(v_TexCoord, vec2(max(u_Screen.x, 1.0) / max(u_Screen.y, 1.0), 1.0),
+                             u_Screen.w, turbulence, u_Noise0.w, u_Noise0.z, u_GhostDetails);
 
-    float alpha = clamp(ghost * max(u_Params.y, 0.0) * u_Color.a, 0.0, 1.0);
-    vec3 ghostColor = u_Color.rgb * (0.84 + turbulence * 0.32);
-    vec3 outColor = mix(base.rgb, ghostColor, alpha * 0.78);
-    outColor += ghostColor * alpha * 0.18;
-
-    fragColor = vec4(clamp(outColor, 0.0, 1.0), base.a);
+    vec4 palette = handPaletteColor(v_TexCoord, u_Screen.w, u_Color, u_PaletteEnd, u_PaletteOptions);
+    // Beer-Lambert-like translucency: no additive glow or fully opaque colored silhouette.
+    float opticalDepth = ghost * max(u_Params.y, 0.0) * palette.a * 1.20;
+    float alpha = (1.0 - exp(-opticalDepth)) * 0.82;
+    vec3 ghostColor = palette.rgb * mix(0.66, 0.94, turbulence);
+    fragColor = vec4(mix(base.rgb, ghostColor, alpha), base.a);
 }

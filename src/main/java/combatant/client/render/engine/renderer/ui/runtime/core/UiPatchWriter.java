@@ -7,10 +7,8 @@
 package combatant.client.render.engine.renderer.ui.runtime.core;
 
 /**
- * Sink for render-thread-only updates to an already compiled UI tree.
- *
- * <p>Callers describe the data they want to change, not temporary patch maps.
- * Implementations may store data in a preallocated typed command buffer.</p>
+ * Accepts property updates for a compiled UI tree on the render thread.
+ * Implementations may buffer updates for later application.
  */
 public interface UiPatchWriter {
     void put(String nodeKey, String property, Object value);

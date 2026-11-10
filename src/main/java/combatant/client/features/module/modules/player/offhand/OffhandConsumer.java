@@ -90,7 +90,6 @@ public final class OffhandConsumer {
                 inProgress, ready && semi && !inProgress, cooldown, inProgress, progress);
     }
 
-    // ---- per tick ------------------------------------------------------------------------------------------
 
     /** Notices that a use ended (cooldown, apple guard) or never started, and winds the state down. */
     public void observeUse(LocalPlayer player) {
@@ -169,7 +168,6 @@ public final class OffhandConsumer {
         }
     }
 
-    // ---- consumption ---------------------------------------------------------------------------------------
 
     private void updateSuggestion(LocalPlayer player, boolean danger) {
         suggestedReady = settings.autoConsume().get() && settings.consumeControl().get() != ConsumeControl.DISABLED
@@ -338,7 +336,6 @@ public final class OffhandConsumer {
         lastUseObservedTick = -1;
     }
 
-    // ---- lifecycle -----------------------------------------------------------------------------------------
 
     /** Module disabled: stop the use and put the hands back as far as possible right now. */
     public void shutdown(LocalPlayer player) {

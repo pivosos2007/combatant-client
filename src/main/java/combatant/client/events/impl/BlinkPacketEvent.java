@@ -20,7 +20,9 @@ import combatant.client.util.network.BlinkManager;
 import combatant.client.util.network.TransferOrigin;
 
 /**
- * Adapted from LiquidBounce's BlinkPacketEvent.
+ * Resolves competing packet-delay decisions from registered listeners.
+ * Actions are ordered {@code FLUSH < PASS < QUEUE}; lower-priority decisions
+ * cannot replace an earlier higher-priority decision.
  */
 public class BlinkPacketEvent extends Event {
     private final Packet<?> packet;
@@ -39,6 +41,10 @@ public class BlinkPacketEvent extends Event {
         return (T) packet;
     }
 
+    /**
+     * Raises the requested action priority; {@code null} and weaker actions are ignored.
+     * The default action is {@link BlinkManager.Action#FLUSH}.
+     */
     public void setAction(BlinkManager.Action action) {
         if (action == null || this.action == action || this.action.getPriority() >= action.getPriority()) {
             return;

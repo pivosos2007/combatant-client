@@ -21,7 +21,7 @@ public enum NetworkStatsUtil {
 
     /* ================= CLIENT TPS ESTIMATION ================= */
 
-    private static final long SAMPLE_INTERVAL_MS = 500; // 500–1000 оптимально
+    private static final long SAMPLE_INTERVAL_MS = 500; 
     private static final int MAX_TPS = 20;
     private static final long TAB_TIMEOUT_MS = 3000;
     private static long lastWorldTick = -1L;

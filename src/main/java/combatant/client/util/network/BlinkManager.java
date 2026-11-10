@@ -42,7 +42,10 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
- * Packet queue/flush backend adapted from LiquidBounce's BlinkManager.
+ * Arbitrates packet deferral for Blink, backtrack and fake-lag consumers.
+ * Queued packets retain their direction and are replayed against the current connection;
+ * incoming packets are handled on the client thread. Silently replayed packets bypass
+ * the ordinary packet event path to prevent re-queuing.
  */
 public final class BlinkManager {
     public static final BlinkManager INSTANCE = new BlinkManager();
@@ -145,6 +148,10 @@ public final class BlinkManager {
                 && health.getHealth() <= 0.0f;
     }
 
+    /**
+     * Returns the live queue shared by packet-delay consumers, not a defensive snapshot.
+     * Callers modifying it must account for concurrent event delivery and flushes.
+     */
     public ConcurrentLinkedQueue<PacketSnapshot> getPacketQueue() {
         return packetQueue;
     }
@@ -153,6 +160,10 @@ public final class BlinkManager {
         return !packetQueue.isEmpty();
     }
 
+    /**
+     * Reconstructs queued outgoing position packets in order, using the current player
+     * coordinates for omitted packet axes. The result excludes non-position packets.
+     */
     public List<Vec3> getQueuedMovePositions() {
         List<Vec3> out = new ArrayList<>();
         Minecraft mc = Minecraft.getInstance();
@@ -229,6 +240,12 @@ public final class BlinkManager {
         runSilently(() -> sendPacketSilently(packet));
     }
 
+    /**
+     * Removes matching snapshots and replays each in its original direction.
+     * Incoming replay is rescheduled onto the client thread when necessary.
+     *
+     * @param flushWhen selects which queued packets are released
+     */
     public void flush(Predicate<PacketSnapshot> flushWhen) {
         if (flushWhen == null) {
             return;
@@ -279,6 +296,12 @@ public final class BlinkManager {
         packetQueue.clear();
     }
 
+    /**
+     * Tests the age of the oldest queued packet, regardless of direction.
+     * An empty queue always returns {@code false}.
+     *
+     * @param delayMs elapsed time in milliseconds
+     */
     public boolean isAboveTime(long delayMs) {
         PacketSnapshot first = packetQueue.peek();
         return first != null && System.currentTimeMillis() - first.timestamp() >= delayMs;

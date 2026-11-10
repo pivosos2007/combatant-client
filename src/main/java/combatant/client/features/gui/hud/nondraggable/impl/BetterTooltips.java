@@ -28,6 +28,7 @@ import combatant.client.util.screen.ClientScreen;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import combatant.client.config.SettingDef;
 import combatant.client.features.gui.hud.AbstractHudElement;
+import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.ProfilerPhase;
@@ -91,6 +92,10 @@ public final class BetterTooltips extends AbstractHudElement {
             visibleWhen(num("bt_shulker_slot", 18.0f, 12.0f, 24.0f), this::isShulkerPreviewEnabled);
     private final KeyBindValue shulkerPreviewHold =
             visibleWhen(bind("bt_shulker_hold", "LEFT_SHIFT", BindMode.HOLD), this::isShulkerPreviewEnabled);
+    private final HudGlassSettings guiGlassSettings = new HudGlassSettings(
+            "bt_gui", BetterTooltipPresentation.defaultGlassOptics());
+    private final HudGlassSettings itemGlassSettings = new HudGlassSettings(
+            "bt_items", BetterTooltipPresentation.defaultGlassOptics());
     private final BetterTooltipPresentation presentation = new BetterTooltipPresentation();
     private BetterTooltips() {
         super("vanilla_tooltips", "Tooltips", "hud.static.vanilla_tooltips.description", true);
@@ -274,7 +279,9 @@ public final class BetterTooltips extends AbstractHudElement {
                 input, scale,
                 itemStyle ? module.itemBlur.get() : module.guiBlur.get(),
                 itemStyle ? module.itemDarkness.get() : module.guiDarkness.get(),
-                module.rarityGlow.get(), module.rareModelEnabled.get(), module.modelRotationSpeed.get());
+                module.rarityGlow.get(), module.rareModelEnabled.get(), module.modelRotationSpeed.get(),
+                (itemStyle ? module.itemGlassSettings : module.guiGlassSettings)
+                        .apply(BetterTooltipPresentation.defaultGlassOptics()));
         if (preview != null && rendered.footerVisible()) {
             renderShulkerPreview(preview, Math.round(rendered.footerX()), Math.round(rendered.footerY()));
         }
@@ -583,6 +590,17 @@ public final class BetterTooltips extends AbstractHudElement {
     }
 
     @Override
+    protected void collectExtraConfigValues(java.util.Map<String, ConfigValue<?>> values) {
+        java.util.List<SettingDef> optics = new java.util.ArrayList<>();
+        guiGlassSettings.addSettings(optics);
+        itemGlassSettings.addSettings(optics);
+        for (SettingDef setting : optics) {
+            ConfigValue<?> value = setting.value();
+            if (value != null) values.put(value.getName(), value);
+        }
+    }
+
+    @Override
     protected void onLoaded() {
         registerBind(shulkerPreviewHold);
     }
@@ -606,11 +624,13 @@ public final class BetterTooltips extends AbstractHudElement {
 
     private void addGenericSettings(List<SettingDef> defs) {
         add(defs, genericScale, guiBlur, guiDarkness);
+        guiGlassSettings.addSettings(defs);
     }
 
     private void addItemSettings(List<SettingDef> defs) {
         add(defs, itemTooltipEnabled, itemScale, itemBlur, itemDarkness, rareModelEnabled,
                 modelRotationSpeed, rarityGlow, itemInfoColorize);
+        itemGlassSettings.addSettings(defs);
     }
 
     private void addShulkerPreviewSettings(List<SettingDef> defs) {

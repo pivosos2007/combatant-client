@@ -27,11 +27,10 @@ import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.SlabType;
 
 /**
- * What one block item click can and cannot produce, derived from the wanted state alone: whether the cell is
- * worth placing at all, which faces of the support block may be clicked, where on the face (top or bottom half),
- * and whether the player's look decides the result. The click planner uses this to prune candidates and the
- * module to report blocks that placement can never produce; the block's own placement rule (simulated by the
- * planner) stays the final authority.
+ * Derives placement constraints from a requested block state: skipped cells,
+ * support-face restrictions, vertical half and look-dependent orientation.
+ * The click planner subsequently validates candidates with the block item's
+ * own placement-state calculation.
  */
 public final class PlacementOrientation {
 

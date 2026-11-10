@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.features.gui.mainmenu;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
@@ -61,6 +68,11 @@ final class MainMenuVisualPanel {
         add(new SliderSetting<>("menuCursorIntensity", config.menuCursorIntensityValue()));
         add(new SliderSetting<>("menuAmbientIntensity", config.menuAmbientIntensityValue()));
         add(new SliderSetting<>("menuHoneycombBloom", config.menuHoneycombBloomValue()));
+        add(new BooleanSetting("menuCrystalBackground", config.menuCrystalBackgroundValue()));
+        add(new SliderSetting<>("menuCrystalIntensity", config.menuCrystalIntensityValue())
+                .visibleWhen(config::menuCrystalBackgroundEnabled));
+        add(new SliderSetting<>("menuCrystalGloss", config.menuCrystalGlossValue())
+                .visibleWhen(config::menuCrystalBackgroundEnabled));
         add(new ColorSettingNoAlpha("menuGridColor", config.menuGridColorValue())
                 .visibleWhen(config::menuCustomColors));
         add(new ColorSettingNoAlpha("menuGlowColor", config.menuGlowColorValue())

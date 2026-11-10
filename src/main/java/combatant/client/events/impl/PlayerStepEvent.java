@@ -11,6 +11,10 @@ import combatant.client.events.Event;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * Overrides the local player's maximum upward step height returned by
+ * {@code LivingEntity.maxUpStep} for the current query.
+ */
 @Setter
 @Getter
 public final class PlayerStepEvent extends Event {

@@ -9,6 +9,7 @@ package combatant.client.render.engine.rhi.upload;
 
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import combatant.client.render.engine.rhi.RhiStats;
 import com.mojang.renderpearl.api.commands.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.jetbrains.annotations.Nullable;
@@ -24,12 +25,18 @@ import java.util.function.Supplier;
  */
 final class Blaze3dMeshArena implements AutoCloseable {
     private final String name;
+    private final RhiStats stats;
     private final boolean persistent;
     private final int vertexCapacity;
     private final int indexCapacity;
     private final GpuBuffer vertexBuffer;
     private final GpuBuffer indexBuffer;
     private final boolean persistentMappedWrites;
+    // BufferSubData uploads can be consolidated across all meshes submitted before the next draw.
+    private static final boolean COALESCE_SUBDATA = Boolean.parseBoolean(
+            System.getProperty("combatant.rhi.coalesceSubData", "true"));
+    private CoalescedMeshStaging stagedVertices;
+    private CoalescedMeshStaging stagedIndices;
 
     private int vertexCursor;
     private int indexCursor;
@@ -40,8 +47,10 @@ final class Blaze3dMeshArena implements AutoCloseable {
     private boolean usedThisFrame;
     private @Nullable Blaze3dFrameFence fence;
 
-    Blaze3dMeshArena(String name, int vertexCapacity, int indexCapacity, boolean persistent, boolean persistentMappedWrites) {
+    Blaze3dMeshArena(String name, int vertexCapacity, int indexCapacity, boolean persistent,
+                     boolean persistentMappedWrites, RhiStats stats) {
         this.name = name;
+        this.stats = stats;
         this.persistent = persistent;
         this.vertexCapacity = vertexCapacity;
         this.indexCapacity = indexCapacity;
@@ -237,6 +246,27 @@ final class Blaze3dMeshArena implements AutoCloseable {
         DynamicMeshWrites.track(this);
     }
 
+    /** Publishes staged BufferSubData ranges before a draw can consume this arena. */
+    void flushStagedUploads() {
+        if ((stagedVertices == null || !stagedVertices.hasPending())
+                && (stagedIndices == null || !stagedIndices.hasPending())) return;
+        CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
+        if (stagedVertices != null) {
+            stagedVertices.drain((offset, bytes) -> {
+                int length = bytes.remaining();
+                encoder.writeToBuffer(vertexBuffer.slice(offset, length), bytes);
+                stats.dynamicSubDataGpuWrite(length);
+            });
+        }
+        if (stagedIndices != null) {
+            stagedIndices.drain((offset, bytes) -> {
+                int length = bytes.remaining();
+                encoder.writeToBuffer(indexBuffer.slice(offset, length), bytes);
+                stats.dynamicSubDataGpuWrite(length);
+            });
+        }
+    }
+
     /** Flushes and unmaps the open write mappings, if any. */
     void closeMappings() {
         GpuBufferSlice.MappedView vertices = vertexMapping;
@@ -255,9 +285,19 @@ final class Blaze3dMeshArena implements AutoCloseable {
         validateRange("vertex upload", vertexOffsetBytes, vertexBytes, vertexCapacity);
         validateRange("index upload", indexOffsetBytes, indexBytes, indexCapacity);
 
-        CommandEncoder encoder = persistentMappedWrites ? null : RenderSystem.getDevice().createCommandEncoder();
+        if (COALESCE_SUBDATA && !persistentMappedWrites) {
+            if (stagedVertices == null) stagedVertices = new CoalescedMeshStaging();
+            if (stagedIndices == null) stagedIndices = new CoalescedMeshStaging();
+            stagedVertices.append(vertexOffsetBytes, vertexBytes, vertexSrc);
+            stagedIndices.append(indexOffsetBytes, indexBytes, indexSrc);
+            DynamicMeshWrites.track(this);
+            return;
+        }
+        CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
         write(name + " vertex upload", vertexBuffer.slice(vertexOffsetBytes, vertexBytes), vertexSrc, vertexBytes, encoder);
+        stats.dynamicSubDataGpuWrite(vertexBytes);
         write(name + " index upload", indexBuffer.slice(indexOffsetBytes, indexBytes), indexSrc, indexBytes, encoder);
+        stats.dynamicSubDataGpuWrite(indexBytes);
     }
 
     private void validateRange(String owner, int offsetBytes, int bytes, int capacity) {

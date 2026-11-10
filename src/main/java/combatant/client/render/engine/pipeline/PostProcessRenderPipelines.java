@@ -42,9 +42,6 @@ public final class PostProcessRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
-    /**
-     * Fullscreen postprocess (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline DAMAGE_TINT = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/damage_tint"))
@@ -86,7 +83,7 @@ public final class PostProcessRenderPipelines {
             .withSampler("u_Texture")
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withDepthWrite(false)
-            .withBlend(BlendFunction.TRANSLUCENT)
+            .withoutBlend()
             .withCull(false)
             .build();
 
@@ -211,9 +208,6 @@ public final class PostProcessRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
-    /**
-     * Fullscreen visual grading + LUT (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline POST_FX = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/post_fx"))

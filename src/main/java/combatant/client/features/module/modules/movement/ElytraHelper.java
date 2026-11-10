@@ -129,7 +129,6 @@ public class ElytraHelper extends Module {
 
         LocalPlayer player = client.player;
 
-        // ===== SWAP ELYTRA =====
         if (isActionPressedOnce(ACTION_SWAP_ELYTRA) && !swapLock) {
             swapLock = true;
             swapChest();
@@ -149,7 +148,6 @@ public class ElytraHelper extends Module {
             tickAutoTakeoff(player);
         }
 
-        // ===== FIREWORK / TAKEOFF =====
         if (isActionPressedOnce(ACTION_USE_FIREWORK)) {
             handleFireworkOrTakeoff(player);
         } else if (isActionHeld(ACTION_USE_FIREWORK) && player.isFallFlying() && canQueueManualFirework(player, false)) {
@@ -189,9 +187,7 @@ public class ElytraHelper extends Module {
         ElytraRecastUtil.INSTANCE.tick(this, player);
     }
 
-    // =========================================================
     //           FIREWORK + AUTO TAKEOFF
-    // =========================================================
     private void handleFireworkOrTakeoff(LocalPlayer player) {
 
         // Respect PVP firework cooldown first.
@@ -233,9 +229,7 @@ public class ElytraHelper extends Module {
         pendingFirework = true;
     }
 
-    // =========================================================
     //                 DEFERRED FIREWORK USE
-    // =========================================================
     private void queueFireworkUse() {
         queuedFireworkUse = true;
     }
@@ -359,9 +353,7 @@ public class ElytraHelper extends Module {
         );
     }
 
-    // =========================================================
     //                     SWAP / UTILS
-    // =========================================================
     private void swapChest() {
         LocalPlayer player = client.player;
         if (player == null) return;

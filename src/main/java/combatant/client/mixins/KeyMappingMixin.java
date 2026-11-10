@@ -16,6 +16,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
 import combatant.client.events.impl.KeybindIsPressedEvent;
 
+/**
+ * Lets {@link KeybindIsPressedEvent} override a key's queried down state.
+ * The underlying key state is not changed; a query with no subscribers uses vanilla behavior.
+ */
 @Mixin(KeyMapping.class)
 public class KeyMappingMixin {
 

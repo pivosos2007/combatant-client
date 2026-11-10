@@ -13,6 +13,9 @@ import org.jetbrains.annotations.Nullable;
 import combatant.client.mixininterface.IGlBackendInfo;
 import combatant.client.mixins.accessors.FrontendGpuDeviceAccessor;
 
+/**
+ * Resolves the OpenGL backend interface of the currently installed Minecraft GPU device, if present.
+ */
 public enum GlBackendAccess {
     ;
 

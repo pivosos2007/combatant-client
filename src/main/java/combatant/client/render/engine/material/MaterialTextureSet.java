@@ -65,7 +65,7 @@ public final class MaterialTextureSet {
         return presenceMask;
     }
 
-    /** Resource-backed compatibility view. Imported sources are intentionally omitted. */
+    /** Returns resource-backed texture identifiers, excluding imported texture sources. */
     public Map<MaterialTextureSemantic, Identifier> asMap() {
         EnumMap<MaterialTextureSemantic, Identifier> resources = new EnumMap<>(MaterialTextureSemantic.class);
         for (Map.Entry<MaterialTextureSemantic, MaterialTextureSource> entry : textures.entrySet()) {

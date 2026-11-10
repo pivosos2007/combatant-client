@@ -15,7 +15,7 @@ package combatant.client.render.engine.world;
  * artistic brightness multiplier. Consumers convert the position to camera-relative/view space
  * before upload. Shadow participation is explicit producer data; the renderer never infers it from
  * source color, light type or screen-space appearance. Shadow-casting descriptors should provide
- * a non-zero stable ID; without stable identity the bounded atlas intentionally leaves the light
+ * a non-zero stable ID; without stable identity the bounded atlas leaves the light
  * unshadowed rather than inventing persistence from position/color heuristics.</p>
  */
 public record LightDescriptor(

@@ -16,9 +16,8 @@ public interface LeaseHolder {
     void onLeaseRevoked(ActionLease lease, ActionLease.RevokeReason reason);
 
     /**
-     * The object that owns this holder's InventorySwap hotbar lease. Defaults to the holder itself;
-     * actions that share a long-lived slot lease with their queue (BlockPlacer) return that owner so
-     * the legacy probe does not report the shared lease as external.
+     * Returns the owner used when acquiring this action's hotbar lease.
+     * Actions sharing a lease return their common owner; otherwise the holder owns its own lease.
      */
     default Object slotOwner() {
         return this;

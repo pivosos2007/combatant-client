@@ -8,6 +8,7 @@
 package combatant.client.render.engine.rhi.blit;
 
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import combatant.client.mixininterface.IMsaaTexture;
 
 /** Complete copy intent; backend selection must not infer scaling or conversion accidentally. */
 public record RhiCopyRequest(
@@ -45,11 +46,16 @@ public record RhiCopyRequest(
                 destination,
                 new Region(0, 0, sourceWidth, sourceHeight),
                 new Region(0, 0, destinationWidth, destinationHeight),
-                1,
-                1,
+                samples(source),
+                samples(destination),
                 Filter.NEAREST,
                 false
         );
+    }
+
+    private static int samples(GpuTextureView view) {
+        return view != null && view.texture() instanceof IMsaaTexture msaa && msaa.combatant$isMsaa()
+                ? Math.max(1, msaa.combatant$getSamples()) : 1;
     }
 
     public boolean scales() {

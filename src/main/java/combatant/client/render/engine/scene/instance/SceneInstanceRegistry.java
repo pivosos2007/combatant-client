@@ -19,12 +19,8 @@ import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4fc;
 
 /**
- * Runtime owner for imported/custom asset world instances.
- *
- * <p>This registry deliberately does not own immutable mesh/texture resources. It owns world state
- * and delegates coarse/fine visibility to the shared scene services. Grass and future procedural
- * systems may use {@link SceneSpatialRegistry} directly with cluster payloads without becoming asset
- * instances.</p>
+ * Maintains world-instance state and delegates visibility queries to shared scene services.
+ * Immutable mesh and texture resources are not owned by this registry.
  */
 public final class SceneInstanceRegistry {
     private static final SceneLodProfile SINGLE_LOD = new SceneLodProfile(new float[0], 0.10f);

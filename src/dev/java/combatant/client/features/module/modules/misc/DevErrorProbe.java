@@ -140,7 +140,6 @@ public final class DevErrorProbe extends Module {
             default -> CommandOutput.warning(FailureText.tr("dev.unknown_scenario", requested));
         }
     }
-    /** A separate entrypoint allows a real tick failure rather than reporting an invented exception. */
     public void armScenario(String name) {
         if (!isEnabled()) { CommandOutput.warning(FailureText.tr("dev.enable_first")); return; }
         scenario.set(name);

@@ -30,8 +30,8 @@ public final class HudMaterialChoice {
     public static void collectPrewarm(RenderPrewarmCollectEvent event, String option) {
         if (event == null) return;
         UiSurfaceMaterialSpec material = UiMaterialCatalog.solid(shaderMode(option));
-        if (material != null && material.mode() != UiSurfaceMaterialSpec.Mode.PHOSPHOR_LED) {
-            event.material(material.withMicrotexture(true));
+        if (material != null) {
+            event.material(material);
         }
     }
 
@@ -53,9 +53,6 @@ public final class HudMaterialChoice {
             return true;
         }
         if (material == null) return false;
-        if (material.mode() != UiSurfaceMaterialSpec.Mode.PHOSPHOR_LED) {
-            material = material.withMicrotexture(material.texture().withTintStrength(1.0f));
-        }
         renderer.materialPrimitive(UiPrimitive.builder(x, y, width, height)
                         .roundedCorners(radius, radius, radius, radius).build(),
                 UiPaint.linear(top, bottom, 90f, 0f),
@@ -99,12 +96,8 @@ public final class HudMaterialChoice {
         }
         UiSurfaceMaterialSpec material = UiMaterialCatalog.solid(shaderMode(option));
         if (material == null) return false;
-        if (material.mode() != UiSurfaceMaterialSpec.Mode.PHOSPHOR_LED) {
-            material = material.withMicrotexture(material.texture().withTintStrength(1.0f));
-        }
-        // This is a coat ON TOP of Liquid Glass. Do not let an opaque PBR
-        // albedo hide refraction, existing tint or the carefully tuned blur.
-        final float opacity = 0.22f;
+        // Preserve the refraction beneath this surface coating.
+        final float opacity = 0.30f;
         renderer.materialPrimitive(primitive,
                 UiPaint.linear(top, bottom, 90f, 0f).withAlphaScale(opacity),
                 material.withAccent(combatant.client.features.theme.Theme.theme().accent()));

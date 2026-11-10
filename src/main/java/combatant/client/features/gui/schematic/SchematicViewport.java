@@ -192,7 +192,6 @@ final class SchematicViewport {
         return faces;
     }
 
-    // ---------------------------------------------------------------- frame
 
     void render(Schematic next, int[] colors, int selectedLayer, SchematicDiff currentDiff, float vx, float vy, float vw, float vh,
                 float dt, float mouseX, float mouseY, boolean mouseInside, float opacity) {
@@ -270,7 +269,6 @@ final class SchematicViewport {
         camera.frame(sx * 0.5f, height * 0.5f, sz * 0.5f, radius);
     }
 
-    // ---------------------------------------------------------------- meshing
 
     private void ensureMesh() {
         float meshGap = mode.exploded() ? gap : 0f;
@@ -380,7 +378,6 @@ final class SchematicViewport {
         return SchematicDiff.UNKNOWN;
     }
 
-    // ---------------------------------------------------------------- drawing
 
     /** Native GPU instancing is preferred; the CPU fallback must not silently drop textures or faces. */
     private void allocateTextureBudget() {
@@ -692,7 +689,6 @@ final class SchematicViewport {
         return (rgb & 0x00FFFFFF) | (alphaSource & 0xFF000000);
     }
 
-    // ---------------------------------------------------------------- picking + input
 
     /** Raycast only when the cursor, camera or meshed scene changed since the last pick. */
     private int cachedPick(float mx, float my) {

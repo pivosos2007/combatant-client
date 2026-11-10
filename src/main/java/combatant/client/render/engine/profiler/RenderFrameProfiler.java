@@ -13,7 +13,7 @@ import combatant.client.render.engine.rhi.uniform.UniformAllocatorStatsSnapshot;
 
 /**
  * Frame/phase timing only. Counters such as draw count, vertex count and
- * allocation totals intentionally do not live here: Tracy should show where
+ * allocation totals do not live here: Tracy should show where
  * frame time is spent, not duplicate renderer statistics.
  */
 public enum RenderFrameProfiler {

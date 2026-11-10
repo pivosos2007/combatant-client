@@ -7,6 +7,10 @@
 
 package combatant.client.render.engine.rhi;
 
+/**
+ * Identifies whether a mesh allocation belongs to the current backend frame or to a persistent resource owner.
+ * Neither category transfers release responsibility to an individual draw.
+ */
 public enum MeshOwnership {
     /**
      * Backed by backend-owned ring buffers. Do not close from draw code.

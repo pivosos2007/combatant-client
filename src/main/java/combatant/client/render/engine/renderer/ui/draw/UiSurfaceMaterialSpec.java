@@ -91,7 +91,6 @@ public record UiSurfaceMaterialSpec(Mode mode,
         return new UiSurfaceMaterialSpec(mode, scale, roughnessValue, bevel, responseValue, accentArgb, appearance, lighting, microtextureEnabled, texture);
     }
 
-    /** Add environment lighting without changing the legacy pointer highlight. */
     public UiSurfaceMaterialSpec withLighting(UiMaterialLightingSpec value) {
         return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength,
                 response, accentArgb, ice, value, microtextureEnabled, texture);
@@ -101,6 +100,13 @@ public record UiSurfaceMaterialSpec(Mode mode,
     public UiSurfaceMaterialSpec withMicrotexture(boolean enabled) {
         return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength,
                 response, accentArgb, ice, lighting, enabled, texture);
+    }
+
+    /** Controls the detail profile for both procedural surfaces and optional texture maps. */
+    public UiSurfaceMaterialSpec withDetailSpec(UiMaterialTextureSpec detail) {
+        return new UiSurfaceMaterialSpec(mode, detailScale, roughness, bevelStrength,
+                response, accentArgb, ice, lighting, microtextureEnabled,
+                detail != null ? detail : texture);
     }
 
     /** Enables source-backed PBR detail; a missing or malformed set is a render error. */

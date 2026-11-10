@@ -20,24 +20,15 @@ layout (std140) uniform HandSmoke {
     vec4 u_Params0; // edgeWidth, quality, octaves, time
     vec4 u_Params1; // resX, resY, scale, contrast
     vec4 u_Params2; // swirl, glowStrength, shadowStrength, density
+    vec4 u_PaletteEnd;
+    vec4 u_PaletteOptions;
+    vec4 u_PaletteTime;
 };
 
 layout(location = 0) in vec2 v_TexCoord;
 
-const vec2 HAND_EDGE_START_8[4] = vec2[](
-    vec2(0.958072899, 0.286524553),
-    vec2(0.835807361, 0.549022818),
-    vec2(0.643455865, 0.765483213),
-    vec2(0.397147891, 0.917754626)
-);
-const vec2 HAND_EDGE_START_12[4] = vec2[](
-    vec2(0.981292664, 0.192521967),
-    vec2(0.925870585, 0.377840787),
-    vec2(0.835807361, 0.549022818),
-    vec2(0.714472680, 0.699663341)
-);
-const vec2 HAND_EDGE_ROTATE_8 = vec2(0.707106781, 0.707106781);
-const vec2 HAND_EDGE_ROTATE_12 = vec2(0.866025404, 0.5);
+#include <combatant:hand_palette.glsl>
+#include <combatant:hand_edge_coverage.glsl>
 
 float handSmokeHash21(vec2 p) {
     p = fract(p * vec2(123.34, 345.45));
@@ -70,41 +61,6 @@ float handSmokeFbm(vec2 p, int octaves) {
     return v;
 }
 
-float handMaskAt(vec2 uv) {
-    vec4 mask = texture(u_Mask, uv);
-    return max(mask.a, max(mask.r, max(mask.g, mask.b)));
-}
-
-float handEdgeDistance(vec2 oneTexel, int quality, float edgeWidth, out float hitAmount) {
-    float best = 1.0e5;
-    float hit = 0.0;
-    int rings = clamp(quality, 1, 4);
-    int dirs = quality <= 1 ? 8 : 12;
-    float radiusPx = max(edgeWidth, 1.0);
-    bool eightDirections = dirs == 8;
-    vec2 rotation = eightDirections ? HAND_EDGE_ROTATE_8 : HAND_EDGE_ROTATE_12;
-
-    for (int r = 1; r <= 4; ++r) {
-        if (r > rings) continue;
-        float rr = float(r) / float(rings);
-        float distPx = radiusPx * rr;
-        vec2 dir = eightDirections ? HAND_EDGE_START_8[r - 1] : HAND_EDGE_START_12[r - 1];
-        for (int i = 0; i < 12; ++i) {
-            if (i >= dirs) break;
-            float a = handMaskAt(v_TexCoord + dir * oneTexel * distPx);
-            if (a > 0.02) {
-                best = min(best, rr);
-                hit = max(hit, a);
-            }
-            dir = vec2(dir.x * rotation.x - dir.y * rotation.y,
-                       dir.x * rotation.y + dir.y * rotation.x);
-        }
-    }
-
-    hitAmount = hit;
-    return best;
-}
-
 vec3 handSmokeField(vec2 fragCoord, vec2 resolution, float time, int octaves) {
     float scale = max(u_Params1.z, 0.05);
     float contrast = max(u_Params1.w, 0.05);
@@ -132,56 +88,61 @@ vec3 handSmokeField(vec2 fragCoord, vec2 resolution, float time, int octaves) {
     m = mix(m, m * (0.74 + veins * 0.38), 0.42);
     m = pow(clamp(m * (0.9 + density * 0.35), 0.0, 1.0), 1.0 / contrast);
 
-    vec3 smoke = mix(u_Fill.rgb * 0.48, u_Fill.rgb, m);
+    vec3 baseColor = handPaletteColor(v_TexCoord, u_PaletteTime.x, u_Fill, u_PaletteEnd, u_PaletteOptions).rgb;
+    vec3 smoke = mix(baseColor * 0.48, baseColor, m);
     smoke = mix(smoke, u_Glow.rgb, clamp((m - 0.62) * 1.55, 0.0, 0.38));
     return smoke * (0.50 + m * 0.72);
 }
 
 void main() {
     vec4 base = texture(u_Src, v_TexCoord);
-    float mask = handMaskAt(v_TexCoord);
-
-    vec2 resolution = max(u_Params1.xy, vec2(1.0));
-    vec2 oneTexel = 1.0 / resolution;
+    float mask = handMaskCoverage(v_TexCoord);
     float edgeWidth = max(u_Params0.x, 0.0);
     int quality = int(u_Params0.y + 0.5);
     int octaves = clamp(int(u_Params0.z + 0.5), 1, 4);
     float time = u_Params0.w;
     float glowStrength = max(u_Params2.y, 0.0);
     float shadowStrength = max(u_Params2.z, 0.0);
+    bool outerEnabled = edgeWidth > 0.001 &&
+            (u_Glow.a * glowStrength > 0.0001 || u_Shadow.a * shadowStrength > 0.0001);
 
-    if (mask > 0.01) {
-        vec3 smoke = handSmokeField(gl_FragCoord.xy, resolution, time, octaves);
+    if (mask <= 0.001 && !outerEnabled) {
+        color = vec4(base.rgb, 1.0);
+        return;
+    }
 
-        float nL = handMaskAt(v_TexCoord + vec2(-oneTexel.x, 0.0));
-        float nR = handMaskAt(v_TexCoord + vec2(oneTexel.x, 0.0));
-        float nU = handMaskAt(v_TexCoord + vec2(0.0, -oneTexel.y));
-        float nD = handMaskAt(v_TexCoord + vec2(0.0, oneTexel.y));
-        float innerEdge = clamp(1.0 - min(min(nL, nR), min(nU, nD)), 0.0, 1.0);
-        innerEdge = pow(innerEdge, 0.72);
+    vec2 resolution = max(u_Params1.xy, vec2(1.0));
+    vec2 oneTexel = 1.0 / resolution;
+    vec3 outCol = base.rgb;
+    vec3 smoke = vec3(0.0);
+    bool needsSmoke = mask > 0.001;
 
+    // Share a continuous halo across partially covered edge pixels instead of
+    // switching between two unrelated edge formulas at alpha == 0.01.
+    if (outerEnabled && mask < 0.75) {
+        float halo = handMaskOuterHalo(v_TexCoord, oneTexel, edgeWidth, quality);
+        halo *= 1.0 - smoothstep(0.02, 0.75, mask);
+        float shadowA = halo * u_Shadow.a * shadowStrength * 0.54;
+        float glowA = halo * u_Glow.a * glowStrength * 0.40;
+        outCol = mix(outCol, u_Shadow.rgb, shadowA);
+        if (glowA > 0.0001) {
+            smoke = handSmokeField(gl_FragCoord.xy, resolution, time, octaves);
+            outCol = mix(outCol, smoke, glowA * 0.28);
+            outCol += u_Glow.rgb * glowA;
+            needsSmoke = false;
+        }
+    }
+
+    if (mask > 0.001) {
+        if (needsSmoke) {
+            smoke = handSmokeField(gl_FragCoord.xy, resolution, time, octaves);
+        }
+        float innerEdge = handMaskInnerContour(v_TexCoord, oneTexel, mask);
         float alpha = clamp(u_Fill.a * mask, 0.0, 1.0);
-        vec3 outCol = mix(base.rgb, smoke, alpha);
+        outCol = mix(outCol, smoke, alpha);
         outCol = mix(outCol, u_Shadow.rgb, innerEdge * u_Shadow.a * shadowStrength * 0.34);
         outCol += u_Glow.rgb * innerEdge * u_Glow.a * glowStrength * 0.24;
-        color = vec4(clamp(outCol, 0.0, 1.0), 1.0);
-        return;
     }
 
-    float hitAmount = 0.0;
-    float d = handEdgeDistance(oneTexel, quality, edgeWidth, hitAmount);
-    if (hitAmount > 0.01) {
-        float falloff = clamp(1.0 - d, 0.0, 1.0);
-        falloff = falloff * falloff * (3.0 - 2.0 * falloff);
-        vec3 smoke = handSmokeField(gl_FragCoord.xy, resolution, time, octaves);
-        float shadowA = falloff * u_Shadow.a * shadowStrength * 0.54;
-        float glowA = pow(falloff, 1.32) * u_Glow.a * glowStrength * 0.40;
-        vec3 outCol = mix(base.rgb, u_Shadow.rgb, shadowA);
-        outCol = mix(outCol, smoke, glowA * 0.28);
-        outCol += u_Glow.rgb * glowA;
-        color = vec4(clamp(outCol, 0.0, 1.0), 1.0);
-        return;
-    }
-
-    color = vec4(base.rgb, 1.0);
+    color = vec4(clamp(outCol, 0.0, 1.0), 1.0);
 }

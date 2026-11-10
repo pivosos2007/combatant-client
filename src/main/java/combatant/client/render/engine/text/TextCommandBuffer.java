@@ -16,9 +16,7 @@ import combatant.client.render.engine.text.backend.TextDrawCommand;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Frame-local text command buffer. It is intentionally independent from Renderer2D.
- */
+/** Buffers text commands for the current frame independently of Renderer2D. */
 public final class TextCommandBuffer {
     private final List<TextDrawCommand> commands = new ArrayList<>();
     private final TextCommandStats stats;

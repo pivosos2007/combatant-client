@@ -23,7 +23,7 @@ import java.util.Set;
 /**
  * Persistent mesh storage backed by Mojang GPU buffers.
  *
- * <p>This class deliberately contains no OpenGL or Vulkan calls. Mojang's active {@code Device}
+ * <p>This class contains no OpenGL or Vulkan calls. Mojang's active {@code Device}
  * creates the native buffer for the selected backend, so Combatant gets one residency contract for
  * GL and Vulkan instead of two asset upload implementations.</p>
  */

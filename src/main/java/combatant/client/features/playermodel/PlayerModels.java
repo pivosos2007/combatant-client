@@ -140,7 +140,7 @@ public final class PlayerModels {
             var selection = module.model(target);
             selection.addOptions(entries.stream().map(ModelCatalog.Entry::id).toList());
             String selected = selection.get();
-            // Maintain the legacy automatic selection for self only. New relations are opt-in.
+            // Automatic model selection applies only to the local player; other relations require explicit selection.
             if (self && selected.equals("none") && !entries.isEmpty()) {
                 selection.set(entries.getFirst().id());
                 selected = selection.get();

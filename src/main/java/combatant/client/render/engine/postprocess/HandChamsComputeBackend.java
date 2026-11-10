@@ -39,6 +39,9 @@ public final class HandChamsComputeBackend implements AutoCloseable {
             .member("params", Std430Type.VEC4)
             .member("noise0", Std430Type.VEC4)
             .member("noise1", Std430Type.VEC4)
+            .member("paletteEnd", Std430Type.VEC4)
+            .member("paletteOptions", Std430Type.VEC4)
+            .member("ghostDetails", Std430Type.VEC4)
             .member("state", Std430Type.VEC4)
             .build();
     private static final ShaderResourceLayout GHOST_HISTORY_LAYOUT = new ShaderResourceLayout(List.of(
@@ -171,6 +174,9 @@ public final class HandChamsComputeBackend implements AutoCloseable {
                                   float contrast,
                                   float density,
                                   float historyScale,
+                                  float paletteEndR, float paletteEndG, float paletteEndB, float paletteEndA,
+                                  float paletteMode, float paletteSpeed, float paletteSpan, float paletteAngle,
+                                  float smokeAmount, float ringAmount, float ringFrequency, float ringSpeed,
                                   boolean forceReset) {
         if (!supported(rhi) || destination == null || source == null || mask == null || sampler == null) return false;
         if (screenW <= 0 || screenH <= 0) return false;
@@ -187,6 +193,9 @@ public final class HandChamsComputeBackend implements AutoCloseable {
                     .putVec4(0, "params", decay, strength, blurPx, currentReject)
                     .putVec4(0, "noise0", quality, octaves, speed, scale)
                     .putVec4(0, "noise1", swirl, contrast, density, historyScale)
+                    .putVec4(0, "paletteEnd", paletteEndR, paletteEndG, paletteEndB, paletteEndA)
+                    .putVec4(0, "paletteOptions", paletteMode, paletteSpeed, paletteSpan, paletteAngle)
+                    .putVec4(0, "ghostDetails", smokeAmount, ringAmount, ringFrequency, ringSpeed)
                     .putVec4(0, "state", reset ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
             RhiStorageBuffer params = ghostParams();
             params.upload(writer.buffer(), 0L);

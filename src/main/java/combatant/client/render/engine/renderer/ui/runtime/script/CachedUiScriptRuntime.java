@@ -436,9 +436,8 @@ public final class CachedUiScriptRuntime {
     }
 
     /**
-     * Persistent-template path. Template props may intentionally contain placeholders, therefore
-     * the first runtime patch is forced after a tree rebuild. Later patches are invalidated from
-     * the patch payload itself rather than a caller-maintained data signature.
+     * Forces a property patch after rebuilding a persistent template because template properties
+     * can contain placeholders. Subsequent patches are driven by their payloads.
      */
     public UiRuntime updatePersistent(UiScriptModuleHandle handle,
                                       UiScriptModule module,

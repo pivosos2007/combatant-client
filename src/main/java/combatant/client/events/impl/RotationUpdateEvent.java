@@ -11,7 +11,9 @@ import combatant.client.events.Event;
 import lombok.Getter;
 
 /**
- * Rotation lifecycle event fired each tick in two phases.
+ * Marks the boundaries of a rotation-manager update: {@link Type#PRE} before
+ * pending requests are resolved and {@link Type#POST} afterwards.
+ * A null phase passed to the constructor is treated as {@code PRE}.
  */
 @Getter
 public final class RotationUpdateEvent extends Event {

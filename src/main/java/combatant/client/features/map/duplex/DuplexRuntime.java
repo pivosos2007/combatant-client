@@ -17,6 +17,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Coordinates a local Duplex peer session, frame sequencing and exchanged bearing observations.
+ * Incoming frames are checked against peer/session state before their contents update estimates.
+ */
 public final class DuplexRuntime implements AutoCloseable {
     private final DuplexLocalConfig config;
     private final UUID senderId = UUID.randomUUID();
@@ -67,6 +71,10 @@ public final class DuplexRuntime implements AutoCloseable {
     public int remoteBearingCount() { return remoteBearings.size(); }
     public int estimateCount() { return estimates().size(); }
 
+    /**
+     * Returns an immutable estimate map with entries older than the configured
+     * staleness threshold excluded; the result is safe to retain as a snapshot.
+     */
     public Map<UUID, DuplexEstimate> estimates() {
         Map<UUID, DuplexEstimate> current = estimates.get();
         if (current.isEmpty()) return current;
@@ -81,6 +89,11 @@ public final class DuplexRuntime implements AutoCloseable {
         return filtered.size() == current.size() ? current : Map.copyOf(filtered);
     }
 
+    /**
+     * Replaces the existing session and derives its identity from the configured
+     * token, port and normalized server/world fingerprints. A disabled configuration
+     * leaves the runtime disconnected.
+     */
     public synchronized void start(String serverFingerprint, String worldFingerprint) {
         close();
         if (!config.enabled()) {
@@ -127,6 +140,12 @@ public final class DuplexRuntime implements AutoCloseable {
         pruneEstimates(now);
     }
 
+    /**
+     * Records the local observation and updates any matching estimate before sending.
+     * With an active transport, the sample is retained even when no verified peer is available.
+     *
+     * @return {@code true} only when the encoded sample was accepted by the transport queue
+     */
     public boolean publishBearing(DuplexBearingSample sample) {
         if (sample == null || sample.targetUuid() == null || transport == null) return false;
         localBearings.put(sample.targetUuid(), sample);

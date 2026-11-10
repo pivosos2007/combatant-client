@@ -14,6 +14,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Keeps one module handle per normalized identifier and aggregates resource-reload results.
+ * Reload failures remain associated with their individual handles.
+ */
 public final class UiScriptModuleRegistry {
     private final Map<String, UiScriptModuleHandle> handles = new LinkedHashMap<>();
 

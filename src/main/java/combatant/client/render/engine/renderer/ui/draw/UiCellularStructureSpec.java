@@ -7,9 +7,9 @@
 package combatant.client.render.engine.renderer.ui.draw;
 
 /**
- * Optional Voronoi structure painted over any material on an eligible UiPrimitive.
- * The structure is NOT a replacement base material: paint/tint and geometry are
- * supplied independently by the caller. Seed is stable across frames and moves.
+ * Parameters for an optional cellular material structure on a UI primitive.
+ * Constructor validation clamps cell size, seam width, normalized coefficients and seed
+ * to finite supported ranges; the caller supplies the base material independently.
  */
 public record UiCellularStructureSpec(Profile profile, float cellSizePx, float jitter,
                                       float seamWidthPx, float depth, float opacity,

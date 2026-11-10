@@ -15,7 +15,7 @@ import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiColor;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 
-/** Paints the style-owned box layer of a runtime node. Tree traversal stays in {@link UiRenderer}. */
+/** Resolves node box materials without traversing child nodes. */
 final class UiBoxRenderer {
     public void render(UiNode node, UiStyle style, UiBounds logicalBounds, UiRenderContext context) {
         UiBounds bounds = context.renderBounds(logicalBounds);

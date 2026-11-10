@@ -31,7 +31,7 @@ import java.util.UUID;
  *
  * <p>Kill credit is based on the last server-confirmed damage source for a player, rather than proximity or a
  * local attack attempt. A play connection is counted when Minecraft obtains a new live client packet listener;
- * server-specific rounds intentionally are not guessed from scoreboards or chat text.</p>
+ * server-specific rounds are not guessed from scoreboards or chat text.</p>
  */
 public final class SessionStatisticsTracker {
     public static final SessionStatisticsTracker INSTANCE = new SessionStatisticsTracker();

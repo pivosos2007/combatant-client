@@ -14,6 +14,7 @@ import combatant.client.render.engine.rhi.RhiStats;
 import combatant.client.render.engine.rhi.backend.gl.GlValidation;
 import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL32C;
 import org.lwjgl.opengl.GL43C;
 
 /** Modern OpenGL copy candidate layered over the unchanged Blaze3D baseline. */
@@ -44,9 +45,12 @@ public final class GlTextureBlitter implements TextureBlitter {
         if (src == null || dst == null || request.scales()) return false;
 
         if (GlValidation.errorsEnabled()) GlStateManager.clearGlErrors();
+        // Multisampled textures must be addressed by GL_TEXTURE_2D_MULTISAMPLE, never GL_TEXTURE_2D.
+        int sourceTarget = request.sourceSamples() > 1 ? GL32C.GL_TEXTURE_2D_MULTISAMPLE : GL11C.GL_TEXTURE_2D;
+        int destinationTarget = request.destinationSamples() > 1 ? GL32C.GL_TEXTURE_2D_MULTISAMPLE : GL11C.GL_TEXTURE_2D;
         GL43C.glCopyImageSubData(
-                sourceGl.glId(), GL11C.GL_TEXTURE_2D, request.source().baseMipLevel(), src.x(), src.y(), 0,
-                destinationGl.glId(), GL11C.GL_TEXTURE_2D, request.destination().baseMipLevel(), dst.x(), dst.y(), 0,
+                sourceGl.glId(), sourceTarget, request.source().baseMipLevel(), src.x(), src.y(), 0,
+                destinationGl.glId(), destinationTarget, request.destination().baseMipLevel(), dst.x(), dst.y(), 0,
                 src.width(), src.height(), 1
         );
         if (GlValidation.errorsEnabled() && GlStateManager._getError() != 0) return false;

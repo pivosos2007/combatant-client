@@ -7,6 +7,8 @@
 
 package combatant.client.features.module.modules.movement;
 
+import combatant.client.events.impl.SlimeStepEvent;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -45,6 +47,11 @@ import java.util.Map;
         category = ModuleCategory.MOVEMENT, subcategory = ModuleSubcategory.BASIC,
         description = "module.nostun.description")
 public class NoStun extends Module {
+    @EventHandler
+    private void onSlimeStep(SlimeStepEvent event) {
+        if (isFunctionEnabled(fnEnvBlocks()) && isEnvBlockEnabled(envSlime())) event.cancel();
+    }
+
 
     private static final float DEFAULT_SLIPPERINESS = 0.6F;
     private static final float DEFAULT_VELOCITY_MULTIPLIER = 1.0F;
@@ -75,7 +82,6 @@ public class NoStun extends Module {
     private static final String DEBUFF_SLOWNESS = "slowness";
     private static final String DEBUFF_BLINDNESS = "blindness";
     private final Minecraft mc = Minecraft.getInstance();
-    //todo ну хз на прыжках еще флагует блять так что хз хз
     private final EnumValue<Mode> mode =
             enumSetting("noStunMode", SETTING_MODE, Mode.NORMAL, Mode.values());
     private final BooleanMapValue functions =

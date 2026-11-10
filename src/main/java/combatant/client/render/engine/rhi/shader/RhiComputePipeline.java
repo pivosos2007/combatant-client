@@ -7,6 +7,9 @@
 
 package combatant.client.render.engine.rhi.shader;
 
+/**
+ * Backend compute pipeline handle with an optional declared shader-resource layout.
+ */
 public interface RhiComputePipeline extends AutoCloseable {
     String label();
 

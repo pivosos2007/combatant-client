@@ -19,7 +19,8 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Lightweight extrapolation wrapper (inspired by LiquidBounce).
+ * Binds a single entity to the position, eye-position and bounding-box predictions
+ * of {@link PositionPredictor}. Each query uses the predictor's current sample state.
  */
 public enum PositionExtrapolation {
     ;

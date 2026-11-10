@@ -36,9 +36,6 @@ public final class EffectRenderPipelines {
             .withUniform("SkyboxShader", UniformType.UNIFORM_BUFFER)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST).withDepthWrite(false)
             .withBlend(BlendFunction.TRANSLUCENT).withCull(false).build();
-    /**
-     * Fullscreen heat distortion + vignette (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline HEAT_FX = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/heat_fx"))
@@ -52,9 +49,6 @@ public final class EffectRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
-    /**
-     * Fullscreen shader ESP gradient composite (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline SHADER_ESP_GRADIENT = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/shader_esp_gradient"))
@@ -68,9 +62,6 @@ public final class EffectRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
-    /**
-     * Fullscreen shader ESP separable shadow blur (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline SHADER_ESP_SHADOW = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/shader_esp_shadow"))
@@ -85,9 +76,6 @@ public final class EffectRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
-    /**
-     * Fullscreen shader ESP procedural smoke fill (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline SHADER_ESP_SMOKE = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/shader_esp_smoke"))
@@ -104,9 +92,6 @@ public final class EffectRenderPipelines {
     /**
      * No depth test; additive; textured-color triangles with procedural sun shading.
      */
-    /**
-     * Fullscreen nether portal rift (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline PORTAL_RIFT = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/portal_rift"))
@@ -120,9 +105,6 @@ public final class EffectRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
-    /**
-     * Fullscreen sleep overlay (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline SLEEP_OVERLAY = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/sleep_overlay"))
@@ -136,9 +118,6 @@ public final class EffectRenderPipelines {
             .withBlend(BlendFunction.TRANSLUCENT)
             .withCull(false)
             .build();
-    /**
-     * Fullscreen hand glass (pos2).
-     */
     @PipelineRegister
     public static final RenderPipeline HAND_GLASS = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
             .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/hand_glass"))

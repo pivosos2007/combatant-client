@@ -10,6 +10,11 @@ package combatant.client.events;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * Base for events dispatched synchronously through {@link EventBus}.
+ * Cancellation records a request for the publisher; dispatch continues to other subscribers,
+ * and only publishers that inspect {@link #isCancelled()} act on it.
+ */
 @Setter
 @Getter
 public class Event {

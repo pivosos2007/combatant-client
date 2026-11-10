@@ -33,11 +33,11 @@ public class NoPush extends Module {
             "nopush_toggles",
             SETTING_TOGGLES,
             new LinkedHashMap<>() {{
-                put("players", true); // толкание другими энтити
+                put("players", true); 
                 put("blocks", true);
                 put("liquids", true);
-                put("fishing_hook", true);  // выталкивание из блоков
-                put("pearl_phase", true); // спуф позы после жемчуга
+                put("fishing_hook", true);  
+                put("pearl_phase", true); 
             }}
     );
 

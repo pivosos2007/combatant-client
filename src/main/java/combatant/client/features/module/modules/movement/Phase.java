@@ -50,7 +50,6 @@ import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySwapRequest;
 
 @Deprecated
-//работает только на ванилах без ач
 @ModuleInfo(
         id = "phase",
         displayName = "Phase",

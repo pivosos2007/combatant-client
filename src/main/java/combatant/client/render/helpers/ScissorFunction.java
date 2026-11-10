@@ -158,7 +158,7 @@ public enum ScissorFunction {
      * liquid glass) render into targets whose dimensions differ from the main framebuffer.
      * Reusing the caller's framebuffer-space scissor on those targets clips the passes with
      * unscaled coordinates and can clear the entire blur chain to transparent black. The
-     * logical stack is intentionally left untouched so normal UI clipping resumes afterwards.</p>
+     * logical stack is left untouched so normal UI clipping resumes afterwards.</p>
      *
      * @return {@code true} when an applied GPU scissor was suspended and must be restored.
      */

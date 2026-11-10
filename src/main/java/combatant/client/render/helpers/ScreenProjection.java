@@ -23,7 +23,7 @@ import combatant.client.render.engine.core.ViewportContext;
  *
  * Screen overlays must use the same stable camera projection space as vanilla
  * GameRenderer.projectPointToScreen: raw camera projection * view rotation.
- * Full render projection is intentionally not used here because vanilla view
+ * Full render projection is not used here because vanilla view
  * effects such as bob/hurt/nausea are applied to the world render pass and make
  * HUD markers jitter when mixed with 2D overlay coordinates.
  */

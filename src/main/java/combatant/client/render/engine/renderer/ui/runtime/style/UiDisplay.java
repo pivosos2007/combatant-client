@@ -9,7 +9,7 @@ package combatant.client.render.engine.renderer.ui.runtime.style;
 
 import java.util.Locale;
 
-/** Explicit authored layout mode. Null on {@link UiStyle} preserves legacy node-type layout. */
+/** A null display value retains the node type's default layout. */
 public enum UiDisplay {
     FLEX,
     BLOCK;

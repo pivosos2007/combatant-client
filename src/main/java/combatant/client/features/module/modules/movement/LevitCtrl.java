@@ -1,3 +1,10 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
 package combatant.client.features.module.modules.movement;
 
 import combatant.client.config.values.BooleanValue;
@@ -26,6 +33,7 @@ import net.minecraft.world.phys.Vec3;
         category = ModuleCategory.MOVEMENT,
         subcategory = ModuleSubcategory.RAGE,
         description = "module.levitctrl.description")
+/** Applies configurable movement control to levitation and slow-falling physics. */
 public final class LevitCtrl extends Module {
     private static final double AIR_FRICTION = 0.9100000262260437;
     private static final double MAX_AIR_ACCELERATION = 0.019;

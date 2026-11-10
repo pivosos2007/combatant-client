@@ -308,7 +308,6 @@ final class SchematicTextures {
         return new BlockShape(false, occludes, ghost.quadCount, ghost.pos, ghost.uv, ghost.normal, ghost.tint, cull);
     }
 
-    // ---------------------------------------------------------------- colour maths
 
     /** Channel-wise product of two ARGB colours. */
     static int multiply(int a, int b) {
@@ -319,7 +318,6 @@ final class SchematicTextures {
         return (al << 24) | (r << 16) | (g << 8) | bl;
     }
 
-    // ---------------------------------------------------------------- averaging
 
     /** Alpha-weighted mean colour of the sprite's first frame, cached per sprite; 0 when the pixels are unreachable. */
     private static int average(TextureAtlasSprite sprite) {

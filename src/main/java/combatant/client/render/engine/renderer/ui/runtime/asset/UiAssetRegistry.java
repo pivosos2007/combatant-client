@@ -12,6 +12,10 @@ import combatant.client.render.engine.renderer.ui.runtime.core.UiProps;
 
 import java.util.Locale;
 
+/**
+ * Dispatches UI asset resolution to providers registered by normalized asset type.
+ * A missing provider yields {@code null}.
+ */
 public final class UiAssetRegistry {
     private final Object2ObjectOpenHashMap<String, UiAssetProvider> providers = new Object2ObjectOpenHashMap<>();
 
@@ -33,6 +37,7 @@ public final class UiAssetRegistry {
         providers.clear();
     }
 
+    /** Returns {@code null} when no provider is registered for {@code type}. */
     public UiAssetRef resolve(UiProps props, String type, String id, float width, float height) {
         UiAssetProvider provider = providers.get(normalize(type));
         return provider != null ? provider.resolve(props, type, id, width, height) : null;

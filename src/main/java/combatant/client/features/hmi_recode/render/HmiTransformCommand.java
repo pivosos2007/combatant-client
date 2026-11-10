@@ -71,7 +71,6 @@ public record HmiTransformCommand(String op, double[] args) {
         }
     }
 
-    /** Apply an already-decoded binary opcode with no temporary command or arguments array. */
     public static void applyOpcode(PoseStack stack, int opcode, int count,
                                    double a, double b, double c, double d) {
         if (stack == null) return;

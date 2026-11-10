@@ -95,7 +95,6 @@ public final class InventorySwap {
     private InventorySwap() {
     }
 
-    // ---- slot mapping --------------------------------------------------------------------------------------
 
     public static int mapInventoryToScreenSlot(int inventorySlot) {
         LocalPlayer player = INSTANCE.mc.player;
@@ -150,7 +149,6 @@ public final class InventorySwap {
         return kind == InventoryActionKind.INVENTORY_CLICK || kind == InventoryActionKind.INVENTORY_CLOSE;
     }
 
-    // ---- events --------------------------------------------------------------------------------------------
 
     @EventHandler
     private void onPacketSend(PacketEvent.Send event) {
@@ -230,7 +228,6 @@ public final class InventorySwap {
         reconcileServerSlot();
     }
 
-    // ---- client view / internal markers --------------------------------------------------------------------
 
     /**
      * True while the game draws or animates what the player sees (hand, hotbar, item name popup)
@@ -258,7 +255,6 @@ public final class InventorySwap {
         return internalSwapDepth > 0 ? inventoryActionOwner : null;
     }
 
-    // ---- window-click queue --------------------------------------------------------------------------------
 
     public boolean hasPendingActions() {
         return !queue.isEmpty();
@@ -422,7 +418,6 @@ public final class InventorySwap {
         queuedLevel = null;
     }
 
-    // ---- held slot -----------------------------------------------------------------------------------------
 
     /** Slot the server holds right now (silent hold, then the server's own state, then the client's). */
     public int serverSelectedSlot() {
@@ -652,7 +647,6 @@ public final class InventorySwap {
         return current;
     }
 
-    // ---- window clicks (run inside command / execute) ------------------------------------------------------
 
     public boolean clickSwap(int containerSlot) {
         return clickSwap(containerSlot, clientSelectedSlot());
@@ -840,7 +834,6 @@ public final class InventorySwap {
         return moved;
     }
 
-    // ---- actions -------------------------------------------------------------------------------------------
 
     /**
      * Runs a raw action that needs the Grim safety gate. Window clicks and closes run now when the server sees a
@@ -915,7 +908,6 @@ public final class InventorySwap {
         return true;
     }
 
-    // ---- search --------------------------------------------------------------------------------------------
 
     /** First match in the hotbar; {@link SlotResult#slot()} is the player-inventory index (0-8). */
     public SlotResult findHotbar(Predicate<ItemStack> predicate) {
@@ -955,7 +947,6 @@ public final class InventorySwap {
         return SlotResult.empty();
     }
 
-    // ---- one-shot swaps ------------------------------------------------------------------------------------
 
     private boolean runNormalHotbar(int slot, Runnable action) {
         if (lastServerSelectedSlot != slot && !window.slotChangeAllowed()) return false;
@@ -1020,7 +1011,6 @@ public final class InventorySwap {
         return false;
     }
 
-    // ---- internals -----------------------------------------------------------------------------------------
 
     private void runGuarded(Object owner, Runnable action) {
         Object previousOwner = inventoryActionOwner;

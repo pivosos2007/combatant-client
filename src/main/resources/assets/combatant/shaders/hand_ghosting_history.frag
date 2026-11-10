@@ -20,6 +20,9 @@ layout (std140) uniform HandGhosting {
     vec4 u_Params; // decay, strength, blur px, current reject
     vec4 u_Noise0; // quality, octaves, speed, scale
     vec4 u_Noise1; // swirl, contrast, density, history scale
+    vec4 u_PaletteEnd;
+    vec4 u_PaletteOptions;
+    vec4 u_GhostDetails;
 };
 
 float hash21(vec2 p) {
@@ -72,6 +75,7 @@ void main() {
     float swirl = max(u_Noise1.x, 0.0);
     float contrast = max(u_Noise1.y, 0.05);
     float density = max(u_Noise1.z, 0.0);
+    float smokeAmount = clamp(u_GhostDetails.x, 0.0, 2.0);
 
     ivec2 historySizeI = max(textureSize(u_History, 0), ivec2(1));
     vec2 historyTexel = 1.0 / vec2(historySizeI);
@@ -89,22 +93,41 @@ void main() {
 
     // Advect trail history only; the live hand mask must not seed the flow field.
     float frameScale = min(dt * 60.0, 3.0);
-    vec2 advectedUv = v_TexCoord - flow * historyTexel * swirl * (0.90 + quality * 0.32) * frameScale;
+    // A small upward drift and turbulent flow move the remnant away from the
+    // former hand position instead of leaving an intact, glowing hand imprint.
+    vec2 smokeFlow = flow + vec2(0.0, -0.20 * smokeAmount);
+    vec2 advectedUv = v_TexCoord - smokeFlow * historyTexel * swirl * (1.20 + quality * 0.40)
+            * mix(0.65, 1.50, smokeAmount * 0.5) * frameScale;
     float previousTrail = historyAt(advectedUv).r;
+    // Diffuse the old trail into neighbouring texels. This lets it disperse
+    // instead of persisting as repeated solid silhouettes of the hand.
+    if (smokeAmount > 0.001) {
+        vec2 spread = historyTexel * (1.0 + smokeAmount * 0.9);
+        float neighbours = (historyAt(advectedUv + vec2(spread.x, 0.0)).r
+                          + historyAt(advectedUv - vec2(spread.x, 0.0)).r
+                          + historyAt(advectedUv + vec2(0.0, spread.y)).r
+                          + historyAt(advectedUv - vec2(0.0, spread.y)).r) * 0.25;
+        float diffusion = (1.0 - pow(0.81, frameScale)) * min(smokeAmount, 1.0);
+        previousTrail = mix(previousTrail, neighbours, diffusion);
+    }
 
     float bodyNoise = fbm(p * 2.05 + flow * (0.65 + swirl * 0.35) + vec2(time * 0.035, -time * 0.07), octaves);
     float turbulence = pow(clamp(bodyNoise * (0.72 + density * 0.45), 0.0, 1.0), 1.0 / contrast);
 
     float decay = clamp(u_Params.x, 0.0, 0.99995);
     float turbulenceDecay = pow(mix(0.94, 1.0, turbulence), frameScale);
-    float decayedTrail = previousTrail * decay * turbulenceDecay;
+    float smokeBreakup = mix(1.0, mix(0.88, 1.008, smoothstep(0.18, 0.85, turbulence)),
+                            min(smokeAmount * 0.7, 1.0));
+    float decayedTrail = previousTrail * decay * turbulenceDecay * pow(smokeBreakup, frameScale);
     decayedTrail = max(decayedTrail - (1.0 - decay) * 0.025, 0.0);
 
     // History is generated only on the disappearing edge of the hand mask.
     float newlyExposed = max(previousCurrent - current, 0.0);
-    newlyExposed = smoothstep(0.015, 0.20, newlyExposed);
+    newlyExposed = smoothstep(0.02, 0.28, newlyExposed);
+    float emission = newlyExposed * mix(0.78, 0.62, min(smokeAmount, 1.0))
+                   * mix(0.62, 1.0, smoothstep(0.15, 0.85, turbulence));
 
-    float trail = max(decayedTrail, newlyExposed);
+    float trail = max(decayedTrail, emission);
     if (trail < 0.0025) trail = 0.0;
 
     // R = ghost trail only, G = exact current silhouette, B = turbulence field.

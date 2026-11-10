@@ -13,6 +13,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
 import combatant.client.events.Event;
 
+/**
+ * Replaces the block state observed by the block-collision iterator.
+ * This occurs before collision-shape resolution and does not change the world
+ * block state. For shape substitution, use {@link BlockCollisionShapeEvent}.
+ */
 @Getter
 public class EventCollision extends Event {
     private final BlockPos pos;

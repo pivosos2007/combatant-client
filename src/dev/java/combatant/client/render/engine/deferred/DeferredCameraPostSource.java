@@ -37,12 +37,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Output-resolution HDR camera post foundation.
- *
- * <p>This source deliberately consumes the canonical post-TAA HDR handoff and FINAL_* motion
- * contracts. It has no dependency on the legacy PostProcessManager, Iris depth surfaces or camera
- * yaw/pitch deltas. Bloom remains a side product; the color chain is TAA/passthrough -> DoF ->
- * velocity-buffer motion blur -> POST_HDR_COLOR.</p>
+ * Produces output-resolution HDR post-processing from the post-TAA color and final motion inputs.
+ * The camera-post chain emits {@code POST_HDR_COLOR}; bloom is a separate output.
  */
 final class DeferredCameraPostSource implements AutoCloseable {
     private static final int LOCAL_SIZE = 8;

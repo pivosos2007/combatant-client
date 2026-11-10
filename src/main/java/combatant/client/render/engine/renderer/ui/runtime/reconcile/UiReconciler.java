@@ -15,6 +15,10 @@ import combatant.client.render.engine.renderer.ui.runtime.core.UiNodeSpec;
 
 import java.util.List;
 
+/**
+ * Reconciles a retained UI node tree with a new specification.
+ * Reusable nodes retain their state; replaced and removed subtrees receive unmount callbacks.
+ */
 public final class UiReconciler {
     private final UiNodeMatcher matcher = new UiNodeMatcher();
     private UiDiffStats lastStats = new UiDiffStats();
@@ -26,6 +30,7 @@ public final class UiReconciler {
         return result;
     }
 
+    /** Reuses compatible nodes; unmounts the old subtree when {@code spec} is absent or incompatible. */
     public UiNode reconcile(UiNode current, UiNodeSpec spec, UiReconcileContext context) {
         if (spec == null) {
             if (current != null) unmountSubtree(current, context);

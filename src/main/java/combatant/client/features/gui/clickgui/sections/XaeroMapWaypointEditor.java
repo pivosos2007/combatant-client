@@ -23,12 +23,7 @@ import combatant.client.util.text.GuiTextCaret;
 import net.minecraft.client.resources.language.I18n;
 import xaero.map.mods.gui.Waypoint;
 
-/**
- * Map-native waypoint composer.
- *
- * <p>The composer is intentionally one glass object. Inputs and color selection are drawn as
- * lightweight content inside that object instead of nesting more glass/squircle cards into it.</p>
- */
+/** Edits waypoints within the map interface. */
 final class XaeroMapWaypointEditor {
     private static final float PANEL_WIDTH = 372.0f;
     private static final float PANEL_HEIGHT = 194.0f;

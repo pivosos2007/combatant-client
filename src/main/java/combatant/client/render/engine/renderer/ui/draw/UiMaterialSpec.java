@@ -7,9 +7,8 @@
 package combatant.client.render.engine.renderer.ui.draw;
 
 /**
- * Rendering-independent UI material contract. The backdrop source is intentionally separate:
- * texture capture and blur describe the destination, not the surface's physical appearance.
- * Each family has a dedicated shader path rather than an all-purpose fragment shader.
+ * Describes a UI material independently of its backdrop source.
+ * The material family determines whether sampling the backdrop is required.
  */
 public sealed interface UiMaterialSpec permits UiSurfaceMaterialSpec, UiLiquidGlassMaterial, UiHoneycombMaterialSpec, UiIceMaterialSpec {
     Family family();

@@ -13,7 +13,9 @@ import combatant.client.config.values.NumberValue;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Human-like click behavior helper (misses / pauses).
+ * Selects a click, miss, swing or pause using configured per-decision probabilities.
+ * Pauses retain their remaining tick count across calls and take precedence over
+ * new random decisions until exhausted.
  */
 public final class ClickHumanizer {
 
@@ -63,6 +65,11 @@ public final class ClickHumanizer {
         pauseTicks = 0;
     }
 
+    /**
+     * Advances one decision step. Pause evaluation precedes missed swings and
+     * ordinary misses; rates at or below zero never trigger, and rates at least
+     * 100 always trigger their enabled behavior.
+     */
     public Decision decide() {
         if (pauseTicks > 0) {
             pauseTicks--;

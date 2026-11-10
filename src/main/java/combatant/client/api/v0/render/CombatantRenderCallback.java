@@ -7,6 +7,7 @@
 
 package combatant.client.api.v0.render;
 
+/** Receives addon rendering callbacks at the registered render stage. */
 @FunctionalInterface
 public interface CombatantRenderCallback {
     void render(CombatantRenderContext context);

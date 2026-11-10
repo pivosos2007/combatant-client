@@ -12,6 +12,7 @@ import combatant.client.render.engine.core.CombatantRenderSystem;
 
 import java.nio.ByteBuffer;
 
+/** Provides addon access to std140 uniform buffer writes through the active RHI. */
 @SuppressWarnings("unused")
 public enum CombatantUniforms {
     ;

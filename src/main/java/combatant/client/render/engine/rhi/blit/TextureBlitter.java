@@ -9,6 +9,9 @@ package combatant.client.render.engine.rhi.blit;
 
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 
+/**
+ * Attempts texture copies without a shader draw and reports whether the backend submitted them.
+ */
 public interface TextureBlitter {
     /** Attempts the selected non-shader path and reports whether it was submitted. */
     boolean copy(RhiCopyRequest request);

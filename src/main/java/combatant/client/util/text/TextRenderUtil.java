@@ -70,7 +70,6 @@ public enum TextRenderUtil {
     public record FlatPart(String text, int color) {
     }
 
-    // Новый API — с bold / italic (для legacy &l &o)
 
     public record Part(String text, int color, boolean bold, boolean italic, boolean underline, boolean strikethrough,
                        boolean obfuscated) {

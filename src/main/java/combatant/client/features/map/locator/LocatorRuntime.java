@@ -160,10 +160,8 @@ public final class LocatorRuntime {
     }
 
     /**
-     * Converts the vanilla 3D azimuth threshold into a conservative X/Z-only lower bound.
-     * The solver does not know target Y, so we subtract the largest vertical separation that is
-     * physically possible in the current dimension. If height alone could explain the 332-block
-     * distance, the safe horizontal floor is zero rather than making up a stronger constraint.
+     * Computes a conservative horizontal distance floor from a three-dimensional constraint.
+     * Returns zero when the dimension's possible vertical separation could satisfy that constraint.
      */
     private static double safeHorizontalRangeFloor(Minecraft mc, double observerY, double minDistance3d) {
         if (mc == null || mc.level == null || !(minDistance3d > 0.0) || !Double.isFinite(observerY)) return 0.0;

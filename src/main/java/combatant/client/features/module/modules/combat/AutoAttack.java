@@ -36,6 +36,7 @@ import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.common.impl.TargetFilters;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.EventSync;
+import combatant.client.events.impl.ManualAttackEvent;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -255,6 +256,11 @@ public class AutoAttack extends Module {
         wasUsingItem = false;
         lastSyncHandledAge = -1;
         humanizer.reset();
+    }
+
+    @EventHandler(priority = 1000)
+    private void onManualAttack(ManualAttackEvent event) {
+        if (!event.isResolved()) event.resolve(false);
     }
 
     @Override

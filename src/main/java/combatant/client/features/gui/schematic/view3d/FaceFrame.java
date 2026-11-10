@@ -10,9 +10,8 @@ package combatant.client.features.gui.schematic.view3d;
 import java.util.Arrays;
 
 /**
- * Cacheable screen-space face stream, sorted back-to-front. Coarse groups are rejected against the view frustum
- * before individual faces are projected. Faces intersecting the near plane are clipped rather than disappearing.
- * All buffers are reused while orbiting or panning.
+ * Reusable screen-space face buffer sorted back-to-front.
+ * Faces crossing the camera's near plane are clipped before projection.
  */
 public final class FaceFrame {
 

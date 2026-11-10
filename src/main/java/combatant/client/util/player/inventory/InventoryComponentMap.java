@@ -199,7 +199,7 @@ public final class InventoryComponentMap {
         return new Layout(entries);
     }
 
-    /** Legacy low-level snapshot for callers that only need backing storage. */
+    /** Returns the menu's backing storage components indexed by menu slot. */
     public static Map<Integer, Component> snapshot(AbstractContainerMenu menu) {
         Map<Integer, Component> result = new LinkedHashMap<>();
         for (Entry entry : layout(menu).entries()) {

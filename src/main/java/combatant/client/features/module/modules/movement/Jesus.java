@@ -86,7 +86,7 @@ public final class Jesus extends Module {
                 || mc.level == null || player.isPassenger() || player.getAbilities().flying
                 || player.isFallFlying() || player.isSpectator() || player.isInLava()) return false;
         // Reserve water movement even during swimming/sneaking. Jesus itself
-        // deliberately yields there, but another active speed multiplier must
+        // yields there, but another active speed multiplier must
         // not immediately take over and upset Vulcan's movement prediction.
         if (player.isInWater() || player.isSwimming() || vulcanController.isAnchored()) return true;
         double surface = waterLevel(player);

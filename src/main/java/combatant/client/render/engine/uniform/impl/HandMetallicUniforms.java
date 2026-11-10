@@ -25,6 +25,8 @@ public enum HandMetallicUniforms {
             .putFloat().putFloat().putFloat().putFloat() // u_Params1
             .putFloat().putFloat().putFloat().putFloat() // u_Params2
             .putFloat().putFloat().putFloat().putFloat() // u_Culling
+            .putFloat().putFloat().putFloat().putFloat() // palette secondary
+            .putFloat().putFloat().putFloat().putFloat() // palette controls
             .get();
 
     private static final Data DATA = new Data();
@@ -39,7 +41,9 @@ public enum HandMetallicUniforms {
             float intensity, float sharpness, float edgeStrength, float time,
             float sweepSpeed, float sweepScale, float brushedLines, float flakes,
             float glowStrength, float shadowStrength, float edgeWidth, float prism,
-            boolean occupancyReady
+            boolean occupancyReady,
+            float paletteEndR, float paletteEndG, float paletteEndB, float paletteEndA,
+            float paletteMode, float paletteSpeed, float paletteSpan, float paletteAngle
     ) {
         DATA.baseR = baseR;
         DATA.baseG = baseG;
@@ -70,6 +74,14 @@ public enum HandMetallicUniforms {
         DATA.edgeWidth = edgeWidth;
         DATA.prism = prism;
         DATA.occupancyReady = occupancyReady ? 1.0f : 0.0f;
+        DATA.paletteEndR = paletteEndR;
+        DATA.paletteEndG = paletteEndG;
+        DATA.paletteEndB = paletteEndB;
+        DATA.paletteEndA = paletteEndA;
+        DATA.paletteMode = paletteMode;
+        DATA.paletteSpeed = paletteSpeed;
+        DATA.paletteSpan = paletteSpan;
+        DATA.paletteAngle = paletteAngle;
         CombatantRenderSystem.uniforms().write(UNIFORM_NAME, SIZE, EXPECTED_WRITES_PER_FRAME, DATA);
     }
 
@@ -86,6 +98,8 @@ public enum HandMetallicUniforms {
         private float sweepSpeed, sweepScale, brushedLines, flakes;
         private float glowStrength, shadowStrength, edgeWidth, prism;
         private float occupancyReady;
+        private float paletteEndR, paletteEndG, paletteEndB, paletteEndA;
+        private float paletteMode, paletteSpeed, paletteSpan, paletteAngle;
 
         @Override
         public void write(java.nio.ByteBuffer buffer) {
@@ -97,7 +111,9 @@ public enum HandMetallicUniforms {
                     .putFloat(intensity).putFloat(sharpness).putFloat(edgeStrength).putFloat(time)
                     .putFloat(sweepSpeed).putFloat(sweepScale).putFloat(brushedLines).putFloat(flakes)
                     .putFloat(glowStrength).putFloat(shadowStrength).putFloat(edgeWidth).putFloat(prism)
-                    .putFloat(occupancyReady).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f);
+                    .putFloat(occupancyReady).putFloat(0.0f).putFloat(0.0f).putFloat(0.0f)
+                    .putFloat(paletteEndR).putFloat(paletteEndG).putFloat(paletteEndB).putFloat(paletteEndA)
+                    .putFloat(paletteMode).putFloat(paletteSpeed).putFloat(paletteSpan).putFloat(paletteAngle);
         }
 
         @Override

@@ -47,8 +47,7 @@ import static org.lwjgl.vulkan.VK12.*;
 
 /**
  * Vulkan-native advanced shader backend sharing Mojang's VkDevice, VMA allocator and command
- * submission. Native commands are appended to Mojang's current graphics submission; Combatant does
- * not create a second device, allocator, queue owner or hidden submit chain.
+ * submission. Native commands are appended to Mojang's current graphics submission.
  */
 final class VulkanAdvancedShaderBackend implements AdvancedShaderBackend {
     private static final int DESCRIPTOR_SETS_PER_POOL = 64;

@@ -26,13 +26,9 @@ public final class HeuristicSolver {
     }
 
     /**
-     * Robust weighted bearing-only least squares.
-     *
-     * <p>The second weighting pass converts angular measurement noise into cross-track positional
-     * noise using the current observer-to-estimate range. This is important: a 0.75 degree bearing
-     * error is a much larger positional uncertainty at 1000 blocks than at 50 blocks. The inverse
-     * normal matrix therefore has physical block^2 units and can be exposed as a real uncertainty
-     * ellipse rather than an arbitrary confidence circle.</p>
+     * Estimates a target from weighted bearing observations using least squares.
+     * The second weighting pass scales angular uncertainty by observer-to-estimate distance,
+     * so the returned covariance is expressed in squared block units.
      */
     public static HeuristicEstimate solve(UUID target, List<HeuristicObservation> input,
                                           long segmentId, double forwardTolerance,

@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.movement;
 
+import combatant.client.events.impl.DirectionalSprintQueryEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.component.DataComponents;
@@ -19,6 +20,8 @@ import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.GameTickEvent;
+import combatant.client.events.impl.ItemUseInputMultiplierEvent;
+import combatant.client.events.impl.ItemUseInputVectorEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -88,6 +91,20 @@ public final class NoSlow extends Module {
         }
     }
 
+    @EventHandler
+    private void onItemUseInputMultiplier(ItemUseInputMultiplierEvent event) {
+        if (shouldModifyInput(event.getPlayer())) {
+            event.setMultiplier(getItemUseSpeedMultiplier(event.getMultiplier()));
+        }
+    }
+
+    @EventHandler
+    private void onItemUseInputVector(ItemUseInputVectorEvent event) {
+        if (shouldModifyInput(event.getPlayer()) && hasCustomMultipliers()) {
+            event.setInput(getModifiedInput(event.getInput(), event.getPlayer()));
+        }
+    }
+
     @Override
     public void onEnable() {
         grimTicks = 0;
@@ -123,6 +140,11 @@ public final class NoSlow extends Module {
         if (stack.get(DataComponents.CONSUMABLE) != null) return true;
         ItemUseAnimation anim = stack.getUseAnimation();
         return anim == ItemUseAnimation.DRINK || anim == ItemUseAnimation.EAT;
+    }
+
+    @EventHandler
+    private void onDirectionalSprintQuery(DirectionalSprintQueryEvent event) {
+        if (shouldAllowSprint(event.getPlayer())) event.allow();
     }
 
     public boolean shouldAllowSprint(LocalPlayer player) {

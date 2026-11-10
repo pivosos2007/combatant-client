@@ -26,6 +26,7 @@ import combatant.client.events.impl.GameTickEvent;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.events.impl.PlayerJumpEvent;
 import combatant.client.events.impl.SprintControlEvent;
+import combatant.client.events.impl.DirectionalSprintQueryEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -161,6 +162,11 @@ public final class Sprint extends Module {
 
     public boolean isLegitResetMode() {
         return effDefaultResetMode() == ResetMode.LEGIT;
+    }
+
+    @EventHandler(priority = 100)
+    private void onDirectionalSprintQuery(DirectionalSprintQueryEvent event) {
+        if (shouldAllowDirectionalSprint()) event.allow();
     }
 
     public boolean shouldAllowDirectionalSprint() {

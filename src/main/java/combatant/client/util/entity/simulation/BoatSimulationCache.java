@@ -29,6 +29,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+/**
+ * Shares incremental boat motion predictions within one client tick.
+ * The cache is cleared by {@link GameTickEvent}; requesting a later snapshot
+ * advances the same simulator rather than restarting from the boat's current state.
+ */
 public final class BoatSimulationCache {
 
     public static final BoatSimulationCache INSTANCE = new BoatSimulationCache();
@@ -66,6 +71,10 @@ public final class BoatSimulationCache {
             this.snapshots.add(new BoatSnapshot(simulator.pos, simulator.yaw));
         }
 
+        /**
+         * Returns the predicted position and yaw after {@code ticks} simulation steps.
+         * Tick zero is the initial snapshot; the argument must be nonnegative.
+         */
         public BoatSnapshot getSnapshotAt(int ticks) {
             while (simulatedTicks < ticks) {
                 simulator.tick();

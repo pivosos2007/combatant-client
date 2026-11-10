@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Locale;
 
-/** Renders player heads from skin textures. */
+
 public enum PlayerHeadRenderer {
     ;
 
@@ -33,7 +33,7 @@ public enum PlayerHeadRenderer {
     private static final float INSET_FACTOR = 0.06f;
 
     /**
-     * Session-local player skin cache. Entries intentionally have no short TTL: a UUID -> Identifier
+     * Session-local player skin cache. Entries have no short TTL: a UUID -> Identifier
      * pair is tiny, and keeping it for the lifetime of the current server connection prevents HUD
      * heads from collapsing to a default skin when the entity/PlayerInfo temporarily disappears
      * (dimension changes, world swaps inside the same connection, locator snapshots, etc.).

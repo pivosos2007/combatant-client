@@ -7,11 +7,9 @@
 package combatant.client.render.engine.deferred;
 
 /**
- * Temporary normalization controls for directional-shadow bring-up.
- *
- * <p>Near-only is retained as an explicit diagnostic mode, but production defaults to the full
- * cascade set now that near-field geometry, acne and camera/celestial stabilization have passed
- * bring-up. Enable isolation explicitly with {@code -Dcombatant.render.deferred.shadowNearOnly=true}.</p>
+ * Configures diagnostic overrides for directional-shadow cascades.
+ * The default uses all cascades; {@code -Dcombatant.render.deferred.shadowNearOnly=true}
+ * restricts rendering to the near cascade.
  */
 final class DeferredShadowBringupConfig {
     private static final String NEAR_ONLY_PROPERTY = "combatant.render.deferred.shadowNearOnly";

@@ -8,6 +8,7 @@
 #include <combatant:ui_aa.glsl>
 #include <combatant:ui_geometry.glsl>
 #include <combatant:ui_voronoi_structure.glsl>
+#include <combatant:ui_pbr_math.glsl>
 
 
 layout(location = 1) in vec4 v_Local;
@@ -20,11 +21,9 @@ layout(location = 7) in vec4 v_Params4;
 layout(location = 8) in vec4 v_Params5;
 layout(location = 9) in vec4 v_Params6;
 layout(location = 10) in vec4 v_Params7;
-#ifdef COMBATANT_MATERIAL_MICROTEXTURE
 layout(location = 11) in vec4 v_Params8;
 layout(location = 12) in vec4 v_Params9;
 layout(location = 13) in vec4 v_Params10;
-#endif
 
 layout(location = 0) out vec4 fragColor;
 
@@ -79,9 +78,7 @@ vec3 materialSceneIllumination(vec2 normal, float radiusPx) {
 }
 #endif
 
-#ifdef COMBATANT_MATERIAL_MICROTEXTURE
 #include <combatant:ui_pbr_surface.glsl>
-#endif
 
 vec2 primitivePoint(int index) {
     if (index == 0) return v_Params.xy;
@@ -193,13 +190,15 @@ void main() {
     }
     #endif
 
-    #ifdef COMBATANT_MATERIAL_MICROTEXTURE
     if (mode == 1 || mode == 2 || mode == 4 || mode == 5 || mode == 6) {
+#ifdef COMBATANT_MATERIAL_MICROTEXTURE
         color = uiPbrSurface(local, normal, edge, mode);
+#else
+        color = uiPbrProceduralSurface(local, normal, edge, mode);
+#endif
         fragColor = vec4(clamp(color, 0.0, 1.0), v_Color.a * alpha);
         return;
     }
-    #endif
 
     if (mode == 8) { // CELLULAR_STRUCTURE: composited over the pre-existing base.
         vec2 physical = local / max(logicalScale, vec2(0.0001));
@@ -208,36 +207,6 @@ void main() {
                 v_Params5.z, int(floor(v_Params5.w + 0.5)), color);
         fragColor = vec4(structure.rgb, v_Color.a * alpha * structure.a);
         return;
-    } else if (mode == 1) {
-        vec2 uv = local / max(v_Rect.zw, vec2(1.0));
-        // Anisotropy is locked to the top face. No phase jump when the whole
-        // hexagon shifts down on hover/press.
-        float tangent = uv.x + uv.y * 0.17;
-        float bands = sin(tangent * (90.0 * detailScale)) * 0.5 + 0.5;
-        float bandFilter = 1.0 - smoothstep(0.28, 0.72, fwidth(tangent) * 90.0 * detailScale);
-
-        // A travelling specular lobe over the entire face, not just a rim tint.
-        // The input is physical surface-local pointer position and only affects
-        // this primitive when the corresponding hover parameter is non-zero.
-        vec2 pointerLocal = uGlassPointer.zw - v_Rect.xy;
-        vec2 pointerDelta = (local - pointerLocal) / max(v_Rect.zw, vec2(1.0));
-        float lightDistance = length(pointerDelta * vec2(0.77, 1.32));
-        float spot = 1.0 - smoothstep(0.04, 0.75, lightDistance);
-        float specSpot = spot * spot * (3.0 - 2.0 * spot);
-        vec2 lightDirection = normalize(vec2(-0.48, -1.0)
-                + clamp(-pointerDelta * response, vec2(-0.48), vec2(0.48)));
-        float facing = dot(normal, lightDirection) * 0.5 + 0.5;
-        float rimSpec = pow(max(facing, 0.0), mix(2.2, 5.6, roughness));
-        float satinSpec = specSpot * response * (1.0 - roughness * 0.35);
-        color = mix(color, accent, 0.045 + edge * rimSpec * 0.10);
-        color += vec3((bands - 0.5) * bandFilter * (1.0 - roughness) * 0.046);
-        color += mix(accent, vec3(0.92, 0.95, 0.98), 0.38) * satinSpec * 0.19;
-        color *= 1.0 - edge * (0.10 - rimSpec * 0.14);
-    } else if (mode == 2) {
-        float grain = hash21(floor(local * detailScale)) - 0.5;
-        color += grain * (0.018 * (1.0 - roughness * 0.45));
-        float diffuse = dot(normal, normalize(vec2(-0.35, -1.0))) * 0.5 + 0.5;
-        color = mix(color, accent, edge * bevelStrength * diffuse * 0.12);
     } else if (mode == 3) { // PHOSPHOR LED: emissive pixel substrate across the entire shell.
         // Physical-pixel coordinates keep dot pitch stable across logical UI scales.
         vec2 physical = local / max(logicalScale, vec2(0.0001));
@@ -275,26 +244,6 @@ void main() {
         float grazing = clamp(dot(normal, normalize(vec2(-0.48, -0.88))) * 0.5 + 0.5, 0.0, 1.0);
         color *= 1.0 - edge * (0.065 + (1.0 - grazing) * 0.055);
         color += accent * edge * grazing * 0.012;
-    } else if (mode == 4) { // GRAPHITE
-        vec2 localMicro = local * detailScale;
-        vec2 cells = floor(localMicro);
-        float pix = hash21(cells + vec2(5.17, 12.43)) - 0.5;
-        float filtered = 1.0 - smoothstep(0.25, 0.78, length(fwidth(localMicro)));
-        float coarse = hash21(floor(local * 0.075)) - 0.5;
-        color = color * (0.94 + coarse * 0.040)
-                + pix * filtered * (0.045 + 0.020 * roughness);
-        float grazing = clamp(dot(normal, normalize(vec2(-0.30, -0.95))) * 0.5 + 0.5, 0.0, 1.0);
-        color += accent * edge * grazing * bevelStrength * 0.08;
-        color *= 1.0 - edge * (1.0 - grazing) * 0.10;
-    } else if (mode == 5) { // CERAMIC
-        vec2 uv = local / max(v_Rect.zw, vec2(1.0));
-        float glossy = pow(max(0.0, 1.0 - length((uv - vec2(0.24, 0.04)) * vec2(0.72, 1.60))),
-                           mix(1.6, 6.0, roughness));
-        float grazing = clamp(dot(normal, normalize(vec2(-0.45, -0.89))) * 0.5 + 0.5, 0.0, 1.0);
-        color = mix(color, accent, 0.04 + edge * grazing * 0.10);
-        color += vec3(glossy * (1.0 - roughness) * 0.075);
-        color += vec3(edge * pow(grazing, 5.0) * bevelStrength * 0.12);
-        color *= 1.0 - edge * (1.0 - grazing) * 0.13;
     } else if (mode == 7) { // ICE: same shape-aware material used by glass.
         #ifdef COMBATANT_MATERIAL_MICROTEXTURE
         vec2 surfaceUv = local / max(v_Rect.zw, vec2(1.0));
@@ -313,39 +262,7 @@ void main() {
         #else
         color = mix(color, accent, 0.14 + 0.20 * edge * bevelStrength);
         #endif
-    } else if (mode == 6) { // BRUSHED METAL
-        vec2 uv = local / max(v_Rect.zw, vec2(1.0));
-        float brush = uv.x * 0.92 + uv.y * 0.065;
-        float wave = sin(brush * (160.0 * detailScale) +
-                         sin(uv.y * 19.0) * 0.16);
-        float aliasGate = 1.0 - smoothstep(0.25, 0.64, fwidth(brush) * 160.0 * detailScale);
-        float coarse = hash21(floor(local * 0.18)) - 0.5;
-        color += wave * aliasGate * (0.035 + (1.0 - roughness) * 0.035);
-        color += coarse * 0.018;
-        vec2 dp = (local - (uGlassPointer.zw - v_Rect.xy)) / max(v_Rect.zw, vec2(1.0));
-        float spot = 1.0 - smoothstep(0.06, 0.84, length(dp * vec2(0.60, 1.25)));
-        float grazing = clamp(dot(normal, normalize(vec2(-0.50, -0.87))) * 0.5 + 0.5, 0.0, 1.0);
-        color = mix(color, accent, edge * grazing * 0.14);
-        color += accent * spot * response * (1.0 - roughness * 0.25) * 0.23;
-        color *= 1.0 - edge * (1.0 - grazing) * 0.12;
     }
 
-#ifdef COMBATANT_SCENE_LIT_MATERIAL
-    if (mode == 1 || mode == 2 || mode == 4 || mode == 5 || mode == 6) {
-        float strength = clamp(v_Params5.z, 0.0, 1.0);
-        if (strength > 0.001) {
-            vec3 environment = materialSceneIllumination(normal, clamp(v_Params5.w, 0.0, 32.0));
-            float luma = dot(environment, vec3(0.2126, 0.7152, 0.0722));
-            // Mild exposure normalization preserves source hue without blowing out whites.
-            vec3 hue = environment / max(luma, 0.07);
-            hue = clamp(hue, vec3(0.35), vec3(1.65));
-            float highlight = smoothstep(0.04, 0.82, luma);
-            float metalWeight = mode == 1 || mode == 6 ? 1.0 : mode == 5 ? 0.58 : 0.28;
-            float reflection = strength * metalWeight * (0.08 + 0.27 * highlight);
-            color = mix(color, color * hue, reflection);
-            color += accent * strength * metalWeight * (luma - 0.35) * (0.035 + edge * 0.085);
-        }
-    }
-#endif
     fragColor = vec4(clamp(color, 0.0, 1.0), v_Color.a * alpha);
 }

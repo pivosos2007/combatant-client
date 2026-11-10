@@ -20,10 +20,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Lightweight container for arbitrary node props.
- *
- * <p>Props are used by renderers, input handlers, and asset providers. Values
- * are copied into a fastutil map without extra wrapper objects.</p>
+ * Stores properties associated with UI runtime nodes.
+ * Detached snapshots do not share mutable runtime slot state.
  */
 public final class UiProps {
     public static final UiProps EMPTY = new UiProps(Map.of());
@@ -90,8 +88,7 @@ public final class UiProps {
      * point reads and writes remain live.
      */
     public Map<String, Object> values() {
-        // Legacy map consumers must see primitive slots without mirroring/boxing
-        // every typed write back into the backing map.
+        // Expose compiled primitive properties through a map view without copying each update.
         if (!runtimeOwned && runtimeSlots == null) return values;
         if (runtimeView == null) runtimeView = new RuntimeMapView();
         return runtimeView;
@@ -199,8 +196,7 @@ public final class UiProps {
         Integer existing = runtimeSlots.indices.get(key);
         if (existing != null) return existing;
         int index = runtimeSlots.add(key);
-        // Move its initial value out of the legacy map exactly once. The
-        // compiled value and the fallback map can never diverge.
+        // Transfer a preexisting map value into its compiled slot before subsequent runtime writes.
         if (values.containsKey(key)) {
             runtimeSlots.present[index] = true;
             runtimeSlots.objects[index] = values.remove(key);
@@ -222,7 +218,7 @@ public final class UiProps {
         return changed;
     }
 
-    /** Legacy named path stays coherent with any compiled slots. */
+    /** Updates a compiled slot when present, falling back to the named property map. */
     boolean updateRuntime(String key, Object value) {
         int index = slotIndex(key);
         if (index >= 0) return updateRuntime(index, value);

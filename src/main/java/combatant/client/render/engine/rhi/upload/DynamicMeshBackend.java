@@ -10,6 +10,9 @@ package combatant.client.render.engine.rhi.upload;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
+/**
+ * Provides transient mesh uploads and frame/submission lifecycle hooks for the active backend.
+ */
 public interface DynamicMeshBackend extends AutoCloseable {
     GpuMeshHandle upload(MeshBuilder mesh);
 

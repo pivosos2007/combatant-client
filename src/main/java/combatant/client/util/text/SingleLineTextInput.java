@@ -254,7 +254,7 @@ public final class SingleLineTextInput implements CombatantTextInputTarget {
         offset = Math.max(0f, Math.min(offset, Math.max(0f, width(displayed()) - viewW)));
     }
 
-    /** Draws text and selection in a clipped single-line viewport; y is the text baseline position used by drawText. */
+    /** Uses {@code y} as the text baseline; rendering remains clipped to the supplied viewport. */
     public void render(float x, float y, float w, float h, TextRenderer textFont, float size,
                        int color, int selectionColor, boolean focused) {
         render(x, y, w, h, textFont, size, color, selectionColor, focused, false);

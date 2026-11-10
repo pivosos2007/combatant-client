@@ -23,6 +23,7 @@ import combatant.client.runtime.error.FailureBoundary;
 import combatant.client.runtime.error.FailureExecution;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.resources.language.I18n;
+import net.minecraft.client.Minecraft;
 
 @ClickGuiSectionInfo(id = "combatant:map", label = "Map", order = 200, requiredMods = "xaeroworldmap")
 public final class MapSection implements ClickGuiSection {
@@ -51,10 +52,15 @@ public final class MapSection implements ClickGuiSection {
         // The map background is an auto-flushed batch. Request the underlay before emitting it,
         // otherwise large UI-underlay glass surfaces only see later map tiles and sample transparent
         // black wherever no tile draw covered the dedicated target.
+        if (Minecraft.getInstance().level == null) {
+            renderer.quad(x, y, width, height, combatant.client.features.gui.hud.HudRenderUtil.mixColor(
+                    combatant.client.features.theme.Theme.theme().windowBg() | 0xFF000000, 0xFF000000, 0.55f));
+            drawStatus(tr("screen.combatant.clickgui.map_offline", "Open a world to use the map"));
+            return;
+        }
         UiBlurResources.requestUiUnderlay(UiDeferredScheduler.layerForCurrentPhase(false));
         renderer.quad(x, y, width, height, combatant.client.features.gui.hud.HudRenderUtil.mixColor(
                 combatant.client.features.theme.Theme.theme().windowBg() | 0xFF000000, 0xFF000000, 0.55f));
-
         if (fatalFailure) {
             drawStatus(tr("gui.combatant.map.error.incompatible", "World Map integration is incompatible"));
             return;
@@ -179,7 +185,7 @@ public final class MapSection implements ClickGuiSection {
     }
 
     private <T> T guardInput(String phase, java.util.function.Supplier<T> input, T fallback) {
-        if (fatalFailure || System.nanoTime() < retryAfterNanos || ErrorHandler.blocked(this)) return fallback;
+        if (Minecraft.getInstance().level == null || fatalFailure || System.nanoTime() < retryAfterNanos || ErrorHandler.blocked(this)) return fallback;
         try {
             return input.get();
         } catch (RuntimeException error) {

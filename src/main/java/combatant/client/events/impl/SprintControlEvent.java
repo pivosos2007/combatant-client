@@ -11,6 +11,11 @@ import combatant.client.events.Event;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * Lets listeners override a sprint decision at its input, movement-tick or
+ * network evaluation site. {@link Source} identifies the site; forward and
+ * sideways impulses are read-only, while the sprint decision is mutable.
+ */
 public class SprintControlEvent extends Event {
     @Getter
     private final float forward;

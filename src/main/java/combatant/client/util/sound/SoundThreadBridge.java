@@ -14,9 +14,9 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Explicit ownership of Minecraft's audio executor and its Library lifecycle.
- * A missing context is never repaired by creating capabilities on another thread.
- * Tasks from an obsolete Library generation are discarded before execution.
+ * Dispatches audio work to the thread that owns Minecraft's active sound Library.
+ * Executor attachment and Library opening establish a generation; queued work from
+ * earlier generations is ignored after a close or reinitialization.
  */
 final class SoundThreadBridge {
     private volatile Executor executor;
@@ -52,6 +52,11 @@ final class SoundThreadBridge {
     boolean isReady() { return ready && executor != null && audioThread != null; }
     boolean isAudioThread() { return Thread.currentThread() == audioThread; }
 
+    /**
+     * Runs on the owning audio thread and waits for the result when called elsewhere.
+     * Returns {@code fallback} while the Library is unavailable, stale or the
+     * waiting thread is interrupted; exceptions from the action are propagated.
+     */
     <T> T call(Supplier<T> action, T fallback) {
         Objects.requireNonNull(action, "action");
         if (!isReady()) return fallback;

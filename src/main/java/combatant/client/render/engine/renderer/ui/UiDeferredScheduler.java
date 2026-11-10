@@ -26,7 +26,6 @@ import combatant.client.render.helpers.ClipFunction;
 import combatant.client.render.engine.renderer.ui.clip.UiMsaaClipLayer;
 import combatant.client.render.engine.rhi.scissor.GlobalScissorState;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.client.renderer.ProjectionMatrixBuffer;
 import org.joml.Matrix4f;
 
 import java.util.EnumMap;
@@ -40,8 +39,11 @@ public final class UiDeferredScheduler {
     private static final ObjectArrayList<OrderedUiBatcher> BATCHER_POOL = new ObjectArrayList<>(8);
     private static final ObjectArrayList<ItemBatch> ITEM_PREPARATION_BATCHES = new ObjectArrayList<>(64);
     private static final int MAX_BATCHER_POOL = Integer.getInteger("combatant.render.deferredBatcherPool", 16);
+    // A layer is replayed in full by the first marker encountered during GuiRenderer.draw().
+    // Later markers for the same layer would be empty, so emit at most one per extract frame.
+    private static final boolean[] RECORDED_HUD_WORK = new boolean[Renderer2D.Deferred2DLayer.values().length];
+    private static final boolean[] MARKED_HUD_WORK = new boolean[RECORDED_HUD_WORK.length];
 
-    private static ProjectionMatrixBuffer projection;
     private static Lifecycle lifecycle = Lifecycle.IDLE;
     private static boolean deferredItemsPrepared;
     private static Renderer2D.Deferred2DLayer forcedLayer;
@@ -92,6 +94,8 @@ public final class UiDeferredScheduler {
         releaseSubmits(RECORDING);
         RECORDING.clear();
         deferredItemsPrepared = false;
+        java.util.Arrays.fill(RECORDED_HUD_WORK, false);
+        java.util.Arrays.fill(MARKED_HUD_WORK, false);
         lifecycle = Lifecycle.RECORDING;
     }
 
@@ -340,6 +344,24 @@ public final class UiDeferredScheduler {
                 && first.projectionMatrix().equals(next.projectionMatrix());
     }
 
+    /**
+     * Called after a HUD callback has finished recording and before it inserts a vanilla stratum
+     * marker. Empty HUD callbacks must not force GuiRenderer into the split-draw compatibility path.
+     * The first marker drains all deferred work assigned to the layer. Emitting another marker
+     * for that same layer would only split vanilla draw ranges again without drawing anything.
+     */
+    public static boolean markNewHudWork(Renderer2D.Deferred2DLayer layer) {
+        if (lifecycle != Lifecycle.RECORDING || layer == null) return true;
+        int index = layer.ordinal();
+        if (!RECORDED_HUD_WORK[index] || MARKED_HUD_WORK[index]) {
+            combatant.client.render.engine.profiler.UiPipelineTelemetry.recordHudMarker(false);
+            return false;
+        }
+        MARKED_HUD_WORK[index] = true;
+        combatant.client.render.engine.profiler.UiPipelineTelemetry.recordHudMarker(true);
+        return true;
+    }
+
     public static boolean shouldDefer() {
         return lifecycle == Lifecycle.RECORDING;
     }
@@ -383,6 +405,7 @@ public final class UiDeferredScheduler {
             return;
         }
         RECORDING.add(submit);
+        if (submit.layer() != null) RECORDED_HUD_WORK[submit.layer().ordinal()] = true;
     }
 
     public static Renderer2D.Deferred2DLayer layerForCurrentPhase(boolean pureItemOverlaySubmit) {
@@ -449,21 +472,11 @@ public final class UiDeferredScheduler {
         }
     }
 
-    private static ProjectionMatrixBuffer projection() {
-        ProjectionMatrixBuffer current = projection;
-        if (current == null) {
-            current = new ProjectionMatrixBuffer("combatant-deferred-2d-projection");
-            projection = current;
-        }
-        return current;
-    }
-
     private static void applyViewport(ViewportContext viewport) {
         if (viewport == null) return;
         ViewportContext targetViewport = UiMsaaClipLayer.viewportFor(viewport);
-        Matrix4f matrix = new Matrix4f(targetViewport.projectionMatrix());
-        RenderSystem.setProjectionMatrix(projection().getBuffer(matrix), ProjectionType.ORTHOGRAPHIC);
-        MeshRenderer.setProjection(matrix);
+        // applyCaptured already uploads the projection, updates MeshRenderer and installs the
+        // viewport. Previously this path uploaded the same matrix twice for every replay group.
         ViewportContext.applyCaptured(targetViewport);
         RenderState.rendering3D = false;
     }

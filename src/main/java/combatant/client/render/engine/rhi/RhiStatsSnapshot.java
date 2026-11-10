@@ -72,5 +72,7 @@ public record RhiStatsSnapshot(long frameId,
                                long dynamicArenaIndexCapacityObservedBytes,
                                long dynamicLargestVertexAllocationBytes,
                                long dynamicLargestIndexAllocationBytes,
+                               long dynamicSubDataGpuWrites,
+                               long dynamicSubDataGpuWriteBytes,
                                List<RhiPipelineStatsSnapshot> pipelineBreakdown) {
 }

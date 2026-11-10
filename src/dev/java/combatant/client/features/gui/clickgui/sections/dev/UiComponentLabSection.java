@@ -746,7 +746,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
 
     private float caretOffset() {
         TextRenderer renderer = Fonts.renderer("adobe".equals(kit) ? "SourceSans3" : "Roboto",
-                FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium());
+                FontInfo.Type.Regular, combatant.client.render.engine.text.BuiltinFontCatalog.ONEST_MEDIUM.renderer());
         if (renderer == null) return textInput.cursor() * 8f;
         renderer.beginSize("adobe".equals(kit) ? 17f : 18f, true, false);
         try {
@@ -759,7 +759,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
 
     private float adobeEditorCaretOffset(SingleLineTextInput editor) {
         TextRenderer renderer = Fonts.renderer("SourceSans3", FontInfo.Type.Regular,
-                ClickGuiRenderer.getOnestMedium());
+                combatant.client.render.engine.text.BuiltinFontCatalog.ONEST_MEDIUM.renderer());
         if (renderer == null) return editor.cursor() * 8f;
         renderer.beginSize(17f, true, false);
         try {
@@ -773,7 +773,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
 
     private float adobeSearchCaretOffset() {
         TextRenderer renderer = Fonts.renderer("SourceSans3", FontInfo.Type.Regular,
-                ClickGuiRenderer.getOnestMedium());
+                combatant.client.render.engine.text.BuiltinFontCatalog.ONEST_MEDIUM.renderer());
         if (renderer == null) return adobeSearchInput.cursor() * 8f;
         renderer.beginSize(17f, true, false);
         try {
@@ -787,7 +787,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
 
     /** Use precisely the same font metrics as SingleLineTextInput.hit/keepCursorVisible. */
     private float catalogTextWidth(TextRenderer font, String text) {
-        return font == null ? text.length() * 7f : ClickGuiRenderer.textWidth(font, text, 15f);
+        return font == null ? text.length() * 7f : combatant.client.render.engine.renderer.ui.draw.LayoutRender2D.textWidth(font, text, 15f);
     }
 
     private void putCatalogTextModel(Map<String, Object> model) {
@@ -810,7 +810,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
         }
         // The kit-neutral catalog uses Onest in JS in both kits.
         TextRenderer font = Fonts.renderer("Onest", FontInfo.Type.Regular,
-                ClickGuiRenderer.getOnestMedium());
+                combatant.client.render.engine.text.BuiltinFontCatalog.ONEST_MEDIUM.renderer());
         // Keep the editor viewport in sync before baking the tree, including after
         // keyboard navigation, selection, pasting and IME commits.
         if (focused && runtime != null) {
@@ -905,7 +905,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
         animatedAdobeTab += (adobeTarget - animatedAdobeTab) * response;
         Map<String, Object> m = model();
         TextRenderer font = Fonts.renderer("adobe".equals(kit) ? "SourceSans3" : "Roboto",
-                FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium());
+                FontInfo.Type.Regular, combatant.client.render.engine.text.BuiltinFontCatalog.ONEST_MEDIUM.renderer());
         long signature = CachedUiScriptRuntime.signature(m);
         if ("adobe".equals(kit) && "accordion".equals(page)
                 && signature != adobeAccordionLastSignature) {
@@ -1871,8 +1871,6 @@ public final class UiComponentLabSection implements ClickGuiSection {
         overlayAnchor = "";
     }
 
-    /** Same compact-hierarchy policy as SpectrumBreadcrumbs.layout(), using the
-     * actual retained component width rather than a hard-coded viewport size. */
     private List<Integer> adobeBreadcrumbHiddenIndices() {
         String[] labels = {"Creative Cloud", "Projects", "Brand assets", "Campaign", "Hero images"};
         if (adobeBreadcrumbCurrent <= 2) return List.of();
@@ -2016,9 +2014,9 @@ public final class UiComponentLabSection implements ClickGuiSection {
         }
         UiBounds bounds = field.bounds();
         TextRenderer font = "catalog-search".equals(focus)
-                ? Fonts.renderer("Onest", FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium())
+                ? Fonts.renderer("Onest", FontInfo.Type.Regular, combatant.client.render.engine.text.BuiltinFontCatalog.ONEST_MEDIUM.renderer())
                 : Fonts.renderer("adobe".equals(kit) ? "SourceSans3" : "Roboto",
-                    FontInfo.Type.Regular, ClickGuiRenderer.getOnestMedium());
+                    FontInfo.Type.Regular, combatant.client.render.engine.text.BuiltinFontCatalog.ONEST_MEDIUM.renderer());
         SingleLineTextInput editor = focusedEditor();
         float left = "catalog-search".equals(focus) ? 32f :
                 "search".equals(focus) ? 56f : "adobe-search".equals(focus) ? 43f :
@@ -2313,8 +2311,7 @@ public final class UiComponentLabSection implements ClickGuiSection {
             return true;
         }
         if (focus.isEmpty()) return false;
-        // Committed Unicode normally arrives via MinecraftInputAdapter and
-        // CombatantTextInputBridge. Only use this for legacy char callbacks.
+        // Committed text is delivered by the input bridge; avoid inserting it twice when the bridge owns this editor.
         SingleLineTextInput editor = focusedEditor();
         if (!CombatantTextInputBridge.owns(editor)) editor.type(chr);
         return true;

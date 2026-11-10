@@ -7,6 +7,10 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.script;
 
+/**
+ * Evaluates loaded UI script modules against a render context.
+ * Engines that do not track dependencies fall back to ordinary evaluation.
+ */
 public interface UiScriptEngine extends AutoCloseable {
     UiScriptRenderResult render(UiScriptModule module, UiScriptRenderContext context);
 

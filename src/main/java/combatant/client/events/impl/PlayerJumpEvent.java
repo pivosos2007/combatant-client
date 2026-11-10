@@ -11,6 +11,11 @@ import combatant.client.events.Event;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * Intercepts a local-player ground jump before the jump is applied.
+ * Cancellation suppresses that jump; handlers may replace its heading and
+ * vertical impulse without changing the entity's persistent rotation.
+ */
 @Setter
 @Getter
 public final class PlayerJumpEvent extends Event {

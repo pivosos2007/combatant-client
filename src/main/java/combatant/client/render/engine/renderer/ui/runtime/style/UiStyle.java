@@ -235,17 +235,17 @@ public final class UiStyle {
         return grow;
     }
 
-    /** Explicit main-axis shrink weight. Default 0 preserves legacy fixed-size behavior. */
+    /** Main-axis shrink weight, defaulting to zero (no shrink). */
     public float shrink() {
         return shrink;
     }
 
-    /** Explicit display mode; null keeps the node type's legacy layout semantics. */
+    /** Returns null when layout follows the node type. */
     public UiDisplay display() {
         return display;
     }
 
-    /** Explicit flex direction; null uses row for display:flex or the node type's legacy flow. */
+    /** Returns null when flex direction follows the display/node defaults. */
     public UiFlexDirection flexDirection() {
         return flexDirection;
     }

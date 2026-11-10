@@ -322,24 +322,16 @@ public class CustomTextRenderer implements TextRenderer {
 
     @Override
     public double render(String text, double x, double y, RenderColor color, boolean shadow) {
+        if (shadow) {
+            return renderGlyphEffectQuadGradient(text, x, y,
+                    (index, cp, x0, y0, x1, y1, colors) -> java.util.Arrays.fill(colors, color.argb()),
+                    -1.0f, -(SHADOW_COLOR.a / 255.0f));
+        }
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
-        prepareTextSource(text, x, y, shadow);
+        prepareTextSource(text, x, y, false);
         ensureMeshStarted();
-
-        double width;
-        if (shadow) {
-            int preShadowA = SHADOW_COLOR.a;
-            SHADOW_COLOR.a = (int) (color.a / 255.0 * preShadowA);
-
-            font.render(mesh, text, x + fontScale * scale / 1.5, y + fontScale * scale / 1.5, SHADOW_COLOR, scale / 1.5);
-            width = font.render(mesh, text, x, y, color, scale / 1.5);
-
-            SHADOW_COLOR.a = preShadowA;
-        } else {
-            width = font.render(mesh, text, x, y, color, scale / 1.5);
-        }
-
+        double width = font.render(mesh, text, x, y, color, scale / 1.5);
         if (!wasBuilding) end();
         return width;
     }
@@ -353,11 +345,33 @@ public class CustomTextRenderer implements TextRenderer {
     @Override
     public double renderOutlinedQuadGradient(String text, double x, double y, Font.GlyphQuadGradient gradient,
                                              float radius, float opacity) {
+        return renderGlyphEffectQuadGradient(text, x, y, gradient, radius, opacity);
+    }
+
+    /** One quad per glyph for both outline and directional shadow. */
+    private double renderGlyphEffectQuadGradient(String text, double x, double y,
+                                                  Font.GlyphQuadGradient gradient,
+                                                  float radius, float signedOpacity) {
         if (text == null || text.isEmpty() || gradient == null) return x;
         ViewportContext.ProjectionMode projection = ViewportContext.activeMode();
         if (RenderWarpStack.active() || (projection != ViewportContext.ProjectionMode.LOGICAL
                 && projection != ViewportContext.ProjectionMode.SCALED)) {
-            return renderQuadGradient(text, x, y, gradient, true);
+            // Non-axis-aligned warp cannot use the fast screen-space effect quad.
+            // Preserve the legacy path only for this exceptional projection.
+            boolean implicitBegin = !building;
+            if (implicitBegin) begin();
+            prepareTextSource(text, x, y, signedOpacity < 0.0f);
+            ensureMeshStarted();
+            if (signedOpacity < 0.0f) {
+                int originalAlpha = SHADOW_COLOR.a;
+                SHADOW_COLOR.a = (int) (originalAlpha * mesh.alpha);
+                double offset = fontScale * scale / 1.5;
+                font.render(mesh, text, x + offset, y + offset, SHADOW_COLOR, scale / 1.5);
+                SHADOW_COLOR.a = originalAlpha;
+            }
+            double width = font.renderQuadGradient(mesh, text, x, y, scale / 1.5, gradient);
+            if (implicitBegin) end();
+            return width;
         }
         boolean implicitBegin = !building;
         if (implicitBegin) begin();
@@ -368,8 +382,10 @@ public class CustomTextRenderer implements TextRenderer {
                 outlineMesh.begin();
                 outlineStarted = true;
             }
-            float outlineRadius = Float.isFinite(radius) ? Math.max(0, radius) : 0;
-            float outlineOpacity = Float.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 0;
+            float effectRadius = radius < 0.0f ? (float) (fontScale * scale / 1.5)
+                    : Float.isFinite(radius) ? Math.max(0.0f, radius) : 0.0f;
+            float effectOpacity = Float.isFinite(signedOpacity)
+                    ? Math.copySign(Math.min(1.0f, Math.abs(signedOpacity)), signedOpacity) : 0.0f;
             float mode = font instanceof GlyphMaskFont ? -1 : font.isMsdf() ? font.getPxRange() : 0;
             int[] colors = new int[4];
             return font.emitGlyphs(text, x, y, scale / 1.5, new GlyphFont.GlyphConsumer() {
@@ -385,16 +401,16 @@ public class CustomTextRenderer implements TextRenderer {
                     gradient.colors(index, codePoint, x0, y0, x1, y1, colors);
                     float du = (float) ((u1 - u0) / (x1 - x0));
                     float dv = (float) ((v1 - v0) / (y1 - y0));
-                    double padding = outlineRadius + 1.0 / Math.max(1.0, FontRasterSelection.activePixelDensity());
+                    double padding = effectRadius + 1.0 / Math.max(1.0, FontRasterSelection.activePixelDensity());
                     outlineMesh.ensureCapacity(4, 6);
                     int a = outlineVertex(x0 - padding, y0 - padding, u0 - du * padding, v0 - dv * padding,
-                            colors[0], u0, v0, u1, v1, du * outlineRadius, dv * outlineRadius, outlineOpacity, mode);
+                            colors[0], u0, v0, u1, v1, du * effectRadius, dv * effectRadius, effectOpacity, mode);
                     int b = outlineVertex(x0 - padding, y1 + padding, u0 - du * padding, v1 + dv * padding,
-                            colors[1], u0, v0, u1, v1, du * outlineRadius, dv * outlineRadius, outlineOpacity, mode);
+                            colors[1], u0, v0, u1, v1, du * effectRadius, dv * effectRadius, effectOpacity, mode);
                     int c = outlineVertex(x1 + padding, y1 + padding, u1 + du * padding, v1 + dv * padding,
-                            colors[2], u0, v0, u1, v1, du * outlineRadius, dv * outlineRadius, outlineOpacity, mode);
+                            colors[2], u0, v0, u1, v1, du * effectRadius, dv * effectRadius, effectOpacity, mode);
                     int d = outlineVertex(x1 + padding, y0 - padding, u1 + du * padding, v0 - dv * padding,
-                            colors[3], u0, v0, u1, v1, du * outlineRadius, dv * outlineRadius, outlineOpacity, mode);
+                            colors[3], u0, v0, u1, v1, du * effectRadius, dv * effectRadius, effectOpacity, mode);
                     outlineMesh.quad(a, b, c, d);
                 }
             });
@@ -413,48 +429,34 @@ public class CustomTextRenderer implements TextRenderer {
     }
 
     public double renderGradient(String text, double x, double y, Font.GlyphGradient gradient, boolean shadow) {
+        if (shadow) {
+            int[] pair = new int[2];
+            return renderGlyphEffectQuadGradient(text, x, y, (index, cp, x0, y0, x1, y1, colors) -> {
+                gradient.colors(index, cp, x0, pair);
+                colors[0] = colors[1] = pair[0];
+                colors[2] = colors[3] = pair[1];
+            }, -1.0f, -(SHADOW_COLOR.a / 255.0f));
+        }
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
-        prepareTextSource(text, x, y, shadow);
+        prepareTextSource(text, x, y, false);
         ensureMeshStarted();
-
-        double width;
-        if (shadow) {
-            int preShadowA = SHADOW_COLOR.a;
-            SHADOW_COLOR.a = (int) (preShadowA * mesh.alpha);
-
-            font.render(mesh, text, x + fontScale * scale / 1.5, y + fontScale * scale / 1.5, SHADOW_COLOR, scale / 1.5);
-            width = font.renderGradient(mesh, text, x, y, scale / 1.5, gradient);
-
-            SHADOW_COLOR.a = preShadowA;
-        } else {
-            width = font.renderGradient(mesh, text, x, y, scale / 1.5, gradient);
-        }
-
+        double width = font.renderGradient(mesh, text, x, y, scale / 1.5, gradient);
         if (!wasBuilding) end();
         return width;
     }
 
     @Override
     public double renderQuadGradient(String text, double x, double y, Font.GlyphQuadGradient gradient, boolean shadow) {
+        if (shadow) {
+            return renderGlyphEffectQuadGradient(text, x, y, gradient,
+                    -1.0f, -(SHADOW_COLOR.a / 255.0f));
+        }
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
-        prepareTextSource(text, x, y, shadow);
+        prepareTextSource(text, x, y, false);
         ensureMeshStarted();
-
-        double width;
-        if (shadow) {
-            int preShadowA = SHADOW_COLOR.a;
-            SHADOW_COLOR.a = (int) (preShadowA * mesh.alpha);
-
-            font.render(mesh, text, x + fontScale * scale / 1.5, y + fontScale * scale / 1.5, SHADOW_COLOR, scale / 1.5);
-            width = font.renderQuadGradient(mesh, text, x, y, scale / 1.5, gradient);
-
-            SHADOW_COLOR.a = preShadowA;
-        } else {
-            width = font.renderQuadGradient(mesh, text, x, y, scale / 1.5, gradient);
-        }
-
+        double width = font.renderQuadGradient(mesh, text, x, y, scale / 1.5, gradient);
         if (!wasBuilding) end();
         return width;
     }
@@ -588,30 +590,25 @@ public class CustomTextRenderer implements TextRenderer {
                                        boolean shadow) {
         boolean wasBuilding = building;
         if (!wasBuilding) begin();
-        prepareTextSource(text, x, y, shadow);
-        ensureMeshStarted();
-
-        double glyphScale = scale / 1.5;
-        Font.GlyphGradient mainGradient = horizontalFadeGradient(color, clipLeft, clipRight, fadeLeft, fadeRight, glyphScale);
-
-        double width;
-        if (shadow) {
-            int preShadowA = SHADOW_COLOR.a;
-            SHADOW_COLOR.a = (int) (preShadowA * mesh.alpha);
-
-            Font.GlyphGradient shadowGradient = horizontalFadeGradient(
-                    SHADOW_COLOR, clipLeft, clipRight, fadeLeft, fadeRight, glyphScale
-            );
-            font.renderGradient(mesh, text, x + fontScale * glyphScale, y + fontScale * glyphScale, glyphScale, shadowGradient);
-            width = font.renderGradient(mesh, text, x, y, glyphScale, mainGradient);
-
-            SHADOW_COLOR.a = preShadowA;
-        } else {
-            width = font.renderGradient(mesh, text, x, y, glyphScale, mainGradient);
+        try {
+            prepareTextSource(text, x, y, false);
+            double glyphScale = scale / 1.5;
+            Font.GlyphGradient gradient = horizontalFadeGradient(
+                    color, clipLeft, clipRight, fadeLeft, fadeRight, glyphScale);
+            if (shadow) {
+                int[] pair = new int[2];
+                return renderGlyphEffectQuadGradient(text, x, y,
+                        (index, cp, x0, y0, x1, y1, colors) -> {
+                            gradient.colors(index, cp, x0, pair);
+                            colors[0] = colors[1] = pair[0];
+                            colors[2] = colors[3] = pair[1];
+                        }, -1.0f, -(SHADOW_COLOR.a / 255.0f));
+            }
+            ensureMeshStarted();
+            return font.renderGradient(mesh, text, x, y, glyphScale, gradient);
+        } finally {
+            if (!wasBuilding) end();
         }
-
-        if (!wasBuilding) end();
-        return width;
     }
 
     public double renderHorizontalFadeClipped(String text,

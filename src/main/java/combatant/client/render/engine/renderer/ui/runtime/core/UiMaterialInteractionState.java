@@ -123,8 +123,6 @@ public final class UiMaterialInteractionState {
         previousX = nx; previousY = ny;
         insideLast = inside;
         pressedLast = down;
-        // The same local impulse field drives curvature and a temporary clarity
-        // crest. Shape deformation remains controlled solely by the optics spec.
         float sourceX = eventEnergy > 0.02f ? eventX : x;
         float sourceY = eventEnergy > 0.02f ? eventY : y;
         return new UiGlassInteraction(sourceX, sourceY,

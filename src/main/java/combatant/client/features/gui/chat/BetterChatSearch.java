@@ -13,10 +13,7 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Minimal search state & async search runner for BetterChat, styled like ClickGuiSearch.
- * Rendering handled elsewhere; this class only manages input text and results.
- */
+/** Maintains BetterChat search state and dispatches asynchronous searches. */
 public enum BetterChatSearch {
     ;
     private static boolean active = false;

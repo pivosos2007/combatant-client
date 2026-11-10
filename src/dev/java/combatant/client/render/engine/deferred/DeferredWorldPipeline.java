@@ -7,6 +7,13 @@
 package combatant.client.render.engine.deferred;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import org.joml.Vector4fc;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.function.Supplier;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.mixininterface.IMsaaTexture;
 import combatant.client.render.engine.core.CombatantRenderSystem;
@@ -19,13 +26,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Transitional renderer-service owner.
- *
- * <p>Minecraft/Sodium/Iris own world geometry and lighting. This class only keeps the reusable
- * lifecycle, camera/motion capture, temporal history and post-processing boundary until those
- * services are moved to backend-neutral owners.</p>
- */
 public final class DeferredWorldPipeline {
     private volatile boolean requestedEnabled = Boolean.parseBoolean(
             System.getProperty("combatant.render.deferred", "false")
@@ -46,6 +46,8 @@ public final class DeferredWorldPipeline {
 
     private final AtomicReference<DeferredHistoryResetReason> pendingExternalHistoryReset =
             new AtomicReference<>(DeferredHistoryResetReason.NONE);
+    private final DeferredMrtCapture geometryCapture = new DeferredMrtCapture();
+    private long geometryPipelineGeneration;
     private final DeferredResourceBindings resourceBindings = new DeferredResourceBindings();
     private final DeferredSecondaryViewRegistry secondaryViews = new DeferredSecondaryViewRegistry();
     private final DeferredPrimaryViewSource primaryView = new DeferredPrimaryViewSource();
@@ -57,6 +59,82 @@ public final class DeferredWorldPipeline {
     public boolean enabled() {
         return lifecycleState == LifecycleState.ACTIVE;
     }
+
+    /** Sodium 0.9.2 / RenderPearl 26.3 geometry contract. No Iris dependency. */
+    public boolean geometryCaptureEnabled() {
+        // MRT attachments must match the main target sample count; capture currently uses single-sample images.
+        return enabled() && !combatant.client.render.iris.IrisRuntime.isModLoaded()
+                && !combatant.client.render.engine.msaa.MsaaWorldTarget.isActive()
+                && geometryCapture.canCapture();
+    }
+    public void setDebugGbuffer(boolean enabled) { geometryCapture.setDebugEnabled(enabled); }
+    public long geometryPipelineGeneration() { return geometryPipelineGeneration; }
+    public void configureGeometryPipeline(RenderPipeline.Builder builder) {
+        if (geometryCaptureEnabled()) geometryCapture.configureSodiumPipeline(builder);
+    }
+    public RenderPass openGeometryPass(CommandEncoder encoder, Supplier<String> label,
+                                       GpuTextureView sceneColor, Optional<Vector4fc> clearColor,
+                                       GpuTextureView depth, OptionalDouble clearDepth) {
+        return geometryCapture.openGeometryPass(encoder, label, sceneColor, clearColor, depth, clearDepth);
+    }
+    private LightingState lightingState = new LightingState(0, 0, 0, 0,
+            Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE);
+    private long lightingFrameId = Long.MIN_VALUE;
+
+    public void captureLightingState(LightingState state) { lightingState = state; }
+    public LightingState lightingState() { return lightingState; }
+
+    public void finishOpaqueGeometry(GpuTextureView sceneColor) {
+        if (!geometryCaptureEnabled() || geometryCapture.surface() == null) return;
+        bindSceneFrame(sceneColor, geometryCapture.sceneDepth());
+        resourceBindings.bindTexture(DeferredResource.GBUFFER_SURFACE, geometryCapture.surface());
+        resourceBindings.bindTexture(DeferredResource.GBUFFER_GEOMETRY, geometryCapture.geometry());
+        resourceBindings.bindTexture(DeferredResource.GBUFFER_MATERIAL, geometryCapture.material());
+        resourceBindings.bindTexture(DeferredResource.GBUFFER_MATERIAL_ID, geometryCapture.materialId());
+        resourceBindings.bindTexture(DeferredResource.GBUFFER_AUXILIARY, geometryCapture.auxiliary());
+        DevDeferredRuntime.graph().completeExternalPass("world.geometry.capture", resourceBindings);
+        for (DeferredStage stage : new DeferredStage[] {
+                DeferredStage.FRAME_SETUP, DeferredStage.SHADOW_PREPARE, DeferredStage.SHADOW_MAP,
+                DeferredStage.PRE_GEOMETRY_COMPUTE, DeferredStage.POST_GEOMETRY_COMPUTE,
+                DeferredStage.DEPTH_RESOLVE, DeferredStage.VELOCITY_RESOLVE, DeferredStage.DEPTH_PYRAMID,
+                DeferredStage.AMBIENT_OCCLUSION, DeferredStage.PRE_LIGHTING,
+                DeferredStage.LIGHTING, DeferredStage.POST_LIGHTING}) {
+            executeStage(stage);
+        }
+        if (resourceBindings.isValid(DeferredResource.DIRECT_LIGHTING_COLOR)) lightingFrameId = frameStateId;
+    }
+
+    public void finishForwardOpaque(GpuTextureView sceneColor, GpuTextureView depth) {
+        if (!lightingReady()) return;
+        bindSceneFrame(sceneColor, depth);
+        DevDeferredRuntime.graph().completeExternalPass("world.forward.opaque", resourceBindings);
+        for (DeferredStage stage : new DeferredStage[] {
+                DeferredStage.FORWARD_OPAQUE, DeferredStage.PRE_TRANSLUCENCY_DEPTH_RESOLVE,
+                DeferredStage.PRE_TRANSLUCENCY_VELOCITY_RESOLVE, DeferredStage.PRE_TRANSLUCENCY_DEPTH_PYRAMID,
+                DeferredStage.PRE_TRANSLUCENCY_TEMPORAL_VALIDATION, DeferredStage.RADIANCE_CAPTURE,
+                DeferredStage.INDIRECT_PREPARE, DeferredStage.INDIRECT_TRACE, DeferredStage.INDIRECT_TEMPORAL,
+                DeferredStage.INDIRECT_HISTORY, DeferredStage.INDIRECT_COMPOSITE,
+                DeferredStage.REFLECTION_PREPARE, DeferredStage.REFLECTION_TRACE, DeferredStage.REFLECTION_RESOLVE,
+                DeferredStage.REFLECTION_TEMPORAL, DeferredStage.REFLECTION_DENOISE,
+                DeferredStage.REFLECTION_HISTORY, DeferredStage.REFLECTION_COMPOSITE,
+                DeferredStage.PRE_TRANSLUCENCY}) {
+            executeStage(stage);
+        }
+    }
+
+    private boolean lightingReady() {
+        return enabled() && lightingFrameId == CombatantRenderSystem.ensureFrameContext().frameId();
+    }
+    public GpuTextureView gbufferSurface() { return geometryCapture.surface(); }
+    public GpuTextureView gbufferGeometry() { return geometryCapture.geometry(); }
+    public GpuTextureView gbufferAuxiliary() { return geometryCapture.auxiliary(); }
+    public GpuTextureView gbufferMaterial() { return geometryCapture.material(); }
+    public GpuTextureView gbufferMaterialId() { return geometryCapture.materialId(); }
+
+    /** Fog values at the opaque -> feature boundary; kept independent of old shaderpack fog. */
+    public record LightingState(float fogRed, float fogGreen, float fogBlue, float fogAlpha,
+                                float environmentalFogStart, float environmentalFogEnd,
+                                float renderFogStart, float renderFogEnd) { }
 
     public boolean requestedEnabled() {
         return requestedEnabled;
@@ -134,8 +212,10 @@ public final class DeferredWorldPipeline {
         }
         if (requestedEnabled && inWorld && lifecycleState == LifecycleState.DISABLED) {
             activateRuntime(minecraft);
+            if (enabled()) geometryPipelineGeneration++;
         } else if ((!requestedEnabled || !inWorld) && lifecycleState == LifecycleState.ACTIVE) {
             deactivateRuntime(minecraft);
+            geometryPipelineGeneration++;
         }
     }
 
@@ -302,7 +382,7 @@ public final class DeferredWorldPipeline {
     }
 
     public void beforePostProcess(GpuTextureView sceneColor, @Nullable GpuTextureView depth) {
-        if (!enabled() || sceneColor == null) return;
+        if (!lightingReady() || sceneColor == null) return;
         bindSceneFrame(sceneColor, depth);
         executeStage(DeferredStage.POST_TRANSLUCENCY);
         executeStage(DeferredStage.TEMPORAL_RESOLVE);
@@ -310,24 +390,27 @@ public final class DeferredWorldPipeline {
     }
 
     public void afterPostProcess(GpuTextureView sceneColor, @Nullable GpuTextureView depth) {
-        if (!enabled() || sceneColor == null) return;
+        if (!lightingReady() || sceneColor == null) return;
         bindSceneFrame(sceneColor, depth);
         executeStage(DeferredStage.POST_PROCESS);
     }
 
     public void finalComposite(GpuTextureView sceneColor, @Nullable GpuTextureView depth) {
-        if (!enabled() || sceneColor == null) return;
+        if (!lightingReady() || sceneColor == null) return;
         bindSceneFrame(sceneColor, depth);
         executeStage(DeferredStage.FINAL_COMPOSITE);
+        geometryCapture.publishDebug(sceneColor);
     }
 
     public void releasePhysicalResources() {
+        geometryCapture.reset();
         RenderSystem.assertOnRenderThread();
         DevDeferredRuntime.graph().releasePhysicalResources(CombatantRenderSystem.rhi());
         resetFrameState();
     }
 
     private void resetFrameState() {
+        lightingFrameId = Long.MIN_VALUE;
         resourceBindings.reset();
         secondaryViews.reset();
         worldOwner = null;

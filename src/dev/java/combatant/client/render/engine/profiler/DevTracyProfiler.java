@@ -143,6 +143,16 @@ public enum DevTracyProfiler {
         p[24].setValue(s.captureAwarePreparedGlass());
         p[25].setValue(s.captureAwareUnsupported());
         p[26].setValue(s.msaaDiscards());
+        p[27].setValue(s.hudMarkersEmitted());
+        p[28].setValue(s.hudMarkersSkipped());
+        p[29].setValue(s.batchBreakOrder());
+        p[30].setValue(s.batchBreakType());
+        p[31].setValue(s.batchBreakScissor());
+        p[32].setValue(s.batchBreakClip());
+        p[33].setValue(s.batchBreakSampler());
+        p[34].setValue(s.batchBreakParameters());
+        p[35].setValue(s.directCoalescedGroups());
+        p[36].setValue(s.directPassesSaved());
     }
 
     /** Called directly from the render frame lifecycle, never through a UI/world tree profiler. */
@@ -182,6 +192,8 @@ public enum DevTracyProfiler {
         p[30].setValue(s.dynamicPersistentArenaBytes());
         p[31].setValue(s.dynamicSpillArenaBytes());
         p[32].setValue(s.textureGlCopyImages());
+        p[33].setValue(s.dynamicSubDataGpuWrites());
+        p[34].setValue(s.dynamicSubDataGpuWriteBytes());
         plotPipelineBreakdown(s.pipelineBreakdown());
     }
 
@@ -392,7 +404,17 @@ public enum DevTracyProfiler {
                         "render.ui_compiler.capture_aware_blur_capture",
                         "render.ui_compiler.capture_aware_prepared_glass",
                         "render.ui_compiler.capture_aware_unsupported",
-                        "render.ui_msaa.discards"
+                        "render.ui_msaa.discards",
+                        "render.ui_hud.markers_emitted",
+                        "render.ui_hud.markers_skipped",
+                        "render.ui_batch.break_order",
+                        "render.ui_batch.break_type",
+                        "render.ui_batch.break_scissor",
+                        "render.ui_batch.break_clip",
+                        "render.ui_batch.break_sampler",
+                        "render.ui_batch.break_parameters",
+                        "render.ui_compiler.direct_coalesced_groups",
+                        "render.ui_compiler.direct_passes_saved"
                 };
                 Plot[] created = new Plot[names.length];
                 for (int i = 0; i < names.length; i++) {
@@ -442,7 +464,9 @@ public enum DevTracyProfiler {
                         "render.rhi.dynamic.backlog_events",
                         "render.rhi.dynamic.persistent_arena_bytes",
                         "render.rhi.dynamic.spill_arena_bytes",
-                        "render.rhi.texture_gl_copy_image"
+                        "render.rhi.texture_gl_copy_image",
+                        "render.rhi.dynamic.subdata_gpu_write_calls",
+                        "render.rhi.dynamic.subdata_gpu_write_bytes"
                 };
                 Plot[] created = new Plot[names.length];
                 for (int i = 0; i < names.length; i++) created[i] = TracyClient.createPlot(names[i]);

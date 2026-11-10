@@ -44,7 +44,7 @@ public final class InstaCartCycleRules {
 
     /** Search the preferred draw first, then stronger and weaker alternatives.
      * Do not fall back to an unreliable six-tick release unless the user
-     * deliberately configured the maximum below ten ticks. */
+     * configured the maximum below ten ticks. */
     public static int[] chargeOrder(double distance, int configuredMaximum) {
         int max = Math.max(6, Math.min(20, configuredMaximum));
         int floor = Math.min(10, max);

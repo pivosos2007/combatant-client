@@ -25,6 +25,7 @@ import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.theme.Themes;
@@ -37,6 +38,7 @@ import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
 import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.text.TextRenderer;
@@ -96,6 +98,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     private static final String PREVIEW_ICON = "vanilla/u1f9ea";
 
     private final ModeValue surfaceMaterial = HudMaterialChoice.setting("hud_notifier");
+    private final HudGlassSettings glassSettings = new HudGlassSettings("hud_notifier", UiGlassOpticsSpec.LIQUID);
     private final NumberValue<Integer> durationMs = new NumberValue<>("duration_ms", 2000, 500, 6000);
     private final NumberValue<Integer> fadeMs = new NumberValue<>("fade_ms", 250, 0, 1500);
     private final NumberValue<Double> scaleValue = new NumberValue<>("scale", 1.35, 0.5, 3.0);
@@ -367,6 +370,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        glassSettings.addSettings(defs);
         defs.add(SettingDef.number(durationMs));
         defs.add(SettingDef.number(fadeMs));
         defs.add(SettingDef.number(scaleValue));
@@ -758,13 +762,18 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         float sideTopR = 0f;
 
         // ICE is a glass visual, not an opaque PBR layer painted over the lens.
-        if ("Ice".equals(surfaceMaterial.get())) {
-            renderer.withLiquidGlassMaterial(UiLiquidGlassMaterial.DEFAULT.withIce(UiIceMaterialSpec.LIGHT),
-                    () -> drawGlassPill(renderer, x, y, metrics.boxW, metrics.boxH,
-                            sideTopR, sideTopR, sideBottomR, sideBottomR, glassTint, anim));
-        } else {
+        if (!glassSettings.customized() && !"Ice".equals(surfaceMaterial.get())) {
             drawGlassPill(renderer, x, y, metrics.boxW, metrics.boxH,
                     sideTopR, sideTopR, sideBottomR, sideBottomR, glassTint, anim);
+        } else {
+            UiLiquidGlassMaterial glassMaterial = UiLiquidGlassMaterial.DEFAULT
+                    .withOptics(glassSettings.apply(UiGlassOpticsSpec.LIQUID));
+            if ("Ice".equals(surfaceMaterial.get())) {
+                glassMaterial = glassMaterial.withIce(UiIceMaterialSpec.LIGHT);
+            }
+            renderer.withLiquidGlassMaterial(glassMaterial,
+                    () -> drawGlassPill(renderer, x, y, metrics.boxW, metrics.boxH,
+                            sideTopR, sideTopR, sideBottomR, sideBottomR, glassTint, anim));
         }
 
         int bgMixed = HudRenderUtil.mixColor(bgLeft, bgRight, 0.5f);

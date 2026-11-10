@@ -98,7 +98,7 @@ public final class ItemBatchRenderer {
      * Resolve one billboard submission against a dedicated atlas page.
      *
      * <p>Each caller in the current world phase gets its own persistent page. This is
-     * intentionally isolated from the normal UI item atlas: NameTags/DropESP can submit
+     * isolated from the normal UI item atlas: NameTags/DropESP can submit
      * deferred world meshes without a later module or CustomHotbar repacking their slots
      * before the GPU draw executes.</p>
      */
@@ -450,7 +450,7 @@ public final class ItemBatchRenderer {
     /**
      * Prepare all item models and GuiItemAtlas slots before ordered UI replay.
      *
-     * <p>This intentionally mirrors vanilla GuiRenderer.prepareItemElements(): the atlas is an
+     * <p>This mirrors vanilla GuiRenderer.prepareItemElements(): the atlas is an
      * offscreen preparation pass, not an ordered HUD draw. Keeping getOrUpdate() here prevents
      * its projection/lighting/render-target transitions from occurring between liquid-glass,
      * stencil/clip and ordinary UI draws. The path is backend-agnostic; no GL/Vulkan state

@@ -173,7 +173,6 @@ public final class ColorListSetting extends TextListSetting implements PickerDet
         return true;
     }
 
-    // ------------------------------------------------------------------ drawing
 
     private void drawHeader(float x, float y, float w, String id, float mx, float my, SettingsGuiPalette palette) {
         TextRenderer titleFont = UnifiedSettingsSkin.fontSemibold();
@@ -239,7 +238,7 @@ public final class ColorListSetting extends TextListSetting implements PickerDet
         hits.add(new Hit(inList ? Action.REMOVE : Action.ADD, id, buttonX, buttonY, buttonW, CHIP_H, false));
     }
 
-    /** Draws the scrolling column and returns the y just below the last element. */
+    /** @return the vertical position immediately after the final visible entry */
     private float drawContent(float top, String id, float mx, float my) {
         TextRenderer font = UnifiedSettingsSkin.fontRegular();
         float cx = viewX;
@@ -368,7 +367,6 @@ public final class ColorListSetting extends TextListSetting implements PickerDet
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, 120));
     }
 
-    // ------------------------------------------------------------------ state
 
     private void adoptPickerFocus(String passed) {
         String n = norm(passed);

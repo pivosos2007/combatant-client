@@ -11,8 +11,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Speed helpers for BPS calculations.
- * кулькулятор
+ * Calculates movement speed in blocks per second.
+ * 
  */
 public enum PlayerSpeedUtil {
     ;

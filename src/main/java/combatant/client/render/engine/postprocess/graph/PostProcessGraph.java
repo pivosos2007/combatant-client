@@ -85,7 +85,13 @@ public final class PostProcessGraph implements AutoCloseable {
             GpuTextureView source = resources.currentSource();
             if (mainColor == null || source == null) return false;
 
-            copy.copy(mainColor, source);
+            // Resolving the full scene is mandatory before any sampler2D/compute post pass.
+            // The reverse direction (1x -> Nx) is a fullscreen draw, not a framebuffer blit.
+            if (resources.multisampledMain()) {
+                if (!resources.resolveMultisampledSource(rhi)) return false;
+            } else {
+                copy.copy(mainColor, source);
+            }
             resources.resetPingPong();
 
             boolean anyApplied = false;

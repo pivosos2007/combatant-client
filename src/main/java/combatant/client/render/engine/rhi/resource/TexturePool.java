@@ -12,6 +12,10 @@ import com.mojang.renderpearl.api.textures.GpuTexture;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
+/**
+ * Tracks GPU textures awaiting deferred disposal.
+ * Retiring a texture queues it for release; {@link #drain(int)} and {@link #close()} perform the actual close.
+ */
 public final class TexturePool implements AutoCloseable {
     private final Queue<GpuTexture> retired = new ArrayDeque<>();
     private final ResourceLeakTracker leakTracker;
@@ -26,12 +30,14 @@ public final class TexturePool implements AutoCloseable {
         if (texture != null) leakTracker.register(texture);
     }
 
+    /** Queues a texture for disposal without closing it immediately. */
     public void retire(GpuTexture texture) {
         if (texture == null) return;
         retired.add(texture);
         retirements++;
     }
 
+    /** Closes at most {@code budget} queued textures and releases their tracking entries. */
     public void drain(int budget) {
         while (budget-- > 0 && !retired.isEmpty()) {
             GpuTexture texture = retired.poll();

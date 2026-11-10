@@ -13,6 +13,10 @@ import combatant.client.util.logging.DebugLog;
 import java.nio.charset.StandardCharsets;
 import java.util.zip.CRC32;
 
+/**
+ * Maintains the loaded revision, reload state and last error of one UI script module.
+ * Runtime failures block that revision until a changed source is loaded.
+ */
 public final class UiScriptModuleHandle {
     private final UiScriptModuleId id;
     private final UiScriptModuleLoader loader;
@@ -67,6 +71,7 @@ public final class UiScriptModuleHandle {
         return runtimeBlocked;
     }
 
+    /** Blocks execution of this revision and reports whether the error differs from the last reported one. */
     public boolean recordRuntimeError(UiScriptRuntimeError error) {
         runtimeBlocked = true;
         String phase = error != null && error.phase() != null && !error.phase().isBlank() ? error.phase() : "runtime";
@@ -90,10 +95,12 @@ public final class UiScriptModuleHandle {
         return reload(manager, true) == ReloadResult.CHANGED;
     }
 
+    /** Reloads the source when its checksum changes; retains the current module after a load failure. */
     public ReloadResult reloadIfChanged(ResourceManager manager) {
         return reload(manager, false);
     }
 
+    /** Returns and clears the flag indicating that a new module revision was published. */
     public boolean consumeChanged() {
         boolean out = changed;
         changed = false;

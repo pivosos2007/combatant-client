@@ -39,9 +39,10 @@ import combatant.client.util.player.ResetAttackCooldown;
 import combatant.client.util.target.TargetManager;
 
 /**
- * Centralized attack helper with RubberHand-aware handling.
- * <p>
- * Adapted from LiquidBounce (https://github.com/CCBlueX/LiquidBounce).
+ * Coordinates attack submission with active item use, critical-hit handling,
+ * sprint policy and attribute-swap requests. Attacks can be rejected while the
+ * player uses an item; normal and keep-sprint paths use different packet
+ * and local-event handling.
  */
 public enum AttackUtil {
     ;

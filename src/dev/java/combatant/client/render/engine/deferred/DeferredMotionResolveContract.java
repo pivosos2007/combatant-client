@@ -9,7 +9,7 @@ package combatant.client.render.engine.deferred;
 
 /**
  * Semantic contract for reducing raster/MSAA motion into the canonical single-sample temporal
- * signals. Coverage, motion validity and velocity are intentionally independent.
+ * signals. Coverage, motion validity and velocity are independent.
  *
  * <p>The important distinction is covered-with-invalid-motion: a forward fragment owns the final
  * pixel even when it cannot provide a trustworthy previous position. In that case the resolve

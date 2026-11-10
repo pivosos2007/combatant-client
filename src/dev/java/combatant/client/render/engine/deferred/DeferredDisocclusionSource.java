@@ -57,6 +57,19 @@ final class DeferredDisocclusionSource implements AutoCloseable {
     private RhiStorageBuffer params;
 
     void install(ArrayList<DeferredPassSpec> passes) {
+        passes.add(DeferredPassSpec.builder("world.temporal.disocclusion", DeferredStage.PRE_TRANSLUCENCY_TEMPORAL_VALIDATION)
+                .read(DeferredResource.VELOCITY, DeferredResource.MOTION_VALIDITY,
+                        DeferredResource.RESOLVED_DEPTH, DeferredResource.HISTORY_DEPTH)
+                .write(DeferredResource.DISOCCLUSION_MASK)
+                .requires(RhiShaderStage.COMPUTE)
+                .when(context -> available(context, DeferredResource.VELOCITY,
+                        DeferredResource.MOTION_VALIDITY, DeferredResource.RESOLVED_DEPTH))
+                .execute(context -> render(context, DeferredResource.VELOCITY,
+                        DeferredResource.MOTION_VALIDITY, DeferredResource.RESOLVED_DEPTH,
+                        DeferredResource.DISOCCLUSION_MASK, "Combatant opaque temporal disocclusion mask",
+                        Math.max(context.settings().indirectTemporalDepthThreshold(),
+                                context.settings().reflectionTemporalDepthThreshold())))
+                .build());
         passes.add(DeferredPassSpec.builder("world.temporal.final-disocclusion", DeferredStage.POST_TRANSLUCENCY)
                 .priority(100)
                 .read(DeferredResource.FINAL_VELOCITY, DeferredResource.FINAL_MOTION_VALIDITY,

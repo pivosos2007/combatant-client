@@ -20,12 +20,15 @@ import combatant.client.config.SettingDef;
 import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.hud.AbstractHudElement;
+import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.RenderMath;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiRuntime;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiProjectionMode;
 import combatant.client.render.engine.renderer.ui.runtime.render.UiRenderContext;
@@ -74,6 +77,7 @@ private static final float HEALTH_BAR_WIDTH = 81f;
             new NumberValue<>("custom_text_scale", 0.24f, 0.12f, 0.6f);
     private final NumberValue<Integer> customTextPadding =
             new NumberValue<>("custom_text_padding", 3, 0, 12);
+    private final HudGlassSettings glassSettings = new HudGlassSettings("health_bar", UiGlassOpticsSpec.LIQUID);
     private final UiScriptModuleHandle moduleHandle = HudScriptLayouts.handle(CustomHealthBar.class);
     private final CachedUiScriptRuntime scriptRuntime = new CachedUiScriptRuntime(HudScriptLayouts.runtimeReporter());
 
@@ -225,13 +229,20 @@ private static final float HEALTH_BAR_WIDTH = 81f;
         float roundFb = radius * scale;
 
         float glassScale = HEALTH_BAR_RADIUS <= 0.0f ? 1.0f : roundFb / HEALTH_BAR_RADIUS;
+        Runnable draw = () -> Renderer2D.COLOR.liquidGlassRect(
+                xFb, yFb, wFb, hFb, roundFb, 0xFFFFFFFF,
+                bm.getHudHealthAlphaFactor(),
+                Renderer2D.LiquidGlassPreset.HEALTH_BAR, glassScale, 0.0f);
+        if (bm.glassSettings.customized()) {
+            UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
+                    .withOptics(bm.glassSettings.apply(UiGlassOpticsSpec.LIQUID));
+            Runnable original = draw;
+            draw = () -> Renderer2D.COLOR.withLiquidGlassMaterial(material, original);
+        }
         Renderer2D.COLOR.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS,
                 combatant.client.features.gui.hud.HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
-                () -> Renderer2D.COLOR.liquidGlassRect(
-                        xFb, yFb, wFb, hFb, roundFb, 0xFFFFFFFF,
-                        bm.getHudHealthAlphaFactor(),
-                        Renderer2D.LiquidGlassPreset.HEALTH_BAR, glassScale, 0.0f));
+                draw);
         bm.renderScriptedBar(r2d, xFb, yFb, wFb, hFb, roundFb, baseRatio, absorbRatio);
     }
 
@@ -270,6 +281,7 @@ private static final float HEALTH_BAR_WIDTH = 81f;
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.number(healthAlpha));
+        glassSettings.addSettings(defs);
         defs.add(SettingDef.mode(hotbarHealthBarStyle));
         defs.add(SettingDef.number(customBarRadius));
         defs.add(SettingDef.number(customTextScale));

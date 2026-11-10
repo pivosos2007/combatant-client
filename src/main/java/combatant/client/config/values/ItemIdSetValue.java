@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Хранит набор item-id в формате namespace:path (minecraft:xxx).
+ * Stores item identifiers in namespace:path form.
  */
 public class ItemIdSetValue extends ConfigValue<Set<String>> {
 

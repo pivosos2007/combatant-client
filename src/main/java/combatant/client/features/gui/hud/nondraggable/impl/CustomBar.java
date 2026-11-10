@@ -30,6 +30,7 @@ import combatant.client.config.SettingDef;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.map.location.PlayerLocationService;
 import combatant.client.features.map.location.PlayerLocationSnapshot;
 import combatant.client.features.map.location.PlayerLocationSource;
@@ -41,6 +42,8 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.ColorMath;
 import combatant.client.render.engine.pipeline.UiRenderPipelines;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.MatteHudStyle;
 import combatant.client.render.helpers.PlayerHeadRenderer;
@@ -122,6 +125,7 @@ public final class CustomBar extends AbstractHudElement {
     private static final Map<String, Float> LOCATOR_LABEL_ANIM = new HashMap<>();
     private static final Map<String, LocatorLabel> LOCATOR_LABEL_CACHE = new HashMap<>();
     private static final Map<String, Float> LOCATOR_LABEL_POSITIONS = new HashMap<>();
+    private final HudGlassSettings glassSettings = new HudGlassSettings("custom_bar", UiGlassOpticsSpec.LIQUID);
     private final NumberValue<Integer> overlayAlpha =
             new NumberValue<>("overlay_alpha", 255, 30, 255);
     private final BooleanValue xpBar =
@@ -305,7 +309,15 @@ public final class CustomBar extends AbstractHudElement {
             // Liquid-glass refraction alone is not enough on a 5px-high element.
             float blurAlpha = Mth.clamp(BAR_BLUR_ALPHA * overlay, 0.0f, 1.0f);
             r2d.blurRect(x, y, w, h, radius, BAR_BLUR_QUALITY, 1.0f, blurAlpha, 0xFFFFFF);
-            HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, false, blurAlpha, BAR_GLASS_ALPHA * overlay);
+            if (bm.glassSettings.customized()) {
+                r2d.withLiquidGlassMaterial(UiLiquidGlassMaterial.DEFAULT
+                                .withOptics(bm.glassSettings.apply(UiGlassOpticsSpec.LIQUID)),
+                        () -> HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, false,
+                                blurAlpha, BAR_GLASS_ALPHA * overlay));
+            } else {
+                HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, false,
+                        blurAlpha, BAR_GLASS_ALPHA * overlay);
+            }
 
             int trackA = applyBarAlpha(colors.track(), bm);
             r2d.roundedRectGradient(x, y, w, h, radius, BAR_SOFTNESS * scale, trackA,
@@ -1290,6 +1302,7 @@ public final class CustomBar extends AbstractHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.bool(xpBar));
+        glassSettings.addSettings(defs);
         defs.add(SettingDef.bool(xpBarShowLevel).visibleWhen(xpBar::get));
         defs.add(SettingDef.mode(barMode).visibleWhen(xpBar::get));
         defs.add(SettingDef.mode(colorMode).visibleWhen(xpBar::get));

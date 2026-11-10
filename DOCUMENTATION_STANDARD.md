@@ -1,6 +1,6 @@
 # Combatant Documentation Standard
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Project policy  
 **Applies to:** Java source documentation, implementation comments, and documentation-only review passes
 
@@ -297,3 +297,17 @@ Use Javadoc/DocLint and appropriately scoped IDE/Checkstyle inspections to catch
 ### Definition of done
 
 A documentation pass is complete when the touched area's comments accurately describe its meaningful contracts, prohibited text is removed, unnecessary comments are absent, and implementation behavior remains unchanged. Documentation density is **not** a success criterion.
+
+## 10. License headers and attribution
+
+- Retain all existing licensing and provenance statements, including original author names,
+  third-party links and additional license restrictions. Legal comments are not stylistic noise.
+- Use the repository's existing Combatant GPL header for project-authored Java source, tests,
+  project scripts and shaders that otherwise lack one. Never invent authorship or an upstream license.
+- Keep Java headers before the package declaration. Keep GLSL `#version` as the first directive;
+  put the license after the version/extension prelude. Preserve script shebangs where present.
+- Do not apply the Combatant copyright statement to third-party or unverified-origin sources.
+  Record those cases for human provenance review, without removing their attribution.
+- Generated artifacts should ideally inherit their header from their source generator. When a
+  checked-in generated file is edited, verify that the loader accepts the header.
+- License-only changes must leave runtime source tokens and all resource identifiers unchanged.

@@ -21,9 +21,6 @@ import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 import combatant.client.render.engine.renderer.ui.runtime.core.UiMaterialInteractionState;
 import net.minecraft.client.Minecraft;
 
-/**
- * Shared helpers for HUD widget visuals.
- */
 public enum HudRenderUtil {
     ;
 
@@ -292,8 +289,8 @@ public enum HudRenderUtil {
     }
 
     /**
-     * Returns the theme's foreground accent gradient for small HUD glyphs/icons.
-     * Unlike {@link #themeAccentGradient(int)}, this preserves the theme gradient angle.
+     * Returns the foreground gradient, preserving its configured angle.
+     * The alpha argument replaces the opacity of both endpoints.
      */
     public static ThemeGradient themeForegroundGradient(int alpha) {
         int a = Math.max(0, Math.min(255, alpha));
@@ -371,9 +368,8 @@ public enum HudRenderUtil {
     }
 
     /**
-     * Draws an optional HUD soft shadow. Theme mode inherits the theme's accent/stroke
-     * gradient exactly (including its angle) when that gradient is enabled. Themes without
-     * an accent gradient fall back to a solid accent-colored shadow.
+     * Uses the theme accent gradient when available in theme-colored mode;
+     * otherwise uses the solid accent color.
      */
     public static void drawHudShadow(Renderer2D renderer,
                                      float x, float y, float w, float h,

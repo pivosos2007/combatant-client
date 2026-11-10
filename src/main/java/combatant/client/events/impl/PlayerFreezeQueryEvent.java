@@ -19,5 +19,9 @@ public final class PlayerFreezeQueryEvent extends Event {
         this.player = player;
     }
 
+    /**
+     * Latches a freeze request. Once enabled by one subscriber, another
+     * subscriber cannot clear it during the same dispatch.
+     */
     public void setFrozen(boolean frozen) { if (frozen) this.frozen = true; }
 }

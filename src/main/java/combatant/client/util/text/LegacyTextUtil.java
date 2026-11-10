@@ -54,7 +54,7 @@ public enum LegacyTextUtil {
     }
 
     /**
-     * Конвертирует любые "§"-коды внутри сегментов текста в реальные стили Text/Style.
+     * Applies legacy § formatting codes to text segments as component styles.
      */
     public static Component convertLegacyCodes(Component in) {
         if (in == null) return Component.empty();
@@ -65,7 +65,7 @@ public enum LegacyTextUtil {
         in.visit((style, string) -> {
             if (string == null || string.isEmpty()) return Optional.empty();
 
-            // Гибрид: конвертим &-коды в §-коды ПО СЕГМЕНТАМ, сохраняя Style (и hover/click).
+            // Convert legacy formatting within each segment without losing hover or click styles.
             String s = string;
             if (s.indexOf('&') >= 0) {
                 String conv = ampersandToSection(s);
@@ -124,13 +124,12 @@ public enum LegacyTextUtil {
             if (ch == '§' && i + 1 < s.length()) {
                 char code = s.charAt(i + 1);
 
-                // flush буфер до кода
                 if (!buf.isEmpty()) {
                     out.append(Component.literal(buf.toString()).setStyle(cur));
                     buf.setLength(0);
                 }
 
-                // hex-цвет: §x§R§R§G§G§B§B
+                // Legacy RGB format: §x§R§R§G§G§B§B.
                 if (code == 'x' || code == 'X') {
                     int j = i + 2;
                     StringBuilder hex = new StringBuilder(6);
@@ -148,10 +147,9 @@ public enum LegacyTextUtil {
                         try {
                             int rgb = Integer.parseInt(hex.toString(), 16);
                             cur = cur.withColor(TextColor.fromRgb(rgb));
-                            i = j - 1; // перескочили hex-блок
+                            i = j - 1; 
                             continue;
                         } catch (NumberFormatException ignored) {
-                            // падать не надо — просто обработаем как обычный текст ниже
                         }
                     }
                 }
@@ -161,12 +159,12 @@ public enum LegacyTextUtil {
                     if (fmt == ChatFormatting.RESET) {
                         cur = base;
                     } else if (isColor(fmt)) {
-                        // цвет по vanilla сбрасывает предыдущие декорации => возвращаемся к base
+                        // Vanilla color codes reset preceding text decorations.
                         cur = base.applyFormat(fmt);
                     } else {
                         cur = cur.applyFormat(fmt);
                     }
-                    i++; // пропустить символ кода
+                    i++; 
                     continue;
                 }
 
@@ -189,7 +187,7 @@ public enum LegacyTextUtil {
                     continue;
                 }
 
-                // неизвестный не-code символ — оставим section sign как обычный текст
+                // Preserve an unknown section sign as literal text.
                 buf.append('§');
                 continue;
             }

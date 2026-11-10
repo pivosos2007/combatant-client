@@ -16,7 +16,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Unified access to merged status effects: tracker first, raw entity data as fallback.
+ * Reads effect state from the per-entity tracker before the entity's own effect map.
+ * A tracked instance takes precedence for individual lookups; bulk reads return
+ * the tracked list when nonempty, otherwise a copy of active entity effects.
  */
 public enum StatusEffectAccess {
     ;
@@ -25,6 +27,10 @@ public enum StatusEffectAccess {
         return get(entity, effect) != null;
     }
 
+    /**
+     * @return the first matching tracked instance, the entity's active effect,
+     *         or null when no effect is available or an argument is null
+     */
     public static MobEffectInstance get(LivingEntity entity, Holder<MobEffect> effect) {
         if (entity == null || effect == null) {
             return null;

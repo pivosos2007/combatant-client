@@ -33,7 +33,7 @@ import combatant.client.util.logging.DebugLog;
 import java.util.*;
 
 /**
- * Реестр HUD-виджетов + drag-and-drop при открытом чате.
+ * Registry of HUD elements with drag support when chat is open.
  */
 public enum DraggableHudElementRegistry {
     ;

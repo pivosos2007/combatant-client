@@ -252,6 +252,11 @@ public class HitEffect extends Module {
         }
     }
 
+    /** Avoid allocating the early scene compositor when no blast exists. */
+    public boolean needsEarlyShockwavePass() {
+        return isEnabled() && isBlastMode() && !blastShockwaves.isEmpty();
+    }
+
     @Override
     public void onPrepareWorldPostProcess(float tickDelta) {
         if (!isEnabled() || !isBlastMode() || blastShockwaves.isEmpty()) return;

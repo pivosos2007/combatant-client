@@ -7,6 +7,10 @@
 
 package combatant.client.events;
 
+/**
+ * Shared entry point to the client event bus. The bus is process-wide;
+ * registered owners must unregister when their subscriptions are no longer needed.
+ */
 public enum Events {
     ;
     public static final EventBus BUS = new EventBus();

@@ -17,7 +17,6 @@ import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.FogType;
 import net.minecraft.world.phys.Vec3;
 
-/** Explicit camera-medium contract captured from world/fluid state rather than rendered pixels. */
 public record CameraMediumState(
         Medium medium,
         int fluidTypeId,

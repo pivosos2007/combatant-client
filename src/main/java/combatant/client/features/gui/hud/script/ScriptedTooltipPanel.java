@@ -470,8 +470,7 @@ public final class ScriptedTooltipPanel {
                         int dividerAlpha,
                         int gradientAngleOffset) {
         /**
-         * Exact legacy ItemVisualPreviewProvider appearance. Theme gradient is opt-in;
-         * all alpha controls are layer multipliers; 255 preserves the provider constants.
+         * Default per-layer opacity settings; theme-gradient blending is disabled.
          */
         public static final Style DEFAULT = new Style(255, 0, 255, 255, 255, 255, 0);
 

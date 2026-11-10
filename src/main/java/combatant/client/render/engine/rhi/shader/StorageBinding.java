@@ -7,6 +7,10 @@
 
 package combatant.client.render.engine.rhi.shader;
 
+/**
+ * Binds a subrange of a storage buffer to a shader slot.
+ * Nonpositive size selects the remaining bytes after the clamped offset.
+ */
 public record StorageBinding(int binding,
                              RhiStorageBuffer buffer,
                              long offset,

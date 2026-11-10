@@ -7,6 +7,9 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.core;
 
+/**
+ * Optional lifecycle callbacks for retained UI nodes during mounting, reconciliation and removal.
+ */
 public interface UiLifecycle {
     default void onMount(UiNode node) {
     }

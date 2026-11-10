@@ -21,11 +21,11 @@ public final class RubberHandUseUtil {
     }
 
     /**
-     * Executes a block-use action while RubberHand allows bypassing the currently active item.
+     * Runs a block interaction with temporary item-use release when RubberHand permits it.
+     * Restores a previously held use key in a {@code finally} block even if
+     * the supplied action throws. Without a qualifying active use, runs the action directly.
      *
-     * The helper mirrors RubberHand's release/restore pattern for module block interactions, so
-     * AutoAnchor/AutoBed can place and detonate while shield/food active-use bypass is enabled
-     * without permanently dropping the user's held use key.
+     * @return false for a null action; otherwise the action's result
      */
     public static boolean runBlockUse(Minecraft mc, BooleanSupplier action) {
         if (action == null) return false;

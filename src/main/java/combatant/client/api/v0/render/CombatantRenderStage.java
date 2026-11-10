@@ -7,6 +7,7 @@
 
 package combatant.client.api.v0.render;
 
+/** Identifies the world, HUD and screen phases available to addon render callbacks. */
 public enum CombatantRenderStage {
     HUD_RAW,
     HUD_SCALED,

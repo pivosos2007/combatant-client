@@ -7,6 +7,9 @@
 
 package combatant.client.features.module.modules.misc;
 
+import combatant.client.events.EventHandler;
+import combatant.client.events.impl.SoundFilterEvent;
+
 import combatant.client.config.values.SetValue;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.module.Module;
@@ -28,6 +31,11 @@ public class NoSound extends Module {
 
     {
         soundIds.set(Set.of("minecraft:entity.ender_dragon.growl"));
+    }
+
+    @EventHandler
+    private void onSoundFilter(SoundFilterEvent event) {
+        if (shouldMute(event.getSoundId().toString().toLowerCase())) event.cancel();
     }
 
     public boolean shouldMute(String id) {

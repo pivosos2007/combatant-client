@@ -333,8 +333,7 @@ public final class Cooldowns extends DraggableHudElement {
         float rowTextH = (float) rowTextRenderer.getHeight(false);
         float maxWidth = MIN_WIDTH * baseScale;
         if (!isTimePill()) {
-            // Preserve the exact legacy text-mode sizing. Decimal/pill envelopes are
-            // pill-only state and must never resize the ordinary cooldown panel.
+            // Width reservations for the timed-pill layout must not change text-mode sizing.
             rightTextWidthReserve.clear();
             if (showExampleRow) {
                 float previewWidth = (float) rowTextRenderer.getWidth("Example Cooldowns**:**", false) + (30.0f * baseScale);

@@ -245,7 +245,6 @@ public final class FaceList {
         return (box[face * 6 + axis] + box[face * 6 + 3 + axis]) * 0.5f;
     }
 
-    /** True for a face cut from a block model (any orientation) rather than a box side. */
     public boolean isQuad(int face) {
         return quadSlot[face] >= 0;
     }

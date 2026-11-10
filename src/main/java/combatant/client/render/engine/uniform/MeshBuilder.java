@@ -319,7 +319,6 @@ public final class MeshBuilder implements AutoCloseable {
         return color(color.r, color.g, color.b, color.a);
     }
 
-    /** Writes an ARGB color without allocating a temporary {@link RenderColor}. */
     public MeshBuilder colorArgb(int argb) {
         return color(
                 (argb >>> 16) & 0xFF,
@@ -508,7 +507,7 @@ public final class MeshBuilder implements AutoCloseable {
     /**
      * Ensures that the CPU-side direct buffers can hold at least the requested amount of vertices/indices.
      *
-     * <p>This method is intentionally separate from {@link #begin()}: render code that owns a long-lived
+     * <p>This method is separate from {@link #begin()}: render code that owns a long-lived
      * MeshBuilder can pre-warm it during initialization instead of paying ByteBuffer.allocateDirect on the
      * render-thread hot path. If the current buffers are already large enough, this is a no-op.</p>
      */

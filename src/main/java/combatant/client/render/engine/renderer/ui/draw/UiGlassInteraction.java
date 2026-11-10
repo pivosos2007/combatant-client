@@ -9,7 +9,7 @@ package combatant.client.render.engine.renderer.ui.draw;
 /** Per-element liquidGL-style optical impulse. Positions/offsets are normalized to surface bounds. */
 public record UiGlassInteraction(float x, float y, float dx, float dy,
                                  float activity, float press, float open, boolean local) {
-    /** Legacy Java-drawn surfaces use the frame-level pointer when no owner is available. */
+    /** Fallback interaction state used when a Java-drawn surface has no input owner. */
     public static final UiGlassInteraction FRAME_POINTER = new UiGlassInteraction(
             0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, false);
 

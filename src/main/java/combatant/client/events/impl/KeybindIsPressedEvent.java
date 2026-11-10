@@ -12,6 +12,10 @@ import lombok.Setter;
 import net.minecraft.client.KeyMapping;
 import combatant.client.events.Event;
 
+/**
+ * Allows overriding the value returned by a key-down query without modifying
+ * the stored {@link KeyMapping} state.
+ */
 @Getter
 public final class KeybindIsPressedEvent extends Event {
 

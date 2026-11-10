@@ -12,7 +12,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.ClipFunction;
 
-/** Draws projected grid, marker, label and uncertainty batches through Combatant rendering. */
+/** Submits map overlays within the requested clipping rectangle. */
 public final class MapOverlayRenderer {
     private static final int ELLIPSE_SEGMENTS = 48;
 

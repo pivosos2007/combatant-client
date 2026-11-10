@@ -10,6 +10,11 @@ package combatant.client.events.impl;
 import combatant.client.events.Event;
 import lombok.Getter;
 
+/**
+ * Runs before the local player submits position/rotation packets.
+ * Listeners can override the submitted yaw and pitch or cancel the send.
+ * Post-actions execute in registration order after an uncancelled send returns.
+ */
 public class EventSync extends Event {
     @Getter
     private final float originalYaw;
@@ -53,6 +58,11 @@ public class EventSync extends Event {
         return rotationOverride;
     }
 
+    /**
+     * Appends a callback to the post-send action chain, preserving insertion order.
+     * A null callback is ignored; the chain is discarded if this sync event
+     * cancels the send before it begins.
+     */
     public void addPostAction(Runnable r) {
         if (r == null) return;
         if (postAction == null) {

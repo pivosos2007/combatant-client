@@ -54,7 +54,7 @@ public final class UiTextRenderer {
 
     /**
      * Measure the full single-line advance, ignoring the node's clipping/ellipsis width.
-     * Layout width is intentionally constrained by the element's style, so it cannot
+     * Layout width is constrained by the element's style, so it cannot
      * be used to decide whether a retained marquee has any distance to travel.
      */
     public float measureUnclippedWidth(TextRenderer fallback, String text, UiStyle style) {
@@ -361,7 +361,7 @@ public final class UiTextRenderer {
 
     /**
      * Draws a compact two-ring phosphor bloom behind the sharp text pass.
-     * The spread intentionally stays small so display text remains legible at HUD scale.
+     * The spread stays small so display text remains legible at HUD scale.
      */
     public void renderGlow(TextRenderer fallback,
                            String text,

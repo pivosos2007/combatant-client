@@ -24,12 +24,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Resource loader for Combatant's intentionally small script-module dialect.
+ * Loads UI script modules with recursive dependency inlining before V8 evaluation.
  *
- * <p>This is not a general ES-module linker: dependencies are recursively inlined and imports are
- * removed before V8 execution. Supported runtime imports are side-effect imports and simple named
- * imports without aliases; {@code import type} is ignored at runtime. Development validation rejects
- * module syntax whose binding semantics cannot be preserved by this inliner.</p>
+ * <p>Runtime imports support side-effect imports and unaliased named imports;
+ * {@code import type} is ignored. Development validation rejects imports whose bindings
+ * cannot be represented by the inliner.</p>
  */
 public final class UiScriptModuleLoader {
     private static final Pattern IMPORT_PATTERN = Pattern.compile(

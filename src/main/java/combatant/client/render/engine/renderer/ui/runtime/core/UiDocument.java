@@ -11,6 +11,10 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Root UI specification with normalized version and immutable metadata.
+ * The constructor substitutes a root node when none is supplied and copies the metadata map.
+ */
 public record UiDocument(String id, int version, UiNodeSpec root, Map<String, ?> metadata) {
     public UiDocument(String id, int version, UiNodeSpec root, Map<String, ?> metadata) {
         this.id = id != null ? id : "";

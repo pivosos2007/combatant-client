@@ -44,6 +44,7 @@ import combatant.client.features.gui.hud.draggable.impl.HudMaterialChoice;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
 import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
 import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.hud.draggable.impl.BetterChat;
@@ -476,7 +477,6 @@ public enum BetterChatRenderer {
         }
         // Apply the same physical scissor to the material/glass bubbles as to
         // the glyphs. Previously the material batches were emitted before it.
-        // The analytic shape clip above still provides the rounded boundary.
         boolean contentScissor = clipBounds != null && ScissorFunction.pushRaw(
                 clipBounds.x() - CLIP_AA_GUARD,
                 clipBounds.y() - CLIP_AA_GUARD,
@@ -653,11 +653,12 @@ lastHoverWasOutsideSuggest = false;
         UiGlassVisual visual = settings != null && "Ice".equals(settings.surfaceMaterial())
                 ? UiGlassVisual.ice(UiIceMaterialSpec.LIGHT)
                 : HudClimateSurface.glassVisual(settings == null || settings.environmentalEffects());
-        if (!visual.custom()) {
+        if (!visual.custom() && (settings == null || !settings.hasCustomGlassOptics())) {
             action.run();
-        } else {
-            renderer.withLiquidGlassMaterial(UiLiquidGlassMaterial.DEFAULT.withVisual(visual), action);
+            return;
         }
+        UiGlassOpticsSpec optics = settings == null ? UiGlassOpticsSpec.LIQUID : settings.glassOptics();
+        renderer.withLiquidGlassMaterial(UiLiquidGlassMaterial.DEFAULT.withOptics(optics).withVisual(visual), action);
     }
 
     private static void drawChatMaterial(BetterChat settings,
@@ -723,8 +724,7 @@ lastHoverWasOutsideSuggest = false;
         float life = cfg != null ? cfg.fadeSeconds() : 12f;
         if (life <= 0f) return 0f;
 
-        // Держим сообщение полностью видимым, затем быстро гасим в конце.
-        float fadeDur = Math.min(2.0f, Math.max(0.35f, life * 0.18f)); // быстрое затухание (0.35..2.0с)
+        float fadeDur = Math.min(2.0f, Math.max(0.35f, life * 0.18f)); 
         float holdDur = Math.max(0f, life - fadeDur);
 
         if (ageSeconds <= holdDur) return 1f;
@@ -732,7 +732,6 @@ lastHoverWasOutsideSuggest = false;
         float t = (ageSeconds - holdDur) / fadeDur; // 0..1
         t = Mth.clamp(t, 0f, 1f);
 
-        // Быстрое “падение” в конце (кубическая кривая)
         float inv = 1f - t;
         return inv * inv * inv;
     }
@@ -1462,34 +1461,31 @@ lastHoverWasOutsideSuggest = false;
 
         if (button == combatant.client.input.InputKeys.MOUSE_LEFT) {
             if (pressed) {
-                // Кандидат на клик/выделение. Выделение начнём только при drag.
+                // Start text selection on drag, not on the initial click.
                 leftPending = true;
                 leftDownFx = fx;
                 leftDownFy = fy;
                 leftDownMsgIndex = pick.line().messageIndex();
                 leftDownCharIndex = pick.glyph().charIndex();
                 leftDownStyle = pick.glyph().style();
-                selecting = false;              // не выделяем сразу
+                selecting = false;              
                 contextMenu = ContextMenu.closed();
-                return true;                    // важно: блокируем ванильный suggest по клику
+                return true;                    // The custom suggestion handler consumes this click before vanilla handling.
             } else {
-                // отпускание ЛКМ
                 if (leftPending) {
                     leftPending = false;
 
                     if (selecting) {
-                        // закончили drag-выделение
                         selecting = false;
                         return true;
                     }
 
-                    // одиночный клик (без drag)
                     boolean handled = handleClickEvent(leftDownStyle, ctrlDown);
                     if (!handled && ctrlDown) {
                         handled = tryPrefillTellFromClick(leftDownMsgIndex, leftDownCharIndex);
                     }
                     if (!handled) selection.clear();
-                    return true; // блокируем ванильную обработку кликов по чату
+                    return true; 
                 }
             }
         } else if (button == combatant.client.input.InputKeys.MOUSE_RIGHT) {
@@ -1533,7 +1529,6 @@ lastHoverWasOutsideSuggest = false;
                 selection.update(leftDownMsgIndex, leftDownCharIndex);
                 selecting = true;
             } else {
-                // пока не потащили — не начинаем выделение
                 return;
             }
         }
@@ -1869,7 +1864,7 @@ lastHoverWasOutsideSuggest = false;
             } else if (evt instanceof ClickEvent.RunCommand && val.startsWith("@")) {
                 return CommandManager.handle(val);
             } else if (evt instanceof ClickEvent.SuggestCommand || evt instanceof ClickEvent.RunCommand) {
-                // Убираем нежелательный автокомплит: без Ctrl не подставляем команды в поле ввода.
+                // Command suggestions are inserted only when Ctrl is held.
                 if (!ctrlDown) return false;
                 prefillChat(val);
                 return true;

@@ -12,7 +12,9 @@ import combatant.client.events.Event;
 import combatant.client.util.target.TargetManager;
 
 /**
- * Fired when the centralized target changes.
+ * Reports a change in the selected target or its arbitration source.
+ * Previous/current entities and sources form a snapshot of the transition;
+ * this event does not itself change the selected target.
  */
 public class EventTargetChanged extends Event {
     public final LivingEntity previous;

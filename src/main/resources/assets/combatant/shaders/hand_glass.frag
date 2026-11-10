@@ -19,7 +19,11 @@ layout (std140) uniform HandGlass {
     vec4 uTint;     // rgb = glass tint, a = overlay alpha
     vec4 uMaterial; // x = strength, y = refraction pixels, z = edge haze strength, w = frost blur radius pixels
     vec4 uReserved; // x = body frost strength, y = chromatic pixels, z = edge refraction multiplier, w = clarity
+    vec4 u_PaletteEnd;
+    vec4 u_PaletteOptions;
 };
+
+#include <combatant:hand_palette.glsl>
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 
@@ -222,7 +226,7 @@ void main() {
     float chromaPxBase = max(uReserved.y, 0.0);
     float edgeRefractionMul = max(uReserved.z, 0.0);
     float clarity = saturate(uReserved.w);
-    vec3 tint = saturate(uTint.rgb);
+    vec3 tint = saturate(handPaletteColor(uv, time, uTint, u_PaletteEnd, u_PaletteOptions).rgb);
     float alpha = saturate(uTint.a);
 
     // Inner silhouette zones only. This is a fog/refraction band, not legacy outline.

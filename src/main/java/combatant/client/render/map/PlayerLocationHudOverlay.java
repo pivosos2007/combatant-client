@@ -32,7 +32,7 @@ import java.util.UUID;
 
 /**
  * World-space HUD for exact remote player locations which are outside the client's entity tracking range.
- * Loaded player entities intentionally invalidate their remote marker to prevent duplicate identity HUD.
+ * Loaded player entities invalidate their remote marker to prevent duplicate identity HUD.
  */
 public enum PlayerLocationHudOverlay {
     ;

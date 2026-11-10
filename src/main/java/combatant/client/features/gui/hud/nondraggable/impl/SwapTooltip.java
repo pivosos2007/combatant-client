@@ -14,12 +14,15 @@ import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
+import combatant.client.render.engine.renderer.ui.draw.UiLiquidGlassMaterial;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.runtime.RuntimeGate;
 import net.minecraft.client.Minecraft;
@@ -43,6 +46,7 @@ public final class SwapTooltip extends AbstractHudElement {
     private static float targetAlpha;
     private static boolean hasBars;
 
+    private final HudGlassSettings glassSettings = new HudGlassSettings("swap_tooltip", UiGlassOpticsSpec.LIQUID);
     private final NumberValue<Float> scale =
             num("swap_scale", 0.24f, 0.2f, 1.0f);
     private final NumberValue<Float> offsetY =
@@ -209,11 +213,18 @@ public final class SwapTooltip extends AbstractHudElement {
 
     private static void drawGlass(float x, float y, float w, float h, float radius, float alpha) {
         if (alpha <= 0.001f || w <= 0.0f || h <= 0.0f) return;
+        Runnable draw = () -> Renderer2D.COLOR.liquidGlassRect(
+                x, y, w, h, radius, GLASS_TINT, alpha, 1.0f,
+                Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL);
+        if (INSTANCE.glassSettings.customized()) {
+            UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
+                    .withOptics(INSTANCE.glassSettings.apply(UiGlassOpticsSpec.LIQUID));
+            Runnable original = draw;
+            draw = () -> Renderer2D.COLOR.withLiquidGlassMaterial(material, original);
+        }
         Renderer2D.COLOR.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS, HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
-                () -> Renderer2D.COLOR.liquidGlassRect(
-                        x, y, w, h, radius, GLASS_TINT, alpha, 1.0f,
-                        Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL));
+                draw);
     }
 
     private static int glassVeil() {
@@ -239,6 +250,7 @@ public final class SwapTooltip extends AbstractHudElement {
     @Override
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(0, enabledSettingDef());
+        glassSettings.addSettings(defs);
     }
 
     public enum TextEffect implements EnumValue.IdProvider {

@@ -11,6 +11,7 @@ import com.mojang.renderpearl.api.textures.GpuTextureView;
 import combatant.client.render.engine.postprocess.PostProcessPass;
 import net.minecraft.client.Minecraft;
 
+/** Describes a post-process pass, including its phase and source and destination GPU views. */
 public record CombatantPostProcessContext(
         String addonId,
         String passId,

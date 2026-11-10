@@ -7,6 +7,7 @@
 
 package combatant.client.api.v0.clickgui;
 
+/** Defines layout, rendering, input and selection hooks for addon ClickGUI sections. */
 public interface CombatantClickGuiSection {
     default void layout(float x, float y, float w, float h) {
     }

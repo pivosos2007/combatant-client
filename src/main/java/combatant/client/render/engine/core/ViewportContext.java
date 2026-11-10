@@ -8,6 +8,7 @@
 package combatant.client.render.engine.core;
 
 import com.mojang.blaze3d.ProjectionType;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -37,7 +38,14 @@ public record ViewportContext(
         Matrix4f projectionMatrix
 ) {
     private static ProjectionMatrixBuffer matrixBuffer;
+    private static final Matrix4f LAST_BOUND_PROJECTION = new Matrix4f();
+    private static GpuBufferSlice lastBoundProjectionSlice;
+    private static long lastBoundProjectionFrame = Long.MIN_VALUE;
 
+    // HUD producers frequently alternate UNSCALED/LOGICAL and SCALED in one extraction.
+    // Cache one immutable snapshot per standard mode so each return to SCALED does not
+    // allocate another Projection + Matrix4f. CUSTOM depends on the caller's current size.
+    private static final ViewportContext[] STANDARD_CAPTURE_CACHE = new ViewportContext[ProjectionMode.values().length];
     private static volatile ViewportContext current = fallback(ProjectionMode.SCALED);
     private static float activeUiScale = 1.0f;
     private static GuiGraphicsExtractor currentContext;
@@ -51,6 +59,28 @@ public record ViewportContext(
             matrixBuffer = buffer;
         }
         return buffer;
+    }
+
+    /**
+     * Avoid writing the same projection UBO multiple times in one frame. The guard checks the
+     * actual RenderSystem binding as well as the frame and matrix, so vanilla or another render
+     * owner changing its projection always forces a correct rebind. GPU slices never cross frames.
+     */
+    private static void bindProjection(Matrix4f matrix) {
+        RenderFrameContext frame = CombatantRenderSystem.currentContext();
+        long frameId = frame != null ? frame.frameId() : Long.MIN_VALUE;
+        if (frame != null && lastBoundProjectionSlice != null
+                && lastBoundProjectionFrame == frameId
+                && RenderSystem.getProjectionMatrixBuffer() == lastBoundProjectionSlice
+                && RenderSystem.getProjectionType() == ProjectionType.ORTHOGRAPHIC
+                && LAST_BOUND_PROJECTION.equals(matrix, 0.0f)) {
+            return;
+        }
+        GpuBufferSlice slice = matrixBuffer().getBuffer(matrix);
+        RenderSystem.setProjectionMatrix(slice, ProjectionType.ORTHOGRAPHIC);
+        lastBoundProjectionSlice = slice;
+        lastBoundProjectionFrame = frameId;
+        LAST_BOUND_PROJECTION.set(matrix);
     }
 
     public static ViewportContext capture() {
@@ -95,7 +125,24 @@ public record ViewportContext(
             default -> throw new IllegalStateException("Unhandled projection mode: " + mode);
         }
 
-        return new ViewportContext(fbw, fbh, scaleFactor, width, height, uiScale, mode, matrixFor(width, height));
+        // Standard HUD projection modes commonly alternate during a single frame.
+        // Cache per mode rather than only the most recently installed viewport.
+        // Resizing, GUI scale changes and HudScale recalculation invalidate by dimensions.
+        ViewportContext previous = mode == ProjectionMode.CUSTOM
+                ? current : STANDARD_CAPTURE_CACHE[mode.ordinal()];
+        if (previous != null && previous.projectionMode == mode
+                && previous.projectionMatrix != null
+                && previous.framebufferWidth == fbw && previous.framebufferHeight == fbh
+                && Float.compare(previous.scaleFactor, scaleFactor) == 0
+                && Float.compare(previous.width, width) == 0
+                && Float.compare(previous.height, height) == 0
+                && Float.compare(previous.uiScale, uiScale) == 0) {
+            return previous;
+        }
+        ViewportContext snapshot = new ViewportContext(fbw, fbh, scaleFactor, width, height, uiScale,
+                mode, matrixFor(width, height));
+        if (mode != ProjectionMode.CUSTOM) STANDARD_CAPTURE_CACHE[mode.ordinal()] = snapshot;
+        return snapshot;
     }
 
     public static ViewportContext current() {
@@ -174,7 +221,7 @@ public record ViewportContext(
     public static void applyCaptured(ViewportContext next) {
         if (next == null) return;
         Matrix4f matrix = next.projectionMatrix != null ? new Matrix4f(next.projectionMatrix) : matrixFor(next.width, next.height);
-        RenderSystem.setProjectionMatrix(matrixBuffer().getBuffer(matrix), ProjectionType.ORTHOGRAPHIC);
+        bindProjection(matrix);
         MeshRenderer.setProjection(matrix);
         activeUiScale = next.uiScale;
         activeMode = next.projectionMode;
@@ -202,7 +249,7 @@ public record ViewportContext(
         Matrix4f matrix = matrixFor(safeWidth, safeHeight);
         ViewportContext next = new ViewportContext(fbw, fbh, scaleFactor, safeWidth, safeHeight, 1.0f, ProjectionMode.CUSTOM, new Matrix4f(matrix));
         if (isActiveProjection(next, ProjectionMode.CUSTOM)) {
-            RenderSystem.setProjectionMatrix(matrixBuffer().getBuffer(matrix), ProjectionType.ORTHOGRAPHIC);
+            bindProjection(matrix);
             MeshRenderer.setProjection(matrix);
             current = next;
             RenderState.rendering3D = false;
@@ -210,7 +257,7 @@ public record ViewportContext(
         }
 
         Renderer2D.flushBatch(Renderer2D.FlushReason.PROJECTION);
-        RenderSystem.setProjectionMatrix(matrixBuffer().getBuffer(matrix), ProjectionType.ORTHOGRAPHIC);
+        bindProjection(matrix);
         MeshRenderer.setProjection(matrix);
 
         activeUiScale = 1.0f;
@@ -236,7 +283,7 @@ public record ViewportContext(
     private static void apply(ProjectionMode mode, boolean flush) {
         ViewportContext next = capture(mode);
         if (isActiveProjection(next, mode)) {
-            RenderSystem.setProjectionMatrix(matrixBuffer().getBuffer(next.projectionMatrix), ProjectionType.ORTHOGRAPHIC);
+            bindProjection(next.projectionMatrix);
             MeshRenderer.setProjection(next.projectionMatrix);
             activeUiScale = next.uiScale;
             activeMode = mode;
@@ -246,7 +293,7 @@ public record ViewportContext(
         }
 
         if (flush) Renderer2D.flushBatch(Renderer2D.FlushReason.PROJECTION);
-        RenderSystem.setProjectionMatrix(matrixBuffer().getBuffer(next.projectionMatrix), ProjectionType.ORTHOGRAPHIC);
+        bindProjection(next.projectionMatrix);
         MeshRenderer.setProjection(next.projectionMatrix);
         activeUiScale = next.uiScale;
         activeMode = mode;

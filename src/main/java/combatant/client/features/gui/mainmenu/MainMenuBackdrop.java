@@ -40,7 +40,8 @@ final class MainMenuBackdrop {
     static void render(float width, float height, float opacity, float mouseX, float mouseY,
                        GridLayout grid, Cutout exclusion) {
         renderBase(width, height);
-        renderSmoke(width, height, opacity, mouseX, mouseY);
+        renderCrystal(width, height, opacity, mouseX, mouseY, grid, exclusion);
+        renderSmoke(width, height, opacity, mouseX, mouseY, false);
         renderHoneycomb(width, height, opacity, mouseX, mouseY, grid, exclusion);
     }
 
@@ -52,12 +53,17 @@ final class MainMenuBackdrop {
         Renderer2D.COLOR.quad(0, 0, width, height, dark, dark, light, light);
     }
 
-    static void renderSmoke(float width, float height, float opacity, float mouseX, float mouseY) {
+    static void renderSmoke(float width, float height, float opacity, float mouseX, float mouseY,
+                            boolean fluidPointerDown) {
         GridLayout grid = layout(width, height);
         long now = System.nanoTime();
-        HEX_TRAIL.advance(width, height, mouseX, mouseY, grid, now);
-        if (OPTIONS.menuAmbientGlowEnabled()) AMBIENT.advance(width, height, now, grid, HEX_TRAIL);
-        if (OPTIONS.menuFluidEnabled() && SMOKE.canAttemptCompute()) SMOKE.render(width, height, opacity, HEX_TRAIL);
+        HEX_TRAIL.advance(width, height, mouseX, mouseY, grid, now,
+                !OPTIONS.menuCursorGlowEnabled(), fluidPointerDown);
+        if (OPTIONS.menuAmbientGlowEnabled()) {
+            AMBIENT.advance(width, height, now, grid);
+            if (OPTIONS.menuFluidEnabled()) AMBIENT.emitFluid(now, HEX_TRAIL);
+        }
+        if (OPTIONS.menuFluidEnabled() && SMOKE.canAttemptCompute()) SMOKE.render(width, height, opacity, HEX_TRAIL, grid);
     }
 
     static boolean computeSupported() { return SMOKE.computeSupported(); }
@@ -66,6 +72,37 @@ final class MainMenuBackdrop {
         SMOKE.close();
         HEX_TRAIL.clear();
         AMBIENT.clear();
+    }
+
+    static void renderCrystal(float width, float height, float opacity, float mouseX, float mouseY,
+                              GridLayout grid, Cutout exclusion) {
+        if (grid == null || opacity <= 0.001f || !OPTIONS.menuCrystalBackgroundEnabled()) return;
+        Themes.Theme theme = Theme.theme();
+        int accent = theme != null ? theme.accent() : 0xFF85B4FF;
+        int secondary = theme != null ? theme.accentSoft() : 0xFF6285A0;
+        if (OPTIONS.menuCustomColors()) {
+            accent = OPTIONS.menuGlowColorValue().getArgb();
+            secondary = OPTIONS.menuGridColorValue().getArgb();
+        }
+        int interiorColor = HudRenderUtil.mixColor(accent, secondary, 0.28f);
+        UiHoneycombMaterialSpec material = new UiHoneycombMaterialSpec(
+                UiHoneycombMaterialSpec.HEX_PATH.cellRadiusPx(),
+                UiHoneycombMaterialSpec.HEX_PATH.lineWidthPx(),
+                0f, 0f, 0f, UiHoneycombMaterialSpec.HEX_PATH.motionSpeed(),
+                OPTIONS.menuCrystalIntensity(), OPTIONS.menuCrystalGloss());
+        Cutout cutout = exclusion != null ? exclusion : Cutout.NONE;
+        if (cutout.enabled) {
+            Renderer2D.COLOR.honeycombAreaCutout(0, 0, width, height,
+                    grid.radius, HONEYCOMB_RIM_WIDTH, opacity,
+                    mouseX, mouseY, grid.radius * 2.7f, grid.originX, grid.originY,
+                    interiorColor, material,
+                    cutout.x, cutout.y, cutout.w, cutout.h, cutout.cut);
+        } else {
+            Renderer2D.COLOR.honeycombArea(0, 0, width, height,
+                    grid.radius, HONEYCOMB_RIM_WIDTH, opacity,
+                    mouseX, mouseY, grid.radius * 2.7f, grid.originX, grid.originY,
+                    accent, material);
+        }
     }
 
     static void renderHoneycomb(float width, float height, float opacity, float mouseX, float mouseY,
@@ -79,17 +116,22 @@ final class MainMenuBackdrop {
             base = OPTIONS.menuGridColorValue().getArgb();
         }
         Cutout cutout = exclusion != null ? exclusion : Cutout.NONE;
+        boolean sharedFluid = OPTIONS.menuFluidEnabled() && OPTIONS.menuCursorGlowEnabled() && SMOKE.computeSupported();
+        float glowShare = sharedFluid ? 0.58f : 1f;
         UiHoneycombMaterialSpec material = new UiHoneycombMaterialSpec(
                 UiHoneycombMaterialSpec.HEX_PATH.cellRadiusPx(),
                 UiHoneycombMaterialSpec.HEX_PATH.lineWidthPx(),
                 0.17f * OPTIONS.menuGridIntensity(),
-                0.85f * OPTIONS.menuCursorIntensity(),
-                0.62f * OPTIONS.menuHoneycombBloom(),
-                UiHoneycombMaterialSpec.HEX_PATH.motionSpeed());
+                0.85f * OPTIONS.menuCursorIntensity() * glowShare,
+                0.62f * OPTIONS.menuHoneycombBloom() * glowShare,
+                UiHoneycombMaterialSpec.HEX_PATH.motionSpeed(),
+                OPTIONS.menuCrystalBackgroundEnabled() ? OPTIONS.menuCrystalIntensity() : 0f,
+                OPTIONS.menuCrystalGloss());
         if (OPTIONS.menuGridEnabled()) {
             UiHoneycombMaterialSpec baseMaterial = new UiHoneycombMaterialSpec(
                     material.cellRadiusPx(), material.lineWidthPx(), material.lineOpacity(),
-                    material.emission(), material.glow(), material.motionSpeed());
+                    material.emission(), material.glow(), material.motionSpeed(),
+                    0f, 0f);
             if (cutout.enabled) {
                 Renderer2D.COLOR.honeycombAreaCutout(0, 0, width, height,
                         grid.radius, HONEYCOMB_RIM_WIDTH, opacity,
@@ -104,7 +146,7 @@ final class MainMenuBackdrop {
             }
         }
         if (OPTIONS.menuAmbientGlowEnabled()) {
-            AMBIENT.render(width, height, opacity * OPTIONS.menuAmbientIntensity(),
+            AMBIENT.render(width, height, opacity * OPTIONS.menuAmbientIntensity() * (sharedFluid ? 0.56f : 1f),
                     grid, cutout, accent, coldColor(accent), material);
         }
         if (OPTIONS.menuCursorGlowEnabled()) {
@@ -134,33 +176,29 @@ final class MainMenuBackdrop {
         private final Cluster[] clusters = new Cluster[COUNT];
         private float width;
         private float height;
-        private long lastEmission;
 
         private AmbientClusterField() {
             for (int i = 0; i < COUNT; i++) clusters[i] = new Cluster();
         }
 
-        void advance(float width, float height, long now, GridLayout grid, MainMenuHexTrail trail) {
+        void advance(float width, float height, long now, GridLayout grid) {
             float time = (float) ((now * 1.0e-9) % 8192.0);
             if (this.width != width || this.height != height) {
                 this.width = width;
                 this.height = height;
                 for (int i = 0; i < COUNT; i++) clusters[i].seed(width, height, i, time);
-                lastEmission = now;
             }
             for (Cluster cluster : clusters) cluster.update(width, height, time, grid.radius());
-            if (now - lastEmission > 125_000_000L) {
-                for (int i = 0; i < COUNT && trail.sourceCount() < MainMenuHexTrail.MAX_SOURCES; i++) {
-                    Cluster cluster = clusters[i];
-                    float phase = time * 0.55f + cluster.phaseOffset;
-                    if (Math.cos(phase) > -0.20) continue;
-                    float angle = time * 0.65f + i * 2.399963f;
-                    float distance = grid.radius() * (0.48f + 0.28f * (float)Math.sin(phase));
-                    trail.emitAmbient(cluster.x + (float)Math.cos(angle) * distance,
-                            cluster.y + (float)Math.sin(angle) * distance,
-                            angle, 0.24f, grid);
-                }
-                lastEmission = now;
+        }
+
+        void emitFluid(long now, MainMenuHexTrail trail) {
+            float time = (float)((now * 1.0e-9) % 8192.0);
+            for (int i = 0; i < COUNT; i++) {
+                Cluster cluster = clusters[i];
+                float phase = time * 0.55f + cluster.phaseOffset;
+                float waveAge = (phase / 6.2831853f - (float)Math.floor(phase / 6.2831853f)) * 3.6f;
+                trail.emitAmbient(cluster.x, cluster.y, phase,
+                        cluster.strength(time) * 1.45f * OPTIONS.menuAmbientIntensity(), waveAge);
             }
         }
 
@@ -182,7 +220,6 @@ final class MainMenuBackdrop {
         void clear() {
             width = 0f;
             height = 0f;
-            lastEmission = 0L;
         }
 
         private static final class Cluster {
