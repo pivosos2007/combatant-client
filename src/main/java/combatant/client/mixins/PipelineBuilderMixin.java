@@ -9,8 +9,15 @@ package combatant.client.mixins;
 
 import com.mojang.renderpearl.api.pipeline.ShaderSource;
 import com.mojang.renderpearl.api.pipeline.ShaderType;
+import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.frontend.shaders.PipelineBuilder;
+import combatant.client.render.engine.hdr.HdrPipelineVariants;
 import combatant.client.render.engine.shader.CombatantShaderSources;
+import combatant.client.render.iris.IrisRuntime;
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -21,11 +28,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = PipelineBuilder.class, remap = false)
 public abstract class PipelineBuilderMixin {
-    @Inject(method = "compilePipeline", at = @At("HEAD"), remap = false)
-    private void combatant$rememberPipeline(com.mojang.renderpearl.api.pipeline.RenderPipeline pipeline,
-            ShaderSource source, java.util.concurrent.Executor executor,
-            CallbackInfoReturnable<?> cir) {
-        combatant.client.render.engine.hdr.HdrPipelineVariants.observe(pipeline);
+    @ModifyReturnValue(method = "compilePipeline", at = @At("RETURN"), remap = false)
+    private CompletableFuture<CompiledRenderPipeline.Pending> combatant$rememberPipeline(
+            CompletableFuture<CompiledRenderPipeline.Pending> pending, RenderPipeline pipeline,
+            ShaderSource source, Executor executor) {
+        return IrisRuntime.isModLoaded() ? pending : HdrPipelineVariants.trackCompilation(pipeline, pending);
     }
 
     @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(

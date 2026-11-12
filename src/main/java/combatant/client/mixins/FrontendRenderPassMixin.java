@@ -12,6 +12,7 @@ import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.frontend.FrontendRenderPass;
 import com.mojang.renderpearl.frontend.FrontendRenderPipeline;
 import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.render.engine.hdr.HdrPipelineVariants;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
 import combatant.client.util.logging.DebugLog;
 import org.spongepowered.asm.mixin.Mixin;
@@ -27,7 +28,7 @@ public abstract class FrontendRenderPassMixin {
 
     @org.spongepowered.asm.mixin.injection.ModifyVariable(method = "setPipeline", at = @At("HEAD"), argsOnly = true)
     private CompiledRenderPipeline combatant$attachmentPipeline(CompiledRenderPipeline pipeline) {
-        return combatant.client.render.engine.hdr.HdrPipelineVariants.select(pipeline, colorAttachments);
+        return HdrPipelineVariants.select(pipeline, colorAttachments);
     }
 
     @Inject(
@@ -36,7 +37,8 @@ public abstract class FrontendRenderPassMixin {
     )
     private void combatant$applyRhiPipelineState(CompiledRenderPipeline compiled, CallbackInfo ci) {
         if (!(compiled instanceof FrontendRenderPipeline frontend)) return;
-        RenderPipeline pipeline = RenderPipelineRegistry.global().nativeById(frontend.name());
+        RenderPipeline pipeline = HdrPipelineVariants.sourceOf(compiled);
+        if (pipeline == null) pipeline = RenderPipelineRegistry.global().nativeById(frontend.name());
         if (pipeline == null) return;
         try {
             CombatantRenderSystem.rhi().pipelineState().applyPipelineState(pipeline);

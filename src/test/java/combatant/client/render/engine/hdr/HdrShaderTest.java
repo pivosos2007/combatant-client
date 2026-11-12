@@ -6,12 +6,15 @@
  */
 package combatant.client.render.engine.hdr;
 
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import net.minecraft.client.renderer.RenderPipelines;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -35,6 +38,7 @@ final class HdrShaderTest {
     @Test
     void compilesSceneVariantsForOpenGlAndVulkan() throws Exception {
         String functions = resource("assets/combatant/shaders/include/scene_color.glsl");
+        String oitDefines = RenderPipelines.OIT_ACCUMULATE_SNIPPET.shaderDefines().orElseThrow().asSourceDirectives();
         List<String> shaders = List.of("sky", "stars", "clouds", "entity", "block", "terrain",
                 "particle", "world_border", "rendertype_end_portal", "rendertype_lines", "position",
                 "position_color", "position_tex", "position_tex_color", "rendertype_beacon_beam",
@@ -51,12 +55,14 @@ final class HdrShaderTest {
                         vulkan ? shaderc_env_version_vulkan_1_2 : shaderc_env_version_opengl_4_5);
                 for (String name : shaders) {
                     String source = expand("assets/minecraft/shaders/core/" + name + ".fsh", new HashSet<>());
-                    compile(compiler, options, name, HdrShaderSources.linearize(source, functions), "");
+                    String defines = name.equals("rendertype_end_portal")
+                            ? RenderPipelines.END_PORTAL.getShaderDefines().asSourceDirectives() : "";
+                    compile(compiler, options, name, HdrShaderSources.linearize(source, functions), defines);
                     if (source.contains("sampleColorForAccumulation")) {
                         compile(compiler, options, name + " OIT", HdrShaderSources.linearize(source, functions),
-                                "#define OIT\n#define OIT_ACCUMULATE\n#define OIT_WAVELET_RANK 2\n");
+                                oitDefines);
                         compile(compiler, options, name + " additive OIT", HdrShaderSources.linearize(source, functions),
-                                "#define OIT\n#define OIT_ACCUMULATE\n#define OIT_ADDITIVE\n#define OIT_WAVELET_RANK 2\n");
+                                oitDefines + "#define OIT_ADDITIVE\n");
                     }
                 }
                 for (String path : List.of("assets/sodium/shaders/blocks/block_layer_opaque.fsh",
@@ -66,8 +72,9 @@ final class HdrShaderTest {
                     if (path.contains("combatant/shaders/sodium")) compile(compiler, options, path + " MRT", source,
                             "#define USE_FOG\n#define COMBATANT_DEFERRED_GBUFFER\n");
                     if (!path.endsWith("pos_color.frag")) compile(compiler, options, path + " OIT", source,
-                            "#define USE_FOG\n#define OIT\n#define OIT_ACCUMULATE\n#define OIT_WAVELET_RANK 2\n");
+                            "#define USE_FOG\n" + oitDefines);
                 }
+                compileItemPermutations(compiler, options, functions);
                 for (String name : List.of("scene_present.frag", "dream_sky_present.frag",
                         "dream_cloud_composite.frag", "dream_cloud_composite_hdr.frag", "reimagined_skybox.frag")) {
                     compile(compiler, options, name, expand("assets/combatant/shaders/" + name, new HashSet<>()), "");
@@ -84,10 +91,37 @@ final class HdrShaderTest {
         }
     }
 
+    private static void compileItemPermutations(long compiler, long options, String functions) throws Exception {
+        List<RenderPipeline> pipelines = new ArrayList<>(List.of(RenderPipelines.ITEM_CUTOUT,
+                RenderPipelines.ITEM_CUTOUT_GLINT, RenderPipelines.ITEM_CUTOUT_GLINT_SPECIAL,
+                RenderPipelines.ITEM_TRANSLUCENT, RenderPipelines.ITEM_TRANSLUCENT_GLINT,
+                RenderPipelines.ITEM_TRANSLUCENT_GLINT_SPECIAL));
+        for (var set : List.of(RenderPipelines.OIT_ITEM, RenderPipelines.OIT_ITEM_GLINT,
+                RenderPipelines.OIT_ITEM_GLINT_SPECIAL)) {
+            pipelines.add(set.depthBoundsPipeline());
+            pipelines.add(set.transmittancePipeline());
+            pipelines.add(set.accumulatePipeline());
+        }
+        String vertex = expand("assets/minecraft/shaders/core/item.vsh", new HashSet<>());
+        String fragment = expand("assets/minecraft/shaders/core/item.fsh", new HashSet<>());
+        for (var pipeline : pipelines) {
+            boolean oit = pipeline.getShaderDefines().flags().contains("OIT");
+            var formats = oit ? pipeline.getColorTargetStates().stream().map(state -> state.format()).toList()
+                    : List.of(SceneColor.FORMAT);
+            var variant = HdrPipelineVariants.variantFor(pipeline, formats, !oit);
+            String defines = variant.getShaderDefines().asSourceDirectives();
+            String converted = variant.getShaderDefines().flags().contains(HdrPipelineVariants.LEGACY_COLOR)
+                    ? HdrShaderSources.linearize(fragment, functions) : fragment;
+            compile(compiler, options, variant.getLocation() + ".vsh", vertex, defines);
+            compile(compiler, options, variant.getLocation() + ".fsh", converted, defines);
+        }
+    }
+
     private static void compile(long compiler, long options, String name, String source, String defines) {
         source = source.replaceFirst("#version [^\\n]+", "#version 460 core\n" + defines);
         long result = shaderc_compile_into_spv(compiler, source,
-                name.endsWith(".comp") ? shaderc_compute_shader : shaderc_fragment_shader, name, "main", options);
+                name.endsWith(".comp") ? shaderc_compute_shader
+                        : name.endsWith(".vsh") ? shaderc_vertex_shader : shaderc_fragment_shader, name, "main", options);
         assertNotEquals(0, result);
         try {
             assertEquals(shaderc_compilation_status_success, shaderc_result_get_compilation_status(result),
