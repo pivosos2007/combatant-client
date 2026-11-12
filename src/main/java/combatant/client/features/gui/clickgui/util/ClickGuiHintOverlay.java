@@ -24,17 +24,23 @@ public enum ClickGuiHintOverlay {
     private static long fontGeneration = Long.MIN_VALUE;
 
     public static void renderBottomLeft(float areaX, float areaY, float areaW, float areaH, float scale, float alpha, String... lines) {
+        float ui = AnimationUtility.clamp(scale, 1f, 2f);
+        render(areaX, areaY, areaW, areaH, 7.1f * ui, 2.25f * ui, 12f * ui,
+                0.7f * ui, 0.8f * ui, alpha, lines);
+    }
+
+    public static void renderBottomLeft(float areaX, float areaY, float areaW, float areaH,
+                                        float alpha, String... lines) {
+        render(areaX, areaY, areaW, areaH, 14.2f, 4.5f, 24f, 1.4f, 1.6f, alpha, lines);
+    }
+
+    private static void render(float areaX, float areaY, float areaW, float areaH,
+                               float size, float lineGap, float padding, float shadowX, float shadowY,
+                               float alpha, String... lines) {
         if (lines == null || lines.length == 0 || areaW <= 0.5f || areaH <= 0.5f) return;
-
         TextRenderer font = comfortaa();
-        float a = AnimationUtility.clamp(alpha, 0.0f, 1.0f);
+        float a = AnimationUtility.clamp01(alpha);
         if (a <= 0.001f) return;
-
-        float ui = AnimationUtility.clamp(scale, 1.0f, 2.0f);
-        float size = 7.1f * ui;
-        float lineGap = 2.25f * ui;
-        float padX = 12.0f * ui;
-        float padY = 12.0f * ui;
         float lineH = LayoutRender2D.textHeight(font, size);
 
         int visible = 0;
@@ -44,11 +50,11 @@ public enum ClickGuiHintOverlay {
         if (visible == 0) return;
 
         float totalH = visible * lineH + Math.max(0, visible - 1) * lineGap;
-        float x = areaX + padX;
-        float y = areaY + areaH - padY - totalH;
+        float x = areaX + padding;
+        float y = areaY + areaH - padding - totalH;
         int text = withAlpha(Theme.theme().textPrimary() | 0xFF000000, TEXT_ALPHA * a);
         int shadow = withAlpha(0xFF000000, SHADOW_ALPHA * a);
-        float maxW = Math.max(1f, areaW - padX * 2f);
+        float maxW = Math.max(1f, areaW - padding * 2f);
 
         int index = 0;
         for (String line : lines) {
@@ -56,7 +62,7 @@ public enum ClickGuiHintOverlay {
 
             float lineY = y + index * (lineH + lineGap);
             String fitted = LayoutRender2D.fitText(font, line, size, maxW);
-            LayoutRender2D.drawText(font, fitted, x + 0.7f * ui, lineY + 0.8f * ui, size, shadow, false);
+            LayoutRender2D.drawText(font, fitted, x + shadowX, lineY + shadowY, size, shadow, false);
             LayoutRender2D.drawText(font, fitted, x, lineY, size, text, false);
             index++;
         }

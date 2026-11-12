@@ -263,6 +263,10 @@ public final class RigRenderPipelines {
                 .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
                 .withDepthWrite(!translucent)
                 .withCull(false);
+        // RGBA16F stores scene-linear RGB; the texture/lightmap shader otherwise emits SDR-encoded color.
+        if (colorFormat == GpuFormat.RGBA16_FLOAT) {
+            builder.withShaderDefine("COMBATANT_RIG_SCENE_LINEAR");
+        }
         // RenderPearl requires an explicit target state for opaque draws too.
         // Its format must match the actual pass attachment, including optional RGBA16F.
         builder.withColorTarget(0, colorFormat,
@@ -307,6 +311,9 @@ public final class RigRenderPipelines {
                 .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
                 .withDepthWrite(depthWrite)
                 .withCull(cull);
+        if (colorFormat == GpuFormat.RGBA16_FLOAT) {
+            builder.withShaderDefine("COMBATANT_RIG_SCENE_LINEAR");
+        }
         // Opaque rig variants still require one color target; only the blend function is absent.
         builder.withColorTarget(0, colorFormat,
                 translucent ? BlendFunction.TRANSLUCENT : null, ColorTargetState.WRITE_ALL);

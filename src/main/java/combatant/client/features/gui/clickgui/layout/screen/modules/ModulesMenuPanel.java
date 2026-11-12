@@ -23,8 +23,7 @@ import java.util.Map;
 final class ModulesMenuPanel {
     final ModulesMenuCategory category;
     final int index;
-    final UiLiquidGlassMaterial glass;
-    final UiLiquidGlassMaterial controlGlass;
+    UiLiquidGlassMaterial glass;
     final List<ModuleHit> hits = new ArrayList<>();
     final List<SettingHit> settingHits = new ArrayList<>();
     final List<SubcategoryHit> subcategoryHits = new ArrayList<>();
@@ -87,7 +86,6 @@ final class ModulesMenuPanel {
         this.category = category;
         this.index = index;
         this.glass = ModulesMenuStyle.glass();
-        this.controlGlass = ModulesMenuStyle.glass();
         this.selectedSubcategory = defaultSubcategory();
     }
 
@@ -114,7 +112,15 @@ final class ModulesMenuPanel {
         previewMarqueeStarted.clear();
     }
 
+    void syncGlassMaterial() {
+        UiLiquidGlassMaterial currentGlass = ModulesMenuStyle.glass();
+        if (!currentGlass.equals(glass)) {
+            glass = currentGlass;
+        }
+    }
+
     void update() {
+        syncGlassMaterial();
         float dt = AnimationUtility.deltaTime();
         float target = selected == null ? 0.0f : 1.0f;
 
@@ -238,7 +244,13 @@ final class ModulesMenuPanel {
 
     float enabledAnim(String id, boolean enabled) {
         Float prev = enabledAnim.get(id);
-        float next = AnimationUtility.approach(prev == null ? (enabled ? 1.0f : 0.0f) : prev, enabled ? 1.0f : 0.0f, 0.18f);
+        float target = enabled ? 1.0f : 0.0f;
+        // A fixed per-frame lerp makes the checkmark fade finish too quickly at high FPS.
+        // Match the previous 60-FPS curve while keeping the duration time-based.
+        float dt = AnimationUtility.clamp(AnimationUtility.deltaTime(), 0.0f, 0.1f);
+        float step = 1.0f - (float) Math.exp(-12.0f * dt);
+        float next = AnimationUtility.approach(prev == null ? target : prev, target, step);
+        next = AnimationUtility.snap(next, target, 0.0005f);
         enabledAnim.put(id, next);
         return next;
     }
@@ -483,6 +495,10 @@ final class ModulesMenuPanel {
         float handleY = AnimationUtility.clamp(my - settingsScrollbarDragOffset, settingsScrollbarY, settingsScrollbarY + track);
         float t = (handleY - settingsScrollbarY) / track;
         settingsScroll = AnimationUtility.clamp(t * maxSettingsScroll, 0.0f, maxSettingsScroll);
+    }
+
+    boolean hasOpenSettings() {
+        return selected != null;
     }
 
     private void closeSettings() {

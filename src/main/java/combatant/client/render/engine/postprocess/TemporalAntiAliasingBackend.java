@@ -71,6 +71,7 @@ public final class TemporalAntiAliasingBackend implements AutoCloseable {
     private RhiStorageImage presentationIntermediate;
     private boolean historyAIsRead = true;
     private boolean historyReady;
+    private GpuFormat previousOutputFormat;
 
     public boolean supported(CombatantRhi rhi, RhiStorageImage destination) {
         return destination != null && PostProcessExecutionPolicy.useCompute(rhi);
@@ -118,7 +119,8 @@ public final class TemporalAntiAliasingBackend implements AutoCloseable {
         int width = destination.descriptor().width();
         int height = destination.descriptor().height();
         boolean resized = ensureHistoryImages(width, height);
-        if (resized) historyReady = false;
+        if (resized || previousOutputFormat != outputFormat) historyReady = false;
+        previousOutputFormat = outputFormat;
 
         boolean useHistory = historyReady && externalHistoryValid;
         Matrix4f inverseProjection = new Matrix4f(currentProjection).invert();

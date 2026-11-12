@@ -13,13 +13,13 @@ import combatant.client.config.values.*;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import combatant.client.features.gui.clickgui.settings.TextListSetting;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
 import combatant.client.features.module.HudPhase;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.text.FontInfo;
 import combatant.client.render.engine.text.TextRenderer;
 import net.minecraft.client.resources.language.I18n;
 import combatant.client.runtime.error.ErrorHandler;
-import combatant.client.runtime.CombatantBuild;
 import combatant.client.runtime.error.FailureIsolation;
 
 import java.util.*;
@@ -137,8 +137,7 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
         BooleanValue value = new BooleanValue(configName, def);
         SettingDef settingDef = SettingDef.bool(settingId, value);
         if ("environmental_effects".equals(configName)) {
-            settingDef = settingDef.common("setting.common.environmental_effects")
-                    .visibleWhen(CombatantBuild::isDevelopmentBuild);
+            settingDef = settingDef.common("setting.common.environmental_effects");
         }
         declare(value, settingDef);
         return value;
@@ -385,6 +384,11 @@ public abstract class BaseHudElement implements JsonConfigObject, ConfigNameProv
         } catch (RuntimeException failure) {
             FailureIsolation.reportComponent(this, getTitle(), "native overlay", failure);
         }
+    }
+
+    /** Optional, explicitly supported sample presentation using the production painter. */
+    public PreviewCatalog.Definition<?, ?> previewDefinition() {
+        return null;
     }
 
     public boolean usesEngineRenderer() {

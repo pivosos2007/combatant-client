@@ -59,8 +59,7 @@ public final class ThemeEditorPreviewComponent {
                        float menuW,
                        float menuH,
                        float mx,
-                       float my,
-                       float scale) {
+                       float my) {
         if (editor == null) {
             previewUnit = 0f;
             previewAnim = AnimationUtility.approach(previewAnim, 0f, AnimationUtility.deltaTime(), 12f);
@@ -73,10 +72,10 @@ public final class ThemeEditorPreviewComponent {
         float alpha = AnimationUtility.easeInOutCubic(previewAnim);
         if (alpha <= 0.01f) return;
 
-        float safePad = 22f * scale;
+        float safePad = 44f;
         float availableW = Math.max(1f, menuW - safePad * 2f);
         float availableH = Math.max(1f, menuH - safePad * 2f);
-        float unit = Math.min(scale, Math.min(availableW / DESIGN_W, availableH / DESIGN_H));
+        float unit = Math.min(availableW / DESIGN_W, availableH / DESIGN_H);
         if (unit <= 0.05f) {
             previewUnit = 0f;
             return;

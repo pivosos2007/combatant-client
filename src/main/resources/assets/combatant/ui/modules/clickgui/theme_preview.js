@@ -112,7 +112,6 @@ function materialSpecimens(p, w, h, unit, a) {
   const border = light ? "#FFB2C4D1" : "#FF405061";
   const themeG = grad(p, "windowGradient", c(p.windowBg, "#D0181D24"), c(p.windowHeader, "#D0222A34"));
   const result = [
-    ui.blurSurface({ key: "theme-preview:blur", x: 0, y: 0, w, h, radius: 12 * unit, alpha: 0.55 * a }),
     gradientShape("theme-preview:root", 0, 0, w, h, 12 * unit, themeG.a, themeG.b, themeG.angle),
     text("theme-preview:title", c(p.entryName, "Custom Theme"), 14 * unit, 14 * unit,
       180 * unit, 11 * unit, alpha(c(p.textPrimary, "#FFFFFFFF"), a), 13.32 * unit, "semibold"),
@@ -187,7 +186,6 @@ export function buildTemplate(ctx) {
   const strokeG = grad(p, "strokeGradient", c(p.windowStroke, "#66FFFFFF"), c(p.strokeSoft, "#33FFFFFF"));
 
   const children = [
-    ui.blurSurface({ key: "theme-preview:blur", x: 0, y: 0, w, h, radius: rootR, alpha: 0.55 * a }),
     gradientShape("theme-preview:root", 0, 0, w, h, rootR, rootG.a, rootG.b, rootG.angle, {
       stroke: windowStroke,
       strokeStartColor: strokeG.a,

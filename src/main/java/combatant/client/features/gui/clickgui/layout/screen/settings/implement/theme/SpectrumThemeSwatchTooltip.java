@@ -48,7 +48,7 @@ final class SpectrumThemeSwatchTooltip {
         opacity = 0f;
     }
 
-    void render(Anchor hovered, float panelX, float panelY, float panelW, float panelH, float scale) {
+    void render(Anchor hovered, float panelX, float panelY, float panelW, float panelH) {
         float dt = AnimationUtility.deltaTime();
         if (hovered != null) {
             if (!hovered.sameSwatch(displayed)) {
@@ -72,34 +72,33 @@ final class SpectrumThemeSwatchTooltip {
         }
 
         refreshFonts();
-        draw(displayed, panelX, panelY, panelW, panelH, scale, opacity);
+        draw(displayed, panelX, panelY, panelW, panelH, opacity);
     }
 
-    private void draw(Anchor anchor, float panelX, float panelY, float panelW, float panelH,
-                      float scale, float alpha) {
-        float width = Math.min(160f * scale, panelW - 12f * scale);
-        float height = 39f * scale;
-        float tipWidth = 16f * scale;
-        float tipHeight = 8f * scale;
-        float gap = 5f * scale;
-        float minX = panelX + 6f * scale;
-        float maxX = panelX + panelW - 6f * scale - width;
+    private void draw(Anchor anchor, float panelX, float panelY, float panelW, float panelH, float alpha) {
+        float width = Math.min(320f, panelW - 24f);
+        float height = 78f;
+        float tipWidth = 32f;
+        float tipHeight = 16f;
+        float gap = 10f;
+        float minX = panelX + 12f;
+        float maxX = panelX + panelW - 12f - width;
         float center = anchor.x + anchor.w * 0.5f;
         float x = AnimationUtility.clamp(center - width * 0.5f, minX, Math.max(minX, maxX));
 
-        float panelTop = panelY + 6f * scale;
-        float panelBottom = panelY + panelH - 6f * scale;
+        float panelTop = panelY + 12f;
+        float panelBottom = panelY + panelH - 12f;
         boolean above = anchor.y - height - tipHeight - gap >= panelTop;
         float y = above ? anchor.y - height - tipHeight - gap : anchor.y + anchor.h + tipHeight + gap;
         y = AnimationUtility.clamp(y, panelTop, Math.max(panelTop, panelBottom - height));
         float tipX = AnimationUtility.clamp(center - tipWidth * 0.5f,
-                x + 7f * scale, x + width - tipWidth - 7f * scale);
+                x + 14f, x + width - tipWidth - 14f);
         float tipY = above ? y + height : y - tipHeight;
 
         int fill = faded(SURFACE, alpha);
-        LayoutRender2D.roundedSoftShadow(x, y, width, height, 6f * scale,
-                7f * scale, 0f, faded(0xFF000000, 0.42f * alpha));
-        LayoutRender2D.rounded(x, y, width, height, 6f * scale, fill);
+        LayoutRender2D.roundedSoftShadow(x, y, width, height, 12f,
+                14f, 0f, faded(0xFF000000, 0.42f * alpha));
+        LayoutRender2D.rounded(x, y, width, height, 12f, fill);
         Renderer2D.COLOR.svg(above ? "spectrum2/tooltip-tip-down" : "spectrum2/tooltip-tip-up",
                 tipX, tipY, tipWidth, tipHeight, SvgRenderOptions.overrideColor(fill));
 
@@ -112,21 +111,21 @@ final class SpectrumThemeSwatchTooltip {
                 ? colorHex(anchor.gradient.start()) + "  \u2192  " + colorHex(anchor.gradient.end())
                 : colorHex(anchor.fallback);
 
-        float titleSize = 9.4f * scale;
-        float statusSize = 8f * scale;
-        float colorsSize = 8.6f * scale;
-        float pad = 10f * scale;
+        float titleSize = 18.8f;
+        float statusSize = 16f;
+        float colorsSize = 17.2f;
+        float pad = 20f;
         float statusW = LayoutRender2D.textWidth(regular, status, statusSize);
-        float titleW = Math.max(10f * scale, width - 2f * pad - statusW - 7f * scale);
+        float titleW = Math.max(20f, width - 2f * pad - statusW - 14f);
         String title = LayoutRender2D.fitText(semibold, anchor.label, titleSize, titleW);
 
-        LayoutRender2D.drawText(semibold, title, x + pad, y + 6.2f * scale,
+        LayoutRender2D.drawText(semibold, title, x + pad, y + 12.4f,
                 titleSize, faded(TITLE, alpha), false);
-        LayoutRender2D.drawText(regular, status, x + width - pad - statusW, y + 7.3f * scale,
+        LayoutRender2D.drawText(regular, status, x + width - pad - statusW, y + 14.6f,
                 statusSize, faded(MUTED, alpha), false);
         LayoutRender2D.drawText(regular,
                 LayoutRender2D.fitText(regular, colors, colorsSize, width - pad * 2f),
-                x + pad, y + 22f * scale, colorsSize, faded(TITLE, alpha), false);
+                x + pad, y + 44f, colorsSize, faded(TITLE, alpha), false);
     }
 
     private void refreshFonts() {

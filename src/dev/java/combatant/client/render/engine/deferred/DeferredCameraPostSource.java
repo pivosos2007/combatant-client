@@ -460,8 +460,8 @@ final class DeferredCameraPostSource implements AutoCloseable {
         context.rhi().drawFullscreen(
                 FullscreenDrawCommand.builder("Combatant camera post HDR publish")
                         .colorAttachment(target)
-                        .pipeline(DeferredRuntimeAssets.temporalPresent())
-                        .sampler("u_Source", source, linear)
+                        .pipeline(combatant.client.render.engine.pipeline.PostProcessRenderPipelines.POSTPROCESS_COPY_HDR)
+                        .sampler("u_Texture", source, linear)
                         .build()
         );
     }

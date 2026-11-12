@@ -8,10 +8,12 @@ package combatant.client.features.gui.hud;
 
 import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
 import combatant.client.events.impl.RenderPrewarmCollectEvent;
+import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.render.engine.rhi.CombatantRhi;
+import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.world.environment.BiomeClimateSampler;
 import combatant.client.render.engine.world.environment.BiomeClimateSample;
 import combatant.client.render.engine.world.environment.PrecipitationKind;
-import combatant.client.runtime.CombatantBuild;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -51,15 +53,13 @@ public final class HudClimateSurface {
     private static int waterExitSequence;
     private static long waterExitAtMillis;
     private static Sample last = Sample.DRY;
+    private static CombatantRhi capabilityBackend;
+    private static boolean capabilitySupported;
 
     private HudClimateSurface() { }
 
     /** Per-widget opt-out; scopes capture while constructing deferred draw commands. */
     public static void withEnabled(boolean enabled, Runnable draw) {
-        if (!CombatantBuild.isDevelopmentBuild()) {
-            draw.run();
-            return;
-        }
         boolean previous = ENABLED.get();
         ENABLED.set(previous && enabled);
         HUD_SCOPES.set(HUD_SCOPES.get() + 1);
@@ -70,7 +70,6 @@ public final class HudClimateSurface {
     }
 
     public static Sample sample() {
-        if (!CombatantBuild.isDevelopmentBuild()) return Sample.DRY;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.level == null || mc.player == null) {
             if (previousLevel != null)
@@ -169,13 +168,15 @@ public final class HudClimateSurface {
 
     /** Climate for an ordinary physical surface, not a glass-only effect. */
     public static boolean materialHudScopeActive() {
-        return CombatantBuild.isDevelopmentBuild() && HUD_SCOPES.get() > 0 && ENABLED.get();
+        return HUD_SCOPES.get() > 0 && ENABLED.get();
     }
 
     public static combatant.client.render.engine.renderer.ui.draw.UiMaterialClimateSpec materialClimate() {
         if (!materialHudScopeActive())
             return combatant.client.render.engine.renderer.ui.draw.UiMaterialClimateSpec.DRY;
         Sample s = sample();
+        if (!s.active() || !gpuClimateSupported())
+            return combatant.client.render.engine.renderer.ui.draw.UiMaterialClimateSpec.DRY;
         return new combatant.client.render.engine.renderer.ui.draw.UiMaterialClimateSpec(
                 s.rain(), s.waterExit(), s.frost(), s.snow(), s.condensation(),
                 residualWaterActive());
@@ -194,16 +195,29 @@ public final class HudClimateSurface {
     }
 
     public static void declarePrewarm(RenderPrewarmCollectEvent event) {
-        if (CombatantBuild.isDevelopmentBuild() && event != null) event.glassVisual(CLIMATE_VISUAL);
+        if (event != null) event.glassVisual(CLIMATE_VISUAL);
     }
 
     /** A single custom glass pass: rain beads, exit-water streaks and frost edging. */
     public static UiGlassVisual glassVisual(boolean enabled) {
-        if (!CombatantBuild.isDevelopmentBuild() || !enabled || !ENABLED.get()) return UiGlassVisual.DEFAULT;
+        if (!enabled || !ENABLED.get()) return UiGlassVisual.DEFAULT;
         Sample s = sample();
-        if (!s.active()) return UiGlassVisual.DEFAULT;
+        if (!s.active() || !gpuClimateSupported()) return UiGlassVisual.DEFAULT;
         return CLIMATE_VISUAL.withVector(0, s.rain(), s.waterExit(), s.frost(), s.snow())
                 .withVector(1, s.humidity(), s.condensation(), s.heat(), 0.0f);
+    }
+
+    /** Avoid submitting climate shaders when the active GPU cannot run the shared field. */
+    private static boolean gpuClimateSupported() {
+        if (RenderSystem.tryGetDevice() == null) return false;
+        CombatantRhi backend = CombatantRenderSystem.rhi();
+        if (backend != capabilityBackend) {
+            var capabilities = backend.capabilities();
+            capabilitySupported = capabilities.nativeComputeSubmission()
+                    && capabilities.imageLoadStore();
+            capabilityBackend = backend;
+        }
+        return capabilitySupported;
     }
 
     private static boolean residualWaterActive() {

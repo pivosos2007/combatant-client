@@ -24,42 +24,42 @@ public final class CategoryContainerComponent {
         }
     }
 
-    public void render(float x, float y, float mx, float my, MenuScreen.Category selected, float scale) {
+    public void render(float x, float y, float mx, float my, MenuScreen.Category selected) {
         float offset = 0f;
         for (CategoryComponent component : categoryComponents) {
-            component.render(x + 6f * scale, y + offset, mx, my, selected, scale);
-            offset += 29f * scale;
+            component.render(x + 12f, y + offset, mx, my, selected);
+            offset += 58f;
             if (component.category() == MenuScreen.Category.THEMES) {
-                renderSeparator(x, y + offset + 5f * scale, scale);
-                offset += 10f * scale;
+                renderSeparator(x, y + offset + 10f);
+                offset += 20f;
             } else if (component.category() == MenuScreen.Category.RELATIONS) {
-                renderSeparator(x, y + offset - 4f * scale, scale);
-                offset += 10f * scale;
+                renderSeparator(x, y + offset - 8f);
+                offset += 20f;
             }
         }
     }
 
-    public MenuScreen.Category click(float x, float y, float mx, float my, float scale) {
+    public MenuScreen.Category click(float x, float y, float mx, float my) {
         float offset = 0f;
         for (CategoryComponent component : categoryComponents) {
-            if (component.click(x + 6f * scale, y + offset, mx, my, scale)) {
+            if (component.click(x + 12f, y + offset, mx, my)) {
                 return component.category();
             }
-            offset += 29f * scale;
+            offset += 58f;
             if (component.category() == MenuScreen.Category.THEMES
                     || component.category() == MenuScreen.Category.RELATIONS) {
-                offset += 10f * scale;
+                offset += 20f;
             }
         }
         return null;
     }
 
-    private void renderSeparator(float x, float y, float scale) {
+    private void renderSeparator(float x, float y) {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        float sx = x + 8f * scale;
+        float sx = x + 16f;
         float sy = y;
-        float sw = 26f * scale;
-        float sh = 0.5f * scale;
+        float sw = 52f;
+        float sh = 1f;
         LayoutRender2D.rectQuad(
                 sx,
                 sy,

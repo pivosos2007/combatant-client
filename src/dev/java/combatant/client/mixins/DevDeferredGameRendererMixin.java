@@ -22,7 +22,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class DevDeferredGameRendererMixin {
     @Shadow @Final private Minecraft minecraft;
 
-    @Inject(method = "renderLevel", at = @At("HEAD"))
+    @Inject(method = "render", at = @At("HEAD"))
     private void combatant$devDeferredFrameBoundary(CallbackInfo ci) {
         DevDeferredRuntime.serviceFrameBoundary();
     }

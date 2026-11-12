@@ -10,6 +10,7 @@ package combatant.client.features.gui.hud.nondraggable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import combatant.client.features.gui.hud.AbstractHudElement;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
 import combatant.client.features.gui.hud.HudRenderSpace;
 import combatant.client.features.module.HudPhase;
 import combatant.client.render.engine.math.HudScale;
@@ -37,9 +38,19 @@ public enum StaticHudElementRegistry {
         if (ELEMENTS.contains(element)) return;
         element.postInit();
         ELEMENTS.add(element);
+        PreviewCatalog.Definition<?, ?> preview = element.previewDefinition();
+        if (preview != null) registerPreview(preview);
+    }
+
+    private static <S, R> void registerPreview(PreviewCatalog.Definition<S, R> definition) {
+        PreviewCatalog.register(definition);
     }
 
     public static void clearRuntimeReferences() {
+        for (AbstractHudElement element : ELEMENTS) {
+            PreviewCatalog.Definition<?, ?> preview = element.previewDefinition();
+            if (preview != null) PreviewCatalog.unregister(preview.id());
+        }
         ELEMENTS.clear();
     }
 

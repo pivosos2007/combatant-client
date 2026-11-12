@@ -17,6 +17,9 @@ public interface VisualPreviewProvider {
 
     String title();
 
+    /** True when the preview requires real player/level render state. */
+    default boolean requiresWorld() { return false; }
+
     VisualPreviewControlMode controlMode();
 
     default VisualPreviewInteractionProfile interactionProfile() {

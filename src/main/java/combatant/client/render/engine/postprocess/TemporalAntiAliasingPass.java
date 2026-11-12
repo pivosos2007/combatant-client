@@ -66,6 +66,12 @@ public final class TemporalAntiAliasingPass implements PostProcessPass, PostProc
     }
 
     @Override
+    public boolean supportsStorageFormat(com.mojang.renderpearl.api.GpuFormat format) {
+        return format == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM
+                || format == combatant.client.render.engine.hdr.SceneColor.FORMAT;
+    }
+
+    @Override
     public boolean render(PostProcessExecutionContext execution) {
         if (!isActive() || execution == null || execution.context() == null || execution.destinationStorage() == null) {
             invalidateHistory();

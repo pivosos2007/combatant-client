@@ -24,6 +24,7 @@ import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.hud.draggable.DraggableHudElement;
+import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleListInfoResolver;
 import combatant.client.features.module.ModuleManager;
@@ -98,7 +99,6 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
     private final NumberValue<Integer> textEffectSpeed =
             new NumberValue<>("module_list_text_effect_speed", 30, 1, 60);
     private final List<Row> rows = new ArrayList<>();
-    private final List<Module> enabledModules = new ArrayList<>();
     private final List<String> enabledLabels = new ArrayList<>();
     private final List<String> enabledDetails = new ArrayList<>();
     private float renderX;
@@ -132,7 +132,7 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(bgEffect));
@@ -169,7 +169,8 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
                              float tickDelta,
                              int screenW,
                              int screenH) {
-        if (!isEnabled() || mc == null || mc.player == null) {
+        boolean editorPreview = DraggableHudElementRegistry.isForceVisible();
+        if (!isEnabled() || mc == null || (mc.player == null && !editorPreview)) {
             rows.clear();
             width = 0f;
             height = 0f;
@@ -198,7 +199,6 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         float targetTextHeight = Math.max(4.4f * baseScale, lineH - 4.2f * baseScale);
         float textScale = Math.max(0.2f, targetTextHeight / fontHeight);
 
-        enabledModules.clear();
         enabledLabels.clear();
         enabledDetails.clear();
         int modulesHash = 1;
@@ -207,7 +207,6 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
                 String label = module.getDisplayName();
                 String detail = ModuleListInfoResolver.query(module);
                 if (detail != null && detail.isEmpty()) detail = null;
-                enabledModules.add(module);
                 enabledLabels.add(label != null ? label : "");
                 enabledDetails.add(detail);
                 modulesHash = 31 * modulesHash + System.identityHashCode(module);
@@ -216,7 +215,28 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
             }
         }
 
-        if (enabledModules.isEmpty()) {
+        // In the main menu there may be no active world modules. Preview a few
+        // registered module names instead of hiding ModuleList or enabling modules.
+        if (enabledLabels.isEmpty() && editorPreview) {
+            for (Module module : ModuleManager.getModules()) {
+                if (module == null || !module.isShownInModuleList()) continue;
+                String label = module.getDisplayName();
+                if (label == null || label.isBlank()) continue;
+                enabledLabels.add(label);
+                enabledDetails.add(null);
+                modulesHash = 31 * modulesHash + System.identityHashCode(module);
+                modulesHash = 31 * modulesHash + label.hashCode();
+                if (enabledLabels.size() >= 3) break;
+            }
+            if (enabledLabels.isEmpty()) {
+                String label = getTitle();
+                enabledLabels.add(label);
+                enabledDetails.add(null);
+                modulesHash = 31 * modulesHash + label.hashCode();
+            }
+        }
+
+        if (enabledLabels.isEmpty()) {
             rows.clear();
             width = 0f;
             height = 0f;
@@ -224,7 +244,7 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
         }
 
         boolean layoutChanged = modulesHash != cachedModulesHash
-                || enabledModules.size() != cachedModulesCount
+                || enabledLabels.size() != cachedModulesCount
                 || Math.abs(textScale - cachedTextScale) > 0.0001f
                 || cachedScreenWidth != screenW;
 
@@ -233,7 +253,7 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
             listRenderer.begin(textScale, false, false);
             float openWidth = (float) listRenderer.getWidth("[", false);
             float closeWidth = (float) listRenderer.getWidth("]", false);
-            for (int i = 0; i < enabledModules.size(); i++) {
+            for (int i = 0; i < enabledLabels.size(); i++) {
                 String label = enabledLabels.get(i);
                 float labelWidth = (float) listRenderer.getWidth(label, false);
                 String detail = enabledDetails.get(i);
@@ -265,7 +285,7 @@ public final class ModuleList extends DraggableHudElement implements ConfigValue
             listRenderer.end();
             rows.sort(Comparator.comparingDouble((Row row) -> row.textWidth).reversed());
             cachedModulesHash = modulesHash;
-            cachedModulesCount = enabledModules.size();
+            cachedModulesCount = enabledLabels.size();
             cachedTextScale = textScale;
             cachedScreenWidth = screenW;
         }

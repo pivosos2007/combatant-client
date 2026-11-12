@@ -13,6 +13,7 @@ import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.*;
 import combatant.client.features.gui.hud.HudElementInfo;
 import combatant.client.features.gui.hud.HudGlobalConfig;
@@ -333,7 +334,7 @@ public final class Triangulator extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(colorMode));
         defs.add(SettingDef.mode(panelStyle).visibleWhen(this::isThemeMode));

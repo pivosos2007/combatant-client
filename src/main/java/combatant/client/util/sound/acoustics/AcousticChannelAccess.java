@@ -1,0 +1,13 @@
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+
+package combatant.client.util.sound.acoustics;
+
+/** Exposes the native source handle only while its Minecraft Channel is alive. */
+public interface AcousticChannelAccess {
+    int combatant$acousticSource();
+}

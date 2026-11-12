@@ -62,8 +62,8 @@ public final class MsaaFramebufferPool implements AutoCloseable {
             throw new IllegalArgumentException("MSAA pool requires samples > 1: "
                     + descriptor.logicalName() + " samples=" + descriptor.samples());
         }
-        // MsaaFramebuffer supports RGBA8 multisample color storage only.
-        if (descriptor.colorFormat() != GpuFormat.RGBA8_UNORM) {
+        if (descriptor.colorFormat() != GpuFormat.RGBA8_UNORM
+                && descriptor.colorFormat() != combatant.client.render.engine.hdr.SceneColor.FORMAT) {
             throw new IllegalArgumentException("Unsupported transient MSAA color format: "
                     + descriptor.colorFormat());
         }
@@ -90,7 +90,7 @@ public final class MsaaFramebufferPool implements AutoCloseable {
                     descriptor.width(),
                     descriptor.height(),
                     descriptor.depth(),
-                    descriptor.samples()
+                    descriptor.samples(), descriptor.colorFormat()
             );
             leakTracker.register(target);
             creates++;

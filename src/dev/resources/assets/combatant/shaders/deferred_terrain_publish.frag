@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 0) out vec4 color;
 
@@ -43,7 +45,7 @@ vec3 combatant_apply_compatibility_fog(vec3 radiance, vec4 auxiliary) {
     float renderFog = combatant_linear_fog(
             cylindricalDistance, u_FogRanges.z, u_FogRanges.w);
     float fogAmount = max(1.0 - auxiliary.b, max(environmentalFog, renderFog));
-    return mix(radiance, u_FogColor.rgb, fogAmount * u_FogColor.a);
+    return mix(radiance, combatantSrgbToLinear(u_FogColor.rgb), fogAmount * u_FogColor.a);
 }
 
 void main() {

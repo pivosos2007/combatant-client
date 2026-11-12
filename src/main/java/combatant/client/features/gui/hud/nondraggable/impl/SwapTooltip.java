@@ -15,6 +15,8 @@ import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.hud.HudGlassSettings;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
+import combatant.client.features.gui.preview.api.HudPreviewCanvas;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
 import combatant.client.render.engine.color.RenderColor;
@@ -60,6 +62,17 @@ public final class SwapTooltip extends AbstractHudElement {
         super("swap_tooltip", "Swap Tooltip", "hud.static.swap_tooltip.description", true);
     }
 
+    @Override
+    public PreviewCatalog.Definition<String, HudPreviewCanvas> previewDefinition() {
+        return PreviewCatalog.definition(
+                new PreviewCatalog.Id(PreviewCatalog.Surface.HUD, getId()), HudPreviewCanvas.class,
+                frame -> PreviewCatalog.Availability.READY,
+                frame -> "Example Item",
+                (canvas, value) -> renderLabel(value, 0xFFE9F3FF, 1f, true,
+                        canvas.guiWidth(), canvas.guiHeight(),
+                        canvas.hudScale(), canvas.guiScale(), true), PreviewCatalog.PreviewSpace.VANILLA_GUI);
+    }
+
     public static SwapTooltip get() {
         return INSTANCE;
     }
@@ -98,36 +111,51 @@ public final class SwapTooltip extends AbstractHudElement {
             return;
         }
 
+        renderLabel(text, color, targetAlpha, hasBars,
+                mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight(),
+                HudScale.scale(mc.getWindow().getWidth(), mc.getWindow().getHeight()),
+                ViewportContext.getScaleFactor(), false);
+    }
+
+    private static void renderLabel(String label, int argb, float opacity, boolean barsVisible,
+                                    float screenW, float screenH, float uiScale, float fbScale,
+                                    boolean preview) {
+        SwapTooltip settings = INSTANCE;
         TextRenderer tr = BuiltinFontCatalog.ONEST_MEDIUM.renderer(TextRenderer.get());
-        float uiScale = HudScale.scale(mc.getWindow().getWidth(), mc.getWindow().getHeight());
         float textScale = settings.scale.get() * uiScale * 1.1f;
         float padX = PAD_X * uiScale;
         float padY = PAD_Y * uiScale;
 
         tr.begin(textScale, false, false);
-        float textW = (float) tr.getWidth(text, false);
-        float textH = (float) tr.getHeight(false);
-        tr.end();
+        float textW;
+        float textH;
+        try {
+            textW = (float) tr.getWidth(label, false);
+            textH = (float) tr.getHeight(false);
+        } finally {
+            tr.end();
+        }
 
         float totalW = textW + padX * 2.0f;
         float totalH = textH + padY * 2.0f;
         float radius = Math.max(4.5f, totalH * 0.28f);
 
-        int screenW = mc.getWindow().getGuiScaledWidth();
-        int screenH = mc.getWindow().getGuiScaledHeight();
         float x = (screenW - totalW) * 0.5f;
         float y = screenH - settings.offsetY.get();
-        if (!hasBars) {
-            y += EXTRA_OFFSET_NO_BARS;
+        if (!barsVisible) y += EXTRA_OFFSET_NO_BARS;
+        // The bottom-of-screen live anchor is covered by ClickGui controls in
+        // the HUD editor. Render the same presenter in its unobstructed sample area.
+        if (preview) {
+            x = screenW * 0.07f;
+            y = screenH * 0.32f;
         }
 
-        float alpha = Math.max(0.0f, Math.min(1.0f, targetAlpha));
-        if (alpha <= 0.01f && targetAlpha <= 0.0f) {
-            resetState();
+        float alpha = Math.max(0.0f, Math.min(1.0f, opacity));
+        if (alpha <= 0.01f && opacity <= 0.0f) {
+            if (!preview) resetState();
             return;
         }
 
-        float fbScale = ViewportContext.getScaleFactor();
         float xb = x * fbScale;
         float yb = y * fbScale;
         float wb = totalW * fbScale;
@@ -148,22 +176,26 @@ public final class SwapTooltip extends AbstractHudElement {
 
         ViewportContext.scaledProjection();
         tr.begin(textScale, false, false);
-        int textColor = HudRenderUtil.scaleAlpha(color != 0 ? color : themeText(), alpha);
-        renderText(tr, settings, x + padX, y + padY, textColor, alpha);
-        tr.end();
+        try {
+            int textColor = HudRenderUtil.scaleAlpha(argb != 0 ? argb : themeText(), alpha);
+            renderText(tr, settings, label, x + padX, y + padY, textColor, alpha);
+        } finally {
+            tr.end();
+        }
 
         ViewportContext.unscaledProjection();
     }
 
     private static void renderText(TextRenderer tr,
                                    SwapTooltip settings,
+                                   String label,
                                    float x,
                                    float y,
                                    int textColor,
                                    float alpha) {
         TextEffect effect = settings.textEffect.get();
         if (effect == TextEffect.NONE || alpha < 0.98f) {
-            tr.render(text, x, y, new RenderColor(textColor), true);
+            tr.render(label, x, y, new RenderColor(textColor), true);
             return;
         }
 
@@ -177,7 +209,7 @@ public final class SwapTooltip extends AbstractHudElement {
         float speed = Math.max(0.1f, settings.textEffectSpeed.get() * 0.08f);
         float basePhase = time * speed;
 
-        tr.renderGradient(text, x, y, (index, codePoint, glyphX, out) -> {
+        tr.renderGradient(label, x, y, (index, codePoint, glyphX, out) -> {
             float t0;
             float t1;
             switch (effect) {
@@ -216,12 +248,10 @@ public final class SwapTooltip extends AbstractHudElement {
         Runnable draw = () -> Renderer2D.COLOR.liquidGlassRect(
                 x, y, w, h, radius, GLASS_TINT, alpha, 1.0f,
                 Renderer2D.LiquidGlassPreset.HUD_SURFACE_SMALL);
-        if (INSTANCE.glassSettings.customized()) {
-            UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
-                    .withOptics(INSTANCE.glassSettings.apply(UiGlassOpticsSpec.LIQUID));
-            Runnable original = draw;
-            draw = () -> Renderer2D.COLOR.withLiquidGlassMaterial(material, original);
-        }
+        UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
+                .withOptics(INSTANCE.glassSettings.apply(UiGlassOpticsSpec.LIQUID));
+        Runnable original = draw;
+        draw = () -> Renderer2D.COLOR.withLiquidGlassMaterial(material, original);
         Renderer2D.COLOR.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS, HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,
                 draw);

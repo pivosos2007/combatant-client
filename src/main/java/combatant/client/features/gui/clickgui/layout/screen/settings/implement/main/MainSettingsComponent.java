@@ -69,7 +69,6 @@ public final class MainSettingsComponent {
     private float contentY;
     private float contentW;
     private float contentH;
-    private float lastSettingScale = 1.0f;
     private final SettingOverlayHost overlayHost = new SettingOverlayHost();
     public MainSettingsComponent() {
         rebuildSettings();
@@ -85,14 +84,6 @@ public final class MainSettingsComponent {
         return out;
     }
 
-    private static float settingScale(float menuScale) {
-        // Expensive's setting metrics are already expressed in logical UI pixels.  The ClickGUI
-        // host is commonly rendered at ~2x, so multiplying controls by the full menu scale makes
-        // 14px labels and 25px inputs balloon into 20-30px UI.  Keep the component grammar near
-        // its authored size and only compensate for unusually small/large hosts.
-        return ClickGuiMath.clamp(menuScale * 0.55f, 0.92f, 1.18f);
-    }
-
     public void resetScroll() {
         scroll = 0f;
         smoothedScroll = 0f;
@@ -100,16 +91,15 @@ public final class MainSettingsComponent {
         overlayHost.closeImmediately();
     }
 
-    public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float scale) {
+    public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my) {
         ensureSettings();
-        lastSettingScale = settingScale(scale);
         SettingsGuiPalette palette = SettingsGuiPalette.current();
 
-        float areaX = menuX + 31f * scale;
-        float areaY = menuY + 33f * scale;
-        float areaW = menuW - 42f * scale;
-        float areaH = menuH - 39f * scale;
-        float leftW = 112f * scale;
+        float areaX = menuX + 62f;
+        float areaY = menuY + 66f;
+        float areaW = menuW - 84f;
+        float areaH = menuH - 78f;
+        float leftW = 224f;
 
         float leftX = areaX;
         float leftY = areaY;
@@ -132,15 +122,15 @@ public final class MainSettingsComponent {
         LayoutRender2D.rectQuad(rightX, rightY, rightW, rightH, detailA,
                 SettingsGuiPalette.withAlpha(detailA, 30), SettingsGuiPalette.withAlpha(detailB, 40), detailB);
 
-        float dividerW = Math.max(0.65f, 0.60f * scale);
-        LayoutRender2D.rectQuad(rightX, areaY + 7f * scale, dividerW, Math.max(1f, areaH - 14f * scale),
+        float dividerW = Math.max(0.65f, 1.2f);
+        LayoutRender2D.rectQuad(rightX, areaY + 14f, dividerW, Math.max(1f, areaH - 28f),
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.18f),
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.32f),
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.32f),
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.18f));
 
-        renderCategoryList(leftX, leftY, leftW, mx, my, scale, palette);
-        renderSettingsPanel(mx, my, scale, palette);
+        renderCategoryList(leftX, leftY, leftW, mx, my, palette);
+        renderSettingsPanel(mx, my, palette);
     }
 
     public boolean mousePressedScrollbar(float mx, float my, int button) {
@@ -156,7 +146,7 @@ public final class MainSettingsComponent {
 
     public boolean mouseClicked(float mx, float my, int button) {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT) return false;
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
             if (overlayHost.hasActiveOverlay() && overlayHost.mouseClicked(mx, my, button)) return true;
         }
         if (isScrollbarHovered(mx, my)) return true;
@@ -173,7 +163,7 @@ public final class MainSettingsComponent {
 
         if (!ClickGuiMath.insideRect(mx, my, rightX, rightY, rightW, rightH)) return false;
         if (ClickGuiMath.insideRect(mx, my, contentX, contentY, contentW, contentH)) {
-            try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+            try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
                 SettingHit clicked = null;
                 for (SettingHit hit : settingHits) {
                     if (ClickGuiMath.insideRect(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) { clicked = hit; break; }
@@ -190,7 +180,7 @@ public final class MainSettingsComponent {
 
     public void mouseReleased(float mx, float my, int button) {
         if (button == combatant.client.input.InputKeys.MOUSE_LEFT) draggingScrollbar = false;
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
             if (overlayHost.hasActiveOverlay()) {
                 overlayHost.mouseReleased(mx, my, button);
                 return;
@@ -203,7 +193,7 @@ public final class MainSettingsComponent {
     }
 
     public void scroll(float mx, float my, double amount) {
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
             if (overlayHost.hasActiveOverlay() && overlayHost.mouseScrolled(mx, my, amount)) return;
         }
         if (!ClickGuiMath.insideRect(mx, my, rightX, rightY, rightW, rightH)) return;
@@ -211,7 +201,7 @@ public final class MainSettingsComponent {
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
             if (overlayHost.hasActiveOverlay() && overlayHost.keyPressed(keyCode, scanCode, modifiers)) return true;
             Section section = selectedSection();
             if (section == null) return false;
@@ -223,7 +213,7 @@ public final class MainSettingsComponent {
     }
 
     public boolean charTyped(char chr, int modifiers) {
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
             if (overlayHost.hasActiveOverlay() && overlayHost.charTyped(chr, modifiers)) return true;
             Section section = selectedSection();
             if (section == null) return false;
@@ -234,11 +224,11 @@ public final class MainSettingsComponent {
         return false;
     }
 
-    private void renderCategoryList(float x, float y, float w, float mx, float my, float scale, SettingsGuiPalette palette) {
+    private void renderCategoryList(float x, float y, float w, float mx, float my, SettingsGuiPalette palette) {
         categoryHits.clear();
-        float pad = 7f * scale;
-        float rowH = 20f * scale;
-        float rowY = y + 9f * scale;
+        float pad = 14f;
+        float rowH = 40f;
+        float rowY = y + 18f;
 
         List<Section> sections = new ArrayList<>(sectionsById.values());
         for (int i = 0; i < sections.size(); i++) {
@@ -251,7 +241,7 @@ public final class MainSettingsComponent {
             categoryHoverAnim.put(sectionId, hoverAnim);
             float rowX = x + pad;
             float rowW = w - pad * 2f;
-            float rowRadius = 6f * scale;
+            float rowRadius = 12f;
             if (active || hoverAnim > 0.01f) {
                 int left = active
                         ? SettingsGuiPalette.withAlpha(palette.menuCategorySelectedLeft(), 142)
@@ -265,10 +255,10 @@ public final class MainSettingsComponent {
             if (active) {
                 boolean selectedClip = ClipFunction.pushRoundedRect(rowX, rowY, rowW, rowH, rowRadius);
                 try {
-                    float stripW = Math.max(2f, 2.2f * scale);
+                    float stripW = Math.max(2f, 4.4f);
                     int accent = combatant.client.features.theme.Theme.theme().accent();
                     int accentSoft = combatant.client.features.theme.Theme.theme().accentSoft();
-                    LayoutRender2D.rectQuad(rowX - 0.5f * scale, rowY - scale, stripW, rowH + 2f * scale,
+                    LayoutRender2D.rectQuad(rowX - 1f, rowY - 2f, stripW, rowH + 4f,
                             SettingsGuiPalette.withAlpha(accentSoft, 170), SettingsGuiPalette.withAlpha(accent, 238),
                             SettingsGuiPalette.withAlpha(accent, 238), SettingsGuiPalette.withAlpha(accentSoft, 170));
                 } finally {
@@ -280,8 +270,8 @@ public final class MainSettingsComponent {
             int text = failed
                     ? LayoutRender2D.alpha(0xFFFF7777, 0.82f + 0.18f * hoverAnim)
                     : active ? palette.menuHeaderText() : LayoutRender2D.alpha(palette.panelMuted(), 0.72f + 0.20f * hoverAnim);
-            float iconSize = 9f * scale;
-            float iconX = x + 13f * scale;
+            float iconSize = 18f;
+            float iconX = x + 26f;
             float iconY = rowY + (rowH - iconSize) * 0.5f;
             String iconId = section.contributor().icon();
             Renderer2D.COLOR.svg(
@@ -295,28 +285,28 @@ public final class MainSettingsComponent {
             LayoutRender2D.drawText(
                     BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                     section.title(),
-                    x + 27f * scale,
-                    rowY + 6f * scale,
-                    7f * scale,
+                    x + 54f,
+                    rowY + 12f,
+                    14f,
                     text,
                     false
             );
             if (failed) {
-                SettingErrorView.warning(x + w - 20f * scale, rowY + 5.5f * scale, 9f * scale, 1f);
+                SettingErrorView.warning(x + w - 40f, rowY + 11f, 18f, 1f);
             }
             categoryHits.add(new CategoryHit(sectionId, x + pad, rowY, w - pad * 2f, rowH));
-            rowY += 24f * scale;
+            rowY += 48f;
         }
     }
 
-    private void renderCategorySeparator(float x, float y, float w, float scale, SettingsGuiPalette palette) {
-        float sx = x + 12f * scale;
-        float sw = Math.max(1f, w - 24f * scale);
+    private void renderCategorySeparator(float x, float y, float w, SettingsGuiPalette palette) {
+        float sx = x + 24f;
+        float sw = Math.max(1f, w - 48f);
         LayoutRender2D.rectQuad(
                 sx,
                 y,
                 sw,
-                0.5f * scale,
+                1f,
                 LayoutRender2D.alpha(palette.menuLineLow(), 0.24f),
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.34f),
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.34f),
@@ -324,18 +314,18 @@ public final class MainSettingsComponent {
         );
     }
 
-    private void renderSettingsPanel(float mx, float my, float scale, SettingsGuiPalette palette) {
+    private void renderSettingsPanel(float mx, float my, SettingsGuiPalette palette) {
         buildRows();
-        float pad = 9f * scale;
-        float titleY = rightY + 8.5f * scale;
-        float titleSize = 8.3f * scale;
+        float pad = 18f;
+        float titleY = rightY + 17f;
+        float titleSize = 16.6f;
         int text = palette.menuHeaderText();
 
         LayoutRender2D.rectQuad(
                 rightX + pad,
-                titleY + 11f * scale,
+                titleY + 22f,
                 rightW - pad * 2f,
-                0.5f * scale,
+                1f,
                 LayoutRender2D.alpha(palette.menuLineLow(), 0.55f),
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.82f),
                 LayoutRender2D.alpha(palette.menuLineStrong(), 0.82f),
@@ -347,25 +337,25 @@ public final class MainSettingsComponent {
                 : selected.title();
         float headerTextX = rightX + pad;
         if (selected != null) {
-            float icon = 9f * scale;
+            float icon = 18f;
             String iconId = selected.contributor().icon();
-            Renderer2D.COLOR.svg(iconId, headerTextX, titleY - 0.5f * scale, icon, icon,
+            Renderer2D.COLOR.svg(iconId, headerTextX, titleY - 1f, icon, icon,
                     SvgRenderOptions.overrideColor(LayoutRender2D.alpha(text, 0.92f)));
-            headerTextX += icon + 5f * scale;
+            headerTextX += icon + 10f;
         }
         LayoutRender2D.drawText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), title, headerTextX, titleY, titleSize, text, false);
 
         contentX = rightX + pad;
-        contentY = rightY + 28f * scale;
-        contentH = Math.max(1f, rightH - 37f * scale);
+        contentY = rightY + 56f;
+        contentH = Math.max(1f, rightH - 74f);
 
         // Width is derived from the current layout, not the previous frame's scrollbar state.
         float totalH = totalRowsHeight();
         float maxScroll = Math.max(0f, totalH - contentH);
         boolean willScroll = maxScroll > 0.5f;
-        contentW = Math.max(1f, rightW - pad * 2f - (willScroll ? 7f * scale : 0f));
+        contentW = Math.max(1f, rightW - pad * 2f - (willScroll ? 14f : 0f));
         overlayHost.setViewport(contentX, contentY, contentW, contentH);
-        updateScrollbarMetrics(maxScroll, totalH, scale);
+        updateScrollbarMetrics(maxScroll, totalH);
         if (draggingScrollbar) {
             scrollToMouse(my);
         }
@@ -377,21 +367,21 @@ public final class MainSettingsComponent {
         boolean clipped = ScissorFunction.pushRaw(contentX, contentY, contentW, contentH);
         try {
         float y = contentY + smoothedScroll;
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
             for (SettingRow row : rows) {
                 float h = row.height();
                 if (h > 0.5f) {
                     settingHits.add(new SettingHit(row.setting(), contentX, y, contentW, h));
-                    if (y + h >= contentY - scale && y <= contentY + contentH + scale) {
+                    if (y + h >= contentY - 2f && y <= contentY + contentH + 2f) {
                         float fullH = Math.max(h, row.fullHeight());
                         float renderY = y - (fullH - h) * 0.5f;
                         // The host viewport is already clipped. A per-row scissor is only needed
                         // while visibility is actually collapsing; keeping it at 99.x% forever
                         // shaves control strokes, slider circles and glyph antialiasing.
-                        boolean partialReveal = h < fullH - Math.max(0.75f, 0.75f * scale);
+                        boolean partialReveal = h < fullH - Math.max(0.75f, 1.5f);
                         boolean rowClip = false;
                         if (partialReveal) {
-                            float bleed = Math.min(2.0f * scale, Math.max(0.25f * scale, h * 0.10f));
+                            float bleed = Math.min(4f, Math.max(0.5f, h * 0.10f));
                             rowClip = ScissorFunction.pushRaw(contentX - bleed, y - bleed,
                                     contentW + bleed * 2f, h + bleed * 2f);
                         }
@@ -409,8 +399,8 @@ public final class MainSettingsComponent {
             if (clipped) ScissorFunction.pop();
         }
 
-        renderScrollbar(scale, palette);
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+        renderScrollbar(palette);
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
             overlayHost.render(mx, my);
         }
     }
@@ -420,7 +410,7 @@ public final class MainSettingsComponent {
         Section section = selectedSection();
         List<Setting> settings = section == null ? null : section.settings();
         if (settings == null) return;
-        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, lastSettingScale, overlayHost)) {
+        try (SettingRenderContext.Scope ignored = SettingRenderContext.push(SettingRenderSurface.MAIN_SETTINGS, overlayHost)) {
             for (Setting setting : settings) {
                 float anim = setting.updateVisibilitySafely();
                 boolean targetVisible = setting.isVisibilityTargetVisibleSafely();
@@ -428,7 +418,7 @@ public final class MainSettingsComponent {
                 float fullH = setting.getHeightSafely();
                 float resolvedAnim = anim >= 0.985f ? 1f : anim;
                 rows.add(new SettingRow(setting, resolvedAnim, fullH, fullH * resolvedAnim,
-                        15f * lastSettingScale * resolvedAnim));
+                        16.5f * resolvedAnim));
             }
         }
     }
@@ -443,7 +433,7 @@ public final class MainSettingsComponent {
         return out;
     }
 
-    private void updateScrollbarMetrics(float maxScroll, float totalH, float scale) {
+    private void updateScrollbarMetrics(float maxScroll, float totalH) {
         scrollbarVisible = maxScroll > 0f && totalH > contentH + 0.5f;
         scrollbarMaxScroll = maxScroll;
         if (!scrollbarVisible) {
@@ -452,16 +442,16 @@ public final class MainSettingsComponent {
             return;
         }
 
-        scrollbarW = 4f * scale;
-        scrollbarX = rightX + rightW - 10f * scale;
+        scrollbarW = 8f;
+        scrollbarX = rightX + rightW - 20f;
         scrollbarY = contentY;
         scrollbarH = contentH;
-        scrollbarThumbH = Math.max(18f * scale, scrollbarH * (contentH / Math.max(contentH, totalH)));
+        scrollbarThumbH = Math.max(36f, scrollbarH * (contentH / Math.max(contentH, totalH)));
         float ratio = scrollbarMaxScroll <= 0f ? 0f : (-smoothedScroll / scrollbarMaxScroll);
         scrollbarThumbY = scrollbarY + (scrollbarH - scrollbarThumbH) * AnimationUtility.clamp(ratio, 0f, 1f);
     }
 
-    private void renderScrollbar(float scale, SettingsGuiPalette palette) {
+    private void renderScrollbar(SettingsGuiPalette palette) {
         if (!scrollbarVisible) return;
         float mx = ClickGuiRenderer.getMouseX();
         float my = ClickGuiRenderer.getMouseY();
@@ -473,7 +463,7 @@ public final class MainSettingsComponent {
                 scrollbarY,
                 scrollbarW,
                 scrollbarH,
-                2f * scale,
+                4f,
                 palette.moduleScrollTrackA(),
                 palette.moduleScrollTrackB(),
                 palette.moduleScrollTrackB(),
@@ -484,7 +474,7 @@ public final class MainSettingsComponent {
                 scrollbarThumbY,
                 scrollbarW,
                 scrollbarThumbH,
-                2f * scale,
+                4f,
                 palette.moduleScrollHandleA(),
                 palette.moduleScrollHandleB(),
                 palette.moduleScrollHandleB(),

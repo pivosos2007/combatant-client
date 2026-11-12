@@ -99,6 +99,11 @@ public class ExtendedRenderPipelineBuilder {
         return this;
     }
 
+    public ExtendedRenderPipelineBuilder withShaderDefine(String flag) {
+        delegate.withShaderDefine(flag);
+        return this;
+    }
+
     public ExtendedRenderPipelineBuilder withDepthTestFunction(DepthTestFunction fn) {
         this.depthTestFunction = fn;
         this.customDepthState = true;

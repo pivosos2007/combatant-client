@@ -17,13 +17,23 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public final class ConfigProfileStorage {
     public static final String EXTENSION = ".cbcfg";
 
     private final ConfigProfileBinaryCodec codec = new ConfigProfileBinaryCodec();
+    private final Map<ConfigProfileType, List<ConfigProfileMeta>> cached = new EnumMap<>(ConfigProfileType.class);
+    private final Map<ConfigProfileType, Long> refreshedAt = new EnumMap<>(ConfigProfileType.class);
+    private long lastLooseScanMs;
+
+    public synchronized void invalidate() {
+        cached.clear();
+        refreshedAt.clear();
+    }
 
     public static String sanitizeFileName(String name) {
         if (name == null) return "config";
@@ -50,16 +60,28 @@ public final class ConfigProfileStorage {
         return root().resolve(type.folderName());
     }
 
-    public List<ConfigProfileMeta> list(ConfigProfileType type) {
-        normalizeLooseProfiles();
+    public synchronized List<ConfigProfileMeta> list(ConfigProfileType type) {
+        long now = System.currentTimeMillis();
+        if (lastLooseScanMs == 0L) {
+            normalizeLooseProfiles();
+            lastLooseScanMs = now;
+        }
+        List<ConfigProfileMeta> existing = cached.get(type);
+        if (existing != null && now - refreshedAt.getOrDefault(type, 0L) < 1600L) return existing;
         List<ConfigProfileMeta> out = new ArrayList<>();
         Path dir = directory(type);
-        if (!Files.isDirectory(dir)) return out;
+        if (!Files.isDirectory(dir)) {
+            cached.put(type, List.of());
+            refreshedAt.put(type, now);
+            return List.of();
+        }
         try (var stream = Files.list(dir)) {
             stream.filter(path -> Files.isRegularFile(path) && path.getFileName().toString().endsWith(EXTENSION))
                     .forEach(path -> {
                         try {
-                            ConfigProfileMeta meta = codec.readMeta(Files.readAllBytes(path));
+                            AtomicFileStore.ReadResult read = AtomicFileStore.readRecovering(path, this::validProfileBytes);
+                            if (!read.found()) return;
+                            ConfigProfileMeta meta = codec.readMeta(read.bytes());
                             out.add(meta);
                         } catch (Exception e) {
                             DebugLog.error("Failed to read profile meta %s", e, path.toAbsolutePath());
@@ -69,7 +91,10 @@ public final class ConfigProfileStorage {
             DebugLog.error("Failed to list profiles %s", e, dir.toAbsolutePath());
         }
         out.sort(Comparator.comparingLong(ConfigProfileMeta::updatedAt).reversed());
-        return out;
+        List<ConfigProfileMeta> result = List.copyOf(out);
+        cached.put(type, result);
+        refreshedAt.put(type, now);
+        return result;
     }
 
     public ImportResult importProfileFile(Path source, boolean moveSource) throws IOException {
@@ -88,18 +113,18 @@ public final class ConfigProfileStorage {
         Path sourceAbs = source.toAbsolutePath().normalize();
         Path destAbs = dest.toAbsolutePath().normalize();
         if (!sourceAbs.equals(destAbs)) {
-            if (moveSource) {
-                Files.move(source, dest, StandardCopyOption.REPLACE_EXISTING);
-            } else {
-                writeValidated(dest, bytes);
-            }
+            writeValidated(dest, bytes);
+            if (moveSource) Files.delete(source);
         }
+        invalidate();
         return new ImportResult(meta, dest);
     }
 
     public ConfigProfileSnapshot read(ConfigProfileType type, String idOrName) throws IOException {
         Path path = file(type, idOrName);
-        return codec.read(Files.readAllBytes(path));
+        AtomicFileStore.ReadResult result = AtomicFileStore.readRecovering(path, this::validProfileBytes);
+        if (!result.found()) throw new IOException("profile or valid backup not found: " + path);
+        return codec.read(result.bytes());
     }
 
     public ConfigProfileSnapshot read(ConfigProfileMeta meta) throws IOException {
@@ -114,19 +139,22 @@ public final class ConfigProfileStorage {
         ConfigProfileSnapshot stamped = new ConfigProfileSnapshot(
                 snapshot.meta().withCombatantVersion(currentCombatantVersion()), snapshot.entries());
         writeValidated(path, codec.write(stamped));
+        invalidate();
         DebugLog.config("Config profile saved: %s", path.toAbsolutePath());
+    }
+
+    private boolean validProfileBytes(byte[] bytes) {
+        try {
+            codec.read(bytes);
+            return true;
+        } catch (IOException | RuntimeException invalid) {
+            return false;
+        }
     }
 
     /** Atomic write that only rotates a decodable existing profile into {@code .bak}. */
     void writeValidated(Path path, byte[] bytes) throws IOException {
-        AtomicFileStore.write(path, bytes, existing -> {
-            try {
-                codec.read(existing);
-                return true;
-            } catch (IOException | RuntimeException e) {
-                return false;
-            }
-        });
+        AtomicFileStore.write(path, bytes, this::validProfileBytes);
     }
 
     private static String currentCombatantVersion() {
@@ -139,7 +167,13 @@ public final class ConfigProfileStorage {
 
     public boolean delete(ConfigProfileType type, String idOrName) throws IOException {
         Path path = file(type, idOrName);
-        return Files.deleteIfExists(path);
+        boolean deleted = Files.deleteIfExists(path);
+        if (deleted) {
+            // Explicit deletion must not be reversed by recovery from an orphaned .bak.
+            Files.deleteIfExists(AtomicFileStore.backupOf(path));
+            invalidate();
+        }
+        return deleted;
     }
 
     public ConfigProfileSnapshot rename(ConfigProfileType type, String idOrName, String newName) throws IOException {
@@ -154,8 +188,31 @@ public final class ConfigProfileStorage {
         }
         ConfigProfileSnapshot renamed = new ConfigProfileSnapshot(newMeta, old.entries());
         save(renamed);
-        if (!oldPath.equals(newPath)) Files.deleteIfExists(oldPath);
+        if (!oldPath.equals(newPath)) {
+            Files.deleteIfExists(oldPath);
+            Files.deleteIfExists(AtomicFileStore.backupOf(oldPath));
+        }
+        invalidate();
         return renamed;
+    }
+
+    public boolean hasBackup(ConfigProfileType type, String idOrName) {
+        return Files.isRegularFile(AtomicFileStore.backupOf(file(type, idOrName)));
+    }
+
+    /** Validates and restores a .cbcfg backup without overwriting the backup itself. */
+    public void restoreBackup(ConfigProfileType type, String idOrName) throws IOException {
+        Path target = file(type, idOrName);
+        Path backup = AtomicFileStore.backupOf(target);
+        byte[] bytes = Files.readAllBytes(backup);
+        ConfigProfileSnapshot recovered = codec.read(bytes);
+        if (recovered.meta().type() != type || !recovered.meta().getId().equals(sanitizeFileName(idOrName)))
+            throw new IOException("backup belongs to another profile");
+        Path preserve = target.resolveSibling(target.getFileName() + ".before-restore");
+        if (Files.isRegularFile(target)) Files.copy(target, preserve, StandardCopyOption.REPLACE_EXISTING);
+        // Keep the recovered .bak intact; the pre-restore primary is saved separately.
+        AtomicFileStore.write(target, bytes, existing -> false);
+        invalidate();
     }
 
     public boolean exists(ConfigProfileType type, String idOrName) {

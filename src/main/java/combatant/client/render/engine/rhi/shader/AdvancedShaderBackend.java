@@ -12,7 +12,7 @@ import net.minecraft.resources.Identifier;
 
 /**
  * Native compute/tessellation surface. It is separate from Blaze3D RenderPipeline because
- * Minecraft 26.2 exposes only vertex and fragment stages there.
+ * Minecraft 26.3 exposes only vertex and fragment stages there.
  */
 public interface AdvancedShaderBackend extends AutoCloseable {
     AdvancedShaderBackend UNSUPPORTED = new AdvancedShaderBackend() {

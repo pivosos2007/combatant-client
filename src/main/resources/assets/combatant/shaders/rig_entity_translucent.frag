@@ -8,6 +8,10 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#ifdef COMBATANT_RIG_SCENE_LINEAR
+#include "include/scene_color.glsl"
+#endif
+
 layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
@@ -37,4 +41,7 @@ void main() {
     // Match ENTITY_TRANSLUCENT: cut out transparent texture texels, then apply marked fade alpha.
     if (texel.a < 0.1) discard;
     color = texel * combatantApplyViewObstructionFade(v_Color);
+#ifdef COMBATANT_RIG_SCENE_LINEAR
+    color.rgb = combatantLegacyToSceneLinear(color.rgb);
+#endif
 }

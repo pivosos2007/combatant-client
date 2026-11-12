@@ -22,6 +22,9 @@ public interface ClickGuiSection {
     default void mouseMoved(float mouseX, float mouseY) {
     }
 
+    /** Whether HUD preview owns the pointer at this location instead of this UI. */
+    default boolean allowsHudPreviewPointer(float mouseX, float mouseY) { return false; }
+
     default boolean mousePressed(float mouseX, float mouseY, int button) {
         return false;
     }

@@ -12,6 +12,7 @@
 #include <sodium:fog.glsl>
 #include <sodium:chunk_material.glsl>
 #include <minecraft:oit.glsl>
+#include <combatant:scene_color.glsl>
 
 layout(location = 0) in vec4 v_Color;
 layout(location = 1) in vec2 v_TexCoord;
@@ -213,7 +214,7 @@ void main() {
         if (combatant_has_map(mapMask, 5u)) emission = surfaceSample.a;
     }
 
-    vec3 albedo = texel.rgb * v_CombatantBaseColor.rgb;
+    vec3 albedo = combatantSrgbToLinear(texel.rgb) * combatantSrgbToLinear(v_CombatantBaseColor.rgb);
     float ao = max(1.0 / 255.0, clamp(vertexAo * materialAo, 0.0, 1.0));
     float material = float(v_CombatantMaterialParams & 255u) / 255.0;
     combatantGbufferSurface = vec4(albedo, ao);

@@ -16,7 +16,6 @@ import net.irisshaders.iris.shaderpack.loading.ProgramId;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
-import combatant.client.util.logging.DebugLog;
 
 @Pseudo
 @Mixin(value = ShaderKey.class, remap = false)
@@ -37,8 +36,9 @@ public abstract class IrisShaderKeyMixin {
                                                                     ProgramId requestedProgram) {
         if (pipeline != null
                 && pipeline.getLocation() != null
-                && "combatant".equals(pipeline.getLocation().getNamespace())) {
-            DebugLog.warn("[Iris] %s", message);
+                && "combatant".equals(pipeline.getLocation().getNamespace())
+                && (message.startsWith("Found fine program match")
+                || message.startsWith("Found okay program match"))) {
             return;
         }
 

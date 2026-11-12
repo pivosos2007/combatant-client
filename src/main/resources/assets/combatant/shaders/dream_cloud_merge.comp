@@ -1,0 +1,38 @@
+#version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+/*
+ * Merge separately sampled near and far volumes, with their optical first
+ * moments, at the near cloud buffer's resolution. Keeping this inexpensive
+ * pass separate reduces the number of full-resolution temporal texture reads
+ * and fits the minimum eight OpenGL image/SSBO binding indices (0..7).
+ */
+layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
+layout(binding=0) uniform sampler2D u_Near;
+layout(binding=1) uniform sampler2D u_Far;
+layout(binding=2) uniform sampler2D u_NearDistance;
+layout(binding=3) uniform sampler2D u_FarDistance;
+layout(binding=4) uniform sampler2D u_OpaqueDepth;
+layout(binding=5,rgba16f) writeonly uniform image2D u_Clouds;
+layout(binding=6,r32f) writeonly uniform image2D u_Distance;
+void main(){
+    ivec2 pixel=ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size=imageSize(u_Clouds);
+    if(any(greaterThanEqual(pixel,size)))return;
+    vec2 uv=(vec2(pixel)+.5)/vec2(size);
+    vec4 near=texture(u_Near,uv);
+    vec4 far=texture(u_Far,uv);
+    float nearDistance=texture(u_NearDistance,uv).r;
+    float farDistance=texture(u_FarDistance,uv).r;
+    if(texture(u_OpaqueDepth,uv).r>.000001){far=vec4(0.);farDistance=0.;}
+    float fw=far.a*(1.-near.a);
+    float a=clamp(near.a+fw,0.,1.);
+    vec3 radiance=near.rgb*near.a+far.rgb*fw;
+    float dist=a>.0001?(nearDistance*near.a+farDistance*fw)/a:0.;
+    imageStore(u_Clouds,pixel,vec4(a>.0001?radiance/a:vec3(0.),a));
+    imageStore(u_Distance,pixel,vec4(dist,0.,0.,1.));
+}

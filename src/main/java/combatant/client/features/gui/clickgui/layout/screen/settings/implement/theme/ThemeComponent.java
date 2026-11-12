@@ -127,11 +127,11 @@ public final class ThemeComponent {
         swatchTooltip.reset();
     }
 
-    public void scroll(float mx, float my, float menuX, float menuY, float menuW, float menuH, double amount, float scale) {
-        float x = menuX + 31f * scale;
-        float y = menuY + 33f * scale;
-        float w = menuW - 42f * scale;
-        float h = menuH - 39f * scale;
+    public void scroll(float mx, float my, float menuX, float menuY, float menuW, float menuH, double amount) {
+        float x = menuX + 62f;
+        float y = menuY + 66f;
+        float w = menuW - 84f;
+        float h = menuH - 78f;
         if (!ClickGuiMath.insideRect(mx, my, x, y, w, h)) return;
         scroll += (float) (amount * 22f);
     }
@@ -167,7 +167,7 @@ public final class ThemeComponent {
         return null;
     }
 
-    public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float scale) {
+    public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my) {
         hits.clear();
         hoveredSwatch = null;
 
@@ -181,10 +181,10 @@ public final class ThemeComponent {
             return;
         }
 
-        float areaX = menuX + 31f * scale;
-        float areaY = menuY + 33f * scale;
-        float areaW = menuW - 42f * scale;
-        float areaH = menuH - 39f * scale;
+        float areaX = menuX + 62f;
+        float areaY = menuY + 66f;
+        float areaW = menuW - 84f;
+        float areaH = menuH - 78f;
         viewportX = areaX;
         viewportY = areaY;
         viewportW = areaW;
@@ -192,15 +192,15 @@ public final class ThemeComponent {
         String[] labels = swatchLabels();
 
         int columns = 2;
-        float gap = 6f * scale;
+        float gap = 12f;
         float cardW = (areaW - gap * (columns - 1)) / columns;
-        float cardH = 46f * scale;
+        float cardH = 92f;
         float stepY = cardH + gap;
 
         int rows = (cardsTotal + columns - 1) / columns;
         float contentH = rows * stepY - gap;
         float maxScroll = Math.max(0f, contentH - areaH);
-        updateScrollbarMetrics(menuX, menuY, menuH, areaH, contentH, maxScroll, scale);
+        updateScrollbarMetrics(menuX, menuY, menuH, areaH, contentH, maxScroll);
         if (draggingScrollbar) {
             scrollToMouse(my);
         }
@@ -210,7 +210,7 @@ public final class ThemeComponent {
         smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, draggingScrollbar ? 0.01f : 0.05f);
         // The selection halo belongs to the card, but extends a few pixels beyond it.
         // Keep the scroll viewport while leaving enough room for that halo at its edges.
-        float glowClipPadding = 4.5f * scale;
+        float glowClipPadding = 9f;
         boolean clipped = ScissorFunction.pushRaw(
                 areaX - glowClipPadding,
                 areaY - glowClipPadding,
@@ -229,10 +229,10 @@ public final class ThemeComponent {
                 continue;
             }
             boolean custom = !entry.builtin();
-            drawThemeCard(entry, x, y, cardW, cardH, mx, my, scale, palette, selectedAnim(entry.getId()), labels);
+            drawThemeCard(entry, x, y, cardW, cardH, mx, my, palette, selectedAnim(entry.getId()), labels);
             if (custom) {
-                float deleteSize = deleteButtonSize(scale);
-                hits.add(new Hit(deleteButtonX(x, cardW, scale), deleteButtonY(y, scale), deleteSize, deleteSize, entry.getId(), false, true, true));
+                float deleteSize = deleteButtonSize();
+                hits.add(new Hit(deleteButtonX(x, cardW), deleteButtonY(y), deleteSize, deleteSize, entry.getId(), false, true, true));
             }
             hits.add(new Hit(x, y, cardW, cardH, entry.getId(), false, custom, false));
             idx++;
@@ -244,14 +244,14 @@ public final class ThemeComponent {
             float x = areaX + col * (cardW + gap);
             float y = areaY + row * stepY + smoothedScroll;
             if (!(y + cardH < areaY || y > areaY + areaH)) {
-                drawAddCard(x, y, cardW, cardH, scale, palette);
+                drawAddCard(x, y, cardW, cardH, palette);
                 hits.add(new Hit(x, y, cardW, cardH, null, true, false, false));
             }
         }
         if (clipped) ScissorFunction.pop();
-        renderScrollbar(menuX, menuY, menuH, areaH, contentH, maxScroll, scale, palette);
+        renderScrollbar(menuX, menuY, menuH, areaH, contentH, maxScroll, palette);
         // Draw after the list scissor: Spectrum-style tips can extend outside the row viewport.
-        swatchTooltip.render(hoveredSwatch, menuX, menuY, menuW, menuH, scale);
+        swatchTooltip.render(hoveredSwatch, menuX, menuY, menuW, menuH);
     }
 
     private void updateSelectedAnimations(List<Themes.ThemeEntry> entries) {
@@ -283,7 +283,6 @@ public final class ThemeComponent {
                                float h,
                                float mx,
                                float my,
-                               float scale,
                                SettingsGuiPalette palette,
                                float selectedAnim,
                                String[] labels) {
@@ -292,27 +291,26 @@ public final class ThemeComponent {
         int selectedAccent = SettingsGuiPalette.withAlpha(t.accent(), Math.round(82f * selected));
         int selectedAccentSoft = SettingsGuiPalette.withAlpha(t.accentSoft(), Math.round(48f * selected));
 
-        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
+        try (var transition = SettingsCardTransition.beginCard()) {
         if (selected > 0.001f) {
             LayoutRender2D.roundedSoftShadow(
-                    x - 0.45f * scale,
-                    y - 0.45f * scale,
-                    w + 0.9f * scale,
-                    h + 0.9f * scale,
-                    5.35f * scale,
-                    (3.6f + 1.4f * selected) * scale,
+                    x - 0.9f,
+                    y - 0.9f,
+                    w + 1.8f,
+                    h + 1.8f,
+                    10.7f,
+                    7.2f + 2.8f * selected,
                     0.020f * selected,
                     SettingsGuiPalette.withAlpha(t.accent(), Math.round(62f * selected))
             );
         }
 
-        LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
         LayoutRender2D.roundedQuad(
                 x,
                 y,
                 w,
                 h,
-                5f * scale,
+                10f,
                 palette.moduleCardTop(),
                 palette.moduleCardTopStrong(),
                 palette.moduleCardBottom(),
@@ -324,7 +322,7 @@ public final class ThemeComponent {
                     y,
                     w,
                     h,
-                    5f * scale,
+                    10f,
                     selectedAccent,
                     selectedAccentSoft,
                     SettingsGuiPalette.withAlpha(t.accentSoft(), Math.round(24f * selected)),
@@ -335,8 +333,8 @@ public final class ThemeComponent {
                     y,
                     w,
                     h,
-                    5f * scale,
-                    (0.55f + 0.35f * selected) * scale,
+                    10f,
+                    1.1f + 0.7f * selected,
                     SettingsGuiPalette.withAlpha(t.accent(), Math.round(235f * selected)),
                     SettingsGuiPalette.withAlpha(t.accentSoft(), Math.round(190f * selected)),
                     SettingsGuiPalette.withAlpha(t.accentSoft(), Math.round(115f * selected)),
@@ -344,12 +342,12 @@ public final class ThemeComponent {
             );
 
         }
-        float dividerInset = 5f * scale;
+        float dividerInset = 10f;
         LayoutRender2D.rectQuad(
                 x + dividerInset,
-                y + 20f * scale,
+                y + 40f,
                 w - dividerInset * 2f,
-                0.5f * scale,
+                1f,
                 SettingsGuiPalette.mix(palette.moduleDividerStart(), SettingsGuiPalette.withAlpha(t.accent(), 210), selected * 0.78f),
                 SettingsGuiPalette.mix(palette.moduleDividerEnd(), SettingsGuiPalette.withAlpha(t.accentSoft(), 190), selected * 0.72f),
                 SettingsGuiPalette.mix(palette.moduleDividerEnd(), SettingsGuiPalette.withAlpha(t.accentSoft(), 145), selected * 0.58f),
@@ -357,36 +355,36 @@ public final class ThemeComponent {
         );
 
         boolean custom = !entry.builtin();
-        float titleSize = 9.2f * scale;
-        float titleReserve = custom ? 40f * scale : 12f * scale;
+        float titleSize = 18.4f;
+        float titleReserve = custom ? 80f : 24f;
         String title = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), entry.name(), titleSize, w - titleReserve);
         LayoutRender2D.drawText(
                 BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 title,
-                x + 6f * scale,
-                y + 3.8f * scale,
+                x + 12f,
+                y + 7.6f,
                 titleSize,
                 SettingsGuiPalette.mix(0xFFFFFFFF, SettingsGuiPalette.withAlpha(t.accent(), 255), selected * 0.24f),
                 false
         );
         if (custom) {
             float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), title, titleSize);
-            float iconSize = 7f * scale;
-            float iconX = Math.min(x + w - 28f * scale, x + 7f * scale + tw + 3f * scale);
-            Renderer2D.COLOR.svg("paintbrush", iconX, y + 5.3f * scale, iconSize, iconSize, SvgRenderOptions.overrideColor(SettingsGuiPalette.withAlpha(t.accent(), 230)));
-            drawCardDeleteButton(x, y, w, mx, my, scale, palette);
+            float iconSize = 14f;
+            float iconX = Math.min(x + w - 56f, x + 14f + tw + 6f);
+            Renderer2D.COLOR.svg("paintbrush", iconX, y + 10.6f, iconSize, iconSize, SvgRenderOptions.overrideColor(SettingsGuiPalette.withAlpha(t.accent(), 230)));
+            drawCardDeleteButton(x, y, w, mx, my, palette);
         }
 
         // Keep the original swatch size and use a compact, centered group.
         final int swatchCount = 4;
-        float inset = 7f * scale;
+        float inset = 14f;
         float availableW = w - inset * 2f;
-        float gap = 5f * scale;
-        float swatchW = Math.min(18f * scale, (availableW - gap * (swatchCount - 1)) / swatchCount);
+        float gap = 10f;
+        float swatchW = Math.min(36f, (availableW - gap * (swatchCount - 1)) / swatchCount);
         float swatchStartX = x + (w - swatchW * swatchCount - gap * (swatchCount - 1)) * 0.5f;
-        float swatchY = y + 25.4f * scale;
-        float swatchH = 10.2f * scale;
-        float hoverBoost = 0.75f * scale;
+        float swatchY = y + 50.8f;
+        float swatchH = 20.4f;
+        float hoverBoost = 1.5f;
         boolean insideViewport = !draggingScrollbar && ClickGuiMath.insideRect(mx, my, viewportX, viewportY, viewportW, viewportH);
 
         for (int i = 0; i < swatchCount; i++) {
@@ -403,7 +401,7 @@ public final class ThemeComponent {
 
             float grow = hoverBoost * anim;
             drawThemeGradientRect(cx - grow * 0.5f, swatchY - grow * 0.5f,
-                    swatchW + grow, swatchH + grow, 2.3f * scale, spec, fallback);
+                    swatchW + grow, swatchH + grow, 4.6f, spec, fallback);
             if (hovered) {
                 hoveredSwatch = new SpectrumThemeSwatchTooltip.Anchor(
                         entry.getId(), i, labels[i], cx, swatchY, swatchW, swatchH, spec, fallback);
@@ -412,16 +410,16 @@ public final class ThemeComponent {
         }
     }
 
-    private static float deleteButtonSize(float scale) {
-        return 12f * scale;
+    private static float deleteButtonSize() {
+        return 24f;
     }
 
-    private static float deleteButtonX(float x, float w, float scale) {
-        return x + w - 16f * scale;
+    private static float deleteButtonX(float x, float w) {
+        return x + w - 32f;
     }
 
-    private static float deleteButtonY(float y, float scale) {
-        return y + 2.2f * scale;
+    private static float deleteButtonY(float y) {
+        return y + 4.4f;
     }
 
     private void drawCardDeleteButton(float x,
@@ -429,11 +427,10 @@ public final class ThemeComponent {
                                       float w,
                                       float mx,
                                       float my,
-                                      float scale,
                                       SettingsGuiPalette palette) {
-        float size = deleteButtonSize(scale);
-        float bx = deleteButtonX(x, w, scale);
-        float by = deleteButtonY(y, scale);
+        float size = deleteButtonSize();
+        float bx = deleteButtonX(x, w);
+        float by = deleteButtonY(y);
         boolean hover = ClickGuiMath.insideRect(mx, my, bx, by, size, size);
         int bg = hover
                 ? SettingsGuiPalette.withAlpha(0xFFE5484D, 64)
@@ -441,50 +438,49 @@ public final class ThemeComponent {
         int stroke = hover
                 ? SettingsGuiPalette.withAlpha(0xFFFF6B6F, 160)
                 : SettingsGuiPalette.withAlpha(palette.moduleDividerEnd(), 80);
-        LayoutRender2D.roundedQuad(bx, by, size, size, 3.5f * scale, bg, bg, bg, bg);
-        LayoutRender2D.roundedStroke(bx, by, size, size, 3.5f * scale, 0.45f * scale, stroke);
+        LayoutRender2D.roundedQuad(bx, by, size, size, 7f, bg, bg, bg, bg);
+        LayoutRender2D.roundedStroke(bx, by, size, size, 7f, 0.9f, stroke);
         Renderer2D.COLOR.svg(
                 "trash-2",
-                bx + 2.4f * scale,
-                by + 2.3f * scale,
-                7.2f * scale,
-                7.2f * scale,
+                bx + 4.8f,
+                by + 4.6f,
+                14.4f,
+                14.4f,
                 SvgRenderOptions.overrideColor(SettingsGuiPalette.withAlpha(hover ? 0xFFFFC4C7 : 0xFFFFFFFF, hover ? 245 : 160))
         );
     }
 
-    private void drawAddCard(float x, float y, float w, float h, float scale, SettingsGuiPalette palette) {
-        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
-        LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
+    private void drawAddCard(float x, float y, float w, float h, SettingsGuiPalette palette) {
+        try (var transition = SettingsCardTransition.beginCard()) {
         LayoutRender2D.roundedQuad(
                 x,
                 y,
                 w,
                 h,
-                5f * scale,
+                10f,
                 palette.moduleCardTop(),
                 palette.moduleCardTopStrong(),
                 palette.moduleCardBottom(),
                 palette.moduleCardBottomStrong()
         );
 
-        float plusSize = 11f * scale;
+        float plusSize = 22f;
         float plusW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), "+", plusSize);
         float plusH = LayoutRender2D.textHeight(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), plusSize);
         LayoutRender2D.drawText(
                 BuiltinFontCatalog.ONEST_MEDIUM.renderer(),
                 "+",
                 x + (w - plusW) * 0.5f,
-                y + 5.5f * scale,
+                y + 11f,
                 plusSize,
                 palette.panelText(),
                 false
         );
 
-        float titleSize = 7.6f * scale;
-        String title = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), ADD_CARD_LABEL, titleSize, w - 12f * scale);
+        float titleSize = 15.2f;
+        String title = LayoutRender2D.fitText(BuiltinFontCatalog.ONEST_REGULAR.renderer(), ADD_CARD_LABEL, titleSize, w - 24f);
         float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), title, titleSize);
-        float ty = y + h - plusH - 10f * scale;
+        float ty = y + h - plusH - 20f;
         LayoutRender2D.drawText(
                 BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 title,
@@ -497,8 +493,8 @@ public final class ThemeComponent {
         }
     }
 
-    private void renderScrollbar(float menuX, float menuY, float menuH, float areaH, float contentH, float maxScroll, float scale, SettingsGuiPalette palette) {
-        updateScrollbarMetrics(menuX, menuY, menuH, areaH, contentH, maxScroll, scale);
+    private void renderScrollbar(float menuX, float menuY, float menuH, float areaH, float contentH, float maxScroll, SettingsGuiPalette palette) {
+        updateScrollbarMetrics(menuX, menuY, menuH, areaH, contentH, maxScroll);
         if (!scrollbarVisible) return;
 
         float mx = ClickGuiRenderer.getMouseX();
@@ -509,14 +505,14 @@ public final class ThemeComponent {
         }
 
         LayoutRender2D.roundedQuad(
-                scrollbarX, scrollbarY, scrollbarW, scrollbarH, 2f * scale,
+                scrollbarX, scrollbarY, scrollbarW, scrollbarH, 4f,
                 palette.moduleScrollTrackA(),
                 palette.moduleScrollTrackB(),
                 palette.moduleScrollTrackB(),
                 palette.moduleScrollTrackA()
         );
         LayoutRender2D.roundedQuad(
-                scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH, 2f * scale,
+                scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH, 4f,
                 palette.moduleScrollHandleA(),
                 palette.moduleScrollHandleB(),
                 palette.moduleScrollHandleB(),
@@ -524,7 +520,7 @@ public final class ThemeComponent {
         );
     }
 
-    private void updateScrollbarMetrics(float menuX, float menuY, float menuH, float areaH, float contentH, float maxScroll, float scale) {
+    private void updateScrollbarMetrics(float menuX, float menuY, float menuH, float areaH, float contentH, float maxScroll) {
         scrollbarVisible = maxScroll > 0f && contentH > areaH + 0.5f;
         scrollbarMaxScroll = Math.max(0f, maxScroll);
         if (!scrollbarVisible) {
@@ -533,11 +529,11 @@ public final class ThemeComponent {
             return;
         }
 
-        scrollbarW = 4f * scale;
-        scrollbarX = menuX + 400f * scale - 35f * scale - scrollbarW + 50f * scale;
-        scrollbarY = menuY + 33f * scale;
-        scrollbarH = menuH - 58f * scale;
-        scrollbarThumbH = Math.max(20f * scale, scrollbarH * (areaH / contentH));
+        scrollbarW = 8f;
+        scrollbarX = menuX + 800f - 70f - scrollbarW + 100f;
+        scrollbarY = menuY + 66f;
+        scrollbarH = menuH - 116f;
+        scrollbarThumbH = Math.max(40f, scrollbarH * (areaH / contentH));
         float ratio = scrollbarMaxScroll <= 0f ? 0f : (-smoothedScroll / scrollbarMaxScroll);
         scrollbarThumbY = scrollbarY + (scrollbarH - scrollbarThumbH) * AnimationUtility.clamp(ratio, 0f, 1f);
     }

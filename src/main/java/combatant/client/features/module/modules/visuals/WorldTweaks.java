@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.visuals;
 
 import combatant.client.config.values.*;
+import combatant.client.features.theme.Themes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.fog.FogData;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
@@ -45,6 +46,7 @@ public class WorldTweaks extends Module {
     private static final String SETTING_FOG_START = "fog_start";
     private static final String SETTING_FOG_END = "fog_end";
     private static final String SETTING_FOG_COLOR = "fog_color";
+    private static final String SETTING_FOG_COLOR_MODE = "fog_color_mode";
     private static final String SETTING_LIQUID_FOG = "liquid_fog";
     private static final String SETTING_ATMOSPHERIC_FOG = "atmospheric_fog";
     private static final String SETTING_DISTANCE_BLOCKS = "distance_blocks";
@@ -54,6 +56,7 @@ public class WorldTweaks extends Module {
     private static final String SETTING_WEATHER_MODE = "weather_mode";
     private static final String SETTING_SKY = "sky";
     private static final String SETTING_SKY_COLOR = "sky_color";
+    private static final String SETTING_SKY_COLOR_MODE = "sky_color_mode";
     private static final String SETTING_SKY_GRADIENT_COLOR = "sky_gradient_color";
 
     private static final String SETTING_CHANGE_TIME = "change_time";
@@ -71,9 +74,13 @@ public class WorldTweaks extends Module {
     private final NumberValue<Integer> fogEnd =
             visibleWhen(num("worldTweaksFogEnd", SETTING_FOG_END, 128, 10, 1024),
                     () -> fogControlEnabled.get() && fogModifyEnabled.get());
+    private final ModeValue fogColorMode =
+            visibleWhen(modeSetting("worldTweaksFogColorMode", SETTING_FOG_COLOR_MODE,
+                    "Custom", "Custom", "Theme"),
+                    () -> fogControlEnabled.get() && fogModifyEnabled.get());
     private final RGBColorValue fogColor =
             visibleWhen(colorNoAlpha("worldTweaksFogColor", SETTING_FOG_COLOR, "#A900FF"),
-                    () -> fogControlEnabled.get() && fogModifyEnabled.get());
+                    () -> fogControlEnabled.get() && fogModifyEnabled.get() && !isThemeFogColor());
     private final BooleanMapValue liquidToggles = visibleWhen(group(
             "noFogLiquids",
             SETTING_LIQUID_FOG,
@@ -113,12 +120,16 @@ public class WorldTweaks extends Module {
                 put("Sky gradient", false);
             }}
     );
+    private final ModeValue skyColorMode =
+            visibleWhen(modeSetting("worldTweaksSkyColorMode", SETTING_SKY_COLOR_MODE,
+                    "Custom", "Custom", "Theme"),
+                    () -> skyToggles.get("Sky color") || skyToggles.get("Sky gradient"));
     private final RGBColorValue skyColor =
             visibleWhen(colorNoAlpha("worldTweaksSkyColor", SETTING_SKY_COLOR, "#78A7FF"),
-                    () -> skyToggles.get("Sky color"));
+                    () -> skyToggles.get("Sky color") && !isThemeSkyColor());
     private final RGBColorValue skyGradientColor =
             visibleWhen(colorNoAlpha("worldTweaksSkyGradientColor", SETTING_SKY_GRADIENT_COLOR, "#FF8A5B"),
-                    () -> skyToggles.get("Sky gradient"));
+                    () -> skyToggles.get("Sky gradient") && !isThemeSkyColor());
     private final BooleanValue changeTime =
             bool("worldTweaksChangeTime", SETTING_CHANGE_TIME, false);
     private final BooleanValue syncSystemTime =
@@ -283,12 +294,12 @@ public class WorldTweaks extends Module {
         if (sky == null || !isEnabled()) return;
 
         if (skyToggles.get("Sky color")) {
-            int rgb = skyColor.getArgb();
+            int rgb = getSkyColorArgb();
             sky.skyColor = new org.joml.Vector3f(ARGB.redFloat(rgb), ARGB.greenFloat(rgb), ARGB.blueFloat(rgb));
         }
 
         if (skyToggles.get("Sky gradient")) {
-            int rgb = skyGradientColor.getArgb();
+            int rgb = getSkyGradientColorArgb();
             float alpha = sky.sunriseAndSunsetColor != null ? sky.sunriseAndSunsetColor.w() : ARGB.alphaFloat(rgb);
             sky.sunriseAndSunsetColor = new org.joml.Vector4f(ARGB.redFloat(rgb), ARGB.greenFloat(rgb), ARGB.blueFloat(rgb), alpha);
         }
@@ -310,8 +321,38 @@ public class WorldTweaks extends Module {
         return fogEnd.get();
     }
 
+    private boolean isThemeFogColor() {
+        return "Theme".equals(fogColorMode.get());
+    }
+
+    private boolean isThemeSkyColor() {
+        return "Theme".equals(skyColorMode.get());
+    }
+
     public int getFogColorArgb() {
-        return fogColor.getArgb();
+        return isThemeFogColor() ? opaque(Themes.hudAccentGradient().start()) : fogColor.getArgb();
+    }
+
+    private static int opaque(int argb) {
+        return 0xFF000000 | (argb & 0x00FFFFFF);
+    }
+
+    /** Whether the active WorldTweaks palette overrides the Overworld sky's base color. */
+    public boolean hasSkyColorOverride() {
+        return isEnabled() && skyToggles.get("Sky color");
+    }
+
+    public int getSkyColorArgb() {
+        return isThemeSkyColor() ? opaque(Themes.hudAccentGradient().start()) : skyColor.getArgb();
+    }
+
+    /** Whether WorldTweaks supplies a custom twilight gradient. */
+    public boolean hasSkyGradientOverride() {
+        return isEnabled() && skyToggles.get("Sky gradient");
+    }
+
+    public int getSkyGradientColorArgb() {
+        return isThemeSkyColor() ? opaque(Themes.hudAccentGradient().end()) : skyGradientColor.getArgb();
     }
 
     public void applyFogOverride(FogData data) {

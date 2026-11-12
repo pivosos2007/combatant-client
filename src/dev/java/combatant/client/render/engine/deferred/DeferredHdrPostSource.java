@@ -33,6 +33,8 @@ import combatant.client.render.engine.world.environment.ExposureProfile;
 import combatant.client.render.engine.world.environment.ExposureProfileRegistry;
 import net.minecraft.resources.Identifier;
 
+import static combatant.client.render.engine.hdr.HdrPostKernels.*;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -45,80 +47,6 @@ import java.util.List;
  * publish is required for TAAU: both exposure and bloom operate directly in final output space.</p>
  */
 final class DeferredHdrPostSource implements AutoCloseable {
-    private static final int LOCAL_SIZE = 8;
-    private static final Identifier HISTOGRAM = id("deferred/exposure_histogram");
-    private static final Identifier EXPOSURE_REDUCE = id("deferred/exposure_reduce");
-    private static final Identifier BLOOM_EXTRACT = id("deferred/bloom_extract");
-    private static final Identifier BLOOM_DOWNSAMPLE = id("deferred/bloom_downsample");
-    private static final Identifier BLOOM_COPY = id("deferred/bloom_copy");
-    private static final Identifier BLOOM_UPSAMPLE = id("deferred/bloom_upsample");
-    private static final Identifier BLOOM_FINALIZE = id("deferred/bloom_finalize");
-    private static final Identifier NEUTRAL_COLOR = id("deferred/post_neutral_color");
-
-    private static final Std430StructLayout HISTOGRAM_ELEMENT = Std430StructLayout.builder()
-            .member("count", Std430Type.UINT)
-            .build();
-    private static final Std430StructLayout EXPOSURE_STATE = Std430StructLayout.builder()
-            .member("exposure", Std430Type.VEC4)
-            .member("adaptation", Std430Type.VEC4)
-            .member("percentiles", Std430Type.VEC4)
-            .member("lifecycle", Std430Type.UVEC4)
-            .build();
-    private static final Std430StructLayout HISTOGRAM_PARAMS = Std430StructLayout.builder()
-            .member("extentAndSampling", Std430Type.VEC4)
-            .member("luminanceRange", Std430Type.VEC4)
-            .member("weighting", Std430Type.VEC4)
-            .build();
-    private static final Std430StructLayout REDUCE_PARAMS = Std430StructLayout.builder()
-            .member("histogram", Std430Type.VEC4)
-            .member("percentiles", Std430Type.VEC4)
-            .member("adaptation", Std430Type.VEC4)
-            .member("rangeAndReset", Std430Type.VEC4)
-            .member("historyAge", Std430Type.INT)
-            .member("resetReason", Std430Type.INT)
-            .member("resetPolicy", Std430Type.INT)
-            .member("nextAge", Std430Type.INT)
-            .build();
-    private static final Std430StructLayout BLOOM_PARAMS = Std430StructLayout.builder()
-            .member("params", Std430Type.VEC4)
-            .build();
-
-    private static final ShaderResourceLayout NEUTRAL_COLOR_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY)
-    ));
-    private static final ShaderResourceLayout HISTOGRAM_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(2, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_WRITE),
-            new ShaderResourceSlot(3, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY)
-    ));
-    private static final ShaderResourceLayout REDUCE_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_WRITE),
-            new ShaderResourceSlot(2, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY)
-    ));
-    private static final ShaderResourceLayout BLOOM_EXTRACT_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.SAMPLED_TEXTURE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(2, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY),
-            new ShaderResourceSlot(3, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY)
-    ));
-    private static final ShaderResourceLayout IMAGE_COPY_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY)
-    ));
-    private static final ShaderResourceLayout BLOOM_UPSAMPLE_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(2, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY)
-    ));
-    private static final ShaderResourceLayout BLOOM_FINALIZE_LAYOUT = new ShaderResourceLayout(List.of(
-            new ShaderResourceSlot(0, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(1, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.READ_ONLY),
-            new ShaderResourceSlot(2, ShaderResourceKind.STORAGE_IMAGE, StorageAccess.WRITE_ONLY),
-            new ShaderResourceSlot(3, ShaderResourceKind.STORAGE_BUFFER, StorageAccess.READ_ONLY)
-    ));
-
     private CombatantRhi owner;
     private RhiComputePipeline histogramPipeline;
     private RhiComputePipeline reducePipeline;
@@ -709,9 +637,6 @@ final class DeferredHdrPostSource implements AutoCloseable {
         return null;
     }
 
-    private static Identifier id(String path) {
-        return Identifier.fromNamespaceAndPath("combatant", path);
-    }
 
     @Override
     public void close() {

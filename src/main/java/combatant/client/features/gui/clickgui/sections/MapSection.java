@@ -32,6 +32,8 @@ public final class MapSection implements ClickGuiSection {
     private float width;
     private float height;
     private XaeroMapSurface surface;
+    private XaeroMapSettingsPanel offlineSettings;
+    private long offlineSettingsRetryAfterNanos;
     private boolean fatalFailure;
     private long retryAfterNanos;
     private boolean selected;
@@ -55,7 +57,28 @@ public final class MapSection implements ClickGuiSection {
         if (Minecraft.getInstance().level == null) {
             renderer.quad(x, y, width, height, combatant.client.features.gui.hud.HudRenderUtil.mixColor(
                     combatant.client.features.theme.Theme.theme().windowBg() | 0xFF000000, 0xFF000000, 0.55f));
-            drawStatus(tr("screen.combatant.clickgui.map_offline", "Open a world to use the map"));
+            // Xaero's map scene requires a session. The actual settings UI does not:
+            // expose it without pretending there is an active world/dimension.
+            XaeroMapSettingsPanel panel = ensureOfflineSettings();
+            if (panel != null && panel.isVisible()) {
+                try {
+                    renderer.withLiquidGlassSceneSource(
+                            combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest.SceneSource.CURRENT_TARGET,
+                            () -> panel.render(x, y, width, height, mouseX, mouseY));
+                } catch (RuntimeException | LinkageError error) {
+                    // Xaero's config manager can be recreated during a resource reload;
+                    // only restart this panel, never replace the entire ClickGUI tab.
+                    offlineSettings = null;
+                    offlineSettingsRetryAfterNanos = System.nanoTime() + 1_000_000_000L;
+                    DebugLog.warnOnce("clickgui-map-offline-settings-render",
+                            "Offline map settings failed to render", error);
+                }
+            } else if (panel != null) {
+                drawStatus(tr("screen.combatant.clickgui.map_offline", "No world is loaded")
+                        + " · " + tr("gui.xaero_box_open_settings", "Settings"));
+            } else {
+                drawStatus(tr("gui.combatant.map.error.recovering", "Map settings are loading…"));
+            }
             return;
         }
         UiBlurResources.requestUiUnderlay(UiDeferredScheduler.layerForCurrentPhase(false));
@@ -85,12 +108,22 @@ public final class MapSection implements ClickGuiSection {
 
     @Override
     public boolean mousePressed(float mouseX, float mouseY, int button) {
+        if (Minecraft.getInstance().level == null) {
+            XaeroMapSettingsPanel panel = ensureOfflineSettings();
+            if (panel == null) return false;
+            if (!panel.isOpen()) panel.toggle();
+            return panel.mousePressed(mouseX, mouseY, button);
+        }
         return guardInput("mousePressed",
                 () -> surface != null && surface.mousePressed(mouseX, mouseY, button), false);
     }
 
     @Override
     public void mouseReleased(float mouseX, float mouseY, int button) {
+        if (Minecraft.getInstance().level == null) {
+            if (offlineSettings != null) offlineSettings.mouseReleased(mouseX, mouseY, button);
+            return;
+        }
         guardInput("mouseReleased", () -> {
             if (surface != null) surface.mouseReleased(mouseX, mouseY, button);
             return true;
@@ -99,12 +132,16 @@ public final class MapSection implements ClickGuiSection {
 
     @Override
     public boolean mouseScrolled(float mouseX, float mouseY, double amount) {
+        if (Minecraft.getInstance().level == null)
+            return offlineSettings != null && offlineSettings.mouseScrolled(mouseX, mouseY, amount);
         return guardInput("mouseScrolled",
                 () -> surface != null && surface.mouseScrolled(mouseX, mouseY, amount), false);
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (Minecraft.getInstance().level == null)
+            return offlineSettings != null && offlineSettings.keyPressed(keyCode, scanCode, modifiers);
         return guardInput("keyPressed", () -> {
             if (surface == null) return false;
             if (surface.keyPressed(keyCode, scanCode, modifiers)) return true;
@@ -118,6 +155,8 @@ public final class MapSection implements ClickGuiSection {
 
     @Override
     public boolean charTyped(char chr, int modifiers) {
+        if (Minecraft.getInstance().level == null)
+            return offlineSettings != null && offlineSettings.charTyped(chr, modifiers);
         return guardInput("charTyped",
                 () -> surface != null && surface.charTyped(chr, modifiers), false);
     }
@@ -135,6 +174,11 @@ public final class MapSection implements ClickGuiSection {
     @Override
     public void onSelected() {
         selected = true;
+        if (Minecraft.getInstance().level == null) {
+            XaeroMapSettingsPanel panel = ensureOfflineSettings();
+            if (panel != null && !panel.isOpen()) panel.toggle();
+            return;
+        }
         guardInput("resume", () -> {
             if (surface != null) surface.resume();
             return true;
@@ -144,6 +188,7 @@ public final class MapSection implements ClickGuiSection {
     @Override
     public void onDeselected() {
         selected = false;
+        if (offlineSettings != null) offlineSettings.close();
         guardInput("suspend", () -> {
             if (surface != null) surface.suspend();
             return true;
@@ -153,6 +198,21 @@ public final class MapSection implements ClickGuiSection {
     @Override
     public boolean isVisible() {
         return selected;
+    }
+
+    private XaeroMapSettingsPanel ensureOfflineSettings() {
+        if (offlineSettings != null) return offlineSettings;
+        long now = System.nanoTime();
+        if (now < offlineSettingsRetryAfterNanos) return null;
+        try {
+            offlineSettings = new XaeroMapSettingsPanel(() -> null, () -> null);
+            offlineSettings.toggle();
+            return offlineSettings;
+        } catch (RuntimeException | LinkageError error) {
+            offlineSettingsRetryAfterNanos = now + 1_000_000_000L;
+            DebugLog.warnOnce("clickgui-map-offline-settings", "Cannot open Xaero settings from title screen", error);
+            return null;
+        }
     }
 
     private void drawStatus(String status) {

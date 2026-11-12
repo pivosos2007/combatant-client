@@ -1,0 +1,107 @@
+#version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+/*
+ * Near-cloud integration: the froxel volume is a lighting cache, NOT a
+ * quantized source of optical depth. Density is re-evaluated from the shared
+ * 3D noise atlas along each viewing ray. This removes the visible rings that
+ * result from treating an entire nonlinearly spaced depth slice as uniform.
+ *
+ * A small number of samples is used only inside the cloud slab, and rays are
+ * clipped against opaque depth before expensive sampling begins.
+ */
+layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
+layout(binding=0) uniform sampler3D u_Froxels;
+layout(binding=1) uniform sampler2D u_Depth;
+layout(binding=2,rgba16f) writeonly uniform image2D u_Output;
+layout(binding=4,r32f) writeonly uniform image2D u_CloudDepth;
+#define DREAM_NOISE_BINDING 3
+#include "dream_cloud_medium.glsl"
+
+vec2 intersectCloudSlab(vec3 ray,float nearT,float farT){
+    float base=shape.x-shape.y*.20;
+    float top=shape.x+shape.y*2.5;
+    if(abs(ray.y)<.00001){
+        if(camera.y<base || camera.y>top)return vec2(1.,0.);
+        return vec2(nearT,farT);
+    }
+    vec2 hit=(vec2(base,top)-camera.y)/ray.y;
+    return vec2(max(min(hit.x,hit.y),nearT),min(max(hit.x,hit.y),farT));
+}
+
+float froxelZ(float travel){
+    float ratio=clamp((travel-grid.w)/max(.001,outputSize.z-grid.w),0.,1.);
+    return pow(ratio,1./1.7);
+}
+
+float interleavedJitter(ivec2 pixel){
+    // Deterministic spatial phase plus a low-discrepancy 16-frame sequence.
+    float h=fract(sin(dot(vec2(pixel),vec2(127.1,311.7)))*43758.5453);
+    float phase=fract((sampling.y+.5)*0.61803398875);
+    return fract(h+phase);
+}
+void main(){
+    ivec2 pixel=ivec2(gl_GlobalInvocationID.xy);
+    if(any(greaterThanEqual(pixel,ivec2(outputSize.xy))))return;
+    float phase=interleavedJitter(pixel);
+    // Four-frame subpixel pattern. Motion reprojects the resulting samples.
+    vec2 jitter=vec2(fract(sampling.y*.5)*.5,fract(sampling.y*.25)*.5)*.6;
+    vec2 uv=(vec2(pixel)+.5+jitter-.15)/outputSize.xy;
+    float opaque=dreamDepthLimit(u_Depth,uv,outputSize.z);
+    if(opaque<=grid.w || shape.z<.002){
+        imageStore(u_Output,pixel,vec4(0.));imageStore(u_CloudDepth,pixel,vec4(0.));return;
+    }
+    vec3 ray=dreamRay(uv);
+    vec3 rayDx=dreamRay(uv+vec2(1./outputSize.x,0.));
+    vec3 rayDy=dreamRay(uv+vec2(0.,1./outputSize.y));
+    float pixelAngle=max(length(rayDx-ray),length(rayDy-ray));
+    vec2 interval=intersectCloudSlab(ray,grid.w,opaque);
+    if(interval.y<=interval.x){
+        imageStore(u_Output,pixel,vec4(0.));imageStore(u_CloudDepth,pixel,vec4(0.));return;
+    }
+
+    // Each sample traces actual 3D density, eliminating step-shaped cloud
+    // boundaries at the froxel slice distances. Quality is already carried by
+    // grid.z (36/56/80/96). All presets use the same continuous density.
+    int steps=clamp(int(sampling.x+.5),24,96);
+    float ds=(interval.y-interval.x)/float(steps);
+    vec3 integrated=vec3(0.);
+    float transmittance=1.;
+    float weightedDepth=0.;
+    float depthWeight=0.;
+    for(int k=0;k<96;k++){
+        if(k>=steps || transmittance<.02)break;
+        float travel=interval.x+(float(k)+phase)*ds;
+        vec3 p=camera.xyz+ray*travel;
+        // Filter sub-sample erosion when its wavelength falls below the ray
+        // step or projected pixel footprint. This avoids temporal sparkle
+        // without introducing an unstable per-frame random jitter.
+        float footprint=max(ds,travel*pixelAngle);
+        float detailWeight=clamp(4.*max(.4,shape.w)/max(1.,footprint),0.,1.);
+        float rho=dreamDensity(p,detailWeight);
+        if(rho<.002)continue;
+
+        // Cache trilinear lighting only. The cached froxel alpha is not used
+        // for extinction, since doing so reintroduces depth-slice banding.
+        vec4 cached=texture(u_Froxels,vec3(uv,froxelZ(travel)));
+        vec3 localLight=dreamScattering(p,ray,rho,.58);
+        // A coarse lighting cache must never become a hard density mask.
+        // Limiting its contribution avoids reintroducing layer-shaped shading
+        // bands at the boundaries of the froxel illumination grid.
+        float cacheWeight=.48*smoothstep(.006,.18,cached.a);
+        vec3 scattering=mix(localLight,cached.rgb,cacheWeight);
+        float opacity=1.-exp(-rho*ds*.033);
+        float contribution=transmittance*opacity;
+        integrated+=contribution*scattering;
+        weightedDepth+=travel*contribution;
+        depthWeight+=contribution;
+        transmittance*=1.-opacity;
+    }
+    float alpha=clamp(1.-transmittance,0.,1.);
+    imageStore(u_Output,pixel,vec4(alpha>.0001?integrated/alpha:vec3(0.),alpha));
+    imageStore(u_CloudDepth,pixel,vec4(depthWeight>.0001?weightedDepth/depthWeight:0.));
+}

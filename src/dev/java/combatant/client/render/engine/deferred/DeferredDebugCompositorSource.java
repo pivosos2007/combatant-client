@@ -316,8 +316,8 @@ final class DeferredDebugCompositorSource implements AutoCloseable {
         context.rhi().drawFullscreen(
                 FullscreenDrawCommand.builder("Combatant deferred debug presentation")
                         .colorAttachment(target)
-                        .pipeline(DeferredRuntimeAssets.temporalPresent())
-                        .sampler("u_Source", source, nearest)
+                        .pipeline(combatant.client.render.engine.pipeline.PostProcessRenderPipelines.POSTPROCESS_COPY_HDR)
+                        .sampler("u_Texture", source, nearest)
                         .build()
         );
         DeferredDebugView view = DeferredSmokeTestState.global().frameSnapshot().debugView();

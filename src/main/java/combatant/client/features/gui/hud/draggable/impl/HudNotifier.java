@@ -18,6 +18,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
@@ -369,7 +370,7 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
         glassSettings.addSettings(defs);
         defs.add(SettingDef.number(durationMs));
         defs.add(SettingDef.number(fadeMs));
@@ -762,19 +763,14 @@ public final class HudNotifier extends DraggableHudElement implements ModuleStat
         float sideTopR = 0f;
 
         // ICE is a glass visual, not an opaque PBR layer painted over the lens.
-        if (!glassSettings.customized() && !"Ice".equals(surfaceMaterial.get())) {
-            drawGlassPill(renderer, x, y, metrics.boxW, metrics.boxH,
-                    sideTopR, sideTopR, sideBottomR, sideBottomR, glassTint, anim);
-        } else {
-            UiLiquidGlassMaterial glassMaterial = UiLiquidGlassMaterial.DEFAULT
-                    .withOptics(glassSettings.apply(UiGlassOpticsSpec.LIQUID));
-            if ("Ice".equals(surfaceMaterial.get())) {
-                glassMaterial = glassMaterial.withIce(UiIceMaterialSpec.LIGHT);
-            }
-            renderer.withLiquidGlassMaterial(glassMaterial,
-                    () -> drawGlassPill(renderer, x, y, metrics.boxW, metrics.boxH,
-                            sideTopR, sideTopR, sideBottomR, sideBottomR, glassTint, anim));
+        UiLiquidGlassMaterial glassMaterial = UiLiquidGlassMaterial.DEFAULT
+                .withOptics(glassSettings.apply(UiGlassOpticsSpec.LIQUID));
+        if ("Ice".equals(surfaceMaterial.get())) {
+            glassMaterial = glassMaterial.withIce(UiIceMaterialSpec.LIGHT);
         }
+        renderer.withLiquidGlassMaterial(glassMaterial,
+                () -> drawGlassPill(renderer, x, y, metrics.boxW, metrics.boxH,
+                        sideTopR, sideTopR, sideBottomR, sideBottomR, glassTint, anim));
 
         int bgMixed = HudRenderUtil.mixColor(bgLeft, bgRight, 0.5f);
         int bgA = (bgMixed >>> 24) & 0xFF;

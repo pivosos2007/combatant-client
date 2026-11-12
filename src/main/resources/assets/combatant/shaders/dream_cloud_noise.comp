@@ -1,0 +1,62 @@
+#version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+/*
+ * Combatant Client - Dream cloud noise atlas (GPU generated once per backend).
+ * A tileable 3D texture containing large shape noise, Worley erosion and
+ * weather-scale variation. Algorithm based on published Perlin-Worley cloud
+ * modelling techniques; no Photon source or assets are embedded here.
+ */
+layout(local_size_x=4,local_size_y=4,local_size_z=4) in;
+layout(binding=0,rgba8) writeonly uniform image3D u_Noise;
+
+float hash3(vec3 p) {
+    p = fract(p * vec3(.1031,.11369,.13787));
+    p += dot(p,p.yzx + 19.19);
+    return fract((p.x+p.y)*p.z);
+}
+vec3 feature(vec3 p) {
+    return vec3(hash3(p+vec3(11.,0.,0.)),
+                hash3(p+vec3(0.,29.,0.)),
+                hash3(p+vec3(0.,0.,53.)));
+}
+float periodicValue(vec3 p,float period) {
+    vec3 i=floor(p),t=fract(p);
+    t=t*t*(3.-2.*t);
+    vec3 a=mod(i,period), b=mod(i+1.,period);
+    float v00=mix(hash3(vec3(a.x,a.y,a.z)),hash3(vec3(b.x,a.y,a.z)),t.x);
+    float v10=mix(hash3(vec3(a.x,b.y,a.z)),hash3(vec3(b.x,b.y,a.z)),t.x);
+    float v01=mix(hash3(vec3(a.x,a.y,b.z)),hash3(vec3(b.x,a.y,b.z)),t.x);
+    float v11=mix(hash3(vec3(a.x,b.y,b.z)),hash3(vec3(b.x,b.y,b.z)),t.x);
+    return mix(mix(v00,v10,t.y),mix(v01,v11,t.y),t.z);
+}
+float periodicWorley(vec3 p,float period) {
+    vec3 i=floor(p),f=fract(p);
+    float closest=100.;
+    for(int z=-1;z<=1;z++) for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++) {
+        vec3 cell=vec3(x,y,z);
+        vec3 seed=mod(i+cell,period);
+        vec3 delta=cell+feature(seed)-f;
+        closest=min(closest,dot(delta,delta));
+    }
+    return clamp(sqrt(closest)/1.7320508,0.,1.);
+}
+void main(){
+    ivec3 cell=ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 dims=imageSize(u_Noise);
+    if(any(greaterThanEqual(cell,dims)))return;
+    vec3 uv=(vec3(cell)+.5)/vec3(dims);
+    float n0=periodicValue(uv*4.,4.);
+    float n1=periodicValue(uv*8.,8.);
+    float n2=periodicValue(uv*16.,16.);
+    float n3=periodicValue(uv*32.,32.);
+    float fbm=(n0*.54+n1*.27+n2*.13+n3*.06);
+    float worley0=periodicWorley(uv*8.,8.);
+    float worley1=periodicWorley(uv*16.,16.);
+    float base=clamp(fbm*.70+(1.-worley0)*.30,0.,1.);
+    imageStore(u_Noise,cell,vec4(base,worley0,worley1,fbm));
+}

@@ -34,6 +34,11 @@ public interface PostProcessPass {
         return false;
     }
 
+    /** Storage image layout formats implemented by this pass; other formats use its raster path. */
+    default boolean supportsStorageFormat(com.mojang.renderpearl.api.GpuFormat format) {
+        return format == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM;
+    }
+
     default int getPriority() {
         return 0;
     }

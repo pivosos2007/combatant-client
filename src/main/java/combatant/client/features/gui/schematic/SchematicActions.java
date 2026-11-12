@@ -72,6 +72,14 @@ public final class SchematicActions {
     /** Import into Litematica FIRST. The old parser is used only for the
      * optional in-menu mesh preview, never as the world placement authority. */
     public static void load(Path path) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && (mc.level == null || mc.player == null)) {
+            if (path != null) {
+                preview(path);
+                feedback(I18n.get("screen.combatant.clickgui.schematics_offline"), "informative");
+            }
+            return;
+        }
         LitematicaWorkspace bridge = LitematicaCompat.workspace();
         if (path == null || loadingPath != null || bridge == null) return;
         lastError = "";

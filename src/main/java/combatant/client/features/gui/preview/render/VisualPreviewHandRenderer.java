@@ -51,7 +51,8 @@ public enum VisualPreviewHandRenderer {
 
     public static void render(VisualPreviewSceneContext context) {
         Minecraft mc = context.minecraft();
-        if (mc == null || mc.player == null || mc.level == null || mc.gameRenderer == null || mc.gameMode == null) return;
+        if (mc == null || mc.gameRenderer == null || mc.player == null || mc.level == null
+                || mc.gameMode == null) return;
         ensureRenderer(mc);
 
         PreviewRenderState previous = PreviewRenderState.capture();
@@ -64,13 +65,13 @@ public enum VisualPreviewHandRenderer {
             SubmitNodeStorage subject = new SubmitNodeStorage();
             PoseStack subjectPose = new PoseStack();
             var playerRenderState = mc.gameRenderer.gameRenderState().levelRenderState.playerRenderState;
+            if (playerRenderState == null || !playerRenderState.hasPlayer) return;
             mc.gameRenderer.firstPersonHandsAndItemsRenderer.submitHandsWithItems(
                     context.tickDelta(), subjectPose, subject, playerRenderState,
                     playerRenderState.firstPersonHandsAndItems
             );
 
-            // An empty hotbar must not produce an empty preview. The fallback is submitted into the
-            // same subject phase, so Chams sees exactly the same geometry as the base renderer.
+            // Preserve the live hand render state; an empty hotbar uses only an item fallback.
             if (mc.player.getMainHandItem().isEmpty() && mc.player.getOffhandItem().isEmpty()) {
                 submitFallbackItem(mc, subject);
             }
@@ -123,8 +124,8 @@ public enum VisualPreviewHandRenderer {
         float dolly = fixedCamera ? 0.0f : context.screen().cameraDolly();
         float zoom = fixedCamera ? 1.0f : context.screen().zoom();
 
-        boolean mainHand = !mc.player.getMainHandItem().isEmpty();
-        boolean offHand = !mc.player.getOffhandItem().isEmpty();
+        boolean mainHand = mc.player != null && !mc.player.getMainHandItem().isEmpty();
+        boolean offHand = mc.player != null && !mc.player.getOffhandItem().isEmpty();
         float pivotX = mainHand == offHand ? 0.0f : (mainHand ? 0.42f : -0.42f);
         float pivotY = -0.34f;
         float pivotZ = -0.88f;

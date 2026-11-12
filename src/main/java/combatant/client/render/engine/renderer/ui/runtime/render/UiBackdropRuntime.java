@@ -76,6 +76,8 @@ final class UiBackdropRuntime {
                             props.number("glassFilmStrength", optics.filmStrength()))
                     .withReactiveCoating(props.number("glassCoatingResponse", optics.reactiveCoating()));
         }
+        optics = optics.withThemeBlend(props != null
+                ? props.number("glassThemeBlend", 0.0f) : 0.0f);
         UiLiquidGlassMaterial material = new UiLiquidGlassMaterial(
                 optics, frostedJitter, innerGlow, innerGlowSize, innerGlowColor);
         if (props != null && (props.bool("glassIce", false)

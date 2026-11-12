@@ -37,6 +37,11 @@ public final class HandVisualPreviewProvider implements VisualPreviewProvider {
     }
 
     @Override
+    public boolean requiresWorld() {
+        return true;
+    }
+
+    @Override
     public boolean showSceneTitle() {
         return false;
     }

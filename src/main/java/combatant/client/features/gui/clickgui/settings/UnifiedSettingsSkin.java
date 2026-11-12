@@ -209,29 +209,29 @@ enum UnifiedSettingsSkin {
         return (mapSettings() ? map : main) * scale();
     }
 
-    static float rowHeight() { return modernMetric(27f, 28f); }
-    static float rowGap() { return modernMetric(15f, 16f); }
-    static float labelSize() { return modernMetric(14.8f, 15f); }
-    static float descriptionSize() { return modernMetric(13.2f, 13.4f); }
-    static float controlHeight() { return modernMetric(27f, 28f); }
-    static float controlRadius() { return modernMetric(6.5f, 7f); }
-    static float controlStroke() { return modernMetric(1.15f, 1.15f); }
-    static float checkboxSize() { return modernMetric(19f, 20f); }
-    static float selectWidth() { return modernMetric(154f, 184f); }
+    static float rowHeight() { return modernMetric(29.7f, 28f); }
+    static float rowGap() { return modernMetric(16.5f, 16f); }
+    static float labelSize() { return modernMetric(16.28f, 15f); }
+    static float descriptionSize() { return modernMetric(14.52f, 13.4f); }
+    static float controlHeight() { return modernMetric(29.7f, 28f); }
+    static float controlRadius() { return modernMetric(7.15f, 7f); }
+    static float controlStroke() { return modernMetric(1.265f, 1.15f); }
+    static float checkboxSize() { return modernMetric(20.9f, 20f); }
+    static float selectWidth() { return modernMetric(169.4f, 184f); }
     static float switchWidth() { return checkboxSize(); }
     static float switchHeight() { return checkboxSize(); }
-    static float sliderWidth() { return modernMetric(170f, 220f); }
-    static float sliderTrackHeight() { return modernMetric(3f, 3f); }
-    static float sliderThumbWidth() { return modernMetric(10f, 11f); }
+    static float sliderWidth() { return modernMetric(187f, 220f); }
+    static float sliderTrackHeight() { return modernMetric(3.3f, 3f); }
+    static float sliderThumbWidth() { return modernMetric(11f, 11f); }
     static float sliderThumbHeight() { return sliderThumbWidth(); }
-    static float sliderThumbOuterRadius() { return modernMetric(5f, 5f); }
-    static float sliderThumbInnerRadius() { return modernMetric(3.5f, 3.5f); }
-    static float valueFieldWidth() { return modernMetric(48f, 52f); }
-    static float colorSwatchSize() { return modernMetric(14f, 15f); }
-    static float popupItemHeight() { return modernMetric(25f, 26f); }
-    static float popupRadius() { return modernMetric(7f, 7f); }
+    static float sliderThumbOuterRadius() { return modernMetric(5.5f, 5f); }
+    static float sliderThumbInnerRadius() { return modernMetric(3.85f, 3.5f); }
+    static float valueFieldWidth() { return modernMetric(52.8f, 52f); }
+    static float colorSwatchSize() { return modernMetric(15.4f, 15f); }
+    static float popupItemHeight() { return modernMetric(27.5f, 26f); }
+    static float popupRadius() { return modernMetric(7.7f, 7f); }
     static float rowPadX() { return 0f; }
-    static float blockSpacing() { return modernMetric(12f, 12f); }
+    static float blockSpacing() { return modernMetric(13.2f, 12f); }
 
     static int modernControlBg() { return MODERN_CONTROL_TOP; }
     static int modernControlHoverBg() { return MODERN_CONTROL_HOVER_TOP; }
@@ -266,11 +266,11 @@ enum UnifiedSettingsSkin {
 
         // Neutral inner bevel: this is what gives the control material depth without spending
         // more accent color.  It remains subtle enough to disappear on very small controls.
-        float inset = modernMetric(1f, 1f);
+        float inset = modernMetric(1.1f, 1f);
         if (w > inset * 4f && h > inset * 4f) {
             float innerRadius = Math.max(1f, radius - inset);
             LayoutRender2D.roundedStrokeQuad(x + inset, y + inset, w - inset * 2f, h - inset * 2f,
-                    innerRadius, Math.max(0.45f, modernMetric(0.55f, 0.55f)),
+                    innerRadius, Math.max(0.45f, modernMetric(0.605f, 0.55f)),
                     withAlpha(0xFFFFFFFF, 0.045f + response * 0.025f),
                     withAlpha(0xFFFFFFFF, 0.025f + response * 0.018f),
                     withAlpha(0xFF000000, 0.12f + response * 0.03f),

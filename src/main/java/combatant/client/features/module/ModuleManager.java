@@ -17,6 +17,7 @@ import combatant.client.features.gui.hud.HudRenderSpace;
 import com.mojang.blaze3d.vertex.PoseStack;
 import combatant.client.addon.ModuleExtensionManager;
 import combatant.client.util.screen.ClientScreen;
+import combatant.client.features.gui.mainmenu.CombatantMainMenuScreen;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import lombok.Setter;
 import net.minecraft.client.Minecraft;
@@ -519,9 +520,10 @@ public enum ModuleManager {
         if (enabled && !RuntimeGate.canRunModules() && !(m instanceof RuntimeControlModule)) return;
 
         if (enabled && name.equals("clickgui")) {
-            if (ClientScreen.current(Minecraft.getInstance()) != null) {
-                return;
-            }
+            // ClickGui can also be opened from Combatant's title screen. Its module
+            // owns the actual screen transition; other already-open screens stay protected.
+            var currentScreen = ClientScreen.current(Minecraft.getInstance());
+            if (currentScreen != null && !(currentScreen instanceof CombatantMainMenuScreen)) return;
         }
 
         m.setEnabled(enabled, source);

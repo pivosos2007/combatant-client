@@ -8,6 +8,11 @@
 package combatant.client.util.sound;
 
 import combatant.client.events.Events;
+import combatant.client.util.sound.acoustics.AcousticChannelAccess;
+import combatant.client.util.sound.acoustics.AcousticEfx;
+import combatant.client.util.sound.acoustics.AcousticProfile;
+import combatant.client.util.sound.acoustics.SoundAcoustics;
+import net.minecraft.client.sounds.ChannelAccess;
 import combatant.client.util.resources.asset.AssetLoad;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.sound.event.SoundErrorEvent;
@@ -38,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -49,6 +55,10 @@ public final class SoundSystem {
     private static final SoundSystem INSTANCE = new SoundSystem();
 
     private final SoundThreadBridge audio = new SoundThreadBridge();
+    private final AcousticEfx acousticEfx = new AcousticEfx();
+    private final SoundAcoustics acoustics = new SoundAcoustics(this);
+    private final Map<Long, Vec3> customPositions = new ConcurrentHashMap<>();
+    private volatile long acousticGeneration;
     private final AtomicBoolean reapQueued = new AtomicBoolean();
     private volatile float masterGain = 1.0f;
 
@@ -92,10 +102,11 @@ public final class SoundSystem {
         SoundPlayEvent playEvent = Events.BUS.post(new SoundPlayEvent(request));
         if (playEvent != null && playEvent.isCancelled()) return SoundInstance.REJECTED;
         if (request.gain() <= 0.0f) return SoundInstance.REJECTED;
-        return audio.call(() -> playOnAudio(definition, request), SoundInstance.REJECTED);
+        AcousticProfile profile = request.spatial() ? acoustics.initialCustomProfile(request.position()) : null;
+        return audio.call(() -> playOnAudio(definition, request, profile), SoundInstance.REJECTED);
     }
 
-    private SoundInstance playOnAudio(SoundDefinition definition, SoundRequest request) {
+    private SoundInstance playOnAudio(SoundDefinition definition, SoundRequest request, AcousticProfile profile) {
         int acquiredSource = 0;
         try {
             reapFinished();
@@ -110,22 +121,30 @@ public final class SoundSystem {
             ActiveSound sound = new ActiveSound(playbackId, acquiredSource, definition, instance,
                     request.gain(), request.looping(), request.spatial(), efx);
             active.put(playbackId, sound);
+            if (request.spatial()) {
+                customPositions.put(playbackId, request.position());
+                if (efx == EfxBinding.NONE && profile != null) acousticEfx.apply(acquiredSource, profile);
+            }
             AL10.alSourcePlay(acquiredSource);
             postEvent(new SoundStartedEvent(definition, instance));
             return instance;
         } catch (RuntimeException error) {
-            boolean tracked = false;
+            ActiveSound tracked = null;
             for (ActiveSound sound : active.values()) {
                 if (sound.source == acquiredSource) {
-                    tracked = true;
+                    tracked = sound;
                     break;
                 }
             }
-            if (acquiredSource != 0 && !tracked) {
+            if (acquiredSource != 0) {
                 try {
                     AL10.alSourceStop(acquiredSource);
-                    AL10.alSourcei(acquiredSource, AL10.AL_BUFFER, 0);
-                    freeSources.offerLast(acquiredSource);
+                    if (tracked != null) retire(tracked, SoundStoppedEvent.Reason.STOPPED);
+                    else {
+                        acousticEfx.detach(acquiredSource);
+                        AL10.alSourcei(acquiredSource, AL10.AL_BUFFER, 0);
+                        freeSources.offerLast(acquiredSource);
+                    }
                 } catch (RuntimeException cleanupError) {
                     error.addSuppressed(cleanupError);
                 }
@@ -147,11 +166,14 @@ public final class SoundSystem {
         AL.getCapabilities();
         audio.opened();
         discardCaches();
+        acousticEfx.forgetContext();
+        acousticGeneration++;
     }
 
     /** Called at Library.cleanup HEAD, while the old context still exists. */
     public void onLibraryClosing() {
         if (!audio.isReady()) return;
+        acousticEfx.setEnabled(false);
         audio.close(this::resetNative);
     }
 
@@ -168,6 +190,7 @@ public final class SoundSystem {
     public float getMasterGain() { return masterGain; }
 
     public void tick() {
+        acoustics.updateCustom(customPositions);
         if (!audio.isReady() || !reapQueued.compareAndSet(false, true)) return;
         audio.execute(() -> {
             try { reapFinished(); }
@@ -236,13 +259,70 @@ public final class SoundSystem {
 
     boolean setPosition(long id, Vec3 position) {
         if (position == null) return false;
+        AcousticProfile profile = acoustics.initialCustomProfile(position);
         return audio.call(() -> {
             ActiveSound sound = active.get(id);
             if (sound == null || !sound.spatial) return false;
             AL10.alSource3f(sound.source, AL10.AL_POSITION,
                     (float) position.x, (float) position.y, (float) position.z);
+            customPositions.put(id, position);
+            if (sound.efx == EfxBinding.NONE && profile != null) acousticEfx.apply(sound.source, profile);
             return true;
         }, false);
+    }
+
+    /** Receives active vanilla channels from SoundEngine on the client thread. */
+    public void updateVanillaAcoustics(Map<net.minecraft.client.resources.sounds.SoundInstance, ChannelAccess.ChannelHandle> sounds) {
+        acoustics.updateVanilla(sounds);
+    }
+
+    public void onVanillaSoundStarted(net.minecraft.client.resources.sounds.SoundInstance sound,
+                                      ChannelAccess.ChannelHandle handle) {
+        acoustics.onVanillaStarted(sound, handle);
+    }
+
+    public long acousticContextGeneration() {
+        return acousticGeneration;
+    }
+
+    public void enableAcoustics() {
+        acousticEfx.setEnabled(true);
+    }
+
+    public boolean acousticsUnavailable() {
+        return acousticEfx.isUnavailable();
+    }
+
+    /** Stops applying EFX immediately; unbinds and frees its resources on the audio thread. */
+    public void disableAcoustics() {
+        acoustics.disable();
+    }
+
+    public void clearAcoustics() {
+        acousticEfx.setEnabled(false);
+        audio.execute(acousticEfx::dispose, error -> report(SoundErrorEvent.Operation.CONTROL, null, error));
+    }
+
+    public void applyVanillaAcoustics(ChannelAccess.ChannelHandle handle, AcousticProfile profile) {
+        handle.execute(channel -> acousticEfx.apply(((AcousticChannelAccess) channel).combatant$acousticSource(), profile));
+    }
+
+    public void onVanillaChannelDestroyed(int source) {
+        if (audio.isAudioThread()) acousticEfx.detach(source);
+        else audio.execute(() -> acousticEfx.detach(source), error -> report(SoundErrorEvent.Operation.CONTROL, null, error));
+    }
+
+    /** Queues a batch to avoid crossing the audio executor separately for each custom instance. */
+    public void applyCustomAcoustics(Map<Long, AcousticProfile> profiles) {
+        if (profiles.isEmpty()) return;
+        audio.execute(() -> {
+            for (Map.Entry<Long, AcousticProfile> entry : profiles.entrySet()) {
+                ActiveSound sound = active.get(entry.getKey());
+                if (sound != null && sound.efx == EfxBinding.NONE) {
+                    acousticEfx.apply(sound.source, entry.getValue());
+                }
+            }
+        }, error -> report(SoundErrorEvent.Operation.CONTROL, null, error));
     }
 
     @AssetLoad(order = 400)
@@ -270,6 +350,7 @@ public final class SoundSystem {
             for (int source : freeSources) AL10.alDeleteSources(source);
             for (int buffer : buffers.values()) AL10.alDeleteBuffers(buffer);
         } finally {
+            acousticEfx.dispose();
             discardCaches();
         }
     }
@@ -279,6 +360,7 @@ public final class SoundSystem {
         SoundDebugStats.onSourcesCleared(sourceCount);
         SoundDebugStats.onBuffersCleared(buffers.size());
         active.clear();
+        customPositions.clear();
         freeSources.clear();
         buffers.clear();
         sourceCount = 0;
@@ -461,6 +543,8 @@ public final class SoundSystem {
 
     private void retire(ActiveSound sound, SoundStoppedEvent.Reason reason, boolean recycleSource) {
         if (active.remove(sound.id) == null) return;
+        customPositions.remove(sound.id);
+        acousticEfx.detach(sound.source);
         releaseEfx(sound.source, sound.efx);
         AL10.alSourcei(sound.source, AL10.AL_BUFFER, 0);
         if (recycleSource) freeSources.offerLast(sound.source);

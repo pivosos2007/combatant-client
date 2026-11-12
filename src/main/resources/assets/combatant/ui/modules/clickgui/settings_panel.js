@@ -122,17 +122,6 @@ export function buildTemplate(ctx) {
   const closeIcon = 5.0 * scale;
 
   const children = [
-    ui.blurSurface({
-      key: "settings-panel:blur-quad",
-      x: 0,
-      y: 0,
-      w,
-      h,
-      radius: 0,
-      alpha: clamp01(p.blurAlpha) * open,
-      brightness: numCoerce(p.blurBrightness, 0.96),
-      blurQuality: numCoerce(p.blurQuality, 27.35),
-    }),
     quadGradient("settings-panel:body", 0, 0, w, h, bodyA, bodyB, bodyAngle),
     quadGradient("settings-panel:body-glint", 1, 1,
       Math.max(0, w - 2), Math.max(1, h * 0.16), bodyGlintA, bodyGlintB, 90),

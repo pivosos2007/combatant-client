@@ -21,6 +21,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(FrontendRenderPass.class)
 public abstract class FrontendRenderPassMixin {
+    @org.spongepowered.asm.mixin.Shadow @org.spongepowered.asm.mixin.Final
+    private java.util.List<com.mojang.renderpearl.api.commands.RenderPassDescriptor.Attachment<
+            java.util.Optional<org.joml.Vector4fc>>> colorAttachments;
+
+    @org.spongepowered.asm.mixin.injection.ModifyVariable(method = "setPipeline", at = @At("HEAD"), argsOnly = true)
+    private CompiledRenderPipeline combatant$attachmentPipeline(CompiledRenderPipeline pipeline) {
+        return combatant.client.render.engine.hdr.HdrPipelineVariants.select(pipeline, colorAttachments);
+    }
+
     @Inject(
             method = "setPipeline(Lcom/mojang/renderpearl/api/pipeline/CompiledRenderPipeline;)V",
             at = @At("RETURN")

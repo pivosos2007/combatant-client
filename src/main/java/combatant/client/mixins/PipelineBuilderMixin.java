@@ -21,6 +21,34 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = PipelineBuilder.class, remap = false)
 public abstract class PipelineBuilderMixin {
+    @Inject(method = "compilePipeline", at = @At("HEAD"), remap = false)
+    private void combatant$rememberPipeline(com.mojang.renderpearl.api.pipeline.RenderPipeline pipeline,
+            ShaderSource source, java.util.concurrent.Executor executor,
+            CallbackInfoReturnable<?> cir) {
+        combatant.client.render.engine.hdr.HdrPipelineVariants.observe(pipeline);
+    }
+
+    @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(
+            method = "generateBackendCreateInfo", remap = false,
+            at = @At(value = "INVOKE", target = "Lcom/mojang/renderpearl/frontend/shaders/PipelineBuilder;loadShaderSource(Lnet/minecraft/resources/Identifier;Lcom/mojang/renderpearl/api/pipeline/ShaderType;Lcom/mojang/renderpearl/api/pipeline/ShaderSource;)Ljava/lang/String;"))
+    private String combatant$linearSceneShader(Identifier id, ShaderType type, ShaderSource source,
+            com.llamalad7.mixinextras.injector.wrapoperation.Operation<String> original,
+            @com.llamalad7.mixinextras.sugar.Local(argsOnly = true) com.mojang.renderpearl.api.pipeline.RenderPipeline pipeline) {
+        String text = original.call(id, type, source);
+        if (type != ShaderType.FRAGMENT || !pipeline.getShaderDefines().flags().contains(
+                combatant.client.render.engine.hdr.HdrPipelineVariants.LEGACY_COLOR)) return text;
+        ResourceManager resources = Minecraft.getInstance().getResourceManager();
+        try {
+            String expanded = CombatantShaderSources.expandIncludes(resources,
+                    CombatantShaderSources.vanillaResourceId(id, type), text, new java.util.HashSet<>());
+            String functions = CombatantShaderSources.load(resources,
+                    Identifier.fromNamespaceAndPath("combatant", "shaders/include/scene_color.glsl"));
+            return combatant.client.render.engine.hdr.HdrShaderSources.linearize(expanded, functions);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Unable to linearize scene shader " + id, failure);
+        }
+    }
+
     @Inject(
             method = "loadShaderSource(Lnet/minecraft/resources/Identifier;Lcom/mojang/renderpearl/api/pipeline/ShaderType;Lcom/mojang/renderpearl/api/pipeline/ShaderSource;)Ljava/lang/String;",
             at = @At("HEAD"),

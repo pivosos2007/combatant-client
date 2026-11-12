@@ -20,6 +20,7 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.util.Util;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
@@ -165,7 +166,7 @@ public final class Inventory extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
         defs.add(SettingDef.bind(toggleBind, BindMode.PRESS));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(layoutMode));

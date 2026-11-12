@@ -32,11 +32,11 @@ public final class CategoryComponent {
         return category;
     }
 
-    public void render(float x, float y, float mx, float my, MenuScreen.Category selected, float scale) {
+    public void render(float x, float y, float mx, float my, MenuScreen.Category selected) {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        float baseX = x + 5.25f * scale;
+        float baseX = x + 10.5f;
         float baseY = y;
-        float tile = 20f * scale;
+        float tile = 40f;
         boolean selectedState = selected == category;
         boolean hover = ClickGuiMath.insideRect(mx, my, baseX, baseY, tile, tile);
 
@@ -52,7 +52,7 @@ public final class CategoryComponent {
         float sy = cy - sh * 0.5f;
         if (!selectedState && hoverAnim > 0.01f) {
             LayoutRender2D.roundedQuad(
-                    baseX, baseY, tile, tile, 4f * scale,
+                    baseX, baseY, tile, tile, 8f,
                     LayoutRender2D.alpha(palette.menuCategoryHoverLeft(), hoverAnim),
                     LayoutRender2D.alpha(palette.menuCategoryHoverRight(), hoverAnim),
                     LayoutRender2D.alpha(palette.menuCategoryHoverLeft(), hoverAnim),
@@ -76,7 +76,7 @@ public final class CategoryComponent {
         float pcy = cy;
 
         if (category.svgIcon()) {
-            float iconSize = 10.4f * scale;
+            float iconSize = 20.8f;
             Renderer2D.COLOR.svg(
                     category.token(),
                     pcx - iconSize * 0.5f,
@@ -89,7 +89,7 @@ public final class CategoryComponent {
             TextRenderer font = category.iconToken()
                     ? BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_MEDIUM.renderer())
                     : BuiltinFontCatalog.ONEST_MEDIUM.renderer();
-            float size = category.iconToken() ? 8.7f * scale : (category.token().length() > 2 ? 7.6f * scale : 9.2f * scale);
+            float size = category.iconToken() ? 17.4f : (category.token().length() > 2 ? 15.2f : 18.4f);
             float tw = LayoutRender2D.textWidth(font, category.token(), size);
             float th = LayoutRender2D.textHeight(font, size);
             LayoutRender2D.drawText(
@@ -105,9 +105,9 @@ public final class CategoryComponent {
 
     }
 
-    public boolean click(float x, float y, float mx, float my, float scale) {
-        float baseX = x + 5.25f * scale;
+    public boolean click(float x, float y, float mx, float my) {
+        float baseX = x + 10.5f;
         float baseY = y;
-        return ClickGuiMath.insideRect(mx, my, baseX, baseY, 20f * scale, 20f * scale);
+        return ClickGuiMath.insideRect(mx, my, baseX, baseY, 40f, 40f);
     }
 }

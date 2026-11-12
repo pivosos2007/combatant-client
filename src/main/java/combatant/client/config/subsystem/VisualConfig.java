@@ -16,6 +16,7 @@ import combatant.client.render.iris.IrisAaIntegration;
 import combatant.client.render.iris.IrisAaOwner;
 
 import java.util.List;
+import java.util.ArrayList;
 
 @ConfigSubsystem(value = "visual", legacyNames = "mainconfig", settingOwner = "main_config")
 public final class VisualConfig extends SubsystemConfig {
@@ -208,7 +209,7 @@ public final class VisualConfig extends SubsystemConfig {
 
     @Override
     public List<SettingDef> getSettingDefs() {
-        return settings(
+        List<SettingDef> definitions = new ArrayList<>(settings(
                 SettingDef.mode(antialiasing3d),
                 SettingDef.mode(msaa3dSamples).visibleWhen(this::isMsaa3dSelected),
                 SettingDef.bool(taaFxaa).visibleWhen(this::isTaaSelected),
@@ -219,7 +220,8 @@ public final class VisualConfig extends SubsystemConfig {
                 SettingDef.bool(menuClockShowSeconds),
                 SettingDef.bool(modernSodiumGui),
                 SettingDef.bool(modernIrisGui)
-        );
+        ));
+        return definitions;
     }
 
 }

@@ -33,6 +33,10 @@ public enum SettingRenderContext {
         return push(surface, 1.0f, null);
     }
 
+    public static Scope push(SettingRenderSurface surface, SettingOverlayHost overlayHost) {
+        return push(surface, 1f, overlayHost);
+    }
+
     public static Scope push(SettingRenderSurface surface, float scale) {
         return push(surface, scale, null);
     }

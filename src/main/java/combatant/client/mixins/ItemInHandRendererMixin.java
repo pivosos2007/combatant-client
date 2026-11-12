@@ -82,9 +82,18 @@ public abstract class ItemInHandRendererMixin {
             CallbackInfo ci
     ) {
         AbstractClientPlayer player = Minecraft.getInstance().player;
-        if (player == null || playerRenderState.avatarRenderState == null) return;
+        if (playerRenderState.avatarRenderState == null) return;
         ViewModel viewModel = Modules.get(ViewModel.class);
         if (viewModel == null || !viewModel.isActiveForHandRender()) return;
+        if (player == null) {
+            // The preview uses an isolated PlayerRenderState; it must not request a fake Level.
+            // Basic offsets are the same transform used in live rendering.
+            if (combatant.client.features.gui.preview.VisualPreviewRuntime.isRenderingSubject()
+                    && viewModel.isBasicModeActive()) {
+                matrices.translate(viewModel.swingX.get(), viewModel.swingY.get(), viewModel.swingZ.get());
+            }
+            return;
+        }
 
         viewModel.syncHmiBackendForRender();
         if (viewModel.isHmiModeActive()) {

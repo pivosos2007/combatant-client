@@ -146,7 +146,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             this.pillActiveAnim = 1f;
             applyHudPreviewMode();
         }
-        if (soundOpen) settingsSurfaceSound(id, true).feedback();
+        if (soundOpen) GuiSound.MODULE_OPEN.feedback();
     }
 
     public void openEditor(String id, String title, List<Setting> source) {
@@ -169,17 +169,9 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
 
     public void close() {
         boolean soundClose = openTarget;
-        String closingId = targetId;
         openTarget = false;
         dragging = false;
-        if (soundClose) settingsSurfaceSound(closingId, false).feedback();
-    }
-
-    private static GuiSound settingsSurfaceSound(String id, boolean opening) {
-        Module module = id == null ? null : ModuleManager.get(id);
-        boolean enabled = module != null && module.isEnabled();
-        if (opening) return enabled ? GuiSound.MODULE_ON_OPEN : GuiSound.MODULE_OPEN;
-        return enabled ? GuiSound.MODULE_ON_CLOSE : GuiSound.MODULE_CLOSE;
+        if (soundClose) GuiSound.MODULE_CLOSE.feedback();
     }
 
     public boolean isActive() {
@@ -190,11 +182,19 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         return (hudContext || editorContext) && isActive();
     }
 
+    public boolean containsPointer(float mx, float my) {
+        return isActive() && inside(mx, my, panelX, panelY, panelW, panelH);
+    }
+
     public boolean blocksMenuInput() {
         return (hudContext || editorContext) && (openTarget || openAnim > 0.35f);
     }
 
-    public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float scale) {
+    public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my) {
+        render(menuX, menuY, menuW, menuH, mx, my, 345f);
+    }
+
+    public void render(float menuX, float menuY, float menuW, float menuH, float mx, float my, float width) {
         float dt = AnimationUtility.deltaTime(AnimationUtility.Mode.MILLIS);
         float openTargetValue = openTarget ? 1f : 0f;
         openAnim = AnimationUtility.approach(openAnim, openTargetValue, dt, openTarget ? 16f : 18f);
@@ -213,7 +213,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             return;
         }
 
-        float panelScale = panelScale(scale);
+        float panelScale = width / DROPDOWN_PANEL_W;
         lastSettingScale = settingScale(panelScale);
         buildRows(panelScale);
 
@@ -279,6 +279,10 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
             smoothedScroll = AnimationUtility.approach(smoothedScroll, scroll, dt, 14f);
             smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, 0.1f);
 
+            LayoutRender2D.flushRenderer();
+            LayoutRender2D.drawBlur(panelX, panelY, panelW, panelH, 6f * panelScale,
+                    0xFFFFFFFF, fadeProgress);
+            LayoutRender2D.flushRenderer();
             renderScriptedPanel(panelScale, fadeProgress, mx, my, palette);
 
             hits.clear();
@@ -328,10 +332,10 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         }
     }
 
-    public boolean mouseClicked(float mx, float my, int button, float scale) {
+    public boolean mouseClicked(float mx, float my, int button) {
         if (!isActive()) return false;
         if (openAnim <= 0.01f) return false;
-        float panelScale = panelScale(scale);
+        float panelScale = panelW / DROPDOWN_PANEL_W;
 
         if (button == combatant.client.input.InputKeys.MOUSE_LEFT && inside(mx, my, closeX, closeY, closeW, closeH)) {
             close();
@@ -339,7 +343,7 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         }
 
         if (!inside(mx, my, panelX, panelY, panelW, panelH)) {
-            return hudContext || editorContext;
+            return editorContext;
         }
 
         if (button == combatant.client.input.InputKeys.MOUSE_LEFT && inside(mx, my, panelX, panelY, panelW, DROPDOWN_HEADER_H * panelScale)) {
@@ -553,21 +557,12 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
 
         LayoutRender2D.flushRenderer();
 
-        // Inventory/Potions-style material: soft outer shadow + an explicit square blur
-        // pass below the chrome. Radius stays zero: this is not a rounded glass card.
         HudRenderUtil.drawHudShadow(
                 Renderer2D.COLOR,
                 panelX, panelY, panelW, panelH,
                 0.0f, Math.max(0.85f, scale * 0.72f),
                 false, 46, alpha
         );
-        LayoutRender2D.drawBlur(
-                panelX, panelY, panelW, panelH,
-                0.0f,
-                0xFFFFFFFF,
-                0.92f * alpha
-        );
-        LayoutRender2D.flushRenderer();
 
         runtime.render(new UiRenderContext(
                 Renderer2D.COLOR,
@@ -669,12 +664,6 @@ private static final float DROPDOWN_PANEL_W = 115.0f;
         props.put("pillProgress", AnimationUtility.easeInOutCubic(pillActiveAnim));
         props.put("enabledHover", enabledHover);
         props.put("onlyHover", onlyHover);
-
-        // Keep the scripted blur node too; the explicit Java pass above makes the
-        // square framebuffer blur reliable even through persistent UI batching.
-        props.put("blurAlpha", 0.22f * alpha);
-        props.put("blurBrightness", 0.96f);
-        props.put("blurQuality", LayoutRender2D.clickGuiBlurQuality());
 
         props.put("bodyA", hex(bodyStart));
         props.put("bodyB", hex(bodyEnd));

@@ -79,7 +79,6 @@ public final class RelationsComponent {
     private float maxScroll;
     private float scrollbarGrab;
     private boolean scrollbarDragging;
-    private float lastScale = 1f;
     private String status = "";
     private long statusUntil;
     private long onlineRefreshed;
@@ -279,51 +278,48 @@ public final class RelationsComponent {
         return LayoutRender2D.fitText(medium ? BuiltinFontCatalog.ONEST_MEDIUM.renderer() : BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 text, size, Math.max(1f, width));
     }
-    private static void cardSurface(float x, float y, float w, float h, boolean selected, boolean hovered,
-                                    float scale, SettingsGuiPalette p) {
+    private static void cardSurface(float x, float y, float w, float h, boolean selected, boolean hovered, SettingsGuiPalette p) {
         int top = selected ? SettingsGuiPalette.mix(p.moduleCardTop(), p.menuCategorySelectedLeft(), .16f) : p.moduleCardTop();
         int topRight = selected ? SettingsGuiPalette.mix(p.moduleCardTopStrong(), p.menuCategorySelectedRight(), .16f) : p.moduleCardTopStrong();
         int bottom = hovered ? SettingsGuiPalette.mix(p.moduleCardBottom(), p.menuCategoryHoverLeft(), .18f) : p.moduleCardBottom();
         int bottomRight = hovered ? SettingsGuiPalette.mix(p.moduleCardBottomStrong(), p.menuCategoryHoverRight(), .14f) : p.moduleCardBottomStrong();
-        LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
-        LayoutRender2D.roundedQuad(x, y, w, h, 5f * scale, top, topRight, bottom, bottomRight);
+        LayoutRender2D.roundedQuad(x, y, w, h, 10f, top, topRight, bottom, bottomRight);
     }
-    private static void iconButton(Rect hit, String svg, boolean active, float mx, float my, float scale, SettingsGuiPalette p) {
+    private static void iconButton(Rect hit, String svg, boolean active, float mx, float my, SettingsGuiPalette p) {
         if (hit.w() <= 0f) return;
         boolean hover = hit.contains(mx, my);
         int a = SettingsGuiPalette.mix(p.panelPillBase(), active ? p.menuCategorySelectedLeft() : p.menuCategoryHoverLeft(),
                 active ? .46f : hover ? .36f : .14f);
         int b = SettingsGuiPalette.mix(p.panelPillBase(), active ? p.menuCategorySelectedRight() : p.menuCategoryHoverRight(),
                 active ? .46f : hover ? .36f : .14f);
-        LayoutRender2D.roundedQuad(hit.x(), hit.y(), hit.w(), hit.h(), 3.5f * scale, a, b, b, a);
+        LayoutRender2D.roundedQuad(hit.x(), hit.y(), hit.w(), hit.h(), 7f, a, b, b, a);
         float inset = hit.w() * .26f;
         Renderer2D.COLOR.svg(svg, hit.x() + inset, hit.y() + inset, hit.w() - 2f * inset,
                 hit.h() - 2f * inset, SvgRenderOptions.overrideColor(p.menuCategoryText()));
         if (hover) SystemCursor.set(SystemCursor.CursorType.MOVE);
     }
-    private static void pillTrack(float x, float y, float w, float h, SettingsGuiPalette p, float scale) {
-        LayoutRender2D.drawBlur(x, y, w, h, 4f * scale, p.panelBlurTint(), 145f / 255f);
+    private static void pillTrack(float x, float y, float w, float h, SettingsGuiPalette p) {
         int a = SettingsGuiPalette.mix(p.panelPillBase(), p.panelBgLeft(), .34f);
         int b = SettingsGuiPalette.mix(p.panelPillBase(), p.panelBgRight(), .44f);
-        LayoutRender2D.roundedQuad(x, y, w, h, 3.5f * scale, a, b, b, a);
-        LayoutRender2D.roundedStrokeQuad(x, y, w, h, 3.5f * scale, .5f * scale,
+        LayoutRender2D.roundedQuad(x, y, w, h, 7f, a, b, b, a);
+        LayoutRender2D.roundedStrokeQuad(x, y, w, h, 7f, 1f,
                 p.panelStroke(), p.panelStroke(), p.panelStroke(), p.panelStroke());
     }
-    private static void pillIndicator(float x, float y, float w, float h, SettingsGuiPalette p, float scale) {
+    private static void pillIndicator(float x, float y, float w, float h, SettingsGuiPalette p) {
         int a = SettingsGuiPalette.mix(p.panelPillActive(), p.menuCategorySelectedLeft(), .22f);
         int b = SettingsGuiPalette.mix(p.panelPillActive(), p.menuCategorySelectedRight(), .22f);
-        LayoutRender2D.roundedQuad(x, y, w, h, 3f * scale, a, b, b, a);
+        LayoutRender2D.roundedQuad(x, y, w, h, 6f, a, b, b, a);
     }
-    private void renderPills(float x, float y, float mx, float my, float scale, SettingsGuiPalette p) {
-        float height = 15f * scale;
-        float tabsWidth = 132f * scale;
-        pillTrack(x, y, tabsWidth, height, p, scale);
+    private void renderPills(float x, float y, float mx, float my, SettingsGuiPalette p) {
+        float height = 30f;
+        float tabsWidth = 264f;
+        pillTrack(x, y, tabsWidth, height, p);
         float segment = tabsWidth / 3f;
         float dt = AnimationUtility.deltaTime();
         modePosition = AnimationUtility.approach(modePosition, tab.ordinal(), dt, 12f);
         modePosition = AnimationUtility.snap(modePosition, tab.ordinal(), .01f);
-        pillIndicator(x + 1.2f * scale + (segment - .8f * scale) * modePosition,
-                y + 1.2f * scale, segment - 1.6f * scale, height - 2.4f * scale, p, scale);
+        pillIndicator(x + 2.4f + (segment - 1.6f) * modePosition,
+                y + 2.4f, segment - 3.2f, height - 4.8f, p);
         String[] labels = {
                 tr("tab.friends", "Friends"), tr("tab.enemies", "Enemies"), tr("tab.staff", "Staff")
         };
@@ -331,25 +327,25 @@ public final class RelationsComponent {
             float bx = x + i * segment;
             tabHits[i] = new Rect(bx, y, segment, height);
             boolean hover = tabHits[i].contains(mx, my);
-            float fontSize = 7.7f * scale;
-            String text = fit(labels[i], fontSize, segment - 6f * scale, true);
+            float fontSize = 15.4f;
+            String text = fit(labels[i], fontSize, segment - 12f, true);
             float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), text, fontSize);
-            drawText(text, bx + (segment - tw) / 2f, y + 3.6f * scale, fontSize,
+            drawText(text, bx + (segment - tw) / 2f, y + 7.2f, fontSize,
                     i == tab.ordinal() ? p.panelText() : SettingsGuiPalette.mix(p.panelMuted(), p.panelText(), hover ? .28f : 0f), true);
             if (hover) SystemCursor.set(SystemCursor.CursorType.MOVE);
         }
     }
     private void renderViewPills(float x, float y, float width, int storedCount, int onlineCount,
-                                 float mx, float my, float scale, SettingsGuiPalette p) {
-        float height = 15f * scale;
-        pillTrack(x, y, width, height, p, scale);
+                                 float mx, float my, SettingsGuiPalette p) {
+        float height = 30f;
+        pillTrack(x, y, width, height, p);
         float segment = width / 2f;
         float dt = AnimationUtility.deltaTime();
         float target = onlineView ? 1f : 0f;
         viewPosition = AnimationUtility.approach(viewPosition, target, dt, 12f);
         viewPosition = AnimationUtility.snap(viewPosition, target, .01f);
-        pillIndicator(x + 1.2f * scale + (segment - .8f * scale) * viewPosition,
-                y + 1.2f * scale, segment - 1.6f * scale, height - 2.4f * scale, p, scale);
+        pillIndicator(x + 2.4f + (segment - 1.6f) * viewPosition,
+                y + 2.4f, segment - 3.2f, height - 4.8f, p);
         String[] labels = {
                 tr("view.saved", "Saved") + " " + storedCount,
                 tr("view.online", "Online") + " " + onlineCount
@@ -358,126 +354,125 @@ public final class RelationsComponent {
             float bx = x + i * segment;
             viewHits[i] = new Rect(bx, y, segment, height);
             boolean hover = viewHits[i].contains(mx, my);
-            float fontSize = 7.2f * scale;
-            String text = fit(labels[i], fontSize, segment - 5f * scale, true);
+            float fontSize = 14.4f;
+            String text = fit(labels[i], fontSize, segment - 10f, true);
             float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), text, fontSize);
-            drawText(text, bx + (segment - tw) / 2f, y + 3.7f * scale, fontSize,
+            drawText(text, bx + (segment - tw) / 2f, y + 7.4f, fontSize,
                     (i == 1) == onlineView ? p.panelText() : SettingsGuiPalette.mix(p.panelMuted(), p.panelText(), hover ? .28f : 0f), true);
             if (hover) SystemCursor.set(SystemCursor.CursorType.MOVE);
         }
     }
     private void renderField(SingleLineTextInput editor, Field field, Rect bounds, String placeholder,
-                             float mx, float my, float scale, SettingsGuiPalette p, String actionIcon) {
+                             float mx, float my, SettingsGuiPalette p, String actionIcon) {
         boolean active = focus == field;
         int a = SettingsGuiPalette.mix(p.panelPillBase(), p.moduleCardTop(), .25f);
         int b = SettingsGuiPalette.mix(p.panelPillBase(), p.moduleCardTopStrong(), .21f);
-        LayoutRender2D.roundedQuad(bounds.x(), bounds.y(), bounds.w(), bounds.h(), 3.5f * scale, a, b, b, a);
-        LayoutRender2D.roundedStrokeQuad(bounds.x(), bounds.y(), bounds.w(), bounds.h(), 3.5f * scale,
-                active ? .85f * scale : .45f * scale,
+        LayoutRender2D.roundedQuad(bounds.x(), bounds.y(), bounds.w(), bounds.h(), 7f, a, b, b, a);
+        LayoutRender2D.roundedStrokeQuad(bounds.x(), bounds.y(), bounds.w(), bounds.h(), 7f,
+                active ? 1.7f : 0.9f,
                 active ? p.menuCategorySelectedLeft() : p.panelStroke(),
                 active ? p.menuCategorySelectedRight() : p.panelStroke(),
                 active ? p.menuCategorySelectedRight() : p.panelStroke(),
                 active ? p.menuCategorySelectedLeft() : p.panelStroke());
-        float fieldX = bounds.x() + 7f * scale;
-        float fieldW = bounds.w() - 24f * scale;
-        float fontSize = 8.3f * scale;
+        float fieldX = bounds.x() + 14f;
+        float fieldW = bounds.w() - 48f;
+        float fontSize = 16.6f;
         if (editor.text().isEmpty() && !active) {
-            drawText(fit(placeholder, fontSize, fieldW, false), fieldX, bounds.y() + 4f * scale,
+            drawText(fit(placeholder, fontSize, fieldW, false), fieldX, bounds.y() + 8f,
                     fontSize, p.panelMuted(), false);
         }
-        editor.render(fieldX, bounds.y() + 4f * scale, fieldW, bounds.h() * .68f,
+        editor.render(fieldX, bounds.y() + 8f, fieldW, bounds.h() * .68f,
                 BuiltinFontCatalog.ONEST_REGULAR.renderer(), fontSize, p.panelText(),
                 SettingsGuiPalette.withAlpha(p.menuCategorySelectedLeft(), 100), active);
-        float divider = bounds.x() + bounds.w() - 18f * scale;
-        LayoutRender2D.rectQuad(divider, bounds.y() + 2.7f * scale, .55f * scale, bounds.h() - 5.4f * scale,
+        float divider = bounds.x() + bounds.w() - 36f;
+        LayoutRender2D.rectQuad(divider, bounds.y() + 5.4f, 1.1f, bounds.h() - 10.8f,
                 p.moduleDividerStart(), p.moduleDividerEnd(), p.moduleDividerEnd(), p.moduleDividerStart());
-        Rect action = new Rect(divider, bounds.y(), 18f * scale, bounds.h());
+        Rect action = new Rect(divider, bounds.y(), 36f, bounds.h());
         if (action.contains(mx, my)) SystemCursor.set(SystemCursor.CursorType.MOVE);
-        float icon = 8.2f * scale;
+        float icon = 16.4f;
         Renderer2D.COLOR.svg(actionIcon, divider + (action.w() - icon) / 2f,
                 bounds.y() + (bounds.h() - icon) / 2f, icon, icon,
                 SvgRenderOptions.overrideColor(p.menuCategoryText()));
     }
     private void renderRuleInput(SingleLineTextInput editor, Field field, Rect bounds,
-                                 float mx, float my, float scale, SettingsGuiPalette p) {
-        renderField(editor, field, bounds, tr("placeholder.rule", "Rule"), mx, my, scale, p, "check");
+                                 float mx, float my, SettingsGuiPalette p) {
+        renderField(editor, field, bounds, tr("placeholder.rule", "Rule"), mx, my, p, "check");
     }
-    private void renderToolbar(float x, float y, float width, float mx, float my, float scale,
+    private void renderToolbar(float x, float y, float width, float mx, float my,
                                SettingsGuiPalette p) {
-        renderPills(x, y, mx, my, scale, p);
+        renderPills(x, y, mx, my, p);
         float lastX = x + width;
-        float modeW = 93f * scale;
+        float modeW = 186f;
         lastX -= modeW;
-        renderViewPills(lastX, y, modeW, relationSet(tab).size(), onlinePlayers().size(), mx, my, scale, p);
-        float slotX = x + 139f * scale;
-        float slotW = lastX - slotX - 6f * scale;
+        renderViewPills(lastX, y, modeW, relationSet(tab).size(), onlinePlayers().size(), mx, my, p);
+        float slotX = x + 278f;
+        float slotW = lastX - slotX - 12f;
         rulesHit = Rect.EMPTY;
         heuristicsHit = Rect.EMPTY;
         if (tab == Tab.STAFF) {
-            float control = 15f * scale;
-            rulesHit = new Rect(lastX - control - 5f * scale, y, control, control);
-            iconButton(rulesHit, "sliders-horizontal", rulesView, mx, my, scale, p);
-            slotW -= control + 5f * scale;
+            float control = 30f;
+            rulesHit = new Rect(lastX - control - 10f, y, control, control);
+            iconButton(rulesHit, "sliders-horizontal", rulesView, mx, my, p);
+            slotW -= control + 10f;
         }
         addFieldHit = addActionHit = Rect.EMPTY;
         if (rulesView && tab == Tab.STAFF) {
-            float control = Math.min(slotW, 96f * scale);
-            heuristicsHit = new Rect(slotX, y, control, 15f * scale);
+            float control = Math.min(slotW, 192f);
+            heuristicsHit = new Rect(slotX, y, control, 30f);
             boolean enabled = StaffHeuristicsConfig.get().enabled();
-            pillTrack(heuristicsHit.x(), heuristicsHit.y(), heuristicsHit.w(), heuristicsHit.h(), p, scale);
-            if (enabled) pillIndicator(heuristicsHit.x() + scale, heuristicsHit.y() + scale,
-                    heuristicsHit.w() - 2f * scale, heuristicsHit.h() - 2f * scale, p, scale);
+            pillTrack(heuristicsHit.x(), heuristicsHit.y(), heuristicsHit.w(), heuristicsHit.h(), p);
+            if (enabled) pillIndicator(heuristicsHit.x() + 2f, heuristicsHit.y() + 2f,
+                    heuristicsHit.w() - 4f, heuristicsHit.h() - 4f, p);
             String text = enabled ? tr("heuristics.enabled", "Enabled") : tr("heuristics.disabled", "Disabled");
-            float fontSize = 7.6f * scale;
-            text = fit(text, fontSize, heuristicsHit.w() - 7f * scale, true);
+            float fontSize = 15.2f;
+            text = fit(text, fontSize, heuristicsHit.w() - 14f, true);
             float textW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_MEDIUM.renderer(), text, fontSize);
-            drawText(text, slotX + (control - textW) / 2f, y + 3.6f * scale, fontSize,
+            drawText(text, slotX + (control - textW) / 2f, y + 7.2f, fontSize,
                     enabled ? p.panelText() : p.panelMuted(), true);
-        } else if (!onlineView && slotW >= 55f * scale) {
-            addFieldHit = new Rect(slotX, y, slotW, 15f * scale);
-            addActionHit = new Rect(slotX + slotW - 18f * scale, y, 18f * scale, 15f * scale);
-            renderField(add, Field.ADD, addFieldHit, tr("placeholder.nick", "Nickname"), mx, my, scale, p, "user-plus");
+        } else if (!onlineView && slotW >= 110f) {
+            addFieldHit = new Rect(slotX, y, slotW, 30f);
+            addActionHit = new Rect(slotX + slotW - 36f, y, 36f, 30f);
+            renderField(add, Field.ADD, addFieldHit, tr("placeholder.nick", "Nickname"), mx, my, p, "user-plus");
         }
     }
     public void render(float menuX, float menuY, float menuW, float menuH,
-                       float mx, float my, float scale) {
-        lastScale = scale;
+                       float mx, float my) {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        float x = menuX + 31f * scale;
-        float y = menuY + 33f * scale;
-        float width = menuW - 42f * scale;
-        float height = menuH - 39f * scale;
-        float toolbar = 24f * scale;
-        renderToolbar(x, y, width, mx, my, scale, palette);
+        float x = menuX + 62f;
+        float y = menuY + 66f;
+        float width = menuW - 84f;
+        float height = menuH - 78f;
+        float toolbar = 48f;
+        renderToolbar(x, y, width, mx, my, palette);
         listBounds = new Rect(x, y + toolbar, width, height - toolbar);
         playerHits.clear();
         ruleHits.clear();
         for (int i = 0; i < 3; i++) { ruleFieldHits[i] = Rect.EMPTY; ruleAddHits[i] = Rect.EMPTY; }
-        if (rulesView && tab == Tab.STAFF) renderRules(mx, my, scale, palette);
-        else renderPlayers(entries(), mx, my, scale, palette);
-        renderScrollbar(mx, my, scale, palette);
+        if (rulesView && tab == Tab.STAFF) renderRules(mx, my, palette);
+        else renderPlayers(entries(), mx, my, palette);
+        renderScrollbar(mx, my, palette);
         if (System.currentTimeMillis() < statusUntil && !status.isEmpty()) {
-            float fontSize = 7.4f * scale;
-            String value = fit(status, fontSize, width - 14f * scale, false);
+            float fontSize = 14.8f;
+            String value = fit(status, fontSize, width - 28f, false);
             float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), value, fontSize);
-            drawText(value, x + width - tw - 7f * scale,
-                    y + height - 9f * scale, fontSize, palette.panelText(), false);
+            drawText(value, x + width - tw - 14f,
+                    y + height - 18f, fontSize, palette.panelText(), false);
         }
         movementInputBlocked = focus != Field.NONE || onlineView;
     }
-    private void renderPlayers(List<Entry> players, float mx, float my, float scale, SettingsGuiPalette p) {
+    private void renderPlayers(List<Entry> players, float mx, float my, SettingsGuiPalette p) {
         Rect r = listBounds;
-        float gap = 6f * scale;
-        int columns = r.w() > 230f * scale ? 2 : 1;
+        float gap = 12f;
+        int columns = r.w() > 460f ? 2 : 1;
         float cardW = (r.w() - gap * (columns - 1)) / columns;
-        float cardH = 58f * scale;
+        float cardH = 116f;
         float step = cardH + gap;
         int rows = (players.size() + columns - 1) / columns;
         updateScroll(rows <= 0 ? 0f : rows * step - gap, r.h());
         if (players.isEmpty()) {
             String text = ClickGuiSearch.hasQuery() ? tr("empty.no_matches", "No matching players") :
                     onlineView ? tr("online_picker.empty", "No online players") : tr("empty.none_added", "No players added");
-            float fontSize = 8.8f * scale;
+            float fontSize = 17.6f;
             float tw = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), text, fontSize);
             drawText(text, r.x() + (r.w() - tw) / 2f, r.y() + r.h() * .42f, fontSize, p.panelMuted(), false);
             return;
@@ -489,61 +484,61 @@ public final class RelationsComponent {
             float cy = r.y() + row * step + smoothedScroll;
             if (cy + cardH <= r.y() || cy >= r.y() + r.h()) continue;
             Entry entry = players.get(i);
-            renderPlayerCard(entry, cx, cy, cardW, cardH, mx, my, scale, p);
+            renderPlayerCard(entry, cx, cy, cardW, cardH, mx, my, p);
         }
         if (clipped) ScissorFunction.pop();
     }
     private void renderPlayerCard(Entry entry, float x, float y, float w, float h,
-                                  float mx, float my, float scale, SettingsGuiPalette p) {
+                                  float mx, float my, SettingsGuiPalette p) {
         boolean selectedCard = entry.name().equalsIgnoreCase(selected);
         Rect card = new Rect(x, y, w, h);
         boolean hovered = card.contains(mx, my);
-        try (var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, p)) {
-            cardSurface(x, y, w, h, selectedCard, hovered, scale, p);
-            float iconW = 18f * scale;
-            float iconX = x + 6f * scale;
-            float iconY = y + 6f * scale;
+        try (var transition = SettingsCardTransition.beginCard()) {
+            cardSurface(x, y, w, h, selectedCard, hovered, p);
+            float iconW = 36f;
+            float iconX = x + 12f;
+            float iconY = y + 12f;
             int iconBg = SettingsGuiPalette.mix(p.menuCategorySelectedLeft(), p.panelPillBase(), .55f);
-            LayoutRender2D.roundedQuad(iconX, iconY, iconW, iconW, 4f * scale,
+            LayoutRender2D.roundedQuad(iconX, iconY, iconW, iconW, 8f,
                     iconBg, iconBg, iconBg, iconBg);
-            Renderer2D.COLOR.svg("user", iconX + 4f * scale, iconY + 4f * scale,
-                    10f * scale, 10f * scale, SvgRenderOptions.overrideColor(p.panelText()));
-            float titleX = x + 29f * scale;
-            float titleW = w - 39f * scale;
-            drawText(fit(entry.name(), 10.3f * scale, titleW, true), titleX,
-                    y + 7.1f * scale, 10.3f * scale, p.moduleTitleText(), true);
+            Renderer2D.COLOR.svg("user", iconX + 8f, iconY + 8f,
+                    20f, 20f, SvgRenderOptions.overrideColor(p.panelText()));
+            float titleX = x + 58f;
+            float titleW = w - 78f;
+            drawText(fit(entry.name(), 20.6f, titleW, true), titleX,
+                    y + 14.2f, 20.6f, p.moduleTitleText(), true);
             Entry presence = onlinePlayers().stream()
                     .filter(player -> player.name().equalsIgnoreCase(entry.name())).findFirst().orElse(null);
             String meta = onlineView
                     ? entry.relation() + "  ·  " + tr("card.latency", "%s ms", entry.latency())
                     : presence == null ? tr("card.offline", "Offline")
                     : tr("card.online", "Online") + "  ·  " + tr("card.latency", "%s ms", presence.latency());
-            drawText(fit(meta, 7.3f * scale, titleW, false), titleX,
-                    y + 20f * scale, 7.3f * scale, p.moduleDescriptionText(), false);
-            LayoutRender2D.rectQuad(x + 7f * scale, y + 32f * scale, w - 14f * scale, .5f * scale,
+            drawText(fit(meta, 14.6f, titleW, false), titleX,
+                    y + 40f, 14.6f, p.moduleDescriptionText(), false);
+            LayoutRender2D.rectQuad(x + 14f, y + 64f, w - 28f, 1f,
                     p.moduleDividerStart(), p.moduleDividerEnd(), p.moduleDividerEnd(), p.moduleDividerStart());
-            float actionSize = 16f * scale;
-            Rect change = new Rect(x + w - 6f * scale - actionSize, y + h - 20f * scale,
+            float actionSize = 32f;
+            Rect change = new Rect(x + w - 12f - actionSize, y + h - 40f,
                     actionSize, actionSize);
-            Rect copy = new Rect(change.x() - 4f * scale - actionSize, change.y(), actionSize, actionSize);
+            Rect copy = new Rect(change.x() - 8f - actionSize, change.y(), actionSize, actionSize);
             boolean assigned = relationSet(tab).stream().anyMatch(name -> name.equalsIgnoreCase(entry.name()));
-            iconButton(copy, "clipboard", false, mx, my, scale, p);
+            iconButton(copy, "clipboard", false, mx, my, p);
             iconButton(change, onlineView ? (assigned ? "user-minus" : "user-plus") : "trash-2",
-                    onlineView && assigned, mx, my, scale, p);
+                    onlineView && assigned, mx, my, p);
             String hint = onlineView ? tr("view.online", "Online") : tr("view.saved", "Saved");
-            drawText(hint, x + 8f * scale, y + h - 16.2f * scale, 7.4f * scale,
+            drawText(hint, x + 16f, y + h - 32.4f, 14.8f,
                     p.moduleDescriptionIcon(), false);
             playerHits.add(new PlayerHit(entry.name(), card, copy, change));
         }
     }
-    private void renderRules(float mx, float my, float scale, SettingsGuiPalette p) {
+    private void renderRules(float mx, float my, SettingsGuiPalette p) {
         Rect r = listBounds;
-        float gap = 6f * scale;
-        int columns = r.w() > 230f * scale ? 2 : 1;
+        float gap = 12f;
+        int columns = r.w() > 460f ? 2 : 1;
         float cardW = (r.w() - gap * (columns - 1)) / columns;
         float[] heights = new float[3];
         for (int i = 0; i < 3; i++) {
-            heights[i] = (68f + Math.max(1, ruleSet(field(i)).size()) * 21f) * scale;
+            heights[i] = 136f + Math.max(1, ruleSet(field(i)).size()) * 42f;
         }
         float[] tops = new float[3];
         float position = 0f;
@@ -560,54 +555,54 @@ public final class RelationsComponent {
             float cx = r.x() + col * (cardW + gap);
             float cy = r.y() + tops[i] + smoothedScroll;
             if (cy > r.y() + r.h() || cy + heights[i] < r.y()) continue;
-            renderRuleCard(field(i), cx, cy, cardW, heights[i], mx, my, scale, p);
+            renderRuleCard(field(i), cx, cy, cardW, heights[i], mx, my, p);
         }
         if (clipped) ScissorFunction.pop();
     }
     private void renderRuleCard(Field field, float x, float y, float width, float height,
-                                float mx, float my, float scale, SettingsGuiPalette p) {
+                                float mx, float my, SettingsGuiPalette p) {
         List<String> values = sorted(ruleSet(field));
-        try (var transition = SettingsCardTransition.beginCard(x, y, width, height, 5f * scale, scale, p)) {
+        try (var transition = SettingsCardTransition.beginCard()) {
             cardSurface(x, y, width, height, false,
-                    ClickGuiMath.insideRect(mx, my, x, y, width, height), scale, p);
+                    ClickGuiMath.insideRect(mx, my, x, y, width, height), p);
             String title = switch (field) {
                 case PREFIX -> tr("heuristics.prefixes", "Prefixes");
                 case SUFFIX -> tr("heuristics.suffixes", "Suffixes");
                 case CONTAINS -> tr("heuristics.contains", "Contains");
                 default -> "";
             };
-            drawText(title, x + 9f * scale, y + 7f * scale, 9.5f * scale, p.moduleTitleText(), true);
-            Rect inputBounds = new Rect(x + 8f * scale, y + 23f * scale, width - 16f * scale, 18f * scale);
+            drawText(title, x + 18f, y + 14f, 19f, p.moduleTitleText(), true);
+            Rect inputBounds = new Rect(x + 16f, y + 46f, width - 32f, 36f);
             int index = fieldIndex(field);
             ruleFieldHits[index] = inputBounds;
-            ruleAddHits[index] = new Rect(inputBounds.x() + inputBounds.w() - 18f * scale,
-                    inputBounds.y(), 18f * scale, inputBounds.h());
-            renderRuleInput(input(field), field, inputBounds, mx, my, scale, p);
-            float iy = y + 46f * scale;
+            ruleAddHits[index] = new Rect(inputBounds.x() + inputBounds.w() - 36f,
+                    inputBounds.y(), 36f, inputBounds.h());
+            renderRuleInput(input(field), field, inputBounds, mx, my, p);
+            float iy = y + 92f;
             if (values.isEmpty()) {
-                drawText(tr("rules.empty", "No rules"), x + 10f * scale, iy + 2f * scale,
-                        7.5f * scale, p.moduleDescriptionText(), false);
+                drawText(tr("rules.empty", "No rules"), x + 20f, iy + 4f,
+                        15f, p.moduleDescriptionText(), false);
             }
             for (String value : values) {
-                Rect chip = new Rect(x + 8f * scale, iy, width - 16f * scale, 18f * scale);
+                Rect chip = new Rect(x + 16f, iy, width - 32f, 36f);
                 int a = SettingsGuiPalette.mix(p.panelPillBase(), p.moduleCardTop(), .30f);
                 int b = SettingsGuiPalette.mix(p.panelPillBase(), p.moduleCardTopStrong(), .18f);
-                LayoutRender2D.roundedQuad(chip.x(), chip.y(), chip.w(), chip.h(), 3.5f * scale, a, b, b, a);
-                drawText(fit(value, 7.9f * scale, chip.w() - 30f * scale, false),
-                        chip.x() + 6f * scale, chip.y() + 4f * scale,
-                        7.9f * scale, p.moduleDescriptionText(), false);
-                float separatorX = chip.x() + chip.w() - 18f * scale;
-                LayoutRender2D.rectQuad(separatorX, chip.y() + 3f * scale, .6f * scale,
-                        chip.h() - 6f * scale, p.moduleDividerStart(), p.moduleDividerEnd(),
+                LayoutRender2D.roundedQuad(chip.x(), chip.y(), chip.w(), chip.h(), 7f, a, b, b, a);
+                drawText(fit(value, 15.8f, chip.w() - 60f, false),
+                        chip.x() + 12f, chip.y() + 8f,
+                        15.8f, p.moduleDescriptionText(), false);
+                float separatorX = chip.x() + chip.w() - 36f;
+                LayoutRender2D.rectQuad(separatorX, chip.y() + 6f, 1.2f,
+                        chip.h() - 12f, p.moduleDividerStart(), p.moduleDividerEnd(),
                         p.moduleDividerEnd(), p.moduleDividerStart());
-                Rect remove = new Rect(separatorX, chip.y(), 18f * scale, chip.h());
-                float icon = 7.8f * scale;
+                Rect remove = new Rect(separatorX, chip.y(), 36f, chip.h());
+                float icon = 15.6f;
                 Renderer2D.COLOR.svg("x", remove.x() + (remove.w() - icon) / 2f,
                         remove.y() + (remove.h() - icon) / 2f, icon, icon,
                         SvgRenderOptions.overrideColor(p.moduleDescriptionText()));
                 ruleHits.add(new RuleHit(field, value, remove));
                 if (remove.contains(mx, my)) SystemCursor.set(SystemCursor.CursorType.MOVE);
-                iy += 21f * scale;
+                iy += 42f;
             }
         }
     }
@@ -618,10 +613,10 @@ public final class RelationsComponent {
         smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, scrollbarDragging ? .01f : .05f);
         Rect r = listBounds;
         if (maxScroll <= .5f) { scrollbarTrack = scrollbarThumb = Rect.EMPTY; scrollbarDragging = false; return; }
-        float width = 3f * lastScale;
-        scrollbarTrack = new Rect(r.x() + r.w() - width - 2f * lastScale,
-                r.y() + 3f * lastScale, width, Math.max(1f, r.h() - 6f * lastScale));
-        float thumbH = Math.min(scrollbarTrack.h(), Math.max(18f * lastScale,
+        float width = 6f;
+        scrollbarTrack = new Rect(r.x() + r.w() - width - 4f,
+                r.y() + 6f, width, Math.max(1f, r.h() - 12f));
+        float thumbH = Math.min(scrollbarTrack.h(), Math.max(36f,
                 scrollbarTrack.h() * scrollbarTrack.h() / (maxScroll + scrollbarTrack.h())));
         float ratio = -smoothedScroll / maxScroll;
         scrollbarThumb = new Rect(scrollbarTrack.x(),
@@ -629,12 +624,12 @@ public final class RelationsComponent {
                 width, thumbH);
         if (scrollbarDragging) dragScrollbar(ClickGuiRenderer.getMouseY());
     }
-    private void renderScrollbar(float mx, float my, float scale, SettingsGuiPalette p) {
+    private void renderScrollbar(float mx, float my, SettingsGuiPalette p) {
         if (scrollbarTrack.w() <= 0f) return;
         LayoutRender2D.roundedQuad(scrollbarTrack.x(), scrollbarTrack.y(), scrollbarTrack.w(), scrollbarTrack.h(),
-                2f * scale, p.moduleScrollTrackA(), p.moduleScrollTrackB(), p.moduleScrollTrackB(), p.moduleScrollTrackA());
+                4f, p.moduleScrollTrackA(), p.moduleScrollTrackB(), p.moduleScrollTrackB(), p.moduleScrollTrackA());
         LayoutRender2D.roundedQuad(scrollbarThumb.x(), scrollbarThumb.y(), scrollbarThumb.w(), scrollbarThumb.h(),
-                2f * scale, p.moduleScrollHandleA(), p.moduleScrollHandleB(), p.moduleScrollHandleB(), p.moduleScrollHandleA());
+                4f, p.moduleScrollHandleA(), p.moduleScrollHandleB(), p.moduleScrollHandleB(), p.moduleScrollHandleA());
         if (scrollbarTrack.contains(mx, my)) SystemCursor.set(SystemCursor.CursorType.SCROLL);
     }
     private void dragScrollbar(float my) {

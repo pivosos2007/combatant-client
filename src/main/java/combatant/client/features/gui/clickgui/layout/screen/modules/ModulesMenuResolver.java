@@ -10,6 +10,7 @@ package combatant.client.features.gui.clickgui.layout.screen.modules;
 import combatant.client.features.gui.chat.diagnostics.FailureDiagnostics;
 
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
+import combatant.client.features.gui.clickgui.sound.GuiModuleToggle;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.ModuleComponent;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.clickgui.settings.SettingErrorView;
@@ -20,7 +21,6 @@ import combatant.client.features.module.ModuleSubcategoryDefinition;
 import combatant.client.features.module.ModuleSubcategoryRegistry;
 import combatant.client.features.gui.preview.VisualPreviewRegistry;
 
-import net.minecraft.client.Minecraft;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -53,8 +53,7 @@ enum ModulesMenuResolver {
                     bind == null ? "" : bind,
                     !module.getSettings().isEmpty() || VisualPreviewRegistry.supports(module) || SettingErrorView.hasFailure(module),
                     module.isEnabled(),
-                    !ErrorHandler.blocked(module) && !(ClickGuiRenderer.isMenuSession()
-                            && Minecraft.getInstance().level == null),
+                    !ErrorHandler.blocked(module),
                     SettingErrorView.hasFailure(module),
                     module.isShownInModuleList(),
                     module.getAliases()
@@ -68,9 +67,8 @@ enum ModulesMenuResolver {
     static void toggleEntry(String id) {
         Module module = moduleById(id);
         if (module == null) return;
-        if (ClickGuiRenderer.isMenuSession() && Minecraft.getInstance().level == null) return;
         if (ErrorHandler.blocked(module)) { FailureDiagnostics.showSummaryFor(module); return; }
-        module.toggle();
+        GuiModuleToggle.toggle(module);
     }
 
     static void beginBind(String id) {

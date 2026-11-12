@@ -41,7 +41,7 @@ public final class CachedUiScriptRuntime {
 
     private final LinkedHashMap<String, State> states = new LinkedHashMap<>();
     private final Reporter reporter;
-    private final int workerLane = UiScriptWorkerPool.selectLane();
+    private final int workerLane;
     // Owned exclusively by workerLane; never call the engine from the render thread.
     private UiScriptEngine workerEngine;
     private long workerGeneration = Long.MIN_VALUE;
@@ -54,7 +54,13 @@ public final class CachedUiScriptRuntime {
     }
 
     public CachedUiScriptRuntime(Reporter reporter) {
+        this(reporter, false);
+    }
+
+    /** Interactive templates use a lane that cannot queue behind continuously updating HUD scripts. */
+    public CachedUiScriptRuntime(Reporter reporter, boolean interactive) {
         this.reporter = reporter != null ? reporter : Reporter.NOOP;
+        workerLane = interactive ? UiScriptWorkerPool.interactiveLane() : UiScriptWorkerPool.selectLane();
     }
 
     private static String runtimeLabel(UiScriptModuleHandle handle, String key) {

@@ -27,6 +27,8 @@ import combatant.client.config.values.RGBAColorValue;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
+import combatant.client.features.gui.preview.api.HudPreviewCanvas;
 import combatant.client.features.theme.Themes;
 import combatant.client.mixins.accessors.TextIconButtonWidgetAccessor;
 import combatant.client.render.engine.color.RenderColor;
@@ -47,6 +49,26 @@ import static combatant.client.features.theme.Theme.theme;
 public final class BetterButtons extends AbstractHudElement {
 
     public static final BetterButtons INSTANCE = new BetterButtons();
+    private Button previewButton;
+
+    @Override
+    public PreviewCatalog.Definition<Boolean, HudPreviewCanvas> previewDefinition() {
+        return PreviewCatalog.definition(
+                new PreviewCatalog.Id(PreviewCatalog.Surface.HUD, getId()), HudPreviewCanvas.class,
+                frame -> PreviewCatalog.Availability.READY,
+                frame -> Boolean.TRUE,
+                (canvas, sample) -> {
+                    if (previewButton == null) {
+                        previewButton = Button.builder(Component.literal("Example button"), button -> { })
+                                .bounds(0, 0, 160, 22).build();
+                    }
+                    previewButton.setX(Math.round((canvas.guiWidth() - 160f) * 0.5f));
+                    previewButton.setY(Math.round(canvas.guiHeight() * 0.70f));
+                    renderButton(canvas.graphics(), previewButton,
+                            previewButton.getMessage(), 0.65f, true, false);
+                }, PreviewCatalog.PreviewSpace.VANILLA_GUI);
+    }
+
     private static final float HOVER_SPEED_IN = 20.0f;
     private static final float HOVER_SPEED_OUT = 16.0f;
     private static final float BUTTON_RADIUS = 6.0f;

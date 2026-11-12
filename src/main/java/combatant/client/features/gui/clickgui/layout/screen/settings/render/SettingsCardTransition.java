@@ -32,13 +32,7 @@ public enum SettingsCardTransition {
         return new SectionScope(previous);
     }
 
-    public static CardScope beginCard(float x,
-                                      float y,
-                                      float w,
-                                      float h,
-                                      float radius,
-                                      float scale,
-                                      SettingsGuiPalette palette) {
+    public static CardScope beginCard() {
         float alpha = arrivalAlpha(progress);
         double previousRendererAlpha = Renderer2D.COLOR.getAlpha();
         float previousGuiAlpha = LayoutRender2D.getRenderAlphaMultiplier();

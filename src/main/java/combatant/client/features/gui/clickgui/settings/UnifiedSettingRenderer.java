@@ -223,13 +223,13 @@ enum UnifiedSettingRenderer {
     }
 
     static float getHeight(BooleanSetting setting) {
-        if (modern()) return UnifiedSettingsSkin.modernMetric(20f, 20f);
+        if (modern()) return UnifiedSettingsSkin.modernMetric(22f, 20f);
         return booleanLayout(setting, setting.ui().lastW > 0f ? setting.ui().lastW : m(170f, 115f)).rowH;
     }
 
     private static void renderModernBoolean(BooleanSetting setting, float x, float y, float w, float mx, float my) {
         BooleanSetting.UiState ui = setting.ui();
-        float rowH = UnifiedSettingsSkin.modernMetric(20f, 20f);
+        float rowH = UnifiedSettingsSkin.modernMetric(22f, 20f);
         float box = UnifiedSettingsSkin.checkboxSize();
         float bx = x + w - box;
         float by = y + (rowH - box) * 0.5f;
@@ -245,13 +245,13 @@ enum UnifiedSettingRenderer {
         float labelSize = UnifiedSettingsSkin.labelSize();
         float ty = y + (rowH - UnifiedSettingsSkin.textHeight(font, labelSize)) * 0.5f;
         drawSettingLabel(setting, setting.getDisplayName(), font, x, ty, labelSize,
-                Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(10f, 10f)),
+                Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(11f, 10f)),
                 UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
 
-        float radius = UnifiedSettingsSkin.modernMetric(5f, 5f);
+        float radius = UnifiedSettingsSkin.modernMetric(5.5f, 5f);
         UnifiedSettingsSkin.drawModernControlSurface(bx, by, box, box, radius, ui.hoverAnim, ui.anim * 0.35f);
         if (ui.anim > 0.01f) {
-            float inset = Math.max(0.8f, UnifiedSettingsSkin.modernMetric(1f, 1f));
+            float inset = Math.max(0.8f, UnifiedSettingsSkin.modernMetric(1.1f, 1f));
             float innerW = Math.max(1f, box - inset * 2f);
             float innerH = Math.max(1f, box - inset * 2f);
             int selectedBg = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetHoverBg(),
@@ -259,7 +259,7 @@ enum UnifiedSettingRenderer {
             LayoutRender2D.drawRoundedRect(bx + inset, by + inset, innerW, innerH,
                     Math.max(1f, radius - inset * 0.45f),
                     UnifiedSettingsSkin.withAlpha(selectedBg, 0.92f * ui.anim));
-            float icon = UnifiedSettingsSkin.modernMetric(14f, 14f) * ui.anim;
+            float icon = UnifiedSettingsSkin.modernMetric(15.4f, 14f) * ui.anim;
             float ix = bx + (box - icon) * 0.5f;
             float iy = by + (box - icon) * 0.5f;
             int checkColor = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernTextBright(),
@@ -470,8 +470,8 @@ enum UnifiedSettingRenderer {
         }
         if (modern()) {
             if (!UnifiedSettingsSkin.inside(mx, my, ui.trackX,
-                    ui.trackY - UnifiedSettingsSkin.modernMetric(7f, 7f), ui.trackW,
-                    ui.trackH + UnifiedSettingsSkin.modernMetric(14f, 14f))) return;
+                    ui.trackY - UnifiedSettingsSkin.modernMetric(7.7f, 7f), ui.trackW,
+                    ui.trackH + UnifiedSettingsSkin.modernMetric(15.4f, 14f))) return;
             ui.dragging = true;
             setSliderValueFromMouse(setting, (float) mx, ui.trackX, ui.trackW, setting.sliderMin(), setting.sliderMax());
             return;
@@ -602,8 +602,8 @@ enum UnifiedSettingRenderer {
 
     static float getHeight(SliderSetting<?> setting) {
         if (modern()) return largeModelSlider(setting)
-                ? UnifiedSettingsSkin.modernMetric(56f, 56f)
-                : UnifiedSettingsSkin.modernMetric(32f, 33f);
+                ? UnifiedSettingsSkin.modernMetric(61.6f, 56f)
+                : UnifiedSettingsSkin.modernMetric(35.2f, 33f);
         return m(58f, 24f);
     }
 
@@ -618,26 +618,26 @@ enum UnifiedSettingRenderer {
         double max = setting.sliderMax();
         double val = value.get().doubleValue();
         boolean large = largeModelSlider(setting);
-        float rowH = large ? UnifiedSettingsSkin.modernMetric(56f, 56f)
-                : UnifiedSettingsSkin.modernMetric(32f, 33f);
+        float rowH = large ? UnifiedSettingsSkin.modernMetric(61.6f, 56f)
+                : UnifiedSettingsSkin.modernMetric(35.2f, 33f);
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
         float labelSize = UnifiedSettingsSkin.labelSize();
-        float valueSize = UnifiedSettingsSkin.modernMetric(12f, 12f);
+        float valueSize = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
         String display = ui.editing ? ui.editBuffer : value.toDisplay();
         if (display == null) display = "";
         float valueTextW = UnifiedSettingsSkin.textWidth(font, display, valueSize);
-        float valueW = Math.max(UnifiedSettingsSkin.modernMetric(42f, 42f), valueTextW + UnifiedSettingsSkin.modernMetric(10f, 10f));
-        float valueH = UnifiedSettingsSkin.modernMetric(18f, 18f);
+        float valueW = Math.max(UnifiedSettingsSkin.modernMetric(46.2f, 42f), valueTextW + UnifiedSettingsSkin.modernMetric(11f, 10f));
+        float valueH = UnifiedSettingsSkin.modernMetric(19.8f, 18f);
         float valueX = x + w - valueW;
-        float valueY = y - UnifiedSettingsSkin.modernMetric(1f, 1f);
-        float trackH = large ? UnifiedSettingsSkin.modernMetric(5.5f, 5.5f)
+        float valueY = y - UnifiedSettingsSkin.modernMetric(1.1f, 1f);
+        float trackH = large ? UnifiedSettingsSkin.modernMetric(6.05f, 5.5f)
                 : UnifiedSettingsSkin.sliderTrackHeight();
-        float knobRadius = large ? UnifiedSettingsSkin.modernMetric(7.5f, 7.5f)
+        float knobRadius = large ? UnifiedSettingsSkin.modernMetric(8.25f, 7.5f)
                 : UnifiedSettingsSkin.sliderThumbOuterRadius();
-        float trackInset = knobRadius + UnifiedSettingsSkin.modernMetric(1.0f, 1.0f);
+        float trackInset = knobRadius + UnifiedSettingsSkin.modernMetric(1.1f, 1.0f);
         float trackX = x + trackInset;
         float trackW = Math.max(1f, w - trackInset * 2f);
-        float knobCenterY = y + rowH - knobRadius - UnifiedSettingsSkin.modernMetric(large ? 5f : .5f, large ? 5f : .5f);
+        float knobCenterY = y + rowH - knobRadius - UnifiedSettingsSkin.modernMetric(large ? 5.5f : 0.55f, large ? 5f : .5f);
         float trackY = knobCenterY - trackH * 0.5f;
 
         ui.lastX = x; ui.lastY = y; ui.lastW = w;
@@ -650,8 +650,8 @@ enum UnifiedSettingRenderer {
         }
 
         boolean trackHover = UnifiedSettingsSkin.inside(mx, my, trackX,
-                trackY - UnifiedSettingsSkin.modernMetric(7f, 7f), trackW,
-                trackH + UnifiedSettingsSkin.modernMetric(14f, 14f));
+                trackY - UnifiedSettingsSkin.modernMetric(7.7f, 7f), trackW,
+                trackH + UnifiedSettingsSkin.modernMetric(15.4f, 14f));
         boolean valueHover = UnifiedSettingsSkin.inside(mx, my, valueX, valueY, valueW, valueH);
         if (valueHover) SystemCursor.set(SystemCursor.CursorType.TEXT);
         else if (trackHover || ui.dragging) SystemCursor.set(SystemCursor.CursorType.RESIZE_HORIZONTAL);
@@ -668,29 +668,29 @@ enum UnifiedSettingRenderer {
 
         float labelY = y;
         drawSettingLabel(setting, setting.getDisplayName(), font, x, labelY, labelSize,
-                Math.max(1f, valueX - x - UnifiedSettingsSkin.modernMetric(10f, 10f)),
+                Math.max(1f, valueX - x - UnifiedSettingsSkin.modernMetric(11f, 10f)),
                 UnifiedSettingsSkin.TEXT_PRIMARY, mx, my, x, y, w);
 
         if (ui.editAnim > 0.015f) {
             LayoutRender2D.drawRoundedRect(valueX, valueY, valueW, valueH,
-                    UnifiedSettingsSkin.modernMetric(5f, 5f),
+                    UnifiedSettingsSkin.modernMetric(5.5f, 5f),
                     UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBg(), ui.editAnim));
             LayoutRender2D.drawRoundedRectStroke(valueX, valueY, valueW, valueH,
-                    UnifiedSettingsSkin.modernMetric(5f, 5f),
+                    UnifiedSettingsSkin.modernMetric(5.5f, 5f),
                     UnifiedSettingsSkin.controlStroke(),
                     UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBorderHover(), ui.editAnim));
         }
         String drawValue = ui.editing ? display : UnifiedSettingsSkin.fit(font, display, valueSize, valueW);
         float drawW = UnifiedSettingsSkin.textWidth(font, drawValue, valueSize);
-        float valueTextY = y + UnifiedSettingsSkin.modernMetric(1f, 1f);
-        float textPad = UnifiedSettingsSkin.modernMetric(5f, 5f);
+        float valueTextY = y + UnifiedSettingsSkin.modernMetric(1.1f, 1f);
+        float textPad = UnifiedSettingsSkin.modernMetric(5.5f, 5f);
         float drawX = valueX + valueW - textPad - drawW;
         if (ui.editing) {
             float innerW = Math.max(1f, valueW - textPad * 2f);
             int cursor = Math.max(0, Math.min(ui.editCursor, ui.editBuffer.length()));
             float caretOffset = UnifiedSettingsSkin.textWidth(font, ui.editBuffer.substring(0, cursor), valueSize);
             float fullTextW = UnifiedSettingsSkin.textWidth(font, ui.editBuffer, valueSize);
-            float caretReserve = UnifiedSettingsSkin.modernMetric(2.5f, 2.5f);
+            float caretReserve = UnifiedSettingsSkin.modernMetric(2.75f, 2.5f);
             float maxScroll = Math.max(0f, fullTextW - innerW + caretReserve);
             float visibleCaret = caretOffset - ui.editScrollX;
             float rightLimit = Math.max(0f, innerW - caretReserve);
@@ -708,8 +708,8 @@ enum UnifiedSettingRenderer {
         int normalValueColor = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernTextSecondary(),
                 UnifiedSettingsSkin.modernTextBright(), ui.editAnim * 0.32f + ui.valueHoverAnim * 0.10f);
         int valueColor = UnifiedSettingsSkin.mix(normalValueColor, 0xFFFF7777, ui.errorAnim * 0.85f);
-        boolean valueClip = ScissorFunction.pushRaw(valueX + UnifiedSettingsSkin.modernMetric(1f, 1f), valueY,
-                Math.max(1f, valueW - UnifiedSettingsSkin.modernMetric(2f, 2f)), valueH);
+        boolean valueClip = ScissorFunction.pushRaw(valueX + UnifiedSettingsSkin.modernMetric(1.1f, 1f), valueY,
+                Math.max(1f, valueW - UnifiedSettingsSkin.modernMetric(2.2f, 2f)), valueH);
         if (ui.editing) {
             renderInlineSelection(font, ui.editBuffer, sliderSelStart(ui), sliderSelEnd(ui), drawX, valueTextY, valueSize, valueH, valueY);
         }
@@ -1026,7 +1026,7 @@ enum UnifiedSettingRenderer {
     }
 
     static float getHeight(ModeSetting setting) {
-        if (modern()) return UnifiedSettingsSkin.modernMetric(26f, 26f) + UnifiedSettingsSkin.controlHeight();
+        if (modern()) return UnifiedSettingsSkin.modernMetric(28.6f, 26f) + UnifiedSettingsSkin.controlHeight();
         layoutMode(setting);
         return setting.ui().cachedHeight;
     }
@@ -1034,9 +1034,9 @@ enum UnifiedSettingRenderer {
     private static void renderModernMode(ModeSetting setting, float x, float y, float w, float mx, float my) {
         ModeSetting.UiState ui = setting.ui();
         float controlH = UnifiedSettingsSkin.controlHeight();
-        float cy = y + UnifiedSettingsSkin.modernMetric(26f, 26f);
+        float cy = y + UnifiedSettingsSkin.modernMetric(28.6f, 26f);
         float cx = x;
-        float controlW = Math.min(w, UnifiedSettingsSkin.modernMetric(360f, 500f));
+        float controlW = Math.min(w, UnifiedSettingsSkin.modernMetric(396f, 500f));
         boolean hover = UnifiedSettingsSkin.inside(mx, my, cx, cy, controlW, controlH);
         if (hover) SystemCursor.set(SystemCursor.CursorType.HAND);
         SettingOverlayHost host = overlayHost();
@@ -1053,9 +1053,9 @@ enum UnifiedSettingRenderer {
 
         // Rich-style structural hierarchy: a neutral icon well and a separate disclosure well.
         // These add depth and affordance without turning the entire select into an accent block.
-        float edge = UnifiedSettingsSkin.modernMetric(4f, 4f);
-        float well = Math.max(UnifiedSettingsSkin.modernMetric(18f, 18f), controlH - edge * 2f);
-        float wellRadius = Math.max(2f, UnifiedSettingsSkin.controlRadius() - UnifiedSettingsSkin.modernMetric(2f, 2f));
+        float edge = UnifiedSettingsSkin.modernMetric(4.4f, 4f);
+        float well = Math.max(UnifiedSettingsSkin.modernMetric(19.8f, 18f), controlH - edge * 2f);
+        float wellRadius = Math.max(2f, UnifiedSettingsSkin.controlRadius() - UnifiedSettingsSkin.modernMetric(2.2f, 2f));
         float iconWellX = cx + edge;
         float iconWellY = cy + edge;
         int wellBg = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(),
@@ -1064,15 +1064,15 @@ enum UnifiedSettingRenderer {
         LayoutRender2D.drawRoundedRectStroke(iconWellX, iconWellY, well, well, wellRadius,
                 Math.max(0.55f, 0.55f * s()), UnifiedSettingsSkin.modernDivider());
 
-        float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
+        float icon = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
         float ix = iconWellX + (well - icon) * 0.5f;
         float iy = iconWellY + (well - icon) * 0.5f;
         modernSvg("list-filter", ix, iy, icon,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernIconMuted(), UnifiedSettingsSkin.modernTextSecondary(), hoverAnim));
 
-        float actionW = UnifiedSettingsSkin.modernMetric(28f, 29f);
+        float actionW = UnifiedSettingsSkin.modernMetric(30.8f, 29f);
         float actionX = cx + controlW - actionW;
-        float actionInset = UnifiedSettingsSkin.modernMetric(3f, 3f);
+        float actionInset = UnifiedSettingsSkin.modernMetric(3.3f, 3f);
         boolean actionHover = UnifiedSettingsSkin.inside(mx, my, actionX, cy, actionW, controlH);
         float actionHoverAnim = AnimationUtility.approach(
                 ui.hoverAnims.getOrDefault("__action", 0f),
@@ -1089,25 +1089,25 @@ enum UnifiedSettingRenderer {
                     actionW - actionInset * 2f, controlH - actionInset * 2f, wellRadius,
                     UnifiedSettingsSkin.withAlpha(actionSurface, actionFade));
         }
-        LayoutRender2D.drawRect(actionX, cy + UnifiedSettingsSkin.modernMetric(5f, 5f),
-                Math.max(0.65f, 0.65f * s()), controlH - UnifiedSettingsSkin.modernMetric(10f, 10f),
+        LayoutRender2D.drawRect(actionX, cy + UnifiedSettingsSkin.modernMetric(5.5f, 5f),
+                Math.max(0.65f, 0.65f * s()), controlH - UnifiedSettingsSkin.modernMetric(11f, 10f),
                 UnifiedSettingsSkin.modernDivider());
 
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
-        float size = UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float textX = iconWellX + well + UnifiedSettingsSkin.modernMetric(8f, 8f);
-        float textMax = Math.max(1f, actionX - UnifiedSettingsSkin.modernMetric(8f, 8f) - textX);
+        float size = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float textX = iconWellX + well + UnifiedSettingsSkin.modernMetric(8.8f, 8f);
+        float textMax = Math.max(1f, actionX - UnifiedSettingsSkin.modernMetric(8.8f, 8f) - textX);
         String selected = setting.getOptionDisplayName(setting.selectedId());
         String draw = UnifiedSettingsSkin.fit(font, selected, size, textMax);
         float ty = cy + (controlH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f;
         LayoutRender2D.drawText(font, draw, textX, ty, size, UnifiedSettingsSkin.modernTextSecondary(), false);
 
-        float arrow = UnifiedSettingsSkin.modernMetric(12f, 12f);
+        float arrow = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
         float ax = actionX + (actionW - arrow) * 0.5f;
         float ay = cy + (controlH - arrow) * 0.5f;
         float arrowT = AnimationUtility.easeInOutCubic(UnifiedSettingsSkin.clamp01(
                 open && host != null ? Math.max(ui.openAnim, host.reveal()) : ui.openAnim));
-        float arrowTravel = UnifiedSettingsSkin.modernMetric(1.8f, 1.8f);
+        float arrowTravel = UnifiedSettingsSkin.modernMetric(1.98f, 1.8f);
         int arrowColor = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED,
                 UnifiedSettingsSkin.modernTextBright(), Math.max(actionHoverAnim * 0.62f, arrowT * 0.72f));
         modernSvg("chevron-right", ax - arrowTravel * arrowT * 0.45f,
@@ -1218,7 +1218,7 @@ enum UnifiedSettingRenderer {
     private static void renderModernGroup(GroupSetting setting, float x, float y, float w, float mx, float my) {
         GroupSetting.UiState ui = setting.ui();
         float rowH = UnifiedSettingsSkin.rowHeight();
-        float controlW = Math.min(UnifiedSettingsSkin.selectWidth(), Math.max(UnifiedSettingsSkin.modernMetric(124f, 138f), w * 0.50f));
+        float controlW = Math.min(UnifiedSettingsSkin.selectWidth(), Math.max(UnifiedSettingsSkin.modernMetric(136.4f, 138f), w * 0.50f));
         float controlH = UnifiedSettingsSkin.controlHeight();
         float cx = x + w - UnifiedSettingsSkin.rowPadX() - controlW;
         float cy = y + (rowH - controlH) * 0.5f;
@@ -1239,12 +1239,12 @@ enum UnifiedSettingRenderer {
         ui.selectH = controlH;
 
         renderModernLabel(setting, x, y,
-                Math.max(1f, cx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)), mx, my, w);
+                Math.max(1f, cx - x - UnifiedSettingsSkin.modernMetric(13.2f, 12f)), mx, my, w);
         renderModernControlSurface(cx, cy, controlW, controlH, UnifiedSettingsSkin.controlRadius(), hoverAnim, ui.openAnim);
 
-        float edge = UnifiedSettingsSkin.modernMetric(4f, 4f);
-        float well = Math.max(UnifiedSettingsSkin.modernMetric(18f, 18f), controlH - edge * 2f);
-        float wellRadius = Math.max(2f, UnifiedSettingsSkin.controlRadius() - UnifiedSettingsSkin.modernMetric(2f, 2f));
+        float edge = UnifiedSettingsSkin.modernMetric(4.4f, 4f);
+        float well = Math.max(UnifiedSettingsSkin.modernMetric(19.8f, 18f), controlH - edge * 2f);
+        float wellRadius = Math.max(2f, UnifiedSettingsSkin.controlRadius() - UnifiedSettingsSkin.modernMetric(2.2f, 2f));
         float iconWellX = cx + edge;
         float iconWellY = cy + edge;
         LayoutRender2D.drawRoundedRect(iconWellX, iconWellY, well, well, wellRadius,
@@ -1253,7 +1253,7 @@ enum UnifiedSettingRenderer {
         LayoutRender2D.drawRoundedRectStroke(iconWellX, iconWellY, well, well, wellRadius,
                 Math.max(0.55f, 0.55f * s()), UnifiedSettingsSkin.modernDivider());
 
-        float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
+        float icon = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
         modernSvg("list-checks", iconWellX + (well - icon) * 0.5f, iconWellY + (well - icon) * 0.5f, icon,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernIconMuted(), UnifiedSettingsSkin.modernTextSecondary(), hoverAnim));
 
@@ -1265,9 +1265,9 @@ enum UnifiedSettingRenderer {
             if (setting.value().get(id)) selectedCount++;
         }
 
-        float actionW = UnifiedSettingsSkin.modernMetric(28f, 29f);
+        float actionW = UnifiedSettingsSkin.modernMetric(30.8f, 29f);
         float actionX = cx + controlW - actionW;
-        float actionInset = UnifiedSettingsSkin.modernMetric(3f, 3f);
+        float actionInset = UnifiedSettingsSkin.modernMetric(3.3f, 3f);
         boolean actionHover = UnifiedSettingsSkin.inside(mx, my, actionX, cy, actionW, controlH);
         float actionHoverAnim = AnimationUtility.approach(
                 ui.hoverAnims.getOrDefault("__action", 0f),
@@ -1284,17 +1284,17 @@ enum UnifiedSettingRenderer {
                     actionW - actionInset * 2f, controlH - actionInset * 2f, wellRadius,
                     UnifiedSettingsSkin.withAlpha(actionSurface, actionFade));
         }
-        LayoutRender2D.drawRect(actionX, cy + UnifiedSettingsSkin.modernMetric(5f, 5f),
-                Math.max(0.65f, 0.65f * s()), controlH - UnifiedSettingsSkin.modernMetric(10f, 10f),
+        LayoutRender2D.drawRect(actionX, cy + UnifiedSettingsSkin.modernMetric(5.5f, 5f),
+                Math.max(0.65f, 0.65f * s()), controlH - UnifiedSettingsSkin.modernMetric(11f, 10f),
                 UnifiedSettingsSkin.modernDivider());
 
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
-        float size = UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float countSize = UnifiedSettingsSkin.modernMetric(10.5f, 10.5f);
+        float size = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float countSize = UnifiedSettingsSkin.modernMetric(11.55f, 10.5f);
         String countText = selectedCount + "/" + Math.max(visibleCount, 0);
-        float countW = UnifiedSettingsSkin.textWidth(font, countText, countSize) + UnifiedSettingsSkin.modernMetric(10f, 10f);
-        float countH = UnifiedSettingsSkin.modernMetric(17f, 17f);
-        float countX = actionX - UnifiedSettingsSkin.modernMetric(6f, 6f) - countW;
+        float countW = UnifiedSettingsSkin.textWidth(font, countText, countSize) + UnifiedSettingsSkin.modernMetric(11f, 10f);
+        float countH = UnifiedSettingsSkin.modernMetric(18.7f, 17f);
+        float countX = actionX - UnifiedSettingsSkin.modernMetric(6.6f, 6f) - countW;
         float countY = cy + (controlH - countH) * 0.5f;
         LayoutRender2D.drawRoundedRect(countX, countY, countW, countH, countH * 0.5f,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(),
@@ -1306,19 +1306,19 @@ enum UnifiedSettingRenderer {
                 countY + (countH - UnifiedSettingsSkin.textHeight(font, countSize)) * 0.5f,
                 countSize, selectedCount > 0 ? UnifiedSettingsSkin.modernTextSecondary() : UnifiedSettingsSkin.TEXT_MUTED, false);
 
-        float textX = iconWellX + well + UnifiedSettingsSkin.modernMetric(8f, 8f);
-        float textMax = Math.max(1f, countX - UnifiedSettingsSkin.modernMetric(7f, 7f) - textX);
+        float textX = iconWellX + well + UnifiedSettingsSkin.modernMetric(8.8f, 8f);
+        float textMax = Math.max(1f, countX - UnifiedSettingsSkin.modernMetric(7.7f, 7f) - textX);
         String summary = groupSummary(setting, font, size, textMax);
         float ty = cy + (controlH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f;
         LayoutRender2D.drawText(font, summary, textX, ty, size,
                 summary.equals("None") ? UnifiedSettingsSkin.TEXT_MUTED : UnifiedSettingsSkin.TEXT_PRIMARY, false);
 
-        float arrow = UnifiedSettingsSkin.modernMetric(12f, 12f);
+        float arrow = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
         float arrowX = actionX + (actionW - arrow) * 0.5f;
         float arrowY = cy + (controlH - arrow) * 0.5f;
         float arrowT = AnimationUtility.easeInOutCubic(UnifiedSettingsSkin.clamp01(
                 open && host != null ? Math.max(ui.openAnim, host.reveal()) : ui.openAnim));
-        float arrowTravel = UnifiedSettingsSkin.modernMetric(1.8f, 1.8f);
+        float arrowTravel = UnifiedSettingsSkin.modernMetric(1.98f, 1.8f);
         int arrowColor = UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED,
                 UnifiedSettingsSkin.modernTextBright(), Math.max(actionHoverAnim * 0.62f, arrowT * 0.72f));
         modernSvg("chevron-right", arrowX - arrowTravel * arrowT * 0.45f,
@@ -1579,9 +1579,9 @@ enum UnifiedSettingRenderer {
     static float getHeight(TextSetting setting) {
         if (modern()) {
             TextSetting.UiState ui = setting.ui();
-            float width = ui.lastW > 1f ? ui.lastW : UnifiedSettingsSkin.modernMetric(280f, 280f);
+            float width = ui.lastW > 1f ? ui.lastW : UnifiedSettingsSkin.modernMetric(308f, 280f);
             return modernTextStacked(setting, width)
-                    ? UnifiedSettingsSkin.modernMetric(53f, 55f)
+                    ? UnifiedSettingsSkin.modernMetric(58.3f, 55f)
                     : UnifiedSettingsSkin.controlHeight();
         }
         return m(50f, 28f);
@@ -1590,13 +1590,13 @@ enum UnifiedSettingRenderer {
     private static float modernTextFieldWidth(TextSetting setting, float w) {
         TextSetting.UiState ui = setting.ui();
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
-        float size = UnifiedSettingsSkin.modernMetric(13f, 13.2f);
+        float size = UnifiedSettingsSkin.modernMetric(14.3f, 13.2f);
         String current = ui.editing ? ui.editBuffer : setting.getEditorText();
         if (current == null) current = "";
-        float chrome = UnifiedSettingsSkin.modernMetric(47f, 49f);
+        float chrome = UnifiedSettingsSkin.modernMetric(51.7f, 49f);
         float desired = UnifiedSettingsSkin.textWidth(font, current, size) + chrome;
-        float min = UnifiedSettingsSkin.modernMetric(126f, 158f);
-        float max = UnifiedSettingsSkin.modernMetric(198f, 252f);
+        float min = UnifiedSettingsSkin.modernMetric(138.6f, 158f);
+        float max = UnifiedSettingsSkin.modernMetric(217.8f, 252f);
         return Math.min(Math.max(min, desired), Math.min(max, Math.max(min, w * 0.62f)));
     }
 
@@ -1604,7 +1604,7 @@ enum UnifiedSettingRenderer {
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
         float labelW = UnifiedSettingsSkin.textWidth(font, setting.getDisplayName(), UnifiedSettingsSkin.labelSize());
         float fieldW = modernTextFieldWidth(setting, w);
-        float gap = UnifiedSettingsSkin.modernMetric(12f, 14f);
+        float gap = UnifiedSettingsSkin.modernMetric(13.2f, 14f);
         return labelW >= Math.max(1f, w - fieldW - gap);
     }
 
@@ -1612,11 +1612,11 @@ enum UnifiedSettingRenderer {
         TextSetting.UiState ui = setting.ui();
         ui.lastW = w;
         boolean stacked = modernTextStacked(setting, w);
-        float rowH = stacked ? UnifiedSettingsSkin.modernMetric(53f, 55f) : UnifiedSettingsSkin.controlHeight();
-        float fieldW = stacked ? Math.min(w, UnifiedSettingsSkin.modernMetric(230f, 285f)) : modernTextFieldWidth(setting, w);
+        float rowH = stacked ? UnifiedSettingsSkin.modernMetric(58.3f, 55f) : UnifiedSettingsSkin.controlHeight();
+        float fieldW = stacked ? Math.min(w, UnifiedSettingsSkin.modernMetric(253f, 285f)) : modernTextFieldWidth(setting, w);
         float fieldH = UnifiedSettingsSkin.controlHeight();
         float fx = stacked ? x : x + w - fieldW;
-        float fy = stacked ? y + UnifiedSettingsSkin.modernMetric(26f, 27f) : y;
+        float fy = stacked ? y + UnifiedSettingsSkin.modernMetric(28.6f, 27f) : y;
         ui.fieldX = fx; ui.fieldY = fy; ui.fieldW = fieldW; ui.fieldH = fieldH;
 
         boolean hover = UnifiedSettingsSkin.inside(mx, my, fx, fy, fieldW, fieldH);
@@ -1631,25 +1631,25 @@ enum UnifiedSettingRenderer {
             renderModernTopLabel(setting, x, y, w, mx, my, w);
         } else {
             renderModernLabel(setting, x, y,
-                    Math.max(1f, fx - x - UnifiedSettingsSkin.modernMetric(10f, 10f)), mx, my, w);
+                    Math.max(1f, fx - x - UnifiedSettingsSkin.modernMetric(11f, 10f)), mx, my, w);
         }
         renderModernControlSurface(fx, fy, fieldW, fieldH, UnifiedSettingsSkin.controlRadius(), ui.hoverAnim, ui.focusAnim);
 
-        float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float leftPad = UnifiedSettingsSkin.modernMetric(8f, 8f);
+        float icon = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float leftPad = UnifiedSettingsSkin.modernMetric(8.8f, 8f);
         float iconX = fx + leftPad;
         float iconY = fy + (fieldH - icon) * 0.5f;
         modernSvg("pencil", iconX, iconY, icon,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.modernTextSecondary(), ui.hoverAnim));
-        float dividerX = iconX + icon + UnifiedSettingsSkin.modernMetric(6f, 6f);
-        LayoutRender2D.drawRect(dividerX, fy + UnifiedSettingsSkin.modernMetric(5f, 5f),
-                Math.max(0.8f, 0.8f * s()), fieldH - UnifiedSettingsSkin.modernMetric(10f, 10f),
+        float dividerX = iconX + icon + UnifiedSettingsSkin.modernMetric(6.6f, 6f);
+        LayoutRender2D.drawRect(dividerX, fy + UnifiedSettingsSkin.modernMetric(5.5f, 5f),
+                Math.max(0.8f, 0.8f * s()), fieldH - UnifiedSettingsSkin.modernMetric(11f, 10f),
                 UnifiedSettingsSkin.modernControlBorderHover());
 
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
-        float size = UnifiedSettingsSkin.modernMetric(13f, 13f);
-        float textX = dividerX + UnifiedSettingsSkin.modernMetric(7f, 7f);
-        float rightPad = UnifiedSettingsSkin.modernMetric(6f, 6f);
+        float size = UnifiedSettingsSkin.modernMetric(14.3f, 13f);
+        float textX = dividerX + UnifiedSettingsSkin.modernMetric(7.7f, 7f);
+        float rightPad = UnifiedSettingsSkin.modernMetric(6.6f, 6f);
         float clipW = Math.max(1f, fx + fieldW - rightPad - textX);
         ui.textVisibleW = clipW;
         String current = setting.getEditorText();
@@ -1751,7 +1751,7 @@ enum UnifiedSettingRenderer {
         int cursor = Math.max(0, Math.min(ui.editCursor, safe.length()));
         float textW = UnifiedSettingsSkin.textWidth(font, safe, size);
         float caretW = GuiTextCaret.width(size);
-        float margin = Math.min(modern() ? UnifiedSettingsSkin.modernMetric(6f, 6f) : m(8f, 4f),
+        float margin = Math.min(modern() ? UnifiedSettingsSkin.modernMetric(6.6f, 6f) : m(8f, 4f),
                 visibleW * 0.28f);
         // Reserve actual space for the caret at the end of a long value.  textW-visibleW was
         // mathematically enough for glyphs but placed the caret exactly on the scissor edge, so
@@ -2014,9 +2014,9 @@ enum UnifiedSettingRenderer {
 
     static float getHeight(TextListSetting setting) {
         if (modern()) {
-            float width = setting.ui().lastW > 1f ? setting.ui().lastW : UnifiedSettingsSkin.modernMetric(280f, 280f);
+            float width = setting.ui().lastW > 1f ? setting.ui().lastW : UnifiedSettingsSkin.modernMetric(308f, 280f);
             return modernTextListStacked(setting, width)
-                    ? UnifiedSettingsSkin.modernMetric(53f, 55f)
+                    ? UnifiedSettingsSkin.modernMetric(58.3f, 55f)
                     : UnifiedSettingsSkin.rowHeight();
         }
         return isInlineTextList(setting) ? inlineTextListHeight() : textListButtonHeight(setting);
@@ -2027,11 +2027,11 @@ enum UnifiedSettingRenderer {
         int count = setting.getValueSet().size();
         String summary = textPicker ? (count == 1 ? "1 entry" : count + " entries") : "Select";
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
-        float size = UnifiedSettingsSkin.modernMetric(12f, 12.2f);
-        float chrome = UnifiedSettingsSkin.modernMetric(textPicker ? 43f : 58f, textPicker ? 46f : 62f);
+        float size = UnifiedSettingsSkin.modernMetric(13.2f, 12.2f);
+        float chrome = UnifiedSettingsSkin.modernMetric(textPicker ? 47.3f : 63.8f, textPicker ? 46f : 62f);
         float desired = UnifiedSettingsSkin.textWidth(font, summary, size) + chrome;
-        float min = UnifiedSettingsSkin.modernMetric(116f, 148f);
-        float max = UnifiedSettingsSkin.modernMetric(178f, 232f);
+        float min = UnifiedSettingsSkin.modernMetric(127.6f, 148f);
+        float max = UnifiedSettingsSkin.modernMetric(195.8f, 232f);
         return Math.min(Math.max(min, desired), Math.min(max, Math.max(min, w * 0.58f)));
     }
 
@@ -2039,31 +2039,31 @@ enum UnifiedSettingRenderer {
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
         float labelW = UnifiedSettingsSkin.textWidth(font, setting.getDisplayName(), UnifiedSettingsSkin.labelSize());
         float buttonW = modernTextListWidth(setting, w);
-        return labelW >= Math.max(1f, w - buttonW - UnifiedSettingsSkin.modernMetric(12f, 14f));
+        return labelW >= Math.max(1f, w - buttonW - UnifiedSettingsSkin.modernMetric(13.2f, 14f));
     }
 
     private static void renderModernTextList(TextListSetting setting, float x, float y, float w, float mx, float my) {
         TextListSetting.UiState ui = setting.ui();
         ui.lastW = w;
         boolean stacked = modernTextListStacked(setting, w);
-        float rowH = stacked ? UnifiedSettingsSkin.modernMetric(53f, 55f) : UnifiedSettingsSkin.rowHeight();
+        float rowH = stacked ? UnifiedSettingsSkin.modernMetric(58.3f, 55f) : UnifiedSettingsSkin.rowHeight();
         boolean textPicker = setting.getPickerMode() == TextListSetting.PickerMode.TEXT;
         int count = setting.getValueSet().size();
         String action = textPicker ? (count == 1 ? "1 entry" : count + " entries") : "Select";
         String iconName = textPicker ? "clipboard" : "ellipsis";
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
-        float size = UnifiedSettingsSkin.modernMetric(12f, 12.2f);
-        float icon = UnifiedSettingsSkin.modernMetric(12f, 12.5f);
-        float pad = UnifiedSettingsSkin.modernMetric(8f, 9f);
-        float iconGap = UnifiedSettingsSkin.modernMetric(6f, 6f);
-        float arrow = textPicker ? UnifiedSettingsSkin.modernMetric(10f, 10f) : UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float arrowGap = UnifiedSettingsSkin.modernMetric(5f, 5f);
+        float size = UnifiedSettingsSkin.modernMetric(13.2f, 12.2f);
+        float icon = UnifiedSettingsSkin.modernMetric(13.2f, 12.5f);
+        float pad = UnifiedSettingsSkin.modernMetric(8.8f, 9f);
+        float iconGap = UnifiedSettingsSkin.modernMetric(6.6f, 6f);
+        float arrow = textPicker ? UnifiedSettingsSkin.modernMetric(11f, 10f) : UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float arrowGap = UnifiedSettingsSkin.modernMetric(5.5f, 5f);
         float buttonW = stacked
-                ? Math.min(w, UnifiedSettingsSkin.modernMetric(220f, 280f))
+                ? Math.min(w, UnifiedSettingsSkin.modernMetric(242f, 280f))
                 : modernTextListWidth(setting, w);
         float buttonH = UnifiedSettingsSkin.controlHeight();
         float bx = stacked ? x : x + w - UnifiedSettingsSkin.rowPadX() - buttonW;
-        float by = stacked ? y + UnifiedSettingsSkin.modernMetric(26f, 27f) : y + (rowH - buttonH) * 0.5f;
+        float by = stacked ? y + UnifiedSettingsSkin.modernMetric(28.6f, 27f) : y + (rowH - buttonH) * 0.5f;
         boolean hover = UnifiedSettingsSkin.inside(mx, my, bx, by, buttonW, buttonH);
         if (hover) SystemCursor.set(SystemCursor.CursorType.HAND);
         ui.moduleHoverAnim = AnimationUtility.approach(ui.moduleHoverAnim, hover ? 1f : 0f, AnimationUtility.deltaTime(), 13f);
@@ -2078,7 +2078,7 @@ enum UnifiedSettingRenderer {
         if (stacked) {
             renderModernTopLabel(setting, x, y, w, mx, my, w);
         } else {
-            renderModernLabel(setting, x, y, Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)), mx, my, w);
+            renderModernLabel(setting, x, y, Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(13.2f, 12f)), mx, my, w);
         }
         renderModernControlSurface(bx, by, buttonW, buttonH, UnifiedSettingsSkin.controlRadius(), ui.moduleHoverAnim, 0f);
 
@@ -2278,13 +2278,13 @@ enum UnifiedSettingRenderer {
                                              float x, float y, float w, float mx, float my, Object uiObj) {
         float rowH = UnifiedSettingsSkin.rowHeight();
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
-        float valueSize = UnifiedSettingsSkin.modernMetric(12f, 12f);
+        float valueSize = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
         String value = display == null || display.isBlank() ? "NONE" : display;
-        float pad = UnifiedSettingsSkin.modernMetric(8f, 8f);
-        float iconSize = UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float iconGap = UnifiedSettingsSkin.modernMetric(6f, 6f);
+        float pad = UnifiedSettingsSkin.modernMetric(8.8f, 8f);
+        float iconSize = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float iconGap = UnifiedSettingsSkin.modernMetric(6.6f, 6f);
         float raw = iconSize + iconGap + UnifiedSettingsSkin.textWidth(font, value, valueSize) + pad * 2f;
-        float boxW = Math.max(UnifiedSettingsSkin.modernMetric(72f, 72f), Math.min(UnifiedSettingsSkin.modernMetric(170f, 170f), raw));
+        float boxW = Math.max(UnifiedSettingsSkin.modernMetric(79.2f, 72f), Math.min(UnifiedSettingsSkin.modernMetric(187f, 170f), raw));
         float boxH = UnifiedSettingsSkin.controlHeight();
         float bx = x + w - UnifiedSettingsSkin.rowPadX() - boxW;
         float by = y + (rowH - boxH) * 0.5f;
@@ -2293,7 +2293,7 @@ enum UnifiedSettingRenderer {
         float hoverAnim = bindHoverAnim(uiObj, hover);
         float waitAnim = bindWaitAnim(uiObj, waiting);
 
-        renderModernLabel(setting, x, y, Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(12f, 12f)), mx, my, w);
+        renderModernLabel(setting, x, y, Math.max(1f, bx - x - UnifiedSettingsSkin.modernMetric(13.2f, 12f)), mx, my, w);
         renderModernControlSurface(bx, by, boxW, boxH, UnifiedSettingsSkin.controlRadius(), hoverAnim, waitAnim);
         if (waiting) {
             LayoutRender2D.drawRoundedRectStroke(bx, by, boxW, boxH, UnifiedSettingsSkin.controlRadius(),
@@ -2314,9 +2314,9 @@ enum UnifiedSettingRenderer {
         LayoutRender2D.drawText(font, fitted, textX, ty, valueSize, valueColor, false);
 
         if (modeText != null && !modeText.isBlank()) {
-            float modeSize = UnifiedSettingsSkin.modernMetric(11f, 11f);
+            float modeSize = UnifiedSettingsSkin.modernMetric(12.1f, 11f);
             float mw = UnifiedSettingsSkin.textWidth(font, modeText, modeSize);
-            float mxLabel = bx - UnifiedSettingsSkin.modernMetric(8f, 8f) - mw;
+            float mxLabel = bx - UnifiedSettingsSkin.modernMetric(8.8f, 8f) - mw;
             float myLabel = y + (rowH - UnifiedSettingsSkin.textHeight(font, modeSize)) * 0.5f;
             LayoutRender2D.drawText(font, modeText, mxLabel, myLabel, modeSize, UnifiedSettingsSkin.TEXT_FAINT, false);
         }
@@ -2788,7 +2788,7 @@ enum UnifiedSettingRenderer {
     }
 
     static float getHeight(ColorSetting setting) {
-        if (modern()) return UnifiedSettingsSkin.modernMetric(26f, 26f) + UnifiedSettingsSkin.controlHeight();
+        if (modern()) return UnifiedSettingsSkin.modernMetric(28.6f, 26f) + UnifiedSettingsSkin.controlHeight();
         ColorSetting.UiState ui = setting.ui();
         boolean hasAlpha = setting.value().supportsAlpha();
         float dt = AnimationUtility.deltaTime();
@@ -2807,7 +2807,7 @@ enum UnifiedSettingRenderer {
         if (!ui.hexFocused && !colorDragActive(ui)) syncColorFromValue(ui, value);
 
         float barH = UnifiedSettingsSkin.controlHeight();
-        float barY = y + UnifiedSettingsSkin.modernMetric(26f, 26f);
+        float barY = y + UnifiedSettingsSkin.modernMetric(28.6f, 26f);
         float barX = x;
         float barW = w;
         ui.lastX = x;
@@ -2832,7 +2832,7 @@ enum UnifiedSettingRenderer {
         renderModernControlSurface(barX, barY, barW, barH, UnifiedSettingsSkin.controlRadius(),
                 hover ? 1f : 0f, open ? 1f : 0f);
 
-        float pad = UnifiedSettingsSkin.modernMetric(4f, 4f);
+        float pad = UnifiedSettingsSkin.modernMetric(4.4f, 4f);
         float preview = Math.max(1f, barH - pad * 2f);
         float previewX = barX + pad;
         float previewY = barY + pad;
@@ -2843,12 +2843,12 @@ enum UnifiedSettingRenderer {
                 UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlBorderHover(), 150));
 
         TextRenderer font = UnifiedSettingsSkin.fontSemibold();
-        float textSize = UnifiedSettingsSkin.modernMetric(10.5f, 10.5f);
+        float textSize = UnifiedSettingsSkin.modernMetric(11.55f, 10.5f);
         int argb = value.getArgb();
         String hex = String.format(value.supportsAlpha() ? "#%08X" : "#%06X",
                 value.supportsAlpha() ? argb : (argb & 0x00FFFFFF));
-        float textX = previewX + preview + UnifiedSettingsSkin.modernMetric(8f, 8f);
-        float rightReserve = UnifiedSettingsSkin.modernMetric(28f, 28f);
+        float textX = previewX + preview + UnifiedSettingsSkin.modernMetric(8.8f, 8f);
+        float rightReserve = UnifiedSettingsSkin.modernMetric(30.8f, 28f);
         float textMaxW = Math.max(1f, barX + barW - rightReserve - textX);
         float textY = barY + (barH - UnifiedSettingsSkin.textHeight(font, textSize)) * 0.5f;
         LayoutRender2D.drawText(font,
@@ -2856,8 +2856,8 @@ enum UnifiedSettingRenderer {
                 textX, textY, textSize,
                 UnifiedSettingsSkin.modernTextSecondary(), false);
 
-        float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float iconX = barX + barW - UnifiedSettingsSkin.modernMetric(9f, 9f) - icon;
+        float icon = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float iconX = barX + barW - UnifiedSettingsSkin.modernMetric(9.9f, 9f) - icon;
         float iconY = barY + (barH - icon) * 0.5f;
         modernSvg(open ? "palette" : "paintbrush", iconX, iconY, icon,
                 UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernIconMuted(), UnifiedSettingsSkin.modernTextBright(),
@@ -3788,10 +3788,10 @@ enum UnifiedSettingRenderer {
     private static void renderModeOverlay(ModeSetting setting, SettingOverlayHost host, float mx, float my, float reveal) {
         ModeSetting.UiState ui = setting.ui();
         float itemH = UnifiedSettingsSkin.popupItemHeight();
-        float pad = UnifiedSettingsSkin.modernMetric(4f, 4f);
+        float pad = UnifiedSettingsSkin.modernMetric(4.4f, 4f);
         int count = setting.optionIds().size();
         float desiredH = Math.max(itemH + pad * 2f, count * itemH + pad * 2f);
-        float[] r = host.place(ui.selectW, desiredH, UnifiedSettingsSkin.modernMetric(4f, 4f));
+        float[] r = host.place(ui.selectW, desiredH, UnifiedSettingsSkin.modernMetric(4.4f, 4f));
         float px = r[0], py = r[1], pw = r[2], ph = r[3];
         float contentY = py + pad;
         float contentH = Math.max(1f, ph - pad * 2f);
@@ -3806,16 +3806,16 @@ enum UnifiedSettingRenderer {
         float clipY = above ? py + ph - clipH : py;
         boolean revealClip = false;
         if (eased < 0.985f) {
-            float revealBleed = UnifiedSettingsSkin.modernMetric(3f, 3f);
+            float revealBleed = UnifiedSettingsSkin.modernMetric(3.3f, 3f);
             revealClip = ScissorFunction.pushRaw(px - revealBleed, clipY - revealBleed,
                     pw + revealBleed * 2f, clipH + revealBleed * 2f);
         }
         drawModernSelectPopupChrome(px, py, pw, ph, eased);
         boolean contentClip = ScissorFunction.pushRaw(px, contentY, pw, contentH);
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
-        float size = UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float textPad = UnifiedSettingsSkin.modernMetric(10f, 10f);
-        float radio = UnifiedSettingsSkin.modernMetric(11f, 11f);
+        float size = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float textPad = UnifiedSettingsSkin.modernMetric(11f, 10f);
+        float radio = UnifiedSettingsSkin.modernMetric(12.1f, 11f);
         int index = 0;
         for (String id : setting.optionIds()) {
             float iy = contentY + index * itemH - ui.popupScroll;
@@ -3831,16 +3831,16 @@ enum UnifiedSettingRenderer {
                 int bg = selected
                         ? UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(), UnifiedSettingsSkin.modernInsetHoverBg(), 0.55f + ha * 0.20f)
                         : UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlHoverBg(), Math.round(155f * ha));
-                LayoutRender2D.drawRoundedRect(px + pad, iy + UnifiedSettingsSkin.modernMetric(2f, 2f),
-                        pw - pad * 2f, itemH - UnifiedSettingsSkin.modernMetric(4f, 4f),
-                        UnifiedSettingsSkin.modernMetric(6f, 6f), bg);
+                LayoutRender2D.drawRoundedRect(px + pad, iy + UnifiedSettingsSkin.modernMetric(2.2f, 2f),
+                        pw - pad * 2f, itemH - UnifiedSettingsSkin.modernMetric(4.4f, 4f),
+                        UnifiedSettingsSkin.modernMetric(6.6f, 6f), bg);
             }
 
             float rcx = px + textPad + radio * 0.5f;
             float rcy = iy + itemH * 0.5f;
             LayoutRender2D.drawCircle(rcx, rcy, radio * 0.5f,
                     UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernControlBorder(), UnifiedSettingsSkin.modernTextSecondary(), selected ? 0.46f : ha * 0.22f));
-            LayoutRender2D.drawCircle(rcx, rcy, Math.max(1f, radio * 0.5f - UnifiedSettingsSkin.modernMetric(1.6f, 1.6f)),
+            LayoutRender2D.drawCircle(rcx, rcy, Math.max(1f, radio * 0.5f - UnifiedSettingsSkin.modernMetric(1.76f, 1.6f)),
                     UnifiedSettingsSkin.modernInsetBg());
             if (selected) {
                 LayoutRender2D.drawCircle(rcx, rcy, radio * 0.22f, UnifiedSettingsSkin.accentGradientStart(0.88f));
@@ -3850,7 +3850,7 @@ enum UnifiedSettingRenderer {
             float ty = iy + (itemH - UnifiedSettingsSkin.textHeight(font, size)) * 0.5f;
             int color = selected ? UnifiedSettingsSkin.modernTextBright()
                     : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.modernTextSecondary(), ha);
-            float textX = px + textPad + radio + UnifiedSettingsSkin.modernMetric(8f, 8f);
+            float textX = px + textPad + radio + UnifiedSettingsSkin.modernMetric(8.8f, 8f);
             float textMax = Math.max(1f, pw - (textX - px) - textPad);
             LayoutRender2D.drawText(font, UnifiedSettingsSkin.fit(font, label, size, textMax),
                     textX, ty, size, color, false);
@@ -3864,9 +3864,9 @@ enum UnifiedSettingRenderer {
         java.util.List<String> visible = new java.util.ArrayList<>();
         for (String id : setting.value().getAll().keySet()) if (setting.isOptionVisible(id)) visible.add(id);
         float itemH = UnifiedSettingsSkin.popupItemHeight();
-        float pad = UnifiedSettingsSkin.modernMetric(4f, 4f);
+        float pad = UnifiedSettingsSkin.modernMetric(4.4f, 4f);
         float desiredH = Math.max(itemH + pad * 2f, visible.size() * itemH + pad * 2f);
-        float[] r = host.place(ui.selectW, desiredH, UnifiedSettingsSkin.modernMetric(4f, 4f));
+        float[] r = host.place(ui.selectW, desiredH, UnifiedSettingsSkin.modernMetric(4.4f, 4f));
         float px = r[0], py = r[1], pw = r[2], ph = r[3];
         float contentY = py + pad;
         float contentH = Math.max(1f, ph - pad * 2f);
@@ -3881,16 +3881,16 @@ enum UnifiedSettingRenderer {
         float clipY = above ? py + ph - clipH : py;
         boolean revealClip = false;
         if (eased < 0.985f) {
-            float revealBleed = UnifiedSettingsSkin.modernMetric(3f, 3f);
+            float revealBleed = UnifiedSettingsSkin.modernMetric(3.3f, 3f);
             revealClip = ScissorFunction.pushRaw(px - revealBleed, clipY - revealBleed,
                     pw + revealBleed * 2f, clipH + revealBleed * 2f);
         }
         drawModernSelectPopupChrome(px, py, pw, ph, eased);
         boolean contentClip = ScissorFunction.pushRaw(px, contentY, pw, contentH);
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
-        float size = UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float textPad = UnifiedSettingsSkin.modernMetric(10f, 10f);
-        float check = UnifiedSettingsSkin.modernMetric(14f, 14f);
+        float size = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float textPad = UnifiedSettingsSkin.modernMetric(11f, 10f);
+        float check = UnifiedSettingsSkin.modernMetric(15.4f, 14f);
         int index = 0;
         for (String id : visible) {
             float iy = contentY + index * itemH - ui.popupScroll;
@@ -3908,21 +3908,21 @@ enum UnifiedSettingRenderer {
                 int rowBg = selected
                         ? UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(), UnifiedSettingsSkin.modernInsetHoverBg(), 0.42f + ha * 0.22f)
                         : UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernControlHoverBg(), Math.round(145f * ha));
-                LayoutRender2D.drawRoundedRect(px + pad, iy + UnifiedSettingsSkin.modernMetric(2f, 2f),
-                        pw - pad * 2f, itemH - UnifiedSettingsSkin.modernMetric(4f, 4f),
-                        UnifiedSettingsSkin.modernMetric(6f, 6f), rowBg);
+                LayoutRender2D.drawRoundedRect(px + pad, iy + UnifiedSettingsSkin.modernMetric(2.2f, 2f),
+                        pw - pad * 2f, itemH - UnifiedSettingsSkin.modernMetric(4.4f, 4f),
+                        UnifiedSettingsSkin.modernMetric(6.6f, 6f), rowBg);
             }
             float checkX = px + textPad;
             float checkY = iy + (itemH - check) * 0.5f;
-            LayoutRender2D.drawRoundedRect(checkX, checkY, check, check, UnifiedSettingsSkin.modernMetric(4f, 4f),
+            LayoutRender2D.drawRoundedRect(checkX, checkY, check, check, UnifiedSettingsSkin.modernMetric(4.4f, 4f),
                     UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernInsetBg(), UnifiedSettingsSkin.modernInsetHoverBg(), ha * 0.28f + sa * 0.16f));
-            LayoutRender2D.drawRoundedRectStroke(checkX, checkY, check, check, UnifiedSettingsSkin.modernMetric(4f, 4f),
+            LayoutRender2D.drawRoundedRectStroke(checkX, checkY, check, check, UnifiedSettingsSkin.modernMetric(4.4f, 4f),
                     Math.max(0.65f, 0.65f * s()),
                     UnifiedSettingsSkin.mix(UnifiedSettingsSkin.modernControlBorder(), UnifiedSettingsSkin.modernTextSecondary(), sa * 0.34f + ha * 0.12f));
             if (sa > 0.02f) {
-                float inset = UnifiedSettingsSkin.modernMetric(2f, 2f);
+                float inset = UnifiedSettingsSkin.modernMetric(2.2f, 2f);
                 UnifiedSettingsSkin.drawModernAccent(checkX + inset, checkY + inset, check - inset * 2f, check - inset * 2f,
-                        Math.max(1f, UnifiedSettingsSkin.modernMetric(2.4f, 2.4f)), sa * 0.72f);
+                        Math.max(1f, UnifiedSettingsSkin.modernMetric(2.64f, 2.4f)), sa * 0.72f);
                 modernSvg("check", checkX + check * 0.19f, checkY + check * 0.19f, check * 0.62f,
                         UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernTextBright(), sa));
             }
@@ -3931,33 +3931,33 @@ enum UnifiedSettingRenderer {
                     : UnifiedSettingsSkin.mix(UnifiedSettingsSkin.TEXT_MUTED, UnifiedSettingsSkin.modernTextSecondary(), ha);
             LayoutRender2D.drawText(font,
                     UnifiedSettingsSkin.fit(font, setting.getOptionDisplayName(id), size, pw - textPad * 3f - check),
-                    checkX + check + UnifiedSettingsSkin.modernMetric(8f, 8f), ty, size, color, false);
+                    checkX + check + UnifiedSettingsSkin.modernMetric(8.8f, 8f), ty, size, color, false);
         }
         if (contentClip) ScissorFunction.pop();
         if (revealClip) ScissorFunction.pop();
     }
 
     private static float modernColorOverlayHeight(boolean hasAlpha) {
-        float pad = UnifiedSettingsSkin.modernMetric(10f, 10f);
-        float squareH = UnifiedSettingsSkin.modernMetric(116f, 126f);
-        float barH = UnifiedSettingsSkin.modernMetric(8f, 9f);
-        float gap = UnifiedSettingsSkin.modernMetric(8f, 8f);
-        float presetH = UnifiedSettingsSkin.modernMetric(18f, 19f);
-        float hexH = UnifiedSettingsSkin.modernMetric(24f, 25f);
+        float pad = UnifiedSettingsSkin.modernMetric(11f, 10f);
+        float squareH = UnifiedSettingsSkin.modernMetric(127.6f, 126f);
+        float barH = UnifiedSettingsSkin.modernMetric(8.8f, 9f);
+        float gap = UnifiedSettingsSkin.modernMetric(8.8f, 8f);
+        float presetH = UnifiedSettingsSkin.modernMetric(19.8f, 19f);
+        float hexH = UnifiedSettingsSkin.modernMetric(26.4f, 25f);
         float h = pad + squareH + gap + barH;
         if (hasAlpha) h += gap + barH;
-        h += UnifiedSettingsSkin.modernMetric(11f, 11f) + presetH + gap + hexH + pad;
+        h += UnifiedSettingsSkin.modernMetric(12.1f, 11f) + presetH + gap + hexH + pad;
         return h;
     }
 
     private static void layoutModernColorOverlay(ColorSetting.UiState ui, float x, float y, float w, boolean hasAlpha) {
-        float pad = UnifiedSettingsSkin.modernMetric(10f, 10f);
-        float gap = UnifiedSettingsSkin.modernMetric(8f, 8f);
-        float barH = UnifiedSettingsSkin.modernMetric(8f, 9f);
+        float pad = UnifiedSettingsSkin.modernMetric(11f, 10f);
+        float gap = UnifiedSettingsSkin.modernMetric(8.8f, 8f);
+        float barH = UnifiedSettingsSkin.modernMetric(8.8f, 9f);
         ui.squareX = x + pad;
         ui.squareY = y + pad;
         ui.squareW = Math.max(1f, w - pad * 2f);
-        ui.squareH = UnifiedSettingsSkin.modernMetric(116f, 126f);
+        ui.squareH = UnifiedSettingsSkin.modernMetric(127.6f, 126f);
 
         ui.hueX = ui.squareX;
         ui.hueY = ui.squareY + ui.squareH + gap;
@@ -3976,14 +3976,14 @@ enum UnifiedSettingRenderer {
         }
 
         ui.presetX = ui.squareX;
-        ui.presetY = cursorY + UnifiedSettingsSkin.modernMetric(11f, 11f);
+        ui.presetY = cursorY + UnifiedSettingsSkin.modernMetric(12.1f, 11f);
         ui.presetW = ui.squareW;
-        ui.presetH = UnifiedSettingsSkin.modernMetric(18f, 19f);
+        ui.presetH = UnifiedSettingsSkin.modernMetric(19.8f, 19f);
 
         ui.hexX = ui.squareX;
         ui.hexY = ui.presetY + ui.presetH + gap;
         ui.hexW = ui.squareW;
-        ui.hexH = UnifiedSettingsSkin.modernMetric(24f, 25f);
+        ui.hexH = UnifiedSettingsSkin.modernMetric(26.4f, 25f);
 
         ui.rX = ui.rY = ui.rW = ui.rH = 0f;
         ui.gX = ui.gY = ui.gW = ui.gH = 0f;
@@ -4025,13 +4025,13 @@ enum UnifiedSettingRenderer {
         int rgb = hsbToArgb(ui.hue, ui.saturation, ui.brightness, 255);
         boolean clip = ClipFunction.pushRoundedRect(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, radius);
         if (clip) {
-            renderCheckerCells(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, UnifiedSettingsSkin.modernMetric(4f, 4f));
+            renderCheckerCells(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, UnifiedSettingsSkin.modernMetric(4.4f, 4f));
             LayoutRender2D.drawGradientRect(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH,
                     withAlpha(rgb, 0), withAlpha(rgb, 255), withAlpha(rgb, 255), withAlpha(rgb, 0));
             ClipFunction.pop();
         } else {
             renderChecker(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH,
-                    UnifiedSettingsSkin.modernMetric(4f, 4f), radius);
+                    UnifiedSettingsSkin.modernMetric(4.4f, 4f), radius);
             LayoutRender2D.drawRoundedRectGradient(ui.alphaX, ui.alphaY, ui.alphaW, ui.alphaH, radius,
                     withAlpha(rgb, 0), withAlpha(rgb, 255), 0f);
         }
@@ -4041,8 +4041,8 @@ enum UnifiedSettingRenderer {
     }
 
     private static void renderModernColorMarkers(ColorSetting.UiState ui, boolean hasAlpha) {
-        float outer = UnifiedSettingsSkin.modernMetric(4.5f, 4.5f);
-        float inner = UnifiedSettingsSkin.modernMetric(3f, 3f);
+        float outer = UnifiedSettingsSkin.modernMetric(4.95f, 4.5f);
+        float inner = UnifiedSettingsSkin.modernMetric(3.3f, 3f);
         float sbX = ui.squareX + ui.saturation * ui.squareW;
         float sbY = ui.squareY + (1f - ui.brightness) * ui.squareH;
         LayoutRender2D.drawCircle(sbX, sbY, outer, 0xD9000000);
@@ -4064,12 +4064,12 @@ enum UnifiedSettingRenderer {
     private static void renderModernPresetStrip(ColorSetting.UiState ui, ColorValue value, float mx, float my) {
         java.util.List<Integer> presets = ColorPresetStore.presets();
         if (presets.isEmpty()) return;
-        float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
+        float icon = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
         int iconColor = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.modernIconMuted(), 205);
         modernSvg("palette", ui.presetX, ui.presetY + (ui.presetH - icon) * 0.5f, icon, iconColor);
 
-        float swatch = UnifiedSettingsSkin.modernMetric(13f, 14f);
-        float gap = UnifiedSettingsSkin.modernMetric(6f, 6f);
+        float swatch = UnifiedSettingsSkin.modernMetric(14.3f, 14f);
+        float gap = UnifiedSettingsSkin.modernMetric(6.6f, 6f);
         float sx = ui.presetX + icon + gap;
         int max = Math.max(0, (int) Math.floor((ui.presetX + ui.presetW - sx + gap) / (swatch + gap)));
         max = Math.min(max, presets.size());
@@ -4080,7 +4080,7 @@ enum UnifiedSettingRenderer {
             int color = presetDisplayColor(value, presets.get(i));
             boolean hover = UnifiedSettingsSkin.inside(mx, my, px, py, swatch, swatch);
             LayoutRender2D.drawCircle(px + swatch * 0.5f, py + swatch * 0.5f,
-                    swatch * 0.5f + (hover ? UnifiedSettingsSkin.modernMetric(0.75f, 0.75f) : 0f), color);
+                    swatch * 0.5f + (hover ? UnifiedSettingsSkin.modernMetric(0.825f, 0.75f) : 0f), color);
             if ((current & (value.supportsAlpha() ? 0xFFFFFFFF : 0x00FFFFFF))
                     == (color & (value.supportsAlpha() ? 0xFFFFFFFF : 0x00FFFFFF))) {
                 LayoutRender2D.drawCircle(px + swatch * 0.5f, py + swatch * 0.5f,
@@ -4094,9 +4094,9 @@ enum UnifiedSettingRenderer {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return false;
         java.util.List<Integer> presets = ColorPresetStore.presets();
         if (presets.isEmpty()) return false;
-        float icon = UnifiedSettingsSkin.modernMetric(12f, 12f);
-        float swatch = UnifiedSettingsSkin.modernMetric(13f, 14f);
-        float gap = UnifiedSettingsSkin.modernMetric(6f, 6f);
+        float icon = UnifiedSettingsSkin.modernMetric(13.2f, 12f);
+        float swatch = UnifiedSettingsSkin.modernMetric(14.3f, 14f);
+        float gap = UnifiedSettingsSkin.modernMetric(6.6f, 6f);
         float sx = ui.presetX + icon + gap;
         int max = Math.max(0, (int) Math.floor((ui.presetX + ui.presetW - sx + gap) / (swatch + gap)));
         max = Math.min(max, presets.size());
@@ -4140,9 +4140,9 @@ enum UnifiedSettingRenderer {
         ui.rainbow = value.isRainbow();
         if (ui.rainbow) clearColorFocus(ui);
 
-        float desiredW = UnifiedSettingsSkin.modernMetric(252f, 274f);
+        float desiredW = UnifiedSettingsSkin.modernMetric(277.2f, 274f);
         float desiredH = modernColorOverlayHeight(hasAlpha);
-        float[] r = host.place(desiredW, desiredH, UnifiedSettingsSkin.modernMetric(5f, 5f));
+        float[] r = host.place(desiredW, desiredH, UnifiedSettingsSkin.modernMetric(5.5f, 5f));
         float px = r[0], py = r[1], pw = r[2], ph = r[3];
         ui.popupX = px;
         ui.popupY = py;
@@ -4158,7 +4158,7 @@ enum UnifiedSettingRenderer {
         float clipY = above ? py + ph - clipH : py;
         boolean revealClip = false;
         if (eased < 0.985f) {
-            float bleed = UnifiedSettingsSkin.modernMetric(3f, 3f);
+            float bleed = UnifiedSettingsSkin.modernMetric(3.3f, 3f);
             revealClip = ScissorFunction.pushRaw(px - bleed, clipY - bleed,
                     pw + bleed * 2f, clipH + bleed * 2f);
         }

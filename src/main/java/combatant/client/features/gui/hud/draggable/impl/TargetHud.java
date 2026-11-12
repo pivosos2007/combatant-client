@@ -86,7 +86,7 @@ public final class TargetHud extends DraggableHudElement {
     private static final float GLASS_HIT_DECAY_SECONDS = 0.13f;
     private static final UiGlassOpticsSpec TARGET_GLASS = UiGlassOpticsSpec.LIQUID
             .withRefraction(0.009f).withBevel(0.20f, 0.048f)
-            .withFluid(0.37f, 0.54f).withCleanReveal(0.72f)
+            .withFluid(0.37f, 0.54f).withCleanReveal(0.0f)
             .withInteractionStrength(0.92f).withChromaticAberration(0.75f)
             .withMagnification(1.006f).withShapeDeformation(false).withSpecular(false)
             .withOpticalThickness(1.32f).withSurfaceRoughness(0.14f)
@@ -473,7 +473,7 @@ public final class TargetHud extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
         glassSettings.addSettings(defs);
         defs.add(SettingDef.number(scale));
         defs.add(SettingDef.number(holdMs));

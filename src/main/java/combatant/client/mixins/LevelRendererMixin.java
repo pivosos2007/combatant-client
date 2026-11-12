@@ -9,6 +9,7 @@ package combatant.client.mixins;
 
 import combatant.client.config.MainConfig;
 import com.llamalad7.mixinextras.sugar.Local;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
@@ -56,6 +57,11 @@ import combatant.client.render.engine.msaa.MsaaWorldTarget;
 import combatant.client.render.engine.world.VanillaBeforeTranslucentPass;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.render.sky.CustomSkyboxRenderer;
+import net.minecraft.client.CloudStatus;
+import net.minecraft.client.renderer.CloudRenderer;
+import net.minecraft.client.renderer.oit.OitStage;
+import net.minecraft.client.renderer.oit.OitRenderPassProvider;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -307,6 +313,7 @@ public abstract class LevelRendererMixin {
         // for water and post-processing. GameRenderer's world hook is too late.
         combatant.client.features.playermodel.PlayerModelGpuRenderer.renderBeforeTranslucency(framebuffer);
         PreTranslucentDepth.captureFrom(framebuffer);
+        combatant$renderDreamClouds(framebuffer);
         VanillaBeforeTranslucentPass.render(framebuffer);
         try (RenderPass translucentPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "Minecraft translucent (pre-translucent depth snapshot)",
@@ -327,6 +334,7 @@ public abstract class LevelRendererMixin {
             RenderTarget mainFramebuffer = combatant$getFramebuffer(targets.main);
             combatant.client.features.playermodel.PlayerModelGpuRenderer.renderBeforeTranslucency(mainFramebuffer);
             PreTranslucentDepth.captureFrom(mainFramebuffer);
+            combatant$renderDreamClouds(mainFramebuffer);
             VanillaBeforeTranslucentPass.render(mainFramebuffer);
         }
     }
@@ -368,6 +376,71 @@ public abstract class LevelRendererMixin {
         }
     }
 
+
+    @Unique
+    private static boolean combatant$replaceVanillaClouds() {
+        if (IrisRuntime.isModLoaded()) return false;
+        ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
+        if (visual == null || !visual.isShaderSkyboxEnabled()) return false;
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.level == null) return false;
+        LevelRenderer renderer = client.levelRenderer;
+        if (!(renderer instanceof LevelRendererAccessor accessor)) return false;
+        SkyRenderState sky = accessor.combatant$getWorldRenderState().skyRenderState;
+        return sky != null && sky.skybox == DimensionType.Skybox.OVERWORLD;
+    }
+
+    /**
+     * Override only this renderer's local cloud choice. Besides skipping draw calls, this
+     * avoids allocating/declaring the otherwise unused OIT cloud depth target in addMainPass.
+     * Vanilla's actual Options and CloudStatus remain unchanged.
+     */
+    @ModifyExpressionValue(method = {"addMainPass", "prepareTranslucents", "executeOit",
+            "executeClassicTransparency"}, at = @At(value = "FIELD", target =
+            "Lnet/minecraft/client/renderer/state/OptionsRenderState;cloudStatus:Lnet/minecraft/client/CloudStatus;"))
+    private CloudStatus combatant$useLocalCloudStatus(CloudStatus original) {
+        return combatant$replaceVanillaClouds() ? CloudStatus.OFF : original;
+    }
+
+    // Do not change the global CloudStatus option; skip only vanilla cloud submission.
+    @WrapOperation(method = "prepareTranslucents", at = @At(value = "INVOKE", target =
+            "Lnet/minecraft/client/renderer/CloudRenderer;prepare(ILnet/minecraft/client/CloudStatus;FILnet/minecraft/world/phys/Vec3;JF)V"))
+    private void combatant$skipVanillaCloudPreparation(CloudRenderer renderer, int color,
+            CloudStatus status, float height, int range, Vec3 position, long gameTime,
+            float partialTicks, Operation<Void> original) {
+        if (!combatant$replaceVanillaClouds()) {
+            original.call(renderer, color, status, height, range, position, gameTime, partialTicks);
+        }
+    }
+
+    @WrapOperation(method = "executeClassicTransparency", at = @At(value = "INVOKE", target =
+            "Lnet/minecraft/client/renderer/CloudRenderer;render(Lnet/minecraft/client/CloudStatus;Lcom/mojang/renderpearl/api/commands/RenderPass;)V"))
+    private void combatant$skipVanillaClassicClouds(CloudRenderer renderer, CloudStatus status,
+            RenderPass renderPass, Operation<Void> original) {
+        if (!combatant$replaceVanillaClouds()) original.call(renderer, status, renderPass);
+    }
+
+    @WrapOperation(method = "executeOit", at = @At(value = "INVOKE", target =
+            "Lnet/minecraft/client/renderer/CloudRenderer;renderOit(Lnet/minecraft/client/CloudStatus;Lnet/minecraft/client/renderer/oit/OitStage;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Lnet/minecraft/client/renderer/oit/OitRenderPassProvider$Parameters;)V"))
+    private void combatant$skipVanillaOitClouds(CloudRenderer renderer, CloudStatus status,
+            OitStage stage, GpuTextureView texture, OitRenderPassProvider.Parameters parameters,
+            Operation<Void> original) {
+        if (!combatant$replaceVanillaClouds()) original.call(renderer, status, stage, texture, parameters);
+    }
+
+    @Unique
+    private void combatant$renderDreamClouds(RenderTarget framebuffer) {
+        if (!combatant$replaceVanillaClouds()) return;
+        LevelRendererAccessor accessor = (LevelRendererAccessor) this;
+        var cameraState = accessor.combatant$getWorldRenderState().cameraRenderState;
+        if (cameraState == null || shouldSkipSky(cameraState)) return;
+        ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
+        if (visual != null && visual.areDreamCloudsEnabled()) {
+            visual.dreamCloudRenderer().render(framebuffer, visual,
+                    accessor.combatant$getWorldRenderState().skyRenderState);
+        }
+    }
+
     @Inject(method = "addSkyPass", at = @At("HEAD"), cancellable = true)
     private void combatant$renderSky(FrameGraphBuilder frameGraphBuilder,
                                      net.minecraft.client.renderer.state.level.CameraRenderState cameraRenderState,
@@ -379,14 +452,12 @@ public abstract class LevelRendererMixin {
         WorldTweaks worldTweaks = Modules.get(WorldTweaks.class);
         if (worldTweaks != null) worldTweaks.applySkyOverrides(sky);
         ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
-        if (visual == null || !visual.isEnabled()) return;
-        Minecraft client = Minecraft.getInstance();
-        net.minecraft.client.Camera camera = client != null && client.gameRenderer != null
-                ? client.gameRenderer.mainCamera() : null;
-        if (camera == null) return;
+        if (visual == null || !visual.isShaderSkyboxEnabled()) return;
         FramePass pass = frameGraphBuilder.addPass("combatant_sky");
         targets.main = pass.readsAndWrites(targets.main);
-        pass.executes(() -> CustomSkyboxRenderer.render(camera, fog, sky, accessor.combatant$getSkyRendering()));
+        ResourceHandle<RenderTarget> skyFramebuffer = targets.main;
+        pass.executes(() -> CustomSkyboxRenderer.render(cameraRenderState, fog, sky,
+                combatant$getFramebuffer(skyFramebuffer)));
         ci.cancel();
     }
 

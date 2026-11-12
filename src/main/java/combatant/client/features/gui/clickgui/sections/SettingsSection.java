@@ -51,6 +51,11 @@ public final class SettingsSection implements ClickGuiSection {
     }
 
     @Override
+    public boolean allowsHudPreviewPointer(float mouseX, float mouseY) {
+        return page().allowsHudPreviewPointer(mouseX, mouseY);
+    }
+
+    @Override
     public boolean mousePressed(float mouseX, float mouseY, int button) {
         return page().mousePressed(mouseX, mouseY, button);
     }

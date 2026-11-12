@@ -9,7 +9,7 @@ package combatant.client.features.gui.clickgui.layout.screen.settings.implement.
 import com.mojang.blaze3d.Blaze3D;
 import combatant.client.config.profile.ConfigProfileService;
 import combatant.client.features.gui.clickgui.util.ClickGuiI18n;
-import combatant.client.features.module.Notifier;
+import combatant.client.features.command.CommandOutput;
 import combatant.client.util.filedialog.NativeFileDialogService;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
@@ -73,7 +73,7 @@ final class ConfigFileDialogs {
         try {
             dir = Files.createDirectories(ConfigProfileService.INSTANCE.storage().root()).toAbsolutePath().normalize();
         } catch (IOException | RuntimeException e) {
-            Notifier.error(ClickGuiI18n.tr("notification.config.folder_failed", "Could not open profiles folder: %s", e.getMessage()));
+            CommandOutput.error(ClickGuiI18n.tr("notification.config.folder_failed", "Could not open profiles folder: %s", e.getMessage()));
             return;
         }
         Util.nonCriticalIoPool().execute(() -> {
@@ -84,16 +84,16 @@ final class ConfigFileDialogs {
                     default -> new String[] {"xdg-open", dir.toString()};
                 };
                 new ProcessBuilder(command).start();
-                Minecraft.getInstance().schedule(() -> Notifier.info(
+                Minecraft.getInstance().schedule(() -> CommandOutput.send(
                         ClickGuiI18n.tr("notification.config.folder_path", "Profiles folder: %s", dir)));
             } catch (IOException | RuntimeException e) {
                 try {
                     Blaze3D.openPath(dir);
-                    Minecraft.getInstance().schedule(() -> Notifier.info(
+                    Minecraft.getInstance().schedule(() -> CommandOutput.send(
                             ClickGuiI18n.tr("notification.config.folder_path", "Profiles folder: %s", dir)));
                 } catch (RuntimeException fallbackFailure) {
                     DebugLog.error("Cannot open profiles folder", fallbackFailure);
-                    Minecraft.getInstance().schedule(() -> Notifier.error(
+                    Minecraft.getInstance().schedule(() -> CommandOutput.error(
                             ClickGuiI18n.tr("notification.config.folder_failed", "Could not open profiles folder: %s", dir)));
                 }
             }

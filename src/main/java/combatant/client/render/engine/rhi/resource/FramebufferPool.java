@@ -32,6 +32,11 @@ public final class FramebufferPool implements AutoCloseable {
     private final ArrayDeque<TextureTarget> transientLru = new ArrayDeque<>();
     private final Map<TextureTarget, String> availableTransientKeys = new IdentityHashMap<>();
     private final Map<TextureTarget, Long> transientBytes = new IdentityHashMap<>();
+    private static final long MAX_IDLE_HDR_FRAMES = Math.max(8L,
+            Long.getLong("combatant.rhi.transientHdrIdleFrames", 24L));
+    private final Map<TextureTarget, Long> idleHdrSinceFrame = new IdentityHashMap<>();
+    private long frameSequence;
+
     private final ResourceLeakTracker leakTracker;
     private final Map<TextureTarget, String> borrowedKeys = new IdentityHashMap<>();
 
@@ -106,6 +111,8 @@ public final class FramebufferPool implements AutoCloseable {
     public void beginFrame() {
         // Recover safely if an exceptional presentation path skipped the normal frame tail.
         releaseFrameTransients();
+        frameSequence++;
+        if ((frameSequence & 7L) == 0L) trimUnusedHdrTargets();
         transientAcquires = 0L;
         transientReuses = 0L;
         transientReleases = 0L;
@@ -155,6 +162,7 @@ public final class FramebufferPool implements AutoCloseable {
             idleTransientBytes = Math.max(0L, idleTransientBytes - transientBytes.getOrDefault(target, 0L));
             transientReuses++;
         }
+        idleHdrSinceFrame.remove(target);
         transientBytes.putIfAbsent(target, estimateBytes(descriptor));
         frameTransient.put(logicalKey, new FrameTransient(descriptor, target));
         transientAcquires++;
@@ -174,10 +182,25 @@ public final class FramebufferPool implements AutoCloseable {
             idleTransientBytes += transientBytes.getOrDefault(
                     allocation.target, estimateBytes(allocation.descriptor)
             );
+            if (allocation.descriptor.colorFormat() == GpuFormat.RGBA16_FLOAT) {
+                idleHdrSinceFrame.put(allocation.target, frameSequence);
+            }
             transientReleases++;
         }
         frameTransient.clear();
         trimIdleTransients();
+    }
+
+    /** Release unused transient HDR attachments after their consumers stop submitting frames. */
+    private void trimUnusedHdrTargets() {
+        for (Iterator<TextureTarget> it = transientLru.iterator(); it.hasNext(); ) {
+            TextureTarget target = it.next();
+            Long idleSince = idleHdrSinceFrame.get(target);
+            if (idleSince != null && frameSequence - idleSince >= MAX_IDLE_HDR_FRAMES) {
+                it.remove();
+                evictAvailableTransient(target);
+            }
+        }
     }
 
     private void trimIdleTransients() {
@@ -185,19 +208,24 @@ public final class FramebufferPool implements AutoCloseable {
                 || idleTransientBytes > MAX_IDLE_TRANSIENT_BYTES) {
             TextureTarget target = transientLru.pollFirst();
             if (target == null) break;
-            String key = availableTransientKeys.remove(target);
-            Queue<TextureTarget> queue = key != null ? availableTransient.get(key) : null;
-            if (queue != null) {
-                queue.remove(target);
-                if (queue.isEmpty()) availableTransient.remove(key);
-            }
-            long bytes = transientBytes.getOrDefault(target, 0L);
-            idleTransientBytes = Math.max(0L, idleTransientBytes - bytes);
-            transientBytes.remove(target);
-            leakTracker.release(target);
-            target.destroyBuffers();
-            transientEvictions++;
+            evictAvailableTransient(target);
         }
+    }
+
+    private void evictAvailableTransient(TextureTarget target) {
+        String key = availableTransientKeys.remove(target);
+        Queue<TextureTarget> queue = key != null ? availableTransient.get(key) : null;
+        if (queue != null) {
+            queue.remove(target);
+            if (queue.isEmpty()) availableTransient.remove(key);
+        }
+        long bytes = transientBytes.getOrDefault(target, 0L);
+        idleTransientBytes = Math.max(0L, idleTransientBytes - bytes);
+        transientBytes.remove(target);
+        idleHdrSinceFrame.remove(target);
+        leakTracker.release(target);
+        target.destroyBuffers();
+        transientEvictions++;
     }
 
     private static long estimateBytes(TransientTargetDescriptor descriptor) {
@@ -249,6 +277,7 @@ public final class FramebufferPool implements AutoCloseable {
         transientLru.clear();
         availableTransientKeys.clear();
         transientBytes.clear();
+        idleHdrSinceFrame.clear();
         idleTransientBytes = 0L;
     }
 

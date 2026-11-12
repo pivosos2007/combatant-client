@@ -13,6 +13,7 @@ import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.jetbrains.annotations.Nullable;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
+import combatant.client.render.engine.hdr.HdrFullscreenPipelines;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineSpec;
 
 import java.util.ArrayList;
@@ -117,7 +118,6 @@ public final class FullscreenDrawCommand {
 
         public FullscreenDrawCommand build() {
             if (pipeline == null) throw new IllegalStateException("Fullscreen command without pipeline");
-            if (pipelineSpec == null) pipelineSpec = RenderPipelineRegistry.global().require(pipeline);
             if (colorAttachment == null) throw new IllegalStateException("Fullscreen command without color attachment");
             if (depthAttachment != null && (depthAttachment.getWidth(0) != colorAttachment.getWidth(0)
                     || depthAttachment.getHeight(0) != colorAttachment.getHeight(0))) {
@@ -125,6 +125,12 @@ public final class FullscreenDrawCommand {
                         + colorAttachment.getWidth(0) + "x" + colorAttachment.getHeight(0)
                         + ", depth=" + depthAttachment.getWidth(0) + "x" + depthAttachment.getHeight(0));
             }
+            RenderPipeline selected = HdrFullscreenPipelines.forAttachment(pipeline, colorAttachment);
+            if (selected != pipeline) {
+                pipeline = selected;
+                pipelineSpec = null;
+            }
+            if (pipelineSpec == null) pipelineSpec = RenderPipelineRegistry.global().require(pipeline);
             return new FullscreenDrawCommand(this);
         }
     }

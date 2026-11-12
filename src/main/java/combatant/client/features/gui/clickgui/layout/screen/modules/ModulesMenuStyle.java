@@ -27,10 +27,20 @@ enum ModulesMenuStyle {
                     .withInteractionStrength(0f).withShapeDeformation(false))
             .withInteraction(new UiGlassInteraction(0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, true))
             .withTintStrength(0.16f);
+    private static UiGlassOpticsSpec cachedCustomOptics;
+    private static UiLiquidGlassMaterial cachedCustomGlass;
 
     static UiLiquidGlassMaterial glass() {
-        // Preserve the existing glass optics; ICE is not active in ModulesMenu.
-        return GLASS;
+        combatant.client.features.module.modules.misc.ClickGui module =
+                combatant.client.features.module.Modules.get(
+                        combatant.client.features.module.modules.misc.ClickGui.class);
+        if (module == null || !module.hasCustomGlassOptics()) return GLASS;
+        UiGlassOpticsSpec optics = module.glassOptics(GLASS.optics());
+        if (cachedCustomGlass == null || !optics.equals(cachedCustomOptics)) {
+            cachedCustomOptics = optics;
+            cachedCustomGlass = GLASS.withOptics(optics);
+        }
+        return cachedCustomGlass;
     }
 
     /**

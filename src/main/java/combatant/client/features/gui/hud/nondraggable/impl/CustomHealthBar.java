@@ -21,6 +21,8 @@ import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudGlassSettings;
+import combatant.client.features.gui.preview.api.HudPreviewCanvas;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.script.HudScriptLayouts;
 import combatant.client.render.engine.color.RenderColor;
@@ -83,6 +85,19 @@ private static final float HEALTH_BAR_WIDTH = 81f;
 
     private CustomHealthBar() {
         super("vanilla_health", "Health", "hud.static.vanilla_health.description", true);
+    }
+
+    private record HealthState(float ratio, float absorption) { }
+
+    @Override
+    public PreviewCatalog.Definition<HealthState, HudPreviewCanvas> previewDefinition() {
+        return PreviewCatalog.definition(
+                new PreviewCatalog.Id(PreviewCatalog.Surface.HUD, getId()), HudPreviewCanvas.class,
+                frame -> PreviewCatalog.Availability.READY,
+                frame -> new HealthState(0.75f, 0.12f),
+                (canvas, state) -> drawBar(canvas.renderer(),
+                        canvas.guiWidth() * 0.5f - 91f, canvas.guiHeight() - 39f,
+                        canvas.guiScale(), state.ratio(), state.absorption(), this), PreviewCatalog.PreviewSpace.FRAMEBUFFER);
     }
 
     public static CustomHealthBar get() {
@@ -233,12 +248,10 @@ private static final float HEALTH_BAR_WIDTH = 81f;
                 xFb, yFb, wFb, hFb, roundFb, 0xFFFFFFFF,
                 bm.getHudHealthAlphaFactor(),
                 Renderer2D.LiquidGlassPreset.HEALTH_BAR, glassScale, 0.0f);
-        if (bm.glassSettings.customized()) {
-            UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
-                    .withOptics(bm.glassSettings.apply(UiGlassOpticsSpec.LIQUID));
-            Runnable original = draw;
-            draw = () -> Renderer2D.COLOR.withLiquidGlassMaterial(material, original);
-        }
+        UiLiquidGlassMaterial material = UiLiquidGlassMaterial.DEFAULT
+                .withOptics(bm.glassSettings.apply(UiGlassOpticsSpec.LIQUID));
+        Runnable original = draw;
+        draw = () -> Renderer2D.COLOR.withLiquidGlassMaterial(material, original);
         Renderer2D.COLOR.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS,
                 combatant.client.features.gui.hud.HudRenderUtil.HUD_GLASS_KAWASE_OFFSET_PX,

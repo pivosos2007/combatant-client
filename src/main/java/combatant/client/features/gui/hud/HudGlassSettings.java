@@ -7,7 +7,9 @@
 package combatant.client.features.gui.hud;
 
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.BooleanValue;
+import combatant.client.config.values.ConfigValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.PrecisionNumberValue;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
@@ -36,11 +38,13 @@ public final class HudGlassSettings {
     private final NumberValue<Float> filmStrength;
     private final NumberValue<Float> coating;
     private final BooleanValue specular;
+    private final NumberValue<Float> themeBlend;
 
     public HudGlassSettings(String owner, UiGlassOpticsSpec defaults) {
         this.defaults = defaults;
         String prefix = owner + "_glass_";
         customize = new BooleanValue(prefix + "customize", false);
+        themeBlend = number(prefix, "theme_blend", 0.30f, 0f, 1f);
         refraction = number(prefix, "refraction", defaults.refraction(), -0.08f, 0.08f);
         chromatic = number(prefix, "chromatic", defaults.chromaticAberration(), 0f, 0.95f);
         magnification = number(prefix, "magnification", defaults.magnification(), 0.65f, 1.8f);
@@ -89,7 +93,9 @@ public final class HudGlassSettings {
 
     /** Append controls to the owning element, not a shared/global settings page. */
     public void addSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.bool(customize).common("setting.common.hud_glass.customize"));
+        defs.add(SettingDef.bool(customize).common(CommonSettingSchemas.HUD_GLASS_CUSTOMIZE));
+        defs.add(SettingDef.number(themeBlend).common(CommonSettingSchemas.HUD_GLASS_THEME_BLEND)
+                .visibleWhen(customize::get));
         add(defs, refraction, "refraction");
         add(defs, chromatic, "chromatic");
         add(defs, magnification, "magnification");
@@ -107,12 +113,20 @@ public final class HudGlassSettings {
         add(defs, filmStrength, "film_strength");
         add(defs, coating, "reactive_coating");
         defs.add(SettingDef.bool(specular)
-                .common("setting.common.hud_glass.specular").visibleWhen(customize::get));
+                .common(CommonSettingSchemas.HUD_GLASS_SPECULAR).visibleWhen(customize::get));
     }
 
     private void add(List<SettingDef> defs, NumberValue<Float> value, String key) {
         defs.add(SettingDef.number(value)
-                .common("setting.common.hud_glass." + key).visibleWhen(customize::get));
+                .common(CommonSettingSchemas.hudGlass(key)).visibleWhen(customize::get));
+    }
+
+    /** All persisted values, for use by HUD owners and by the ClickGui subsystem. */
+    public List<ConfigValue<?>> values() {
+        return List.of(customize, themeBlend, refraction, chromatic, magnification,
+                bevelWidth, bevelDepth, cleanReveal, interaction, interactionRadius,
+                viscosity, thickness, refractiveIndex, roughness, frost,
+                filmThickness, filmStrength, coating, specular);
     }
 
     public boolean customized() {
@@ -147,7 +161,8 @@ public final class HudGlassSettings {
                 adjust(original.frost(), defaults.frost(), frost.get()),
                 adjust(original.filmThicknessNm(), defaults.filmThicknessNm(), filmThickness.get()),
                 filmStrength.get(),
-                adjust(original.reactiveCoating(), defaults.reactiveCoating(), coating.get()));
+                adjust(original.reactiveCoating(), defaults.reactiveCoating(), coating.get()),
+                themeBlend.get());
     }
 
     private static float adjust(float original, float base, float selected) {

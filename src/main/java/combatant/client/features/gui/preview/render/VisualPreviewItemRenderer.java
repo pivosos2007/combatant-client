@@ -115,7 +115,7 @@ public final class VisualPreviewItemRenderer {
     public static void renderScene(VisualPreviewSceneContext context, boolean blockLight, float size,
                                    java.util.function.BiConsumer<PoseStack, SubmitNodeStorage> subject) {
         Minecraft mc = context.minecraft();
-        if (mc == null || mc.gameRenderer == null || mc.level == null) return;
+        if (mc == null || mc.gameRenderer == null) return;
         ensureRenderer(mc);
         PreviewRenderState previous = PreviewRenderState.capture();
         try (VisualPreviewRuntime.Scope ignored = VisualPreviewRuntime.enterSubjectRender()) {

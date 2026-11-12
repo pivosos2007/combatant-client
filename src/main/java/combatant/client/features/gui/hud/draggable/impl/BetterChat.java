@@ -19,6 +19,7 @@ import combatant.client.config.values.NumberValue;
 import combatant.client.config.values.ModeValue;
 import combatant.client.events.impl.RenderPrewarmCollectEvent;
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.CommonSettingSchemas;
 import java.util.List;
 import combatant.client.config.values.RGBColorValue;
 import combatant.client.features.gui.chat.BetterChatRenderer;
@@ -88,7 +89,7 @@ public final class BetterChat extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
         glassSettings.addSettings(defs);
     }
 
@@ -100,7 +101,7 @@ public final class BetterChat extends DraggableHudElement {
 
     public String surfaceMaterial() { return surfaceMaterial.get(); }
     public UiGlassOpticsSpec glassOptics() { return glassSettings.apply(UiGlassOpticsSpec.LIQUID); }
-    public boolean hasCustomGlassOptics() { return glassSettings.customized(); }
+    public boolean hasCustomGlassOptics() { return true; }
     public boolean environmentalEffects() { return environmentalEffectsEnabled(); }
 
     public static BetterChat get() {

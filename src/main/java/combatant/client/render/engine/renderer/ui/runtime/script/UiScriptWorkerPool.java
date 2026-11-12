@@ -22,7 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * accumulating one JS evaluation for every rendered frame.</p>
  */
 final class UiScriptWorkerPool {
-    private static final int LANES = Math.min(2, Math.max(1, Runtime.getRuntime().availableProcessors() / 4));
+    private static final int BACKGROUND_LANES = Math.min(2, Math.max(1, Runtime.getRuntime().availableProcessors() / 4));
+    private static final int LANES = BACKGROUND_LANES + 1;
     private static final int QUEUE_CAPACITY = 128;
     private static final AtomicInteger NEXT_LANE = new AtomicInteger();
     private static final ThreadPoolExecutor[] EXECUTORS = createExecutors();
@@ -32,7 +33,11 @@ final class UiScriptWorkerPool {
     }
 
     static int selectLane() {
-        return Math.floorMod(NEXT_LANE.getAndIncrement(), LANES);
+        return Math.floorMod(NEXT_LANE.getAndIncrement(), BACKGROUND_LANES);
+    }
+
+    static int interactiveLane() {
+        return BACKGROUND_LANES;
     }
 
     static boolean submit(int lane, Runnable task) {

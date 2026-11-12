@@ -38,6 +38,12 @@ final class NativeSettingsPage implements SettingsPage {
     public boolean visible() { return SettingsTabRuntime.isVisible(); }
 
     @Override
+    public boolean allowsHudPreviewPointer(float mouseX, float mouseY) {
+        return !SettingsTabRuntime.isColorEditorOpen()
+                && SettingsTabRuntime.allowsHudPreviewPointer(mouseX, mouseY);
+    }
+
+    @Override
     public boolean mousePressed(float mouseX, float mouseY, int button) {
         if (SettingsTabRuntime.isColorEditorOpen()) {
             SettingsTabRuntime.handleColorEditorMouseButton(mouseX, mouseY, button, true);

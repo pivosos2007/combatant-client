@@ -60,7 +60,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.item.ItemStack;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -348,7 +347,7 @@ public final class SchematicPanel {
             CombatantTextInputBridge.blur(searchInput);
             CombatantTextInputBridge.blur(originInput);
         }
-        settingsPanel.render(0f, 0f, 0f, 0f, mouseX, mouseY, SETTINGS_SCALE);
+        settingsPanel.render(0f, 0f, 0f, 0f, mouseX, mouseY, settingsPanel.panelWidth(SETTINGS_SCALE));
     }
 
     private void renderScript() {
@@ -513,7 +512,7 @@ public final class SchematicPanel {
                 SchematicMaterials.Entry entry = materials.get(i);
                 int have = i < materialHave.length ? materialHave[i] : 0;
                 boolean missing = state.missingMaterials().stream().anyMatch(m -> m.item() == entry.item());
-                inventory.add(map("id", String.valueOf(i), "name", new ItemStack(entry.item()).getHoverName().getString(),
+                inventory.add(map("id", String.valueOf(i), "name", I18n.get(entry.item().getDescriptionId()),
                         "item", BuiltInRegistries.ITEM.getKey(entry.item()).toString(),
                         "detail", missing ? tr("screen.combatant.schematic.materials_missing") : "",
                         "quantity", have + " / " + entry.count(),
@@ -1023,7 +1022,7 @@ public final class SchematicPanel {
         doubleClickFile = doubled;
         if (settingsPanel.isActive()) {
             int mapped = button == 0 ? InputKeys.MOUSE_LEFT : button == 1 ? InputKeys.MOUSE_RIGHT : InputKeys.MOUSE_MIDDLE;
-            if (settingsPanel.mouseClicked(mx, my, mapped, SETTINGS_SCALE)) return true;
+            if (settingsPanel.mouseClicked(mx, my, mapped)) return true;
             settingsPanel.close(); settingsId = null;
         }
         if (bounds == null || !inside(mx, my, bounds.x, bounds.y, bounds.w, bounds.h)) return false;

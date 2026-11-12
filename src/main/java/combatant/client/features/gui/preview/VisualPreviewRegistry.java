@@ -71,12 +71,17 @@ public enum VisualPreviewRegistry {
     }
 
     public static boolean supports(Module module) {
-        return module != null && (MODULE_PROVIDERS.containsKey(normalize(module.name()))
+        return worldReadyFor(module) && (MODULE_PROVIDERS.containsKey(normalize(module.name()))
                 || MODULE_ACTIONS.containsKey(normalize(module.name())));
     }
 
+    private static boolean worldReadyFor(Module module) {
+        return module != null && (!(module instanceof Chams || module instanceof PlayerModel
+                || module instanceof ViewModel) || WorldRequiredVisualPreview.available());
+    }
+
     public static List<PreviewAction> actions(Module module) {
-        if (module == null) return List.of();
+        if (!worldReadyFor(module)) return List.of();
         Function<? super Module, List<PreviewAction>> factory = MODULE_ACTIONS.get(normalize(module.name()));
         if (factory != null) {
             List<PreviewAction> result = factory.apply(module);
@@ -88,7 +93,7 @@ public enum VisualPreviewRegistry {
     }
 
     public static VisualPreviewProvider providerFor(Module module) {
-        if (module == null) return null;
+        if (!worldReadyFor(module)) return null;
         Function<? super Module, ? extends VisualPreviewProvider> factory =
                 MODULE_PROVIDERS.get(normalize(module.name()));
         return factory == null ? null : factory.apply(module);
@@ -100,7 +105,7 @@ public enum VisualPreviewRegistry {
     }
 
     public static boolean open(Module module, String actionId) {
-        if (module == null || actionId == null) return false;
+        if (!worldReadyFor(module) || actionId == null) return false;
         for (PreviewAction action : actions(module)) {
             if (!action.id().equals(actionId)) continue;
             VisualPreviewProvider provider = action.provider().apply(module);

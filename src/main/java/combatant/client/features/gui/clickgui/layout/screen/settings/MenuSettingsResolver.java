@@ -116,7 +116,7 @@ public enum MenuSettingsResolver {
 
         DraggableHudElement draggable = DraggableHudElementRegistry.getById(id);
         if (draggable != null) {
-            draggable.setEnabled(!draggable.isEnabled());
+            combatant.client.features.gui.clickgui.sound.GuiModuleToggle.toggle(draggable);
             return;
         }
 
@@ -252,7 +252,7 @@ public enum MenuSettingsResolver {
     private static void toggleStatic(String staticId) {
         AbstractHudElement staticHud = StaticHudElementRegistry.getById(staticId);
         if (staticHud == null) return;
-        staticHud.setEnabled(!staticHud.isEnabled());
+        combatant.client.features.gui.clickgui.sound.GuiModuleToggle.toggle(staticHud);
     }
 
     private static List<Setting> buildSettingsFromDefs(AbstractHudElement hud) {

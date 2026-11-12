@@ -7,6 +7,7 @@
 
 package combatant.client.features.module.modules.visuals;
 
+import combatant.client.features.gui.preview.WorldRequiredVisualPreview;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
@@ -33,6 +34,11 @@ import combatant.client.features.module.ModuleSubcategory;
 @ModuleInfo(id = "viewmodel", displayName = "ViewModel", category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.COSMETIC,
         description = "module.viewmodel.description")
 public class ViewModel extends Module {
+    @Override
+    protected void loadSettings(java.util.List<combatant.client.features.gui.clickgui.settings.Setting> settings) {
+        WorldRequiredVisualPreview.restrictSettings(settings, getKeyBindSetting());
+    }
+
 
     private static final String SETTING_MODE = "mode";
     private static final String MODE_BASIC = "Basic";
@@ -190,7 +196,8 @@ public class ViewModel extends Module {
     }
 
     public boolean isActiveForHandRender() {
-        return isEnabled() || VisualPreviewRuntime.isPreviewingModule("viewmodel");
+        return WorldRequiredVisualPreview.available()
+                && (isEnabled() || VisualPreviewRuntime.isPreviewingModule("viewmodel"));
     }
 
     private boolean isBasicMode() {

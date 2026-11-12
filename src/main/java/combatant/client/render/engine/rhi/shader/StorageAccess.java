@@ -29,7 +29,7 @@ public enum StorageAccess {
     }
 
     /**
-     * Returns true when an actual binding access is no broader than the access declared by
+     * Returns true when actual binding access is no broader than the access declared by
      * the shader resource slot.
      */
     public boolean allows(StorageAccess actual) {

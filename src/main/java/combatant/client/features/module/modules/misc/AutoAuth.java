@@ -63,7 +63,7 @@ public final class AutoAuth extends Module {
     private int attempts;
 
     public boolean isServerTrusted() {
-        String current = ConfigServerBindings.currentAddress();
+        String current = ConfigServerBindings.currentServerAddress();
         if (current.isEmpty()) return false;
         Set<String> trusted = trustedServers.get();
         if (trusted == null || trusted.isEmpty()) return false;
@@ -93,7 +93,7 @@ public final class AutoAuth extends Module {
         Prompt prompt = AuthPromptDetector.detect(event.message);
         if (prompt == Prompt.NONE) return;
         if (!isServerTrusted()) {
-            String current = ConfigServerBindings.currentAddress();
+            String current = ConfigServerBindings.currentServerAddress();
             Notifier.warning(I18n.get("notification.autoauth.untrusted_server", current.isEmpty() ? "?" : current));
             return;
         }

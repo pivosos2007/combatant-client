@@ -251,7 +251,8 @@ public final class UiRuntime {
         return patches.boundsChanges();
     }
 
-    long treeRevision() { return treeRevision; }
+    /** Monotonically increasing revision of the retained UI tree after reconciliation. */
+    public long treeRevision() { return treeRevision; }
     long legacyPropRevision() { return legacyPropRevision; }
 
     List<UiNode> nodesForDynamicPatch(String key, String kind) {

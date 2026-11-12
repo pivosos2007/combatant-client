@@ -122,8 +122,8 @@ final class DeferredMrtCapture {
         var sampler = RenderSystem.getSamplerCache().getClampToEdge(com.mojang.renderpearl.api.textures.FilterMode.NEAREST);
         CombatantRenderSystem.rhi().drawFullscreen(FullscreenDrawCommand.builder("Deferred 26.3 surface MRT debug")
                 .colorAttachment(sceneColor)
-                .pipeline(DeferredRuntimeAssets.temporalPresent())
-                .sampler("u_Source", surface, sampler).build());
+                .pipeline(combatant.client.render.engine.pipeline.PostProcessRenderPipelines.POSTPROCESS_COPY_HDR)
+                .sampler("u_Texture", surface, sampler).build());
     }
 
     void setDebugEnabled(boolean enabled) { debugEnabled = enabled; }

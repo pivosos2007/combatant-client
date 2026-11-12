@@ -1,0 +1,106 @@
+#version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+/*
+ * Depth-aware spatio-temporal cloud reconstruction. Current 3D raymarches
+ * produce subpixel-jittered low-resolution radiance and first-moment distance.
+ * History is projected using the cloud's approximate world position, previous
+ * view/projection matrices, camera translation and integrated wind advection.
+ * History is constrained to current-neighborhood radiance and opacity and
+ * rejected on disocclusion, camera cuts and distance disagreement.
+ * No dependence on the world's post-processing TAA or Iris.
+ */
+layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
+layout(binding=0) uniform sampler2D u_Current;
+layout(binding=1) uniform sampler2D u_CurrentDistance;
+layout(binding=2) uniform sampler2D u_History;
+layout(binding=3) uniform sampler2D u_HistoryDistance;
+layout(binding=4) uniform sampler2D u_OpaqueDepth;
+layout(binding=5,rgba16f) writeonly uniform image2D u_Result;
+layout(binding=6,r32f) writeonly uniform image2D u_ResultDistance;
+
+layout(std430,binding=7) readonly buffer ReconstructParams {
+    mat4 inverseProjection;
+    mat4 inverseView;
+    mat4 previousView;
+    mat4 previousProjection;
+    vec4 dimensions;   // full width, full height, history usable, frame counter
+    vec4 cameraDelta;  // current camera - previous camera (world)
+    vec4 windDelta;    // current minus previous lowXZ, highXZ
+    vec4 layers;       // base, thickness, scale, cirrus enabled
+};
+vec3 worldRay(vec2 uv){
+    vec4 p=inverseProjection*vec4(uv*2.-1.,.5,1.);
+    return normalize(mat3(inverseView)*(p.xyz/max(abs(p.w),.00001)));
+}
+void main(){
+    ivec2 pixel=ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent=ivec2(dimensions.xy);
+    if(any(greaterThanEqual(pixel,extent)))return;
+    vec2 uv=(vec2(pixel)+.5)/dimensions.xy;
+    vec4 current=texture(u_Current,uv);
+    float d=texture(u_CurrentDistance,uv).r;
+    // Full-resolution depth test after upscaling: unlike a low-res cloud
+    // footprint mask, this rejects cloud color bleeding across terrain edges.
+    float sceneZ=texture(u_OpaqueDepth,uv).r;
+    if(sceneZ>.000001 && d>1.){
+        vec4 scene=inverseProjection*vec4(uv*2.-1.,sceneZ,1.);
+        float sceneDistance=length(scene.xyz/max(abs(scene.w),.00001));
+        if(d>sceneDistance+max(1.,sceneDistance*.01)){
+            current=vec4(0.);
+            d=0.;
+        }
+    }
+    vec4 result=current;
+    // A ray may miss a thin cirrus filament on one jitter phase. Its
+    // previous first-moment distance can supply a reprojection hypothesis,
+    // but never on opaque foreground where it could resurrect hidden clouds.
+    float previousCandidate=texture(u_HistoryDistance,uv).r;
+    bool emptyVisible=texture(u_OpaqueDepth,uv).r<=.000001;
+    if(d<=1. && emptyVisible && dimensions.z>.5 && previousCandidate>1.)d=previousCandidate;
+    if(dimensions.z>.5 && d>1.){
+        vec3 ray=worldRay(uv);
+        vec3 world=ray*d;
+        // If this is high cloud coverage, advect by the high-level wind.
+        float high=layers.w>.5 ? smoothstep(layers.x+layers.y*3.2,
+                             layers.x+layers.y*3.8,world.y+cameraDelta.w) : 0.;
+        vec2 wind=mix(windDelta.xy,windDelta.zw,high);
+        vec3 previousRelative=world+cameraDelta.xyz+vec3(wind.x,0.,wind.y);
+        vec4 clip=previousProjection*previousView*vec4(previousRelative,1.);
+        vec2 previousUv=clip.xy/max(abs(clip.w),.000001)*.5+.5;
+        if(clip.w>0. && all(greaterThan(previousUv,vec2(.001)))
+            && all(lessThan(previousUv,vec2(.999)))){
+            vec4 history=texture(u_History,previousUv);
+            float historyD=texture(u_HistoryDistance,previousUv).r;
+            float predictedD=length(previousRelative);
+            float delta=abs(historyD-predictedD);
+            if(historyD>1. && delta<max(24.,predictedD*.12)
+                && history.a>.001){
+                // 4-neighbour color box: constrain the reprojected history
+                // to what can be plausibly present this frame, without
+                // preserving trails from clouds that moved or disoccluded.
+                vec2 pixelScale=vec2(textureSize(u_Current,0));
+                vec2 radius=vec2(1.)/pixelScale;
+                vec4 mn=current,mx=current;
+                for(int i=0;i<4;i++){
+                    vec2 o=vec2((i&1)==0 ? -1. : 1.,(i&2)==0 ? -1. : 1.)*radius;
+                    vec4 sampleColor=texture(u_Current,clamp(uv+o,vec2(0.),vec2(1.)));
+                    mn=min(mn,sampleColor);mx=max(mx,sampleColor);
+                }
+                vec4 expansion=vec4(.075,.075,.075,
+                                    current.a<.002?.14:.045);
+                history=clamp(history,mn-expansion,mx+expansion);
+                float motion=length(previousUv-uv)*max(dimensions.x,dimensions.y);
+                float weight=.84*(1.-smoothstep(6.,40.,motion)*.38);
+                weight*=1.-smoothstep(.05,.24,abs(current.a-history.a))*.50;
+                result=mix(current,history,weight);
+            }
+        }
+    }
+    imageStore(u_Result,pixel,clamp(result,vec4(0.),vec4(8.,8.,8.,1.)));
+    imageStore(u_ResultDistance,pixel,vec4(result.a>.002?d:0.,0.,0.,1.));
+}

@@ -34,12 +34,12 @@ import java.util.Map;
 
 public final class ModuleComponent {
     private static final float PARALLAX_MAX_ANGLE = 4.6f;
-    private static final float DESCRIPTION_TEXT_SIZE = 9.0f;
+    private static final float DESCRIPTION_TEXT_SIZE = 18f;
     private static final int MAX_DESCRIPTION_LINES = 2;
-    private static final float DESCRIPTION_TEXT_LEFT = 15.0f;
-    private static final float DESCRIPTION_TEXT_RIGHT = 10.0f;
-    private static final float DESCRIPTION_ICON_X = 6.5f;
-    private static final float DESCRIPTION_ICON_SIZE = 9.0f;
+    private static final float DESCRIPTION_TEXT_LEFT = 30f;
+    private static final float DESCRIPTION_TEXT_RIGHT = 20f;
+    private static final float DESCRIPTION_ICON_X = 13f;
+    private static final float DESCRIPTION_ICON_SIZE = 18f;
     private static final float PARALLAX_DEPTH = 4.8f;
     private static final float PARALLAX_PERSPECTIVE = 0.92f;
     private static final float PARALLAX_SCALE_BOOST = 0.012f;
@@ -112,11 +112,11 @@ public final class ModuleComponent {
         draggingScrollbar = false;
     }
 
-    public void scroll(float mx, float my, float menuX, float menuY, float menuW, float menuH, double amount, float scale) {
-        float hitX = menuX + 35f * scale;
-        float hitY = menuY + 13f * scale;
-        float hitW = menuW - 35f * scale + 7f * scale;
-        float hitH = menuH - 13f * scale + 15f * scale;
+    public void scroll(float mx, float my, float menuX, float menuY, float menuW, float menuH, double amount) {
+        float hitX = menuX + 70f;
+        float hitY = menuY + 26f;
+        float hitW = menuW - 70f + 14f;
+        float hitH = menuH - 26f + 30f;
         if (!ClickGuiMath.insideRect(mx, my, hitX, hitY, hitW, hitH)) return;
         scroll += (float) (amount * 20f);
     }
@@ -125,8 +125,7 @@ public final class ModuleComponent {
                        float menuY,
                        float menuW,
                        float menuH,
-                       List<CardEntry> entries,
-                       float scale) {
+                       List<CardEntry> entries) {
         hits.clear();
         hoverSoundCardIdThisFrame = null;
         if (entries.isEmpty()) {
@@ -134,30 +133,30 @@ public final class ModuleComponent {
             return;
         }
 
-        int[] offsets = calculateOffsets(entries, scale);
+        int[] offsets = calculateOffsets(entries);
         int column = 0;
         int maxScroll = 0;
-        float columnWidth = 142f * scale;
+        float columnWidth = 284f;
         SettingsGuiPalette palette = SettingsGuiPalette.current();
 
-        float scissorX = menuX + 35f * scale - 75f * scale;
-        float scissorY = menuY + 35.5f * scale;
-        float scissorW = menuW - 35f * scale + 150f * scale;
-        float scissorBottom = menuY + menuH - 3.5f * scale;
+        float scissorX = menuX + 70f - 150f;
+        float scissorY = menuY + 71f;
+        float scissorW = menuW - 70f + 300f;
+        float scissorBottom = menuY + menuH - 7f;
         float scissorH = Math.max(1f, scissorBottom - scissorY);
         boolean clipped = ScissorFunction.pushRaw(scissorX, scissorY, scissorW, scissorH);
 
         for (int i = entries.size() - 1; i >= 0; i--) {
             CardEntry entry = entries.get(i);
-            int componentHeight = Math.round(getComponentHeight(entry, columnWidth + 40f * scale, scale) + 9f * scale);
+            int componentHeight = Math.round(getComponentHeight(entry, columnWidth + 80f) + 18f);
 
-            float x = menuX + 32f * scale + (column * (columnWidth + 48f * scale));
-            float y = menuY + 35f * scale + offsets[column] - componentHeight + smoothedScroll;
-            float w = columnWidth + 40f * scale;
-            float h = componentHeight - 9f * scale;
+            float x = menuX + 64f + (column * (columnWidth + 96f));
+            float y = menuY + 70f + offsets[column] - componentHeight + smoothedScroll;
+            float w = columnWidth + 80f;
+            float h = componentHeight - 18f;
 
-            if (y + h > scissorY + scale && scissorBottom - scale > y) {
-                CardHit hit = drawCard(entry, x, y, w, h, scale, palette);
+            if (y + h > scissorY + 2f && scissorBottom - 2f > y) {
+                CardHit hit = drawCard(entry, x, y, w, h, palette);
                 hits.add(hit);
             }
 
@@ -166,8 +165,8 @@ public final class ModuleComponent {
             column = (column + 1) % 2;
         }
 
-        int clamped = ClickGuiMath.clamp(Math.round(maxScroll - (menuH * 0.5f + 35f * scale)), 0, maxScroll);
-        updateScrollbarMetrics(menuX, menuY, menuH, clamped, scale);
+        int clamped = ClickGuiMath.clamp(Math.round(maxScroll - (menuH * 0.5f + 70f)), 0, maxScroll);
+        updateScrollbarMetrics(menuX, menuY, menuH, clamped);
         if (draggingScrollbar) {
             scrollToMouse(ClickGuiRenderer.getMouseY());
         }
@@ -176,7 +175,7 @@ public final class ModuleComponent {
         smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, draggingScrollbar ? 0.01f : 0.05f);
         if (clipped) ScissorFunction.pop();
 
-        renderScrollbar(menuX, menuY, menuH, clamped, scale, palette);
+        renderScrollbar(menuX, menuY, menuH, clamped, palette);
         lastHoverSoundCardId = hoverSoundCardIdThisFrame;
     }
 
@@ -214,7 +213,7 @@ public final class ModuleComponent {
         return null;
     }
 
-    private CardHit drawCard(CardEntry entry, float x, float y, float w, float h, float scale, SettingsGuiPalette palette) {
+    private CardHit drawCard(CardEntry entry, float x, float y, float w, float h, SettingsGuiPalette palette) {
         Module faultModule = ModuleManager.get(entry.getId());
         boolean failed = entry.failed() || SettingErrorView.hasFailure(faultModule);
         boolean quarantined = ErrorHandler.blocked(faultModule);
@@ -229,38 +228,37 @@ public final class ModuleComponent {
         int brightnessOffset = Math.round(9f * enabledAnim);
         int alphaOffset = 150 + Math.round(105f * enabledAnim);
         String description = normalizeDescription(entry.description());
-        float descHeight = descriptionHeight(description, w, scale);
+        float descHeight = descriptionHeight(description, w);
         int cardTopStrong = brightenRgb(palette.moduleCardTopStrong(), brightnessOffset);
         int cardBottomStrong = brightenRgb(palette.moduleCardBottomStrong(), brightnessOffset);
         BindRect bindRect;
-        float statusX = x + w - 24f * scale;
-        float statusY = y + descHeight + 31f * scale;
+        float statusX = x + w - 48f;
+        float statusY = y + descHeight + 62f;
 
         try (var ignored = pushParallax(parallax, x, y, w, h);
-             var transition = SettingsCardTransition.beginCard(x, y, w, h, 5f * scale, scale, palette)) {
+             var transition = SettingsCardTransition.beginCard()) {
             // Use the soft-shadow SDF here. roundedRectShadow is a bottom-edge shadow primitive
             // and visually collapses into a moving 1px strip on these tilted cards.
             LayoutRender2D.roundedSoftShadow(
                     x,
-                    y + 1.6f * scale,
+                    y + 3.2f,
                     w,
                     h,
-                    5.4f * scale,
-                    5.2f * scale,
+                    10.8f,
+                    10.4f,
                     0.0f,
                     LayoutRender2D.alpha(0xFF000000, 0.18f + 0.08f * hoverAnim)
             );
-            LayoutRender2D.drawBlur(x, y, w, h, 5f * scale, 0xFF000000, 200f / 255f);
             LayoutRender2D.roundedQuad(
                     x, y, w, h,
-                    5f * scale,
+                    10f,
                     palette.moduleCardTop(),
                     cardTopStrong,
                     palette.moduleCardBottom(),
                     cardBottomStrong
             );
             LayoutRender2D.rectQuad(
-                    x, y + descHeight + 25f * scale, w, 0.5f * scale,
+                    x, y + descHeight + 50f, w, 1f,
                     palette.moduleDividerStart(),
                     palette.moduleDividerEnd(),
                     palette.moduleDividerEnd(),
@@ -271,35 +269,35 @@ public final class ModuleComponent {
                     y,
                     w,
                     h,
-                    5f * scale,
+                    10f,
                     0f,
-                    48f * scale,
+                    96f,
                     x + w * 0.18f,
                     y + h * 0.08f,
                     LayoutRender2D.alpha(palette.moduleCardTopStrong(), 0.12f + 0.10f * hoverAnim)
             );
 
             if (failed) {
-                SettingErrorView.warning(x+w-18f*scale,y+6f*scale,10f*scale,1f);
+                SettingErrorView.warning(x+w-36f,y+12f,20f,1f);
             }
             LayoutRender2D.drawText(
                     BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     "• " + entry.title(),
-                    x + 8.8f * scale,
-                    y + 5.4f * scale,
-                    13f * scale,
+                    x + 17.6f,
+                    y + 10.8f,
+                    26f,
                     SettingsGuiPalette.withAlpha(failed ? 0xFFFF7777 : palette.moduleTitleText(), alphaOffset),
                     false
             );
 
-            drawDescription(description, x, y, w, scale, palette);
+            drawDescription(description, x, y, w, palette);
             if (!entry.hasSettings()) {
-                drawNoSettingsHint(x, y, descHeight, scale, palette);
+                drawNoSettingsHint(x, y, descHeight, palette);
             }
-            bindRect = drawBind(entry, x, y, w, descHeight, scale, palette);
+            bindRect = drawBind(entry, x, y, w, descHeight, palette);
             if (entry.toggleable() && !quarantined) {
                 StatusRender status = statusRenderById.computeIfAbsent(entry.getId(), k -> new StatusRender());
-                status.render(statusX, statusY, enabledAnim, scale);
+                status.render(statusX, statusY, enabledAnim);
             }
         }
 
@@ -315,29 +313,29 @@ public final class ModuleComponent {
                 bindRect.hitH(),
                 statusX,
                 statusY,
-                16f * scale,
-                8f * scale,
+                32f,
+                16f,
                 entry.hasSettings(),
                 entry.toggleable()
         );
     }
 
-    private void drawDescription(String description, float x, float y, float w, float scale, SettingsGuiPalette palette) {
-        DescriptionLayout layout = layoutDescription(description, w, scale);
+    private void drawDescription(String description, float x, float y, float w, SettingsGuiPalette palette) {
+        DescriptionLayout layout = layoutDescription(description, w);
         if (layout.lines().isEmpty()) return;
 
-        float textSize = DESCRIPTION_TEXT_SIZE * scale;
-        float textY = y + 19f * scale;
-        float textX = x + DESCRIPTION_TEXT_LEFT * scale;
-        float lineStep = descriptionLineStep(scale);
+        float textSize = DESCRIPTION_TEXT_SIZE;
+        float textY = y + 38f;
+        float textX = x + DESCRIPTION_TEXT_LEFT;
+        float lineStep = descriptionLineStep();
         TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
 
         LayoutRender2D.drawText(
                 icons,
                 "J",
-                x + DESCRIPTION_ICON_X * scale,
-                textY + 0.55f * scale,
-                DESCRIPTION_ICON_SIZE * scale,
+                x + DESCRIPTION_ICON_X,
+                textY + 1.1f,
+                DESCRIPTION_ICON_SIZE,
                 palette.moduleDescriptionIcon(),
                 false
         );
@@ -355,56 +353,56 @@ public final class ModuleComponent {
         }
     }
 
-    private BindRect drawBind(CardEntry entry, float x, float y, float w, float descHeight, float scale, SettingsGuiPalette palette) {
+    private BindRect drawBind(CardEntry entry, float x, float y, float w, float descHeight, SettingsGuiPalette palette) {
         String label = entry.bindLabel();
         if (label == null || label.isBlank()) {
             return new BindRect(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
         }
-        float labelW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), label, 12f * scale);
-        float bindX = x + w - 37.5f * scale - labelW;
-        float bindY = y + descHeight + 29.75f * scale;
-        float bindW = labelW + 6f * scale;
-        float bindH = 10f * scale;
-        float hitY = y + descHeight + 32.5f * scale;
-        float hitH = 9f * scale;
+        float labelW = LayoutRender2D.textWidth(BuiltinFontCatalog.ONEST_REGULAR.renderer(), label, 24f);
+        float bindX = x + w - 75f - labelW;
+        float bindY = y + descHeight + 59.5f;
+        float bindW = labelW + 12f;
+        float bindH = 20f;
+        float hitY = y + descHeight + 65f;
+        float hitH = 18f;
 
         LayoutRender2D.roundedQuad(
-                bindX + 0.25f * scale, bindY, bindW, bindH, 3f * scale,
+                bindX + 0.5f, bindY, bindW, bindH, 6f,
                 palette.moduleBindBg0(),
                 palette.moduleBindBg1(),
                 palette.moduleBindBg2(),
                 palette.moduleBindBg3()
         );
         LayoutRender2D.roundedStroke(
-                bindX + 0.25f * scale, bindY, bindW, bindH, 3f * scale, 0.5f * scale,
+                bindX + 0.5f, bindY, bindW, bindH, 6f, 1f,
                 palette.moduleBindStroke()
         );
         LayoutRender2D.drawText(
                 BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 label,
-                x + w - 34.5f * scale - labelW,
-                y + descHeight + 34f * scale,
-                12f * scale,
+                x + w - 69f - labelW,
+                y + descHeight + 68f,
+                24f,
                 palette.moduleBindText(),
                 false
         );
         return new BindRect(bindX, bindY, bindW, bindH, bindX, hitY, bindW, hitH);
     }
 
-    private void drawNoSettingsHint(float x, float y, float descHeight, float scale, SettingsGuiPalette palette) {
+    private void drawNoSettingsHint(float x, float y, float descHeight, SettingsGuiPalette palette) {
         LayoutRender2D.drawText(
                 BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                 ClickGuiI18n.tr("clickgui.settings.module.no_settings", "No settings"),
-                x + 10f * scale,
-                y + descHeight + 33.5f * scale,
-                9f * scale,
+                x + 20f,
+                y + descHeight + 67f,
+                18f,
                 palette.moduleNoSettingsText(),
                 false
         );
     }
 
-    private void renderScrollbar(float menuX, float menuY, float menuH, int clamped, float scale, SettingsGuiPalette palette) {
-        updateScrollbarMetrics(menuX, menuY, menuH, clamped, scale);
+    private void renderScrollbar(float menuX, float menuY, float menuH, int clamped, SettingsGuiPalette palette) {
+        updateScrollbarMetrics(menuX, menuY, menuH, clamped);
         if (!scrollbarVisible) return;
 
         float mx = ClickGuiRenderer.getMouseX();
@@ -415,7 +413,7 @@ public final class ModuleComponent {
         }
 
         LayoutRender2D.roundedQuad(
-                scrollbarX, scrollbarY, scrollbarW, scrollbarH, 2f * scale,
+                scrollbarX, scrollbarY, scrollbarW, scrollbarH, 4f,
                 palette.moduleScrollTrackA(),
                 palette.moduleScrollTrackB(),
                 palette.moduleScrollTrackB(),
@@ -423,7 +421,7 @@ public final class ModuleComponent {
         );
 
         LayoutRender2D.roundedQuad(
-                scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH, 2f * scale,
+                scrollbarX, scrollbarThumbY, scrollbarW, scrollbarThumbH, 4f,
                 palette.moduleScrollHandleA(),
                 palette.moduleScrollHandleB(),
                 palette.moduleScrollHandleB(),
@@ -431,7 +429,7 @@ public final class ModuleComponent {
         );
     }
 
-    private void updateScrollbarMetrics(float menuX, float menuY, float menuH, int clamped, float scale) {
+    private void updateScrollbarMetrics(float menuX, float menuY, float menuH, int clamped) {
         scrollbarVisible = clamped > 0;
         scrollbarMaxScroll = Math.max(0f, clamped);
         if (!scrollbarVisible) {
@@ -440,15 +438,15 @@ public final class ModuleComponent {
             return;
         }
 
-        float offsetY = 14f * scale;
-        scrollbarW = 4f * scale;
-        scrollbarX = menuX + 400f * scale - 35f * scale - scrollbarW + 50f * scale;
-        scrollbarY = menuY + offsetY + 22f * scale;
-        scrollbarH = menuH - offsetY * 2f - 14f * scale;
+        float offsetY = 28f;
+        scrollbarW = 8f;
+        scrollbarX = menuX + 800f - 70f - scrollbarW + 100f;
+        scrollbarY = menuY + offsetY + 44f;
+        scrollbarH = menuH - offsetY * 2f - 28f;
 
         float contentHeight = scrollbarMaxScroll;
         float viewHeight = menuH - offsetY * 2f;
-        scrollbarThumbH = Math.max(20f * scale, viewHeight * (viewHeight / (contentHeight + viewHeight)));
+        scrollbarThumbH = Math.max(40f, viewHeight * (viewHeight / (contentHeight + viewHeight)));
         float scrollRatio = contentHeight <= 0f ? 0f : (-smoothedScroll / contentHeight);
         scrollbarThumbY = scrollbarY + (scrollbarH - scrollbarThumbH) * AnimationUtility.clamp(scrollRatio, 0f, 1f);
     }
@@ -468,17 +466,17 @@ public final class ModuleComponent {
         scroll = -scrollbarMaxScroll * AnimationUtility.clamp(ratio, 0f, 1f);
     }
 
-    private float descriptionHeight(String description, float w, float scale) {
-        return layoutDescription(description, w, scale).height();
+    private float descriptionHeight(String description, float w) {
+        return layoutDescription(description, w).height();
     }
 
-    private DescriptionLayout layoutDescription(String description, float w, float scale) {
+    private DescriptionLayout layoutDescription(String description, float w) {
         String normalized = normalizeDescription(description).trim();
         if (normalized.isEmpty()) return new DescriptionLayout(List.of(), 0f);
 
-        float textSize = DESCRIPTION_TEXT_SIZE * scale;
-        float maxWidth = Math.max(24f * scale,
-                w - (DESCRIPTION_TEXT_LEFT + DESCRIPTION_TEXT_RIGHT) * scale);
+        float textSize = DESCRIPTION_TEXT_SIZE;
+        float maxWidth = Math.max(48f,
+                w - (DESCRIPTION_TEXT_LEFT + DESCRIPTION_TEXT_RIGHT));
         List<String> lines = new ArrayList<>(MAX_DESCRIPTION_LINES);
         String[] words = normalized.split("\\s+");
         StringBuilder current = new StringBuilder();
@@ -531,7 +529,7 @@ public final class ModuleComponent {
 
         float lineHeight = LayoutRender2D.textHeight(BuiltinFontCatalog.ONEST_REGULAR.renderer(), textSize);
         float height = Math.max(0f,
-                lineHeight - 3.0f * scale + (lines.size() - 1) * descriptionLineStep(scale));
+                lineHeight - 6f + (lines.size() - 1) * descriptionLineStep());
         return new DescriptionLayout(List.copyOf(lines), height);
     }
 
@@ -541,21 +539,21 @@ public final class ModuleComponent {
         return length;
     }
 
-    private float descriptionLineStep(float scale) {
+    private float descriptionLineStep() {
         float lineHeight = LayoutRender2D.textHeight(
-                BuiltinFontCatalog.ONEST_REGULAR.renderer(), DESCRIPTION_TEXT_SIZE * scale);
-        return Math.max(6.0f * scale, lineHeight - 2.5f * scale);
+                BuiltinFontCatalog.ONEST_REGULAR.renderer(), DESCRIPTION_TEXT_SIZE);
+        return Math.max(12f, lineHeight - 5f);
     }
 
-    private int getComponentHeight(CardEntry entry, float w, float scale) {
-        return Math.round(45f * scale + descriptionHeight(normalizeDescription(entry.description()), w, scale));
+    private int getComponentHeight(CardEntry entry, float w) {
+        return Math.round(90f + descriptionHeight(normalizeDescription(entry.description()), w));
     }
 
-    private int[] calculateOffsets(List<CardEntry> entries, float scale) {
+    private int[] calculateOffsets(List<CardEntry> entries) {
         int[] offsets = new int[2];
         int column = 0;
         for (int i = entries.size() - 1; i >= 0; i--) {
-            int componentHeight = Math.round(getComponentHeight(entries.get(i), 182f * scale, scale) + 9f * scale);
+            int componentHeight = Math.round(getComponentHeight(entries.get(i), 364f) + 18f);
             offsets[column] += componentHeight;
             column = (column + 1) % 2;
         }

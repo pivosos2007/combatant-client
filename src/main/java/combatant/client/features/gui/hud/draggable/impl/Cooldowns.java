@@ -25,6 +25,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudGlobalConfig;
 import combatant.client.features.gui.hud.HudRenderUtil;
@@ -190,17 +191,40 @@ public final class Cooldowns extends DraggableHudElement {
     }
 
 
+    private static final ItemStack[] EMPTY_PREVIEW_STACKS = createEmptyPreviewStacks();
+    private static boolean previewRegistryUnbound;
+
+    private static ItemStack[] createEmptyPreviewStacks() {
+        ItemStack[] empty = new ItemStack[PREVIEW_ITEMS.length];
+        java.util.Arrays.fill(empty, ItemStack.EMPTY);
+        return empty;
+    }
+
     private static ItemStack[] previewStacks() {
-        if (previewStacks == null || previewStacks.length != PREVIEW_ITEMS.length) {
-            previewStacks = buildPreviewStacks();
+        if (previewStacks != null) return previewStacks;
+        // A failed ItemStack construction means registry component binding has not
+        // finished. Do not retry the same exception every render frame in the menu.
+        Minecraft mc = Minecraft.getInstance();
+        if (previewRegistryUnbound && (mc == null || mc.level == null))
+            return EMPTY_PREVIEW_STACKS;
+        ItemStack[] samples = buildPreviewStacks();
+        if (samples != null) {
+            previewRegistryUnbound = false;
+            previewStacks = samples;
+            return samples;
         }
-        return previewStacks;
+        previewRegistryUnbound = true;
+        return EMPTY_PREVIEW_STACKS;
     }
 
     private static ItemStack[] buildPreviewStacks() {
         ItemStack[] stacks = new ItemStack[PREVIEW_ITEMS.length];
         for (int i = 0; i < PREVIEW_ITEMS.length; i++) {
-            stacks[i] = new ItemStack(PREVIEW_ITEMS[i]);
+            try {
+                stacks[i] = new ItemStack(PREVIEW_ITEMS[i]);
+            } catch (NullPointerException | IllegalStateException unboundComponents) {
+                return null;
+            }
         }
         return stacks;
     }
@@ -232,7 +256,7 @@ public final class Cooldowns extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(layoutMode));
         defs.add(SettingDef.mode(colorMode));
@@ -462,7 +486,7 @@ public final class Cooldowns extends DraggableHudElement {
             LinkedHashMap<String, Object> row = ScriptedListHudPanel.row(
                     "preview",
                     "item",
-                    BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),
+                    BuiltInRegistries.ITEM.getKey(stack.isEmpty() ? PREVIEW_ITEMS[0] : stack.getItem()).toString(),
                     List.of(ScriptedListHudPanel.textPart("Example Cooldowns", withAlpha(uiText & 0x00FFFFFF, 255), 0.0f)),
                     "**:**",
                     withAlpha(uiCounter & 0x00FFFFFF, 255),

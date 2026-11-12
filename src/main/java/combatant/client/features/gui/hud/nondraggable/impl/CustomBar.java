@@ -31,6 +31,8 @@ import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.gui.hud.HudGlassSettings;
+import combatant.client.features.gui.preview.api.HudPreviewCanvas;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
 import combatant.client.features.map.location.PlayerLocationService;
 import combatant.client.features.map.location.PlayerLocationSnapshot;
 import combatant.client.features.map.location.PlayerLocationSource;
@@ -177,6 +179,20 @@ public final class CustomBar extends AbstractHudElement {
         super("vanilla_bar", "Bar", "hud.static.vanilla_bar.description", true);
     }
 
+    private record BarState(float progress) { }
+
+    @Override
+    public PreviewCatalog.Definition<BarState, HudPreviewCanvas> previewDefinition() {
+        return PreviewCatalog.definition(
+                new PreviewCatalog.Id(PreviewCatalog.Surface.HUD, getId()), HudPreviewCanvas.class,
+                frame -> PreviewCatalog.Availability.READY,
+                frame -> new BarState(0.72f),
+                (canvas, state) -> drawXpBar(canvas.renderer(),
+                        (canvas.guiWidth() - XP_BAR_WIDTH) * 0.5f,
+                        canvas.guiHeight() - 22f - XP_BAR_OFFSET - XP_BAR_HEIGHT,
+                        canvas.guiScale(), state.progress(), this), PreviewCatalog.PreviewSpace.FRAMEBUFFER);
+    }
+
     public static CustomBar get() {
         return INSTANCE;
     }
@@ -308,16 +324,13 @@ public final class CustomBar extends AbstractHudElement {
             // The narrow inner pill needs an explicit scene blur just like CustomHotbar.
             // Liquid-glass refraction alone is not enough on a 5px-high element.
             float blurAlpha = Mth.clamp(BAR_BLUR_ALPHA * overlay, 0.0f, 1.0f);
-            r2d.blurRect(x, y, w, h, radius, BAR_BLUR_QUALITY, 1.0f, blurAlpha, 0xFFFFFF);
-            if (bm.glassSettings.customized()) {
-                r2d.withLiquidGlassMaterial(UiLiquidGlassMaterial.DEFAULT
-                                .withOptics(bm.glassSettings.apply(UiGlassOpticsSpec.LIQUID)),
-                        () -> HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, false,
-                                blurAlpha, BAR_GLASS_ALPHA * overlay));
-            } else {
-                HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, false,
-                        blurAlpha, BAR_GLASS_ALPHA * overlay);
-            }
+            // The liquid-glass pipeline already builds a Kawase scene blur. An
+            // additional independent blurRect here would bake blur into the sharp
+            // source and make viscosity/clean reveal unable to restore clarity.
+            r2d.withLiquidGlassMaterial(UiLiquidGlassMaterial.DEFAULT
+                            .withOptics(bm.glassSettings.apply(UiGlassOpticsSpec.LIQUID)),
+                    () -> HudRenderUtil.drawLiquidGlass(x, y, w, h, radius, scale, false,
+                            blurAlpha, BAR_GLASS_ALPHA * overlay));
 
             int trackA = applyBarAlpha(colors.track(), bm);
             r2d.roundedRectGradient(x, y, w, h, radius, BAR_SOFTNESS * scale, trackA,

@@ -16,12 +16,14 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Util;
 import net.minecraft.world.item.ItemStack;
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
+import combatant.client.features.gui.preview.api.HudPreviewCanvas;
 import combatant.client.features.gui.hud.HudGlassSettings;
 import combatant.client.features.gui.hud.HudClimateSurface;
-import combatant.client.runtime.CombatantBuild;
 import combatant.client.features.gui.hud.draggable.impl.HudMaterialChoice;
 import combatant.client.render.engine.renderer.ui.draw.UiGlassVisual;
 import combatant.client.render.engine.renderer.ui.draw.UiIceMaterialSpec;
@@ -44,7 +46,7 @@ public final class CustomHotbar extends AbstractHudElement {
     private static final UiGlassOpticsSpec HOTBAR_GLASS = UiGlassOpticsSpec.LIQUID
             .withRefraction(0.0045f).withBevel(0.12f, 0.023f)
             .withInteractionStrength(0f).withChromaticAberration(0f)
-            .withCleanReveal(0.76f).withShapeDeformation(false)
+            .withCleanReveal(0.0f).withShapeDeformation(false)
             .withSurfaceRoughness(0.12f).withReactiveCoating(0.20f);
     private static final float RADIUS = 6.0f;
     private static final float DIVIDER_WIDTH_PX = 1.05f;
@@ -77,7 +79,7 @@ public final class CustomHotbar extends AbstractHudElement {
             new NumberValue<>("accent_alpha", 255, 0, 255);
     private final ModeValue surfaceMaterial = new ModeValue("surface_material", "Default", HudMaterialChoice.OPTIONS);
     private final HudGlassSettings glassSettings = new HudGlassSettings("hotbar", HOTBAR_GLASS);
-    private final BooleanValue environmentalEffects = new BooleanValue("environmental_effects", CombatantBuild.isDevelopmentBuild());
+    private final BooleanValue environmentalEffects = new BooleanValue("environmental_effects", true);
     private CustomHotbar() {
         super("vanilla_hotbar", "Hotbar", "hud.static.vanilla_hotbar.description", true);
     }
@@ -86,23 +88,35 @@ public final class CustomHotbar extends AbstractHudElement {
         return INSTANCE;
     }
 
+    @Override
+    public PreviewCatalog.Definition<Integer, HudPreviewCanvas> previewDefinition() {
+        return PreviewCatalog.definition(
+                new PreviewCatalog.Id(PreviewCatalog.Surface.HUD, getId()), HudPreviewCanvas.class,
+                frame -> PreviewCatalog.Availability.READY,
+                frame -> 4,
+                (canvas, slot) -> drawBackground(canvas.renderer(),
+                        canvas.guiWidth() * 0.5f, canvas.guiHeight(), canvas.guiScale(),
+                        new HotbarSelection(slot, slot, slot, 1f), true), PreviewCatalog.PreviewSpace.FRAMEBUFFER);
+    }
+
     public static void renderBackground(Renderer2D r2d, Minecraft mc) {
         LocalPlayer player = mc.player;
         if (player == null) return;
+        CustomHotbar bm = CustomHotbar.get();
+        if (!bm.isHudHotbarEnabled()) return;
 
         float s = (float) mc.getWindow().getGuiScale();
-
         float i = mc.getWindow().getGuiScaledWidth() / 2f;
         float h = mc.getWindow().getGuiScaledHeight();
-
         int selected = getSelectedSlot(player);
         HotbarSelection selection = updateSelectionAnimation(selected);
+        boolean hasOffhand = !player.getOffhandItem().isEmpty();
+        drawBackground(r2d, i, h, s, selection, hasOffhand);
+    }
+
+    private static void drawBackground(Renderer2D r2d, float i, float h, float s,
+                                       HotbarSelection selection, boolean hasOffhand) {
         CustomHotbar bm = CustomHotbar.get();
-        if (bm == null || !bm.isHudHotbarEnabled()) return;
-
-        ItemStack offhand = player.getOffhandItem();
-        boolean hasOffhand = !offhand.isEmpty();
-
         float baseY = h - 22f;
 
         int accentAlpha = bm.getHotbarAccentAlpha();
@@ -331,9 +345,8 @@ public final class CustomHotbar extends AbstractHudElement {
     protected void defineSettings(List<SettingDef> defs) {
         defs.add(SettingDef.mode(offHandMode));
         glassSettings.addSettings(defs);
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
-        defs.add(SettingDef.bool(environmentalEffects).common("setting.common.environmental_effects")
-                .visibleWhen(CombatantBuild::isDevelopmentBuild));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
+        defs.add(SettingDef.bool(environmentalEffects).common("setting.common.environmental_effects"));
         defs.add(SettingDef.bool(customSelectColor));
         defs.add(SettingDef.colorNoAlpha(selectColor).visibleWhen(customSelectColor::get));
         defs.add(SettingDef.bool(customDividerColor));

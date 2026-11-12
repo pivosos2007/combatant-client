@@ -8,14 +8,21 @@
 package combatant.client.features.module.modules.misc;
 
 import combatant.client.config.DisableSettingI18n;
+import combatant.client.config.SettingDef;
+import combatant.client.events.impl.RenderPrewarmCollectEvent;
+import combatant.client.features.gui.hud.HudClimateSurface;
 import combatant.client.config.values.BooleanMapValue;
-import combatant.client.config.values.NumberValue;
+import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
+import combatant.client.config.values.NumberValue;
+import combatant.client.features.gui.hud.HudGlassSettings;
+import combatant.client.render.engine.renderer.ui.draw.UiGlassOpticsSpec;
 import combatant.client.features.gui.clickgui.settings.SettingsImplementations;
 import combatant.client.features.gui.clickgui.ClickGuiEditorScreen;
 import combatant.client.features.gui.clickgui.ClickGuiPickerScreen;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiScreen;
+import combatant.client.features.gui.mainmenu.CombatantMainMenuScreen;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -24,7 +31,9 @@ import combatant.client.util.screen.ClientScreen;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 import net.minecraft.client.Minecraft;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @ModuleInfo(id = "clickgui", displayName = "ClickGUI", aliases = {"menu", "settings"}, category = ModuleCategory.MISC, subcategory = ModuleSubcategory.CLIENT,
@@ -35,9 +44,32 @@ public class ClickGui extends Module {
     @DisableSettingI18n(name = false, options = true)
     private final BooleanMapValue guiSoundToggles = group("gui_sounds", defaultGuiSounds());
     private final NumberValue<Double> guiSoundVolume = num("gui_sound_volume", 0.75, 0.0, 2.0);
+    /** ClickGUI weather optics are independent of Customize Glass. Off by default. */
+    private final BooleanValue environmentalEffects = new BooleanValue("environmental_effects", false);
+    private final HudGlassSettings glassSettings =
+            new HudGlassSettings("click_gui", UiGlassOpticsSpec.LIQUID);
     private final ModeValue settingsImplementation = mode("settings_implementation",
             SettingsImplementations.AUTOMATIC, SettingsImplementations.AUTOMATIC,
             SettingsImplementations.COMPACT, SettingsImplementations.DETAILED);
+
+    /** Extra optical controls are applied only when Customize Glass is enabled. */
+    public boolean hasCustomGlassOptics() {
+        return glassSettings.customized();
+    }
+
+    public UiGlassOpticsSpec glassOptics(UiGlassOpticsSpec original) {
+        return glassSettings.apply(original);
+    }
+
+    public boolean environmentalEffectsEnabled() {
+        return environmentalEffects.get();
+    }
+
+    @Override
+    public void collectRenderPrewarm(RenderPrewarmCollectEvent event) {
+        super.collectRenderPrewarm(event);
+        if (environmentalEffectsEnabled()) HudClimateSurface.declarePrewarm(event);
+    }
 
     public String settingsImplementationId() {
         return settingsImplementation.get();
@@ -52,6 +84,10 @@ public class ClickGui extends Module {
         for (String id : SettingsImplementations.available().keySet()) {
             settingsImplementation.addOption(id);
         }
+        List<SettingDef> opticalSettings = new ArrayList<>();
+        glassSettings.addSettings(opticalSettings);
+        for (SettingDef definition : opticalSettings) setting(definition);
+        setting(SettingDef.bool(environmentalEffects).common("setting.common.environmental_effects"));
         setDefaultBind("RIGHT_SHIFT");
     }
 
@@ -111,7 +147,9 @@ public class ClickGui extends Module {
     @Override
     public void onEnable() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || (ClientScreen.current() != null && !ClickGuiRenderer.isClosingForExit())) {
+        if (mc == null || (ClientScreen.current() != null
+                && !(ClientScreen.current() instanceof CombatantMainMenuScreen)
+                && !ClickGuiRenderer.isClosingForExit())) {
             setEnabled(false);
             return;
         }

@@ -124,7 +124,8 @@ public final class PlayerModelGpuRenderer {
         // Dedicated preview scenes use their own GPU queue and perspective.
         Minecraft mc = Minecraft.getInstance();
         boolean depthCapture = entityDepthTarget != null;
-        boolean preview = !depthCapture && VisualPreviewRuntime.isRenderingSubject();
+        boolean preview = !depthCapture && VisualPreviewRuntime.isRenderingSubject()
+                && mc.level != null && mc.player != null && mc.gameMode != null;
         if (!collectingWorld && !preview && !depthCapture) return reject("non-render-context");
         // EntityDepthLayer always owns a private vanilla/RHI attachment, including
         // when the visible scene is rendered by Iris.
@@ -235,6 +236,9 @@ public final class PlayerModelGpuRenderer {
         if (snapshot == null || matrices == null || surfaces == null || surfaces.isEmpty()) return false;
         if (retryAfterNanos != 0 && System.nanoTime() - retryAfterNanos < 0)
             return false;
+        Minecraft mc = Minecraft.getInstance();
+        if (VisualPreviewRuntime.isRenderingSubject()
+                && (mc == null || mc.level == null || mc.player == null || mc.gameMode == null)) return false;
         List<Submission> destination = VisualPreviewRuntime.isRenderingSubject()
                 ? PREVIEW_PENDING : HAND_PENDING;
         destination.add(new Submission(snapshot, new Matrix4f(matrices.last().pose()),

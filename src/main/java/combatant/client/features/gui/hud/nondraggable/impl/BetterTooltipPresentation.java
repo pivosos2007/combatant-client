@@ -7,6 +7,7 @@ package combatant.client.features.gui.hud.nondraggable.impl;
 
 import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGuiPalette;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.preview.api.PreviewFrame;
 import combatant.client.features.gui.preview.render.VisualPreviewItemRenderer;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
@@ -177,8 +178,13 @@ final class BetterTooltipPresentation {
 
         float bodyX = opensRight ? x + tip : x;
         float bodyW = width - tip;
-        ViewportContext.ProjectionMode previousProjection = ViewportContext.activeMode();
-        ViewportContext.beginScaled(ctx);
+        ViewportContext previousViewport = ViewportContext.current();
+        ViewportContext.ProjectionMode previousProjection = previousViewport.projectionMode();
+        // The live tooltip enters a vanilla GUI stratum. A HUD specimen is already
+        // inside ClickGUI's stratum: only change projection, never advance layering.
+        boolean specimen = PreviewFrame.isSample();
+        if (specimen) ViewportContext.scaledProjection();
+        else ViewportContext.beginScaled(ctx);
         try {
             renderSurface(shell, layout, bodyX, y, bodyW, height, s,
                     blurStrength, darkness, glowStrength, reveal, optics);
@@ -193,10 +199,20 @@ final class BetterTooltipPresentation {
                         modelCx * fbScale, modelCy * fbScale, 20.0f * s * fbScale, rotation);
             }
         } finally {
-            switch (previousProjection) {
-                case LOGICAL -> ViewportContext.beginUnscaledLogical(ctx);
-                case UNSCALED -> ViewportContext.beginUnscaled(ctx);
-                default -> ViewportContext.end(ctx);
+            if (specimen) {
+                switch (previousProjection) {
+                    case LOGICAL -> ViewportContext.logicalProjection();
+                    case UNSCALED -> ViewportContext.unscaledProjection();
+                    case SCALED -> ViewportContext.scaledProjection();
+                    default -> ViewportContext.projectionForSize(
+                            previousViewport.width(), previousViewport.height());
+                }
+            } else {
+                switch (previousProjection) {
+                    case LOGICAL -> ViewportContext.beginUnscaledLogical(ctx);
+                    case UNSCALED -> ViewportContext.beginUnscaled(ctx);
+                    default -> ViewportContext.end(ctx);
+                }
             }
         }
         if (snapshot.footerWidth() <= 0 || snapshot.footerHeight() <= 0) return Result.NONE;

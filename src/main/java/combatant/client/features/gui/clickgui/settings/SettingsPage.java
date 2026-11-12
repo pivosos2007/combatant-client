@@ -17,6 +17,8 @@ public interface SettingsPage {
     default void close() { }
     default void markDirty() { }
     default boolean visible() { return false; }
+    /** Implementations may expose the background for draggable HUD previews. */
+    default boolean allowsHudPreviewPointer(float mouseX, float mouseY) { return false; }
     default boolean mousePressed(float mouseX, float mouseY, int button) { return false; }
     default void mouseReleased(float mouseX, float mouseY, int button) { }
     default boolean mouseScrolled(float mouseX, float mouseY, double amount) { return false; }

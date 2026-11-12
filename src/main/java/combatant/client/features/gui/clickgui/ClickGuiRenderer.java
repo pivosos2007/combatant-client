@@ -27,6 +27,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import combatant.client.features.gui.mainmenu.CombatantMainMenuScreen;
 import combatant.client.features.gui.mainmenu.MainMenuBackgroundRenderer;
+import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.StringUtil;
@@ -38,6 +39,7 @@ import combatant.client.features.gui.clickgui.protocol.CombatProtocolHeuristicsE
 import combatant.client.features.gui.clickgui.sections.ClickGuiSection;
 import combatant.client.features.gui.clickgui.sections.settings.SettingsTabRuntime;
 import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
+import combatant.client.features.gui.preview.HudPreviewHost;
 import combatant.client.features.gui.hud.nondraggable.impl.DynamicIsland;
 import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.modules.misc.ClickGui;
@@ -57,6 +59,7 @@ import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.text.ClipboardUtil;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
 import combatant.client.util.logging.DebugLog;
+import combatant.client.events.Events;
 
 import java.nio.file.Path;
 import java.util.*;
@@ -125,47 +128,36 @@ public enum ClickGuiRenderer {
     private static Renderer2D renderer;
     private static ClickGuiScreen mainScreen;
     private static ClickGuiPickerScreen pickerScreen;
-    // The title-menu entry point owns a UI session without turning on the gameplay module.
-    private static boolean menuSession;
+    // A return screen is navigation state, not an alternative to the ClickGui module lifecycle.
+    // The module owns enable/disable for both entry points.
     private static Screen menuReturnScreen;
 
-    public static boolean isMenuSession() {
-        return menuSession;
+    public static float mouseX() { return mouseX; }
+    public static float mouseY() { return mouseY; }
+
+    public static boolean hasMenuReturnScreen() {
+        return menuReturnScreen != null && MC != null && MC.level == null;
     }
 
     public static boolean isGuiSessionActive() {
-        return menuSession || ModuleManager.isEnabled("clickgui");
+        return ModuleManager.isEnabled("clickgui");
     }
 
     public static void openFromMainMenu(Screen parent) {
-        if (MC == null || parent == null || MC.level != null || isGuiSessionActive()) return;
+        if (MC == null || parent == null || MC.level != null || ClientScreen.current() != parent) return;
         menuReturnScreen = parent;
-        menuSession = true;
-        mainScreen = new ClickGuiScreen(parent);
-        beginOpenAnimation();
-        GuiSound.OPEN.feedback();
-        ClientScreen.show(MC, mainScreen);
-    }
-
-    /** Back returns to the title screen; it must never replace the menu with a null screen. */
-    public static void closeFromScreen() {
-        if (!menuSession) {
-            ModuleManager.setEnabled("clickgui", false);
-            return;
+        if (isGuiSessionActive()) {
+            // An already-enabled ClickGui module must not make the title button inert.
+            beginOpenAnimation();
+            openClickGuiScreen();
+        } else {
+            ModuleManager.setEnabled("clickgui", true);
         }
-        Screen target = menuReturnScreen == null ? new CombatantMainMenuScreen() : menuReturnScreen;
-        finishCloseImmediately();
-        menuSession = false;
-        menuReturnScreen = null;
-        if (MC != null) ClientScreen.show(MC, target);
+        if (!(ClientScreen.current() instanceof ClickGuiScreen)) menuReturnScreen = null;
     }
 
-    /** Called when another screen forcibly replaces ClickGUI. */
-    public static void abandonMenuSession() {
-        if (!menuSession) return;
-        finishCloseImmediately();
-        menuSession = false;
-        menuReturnScreen = null;
+    public static void closeFromScreen() {
+        ModuleManager.setEnabled("clickgui", false);
     }
 
     //  API for MIXIN MOUSE
@@ -173,6 +165,9 @@ public enum ClickGuiRenderer {
         updateMouse(x, y, false);
         SingleLineTextInput.mouseMoved(mouseX);
         TextSetting.dragMouseSelection(mouseX);
+        if (DraggableHudElementRegistry.isForceVisible() && isInputReady()) {
+            DraggableHudElementRegistry.editorMouseMoved(mouseX, mouseY);
+        }
         if (picker != null) {
             picker.handleMouseMove(mouseX, mouseY);
         }
@@ -203,6 +198,9 @@ public enum ClickGuiRenderer {
         updateMouse(x, y, true);
         SingleLineTextInput.mouseMoved(mouseX);
         TextSetting.dragMouseSelection(mouseX);
+        if (DraggableHudElementRegistry.isForceVisible() && isInputReady()) {
+            DraggableHudElementRegistry.editorMouseMoved(mouseX, mouseY);
+        }
         if (picker != null) {
             picker.handleMouseMove(mouseX, mouseY);
         }
@@ -325,11 +323,21 @@ public enum ClickGuiRenderer {
         }
 
         if (!pressed) {
+            // Release is routed to the HUD editor regardless of where the cursor ends.
+            if (DraggableHudElementRegistry.isForceVisible()) {
+                DraggableHudElementRegistry.editorMouseButton(mouseX, mouseY, button, false);
+            }
             getActiveSection().mouseReleased(mouseX, mouseY, button);
             return;
         }
 
-        getActiveSection().mousePressed(mouseX, mouseY, button);
+        ClickGuiSection section = getActiveSection();
+        if (DraggableHudElementRegistry.isForceVisible()
+                && section.allowsHudPreviewPointer(mouseX, mouseY)
+                && DraggableHudElementRegistry.editorMouseButton(mouseX, mouseY, button, true)) {
+            return;
+        }
+        section.mousePressed(mouseX, mouseY, button);
     }
 
     private static void handleMouseScroll(double delta) {
@@ -517,6 +525,7 @@ public enum ClickGuiRenderer {
     public static void init() {
         if (init) return;
         init = true;
+        Events.BUS.register(ClickGuiInputEvents.INSTANCE);
         activeTabId = MODULES_TAB_ID;
         for (ClickGuiTabEntry tab : currentTabs()) {
             if (MODULES_TAB_ID.equals(tab.id())) {
@@ -565,6 +574,7 @@ public enum ClickGuiRenderer {
         if (ClientScreen.current() instanceof ClickGuiScreen cs) {
             mainScreen = cs;
         }
+        if (hasMenuReturnScreen()) return; // Menu-origin close animation stays on its Screen.
         if (ClientScreen.current() instanceof ClickGuiScreen
                 || ClientScreen.current() instanceof ClickGuiPickerScreen
                 || ClientScreen.current() instanceof ClickGuiEditorScreen) {
@@ -588,7 +598,7 @@ public enum ClickGuiRenderer {
      */
     public static boolean suppressesBackgroundRendering() {
         return MC != null
-                && !menuSession
+                && !hasMenuReturnScreen()
                 && ClientScreen.current() instanceof ClickGuiScreen
                 && (MAP_TAB_ID.equals(activeTabId) || UI_KITS_TAB_ID.equals(activeTabId))
                 && !closingForExit
@@ -604,11 +614,12 @@ public enum ClickGuiRenderer {
         lifecycleAnim = 0.0f;
         onClose();
         clearScreens();
+        menuReturnScreen = null;
     }
 
     public static void onClose() {
         combatant.client.input.minecraft.CombatantTextInputBridge.clear();
-        if (cursorShown && !menuSession && !ClickGui.isSuppressScreenClose()) {
+        if (cursorShown && !hasMenuReturnScreen() && !ClickGui.isSuppressScreenClose()) {
             MC.mouseHandler.grabMouse();
         }
         SystemCursor.invalidate();
@@ -725,26 +736,12 @@ public enum ClickGuiRenderer {
                      RenderProfiler2D.Section ignoredSection = RenderProfiler2D.section("section");
                      TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("2d:clickgui:section")) {
                     ClickGuiSection section = getActiveSection();
-                    if (menuSession && MC.level == null) {
-                        try {
-                            section.render(mouseX, mouseY);
-                        } catch (RuntimeException | LinkageError error) {
-                            // Third-party sections may require an active world even when the core tabs do not.
-                            DebugLog.warnOnce("clickgui-offline-section-" + section.getClass().getName(),
-                                    "ClickGUI section cannot render without a world", error);
-                            renderOfflineSectionFallback(vw, vh);
-                        }
-                    } else {
-                        section.render(mouseX, mouseY);
-                    }
+                    section.render(mouseX, mouseY);
                 }
                 try (ProfilerPhase.Scope tabsScope = ProfilerPhase.scope("2d:clickgui:tabs");
                      RenderProfiler2D.Section ignoredTabs = RenderProfiler2D.section("tabs");
                      TracyGpuProfiler.Scope gpuScope = TracyGpuProfiler.beginZone("2d:clickgui:tabs")) {
                     drawTabs();
-                }
-                if (menuSession && MC.level == null) {
-                    renderOfflineNotice(vw, vh);
                 }
                 try (ProfilerPhase.Scope textEditorScope = ProfilerPhase.scope("2d:clickgui:text_editor");
                      RenderProfiler2D.Section ignoredTextEditor = RenderProfiler2D.section("text_editor");
@@ -763,28 +760,6 @@ public enum ClickGuiRenderer {
         }
     }
 
-    private static void renderOfflineSectionFallback(int width, int height) {
-        String message = I18n.get("screen.combatant.clickgui.section_offline");
-        TextRenderer font = BuiltinFontCatalog.ONEST_MEDIUM.renderer();
-        float fontSize = 14f;
-        LayoutRender2D.drawText(font, message,
-                (width - LayoutRender2D.textWidth(font, message, fontSize)) * 0.5f,
-                height * 0.5f, fontSize, 0xFFE1E8F2, false);
-    }
-
-    private static void renderOfflineNotice(int width, int height) {
-        String message = I18n.get("screen.combatant.clickgui.offline_notice");
-        float fontSize = 12f;
-        TextRenderer font = BuiltinFontCatalog.ONEST_MEDIUM.renderer();
-        float textWidth = LayoutRender2D.textWidth(font, message, fontSize);
-        float boxWidth = textWidth + 28f;
-        float x = (width - boxWidth) * 0.5f;
-        float y = height - 42f;
-        LayoutRender2D.drawRoundedRect(x, y, boxWidth, 27f, 8f, 0xDA17202A);
-        LayoutRender2D.drawRoundedRectStroke(x, y, boxWidth, 27f, 8f, 1f, 0x657F97B1);
-        LayoutRender2D.drawText(font, message, x + 14f, y + 7f, fontSize, 0xFFE1E8F2, false);
-    }
-
     public static boolean shouldRenderAsTopLayer() {
         return MC != null && (ClientScreen.current() instanceof ClickGuiPickerScreen
                 || ClientScreen.current() instanceof ClickGuiEditorScreen);
@@ -797,14 +772,26 @@ public enum ClickGuiRenderer {
         ViewportContext.beginCurrentStratumUnscaledLogical(ctx);
         try {
             Renderer2D.COLOR.begin();
-            if (menuSession) {
+            if (hasMenuReturnScreen()) {
                 MainMenuBackgroundRenderer.render(
                         Math.max(1, Math.round(HudScale.virtualWidth(MC.getWindow().getWidth(), MC.getWindow().getHeight()))),
                         Math.max(1, Math.round(HudScale.virtualHeight(MC.getWindow().getWidth(), MC.getWindow().getHeight()))),
                         mouseX, mouseY);
             }
-            renderEngine(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
-            if (!menuSession) DynamicIsland.renderClickGuiShell(
+            if (DraggableHudElementRegistry.isForceVisible()) {
+                HudPreviewHost.render(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta,
+                        Math.max(1, Math.round(HudScale.virtualWidth(MC.getWindow().getWidth(), MC.getWindow().getHeight()))),
+                        Math.max(1, Math.round(HudScale.virtualHeight(MC.getWindow().getWidth(), MC.getWindow().getHeight()))));
+            }
+            // There is no captured world framebuffer in a title-menu session. Snapshot the
+            // already drawn menu background at each ordered glass boundary instead.
+            if (hasMenuReturnScreen()) {
+                Renderer2D.COLOR.withLiquidGlassSceneSource(UiBackdropRequest.SceneSource.CURRENT_TARGET,
+                        () -> renderEngine(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta));
+            } else {
+                renderEngine(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
+            }
+            if (!hasMenuReturnScreen()) DynamicIsland.renderClickGuiShell(
                     Renderer2D.COLOR,
                     TextRenderer.get(),
                     ctx,
@@ -827,16 +814,28 @@ public enum ClickGuiRenderer {
             SystemCursor.beginFrame(ctx);
             try {
                 Renderer2D.COLOR.begin();
-                if (menuSession) {
+                if (hasMenuReturnScreen()) {
                     MainMenuBackgroundRenderer.render(
                             Math.max(1, Math.round(HudScale.virtualWidth(MC.getWindow().getWidth(), MC.getWindow().getHeight()))),
                             Math.max(1, Math.round(HudScale.virtualHeight(MC.getWindow().getWidth(), MC.getWindow().getHeight()))),
                             mouseX, mouseY);
                 }
-                if (ClientScreen.current() instanceof ClickGuiEditorScreen) {
-                    renderEditor(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
+                if (DraggableHudElementRegistry.isForceVisible()) {
+                    HudPreviewHost.render(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta,
+                            Math.max(1, Math.round(HudScale.virtualWidth(MC.getWindow().getWidth(), MC.getWindow().getHeight()))),
+                            Math.max(1, Math.round(HudScale.virtualHeight(MC.getWindow().getWidth(), MC.getWindow().getHeight()))));
+                }
+                Runnable renderUi = () -> {
+                    if (ClientScreen.current() instanceof ClickGuiEditorScreen) {
+                        renderEditor(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
+                    } else {
+                        renderEngine(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
+                    }
+                };
+                if (hasMenuReturnScreen()) {
+                    Renderer2D.COLOR.withLiquidGlassSceneSource(UiBackdropRequest.SceneSource.CURRENT_TARGET, renderUi);
                 } else {
-                    renderEngine(Renderer2D.COLOR, TextRenderer.get(), ctx, tickDelta);
+                    renderUi.run();
                 }
                 Renderer2D.COLOR.render();
                 if (ClientScreen.current() instanceof ClickGuiPickerScreen) {
@@ -971,11 +970,8 @@ public enum ClickGuiRenderer {
         if (MC != null && (ClientScreen.current() instanceof ClickGuiScreen
                 || ClientScreen.current() instanceof ClickGuiPickerScreen
                 || ClientScreen.current() instanceof ClickGuiEditorScreen)) {
-            ClientScreen.show(MC, menuSession
-                    ? (menuReturnScreen == null ? new CombatantMainMenuScreen() : menuReturnScreen)
-                    : null);
+            ClientScreen.show(MC, hasMenuReturnScreen() ? menuReturnScreen : null);
         }
-        menuSession = false;
         menuReturnScreen = null;
         clearScreens();
         finishingClose = false;
@@ -994,7 +990,7 @@ public enum ClickGuiRenderer {
         List<ClickGuiTabEntry> tabs = currentTabs();
         ensureActiveTab(tabs);
         if (tabs.isEmpty()) return;
-        boolean islandShell = !menuSession && DynamicIsland.shouldOwnClickGuiTabShell();
+        boolean islandShell = !hasMenuReturnScreen() && DynamicIsland.shouldOwnClickGuiTabShell();
         if (islandShell) return;
 
         TextRenderer tabFont = BuiltinFontCatalog.ONEST_BOLD.renderer();
@@ -1412,7 +1408,7 @@ public enum ClickGuiRenderer {
     }
 
     public static boolean isBlockingModuleKeybinds() {
-        if (!ModuleManager.isEnabled("clickgui")) return false;
+        if (!isGuiSessionActive()) return false;
         if (waitingForKey) return true;
         if (textEditor != null) return true;
         if (inlineTextOwner != null) return true;
@@ -1562,12 +1558,9 @@ public enum ClickGuiRenderer {
     }
     public static void openClickGuiScreen() {
         if (MC == null) return;
-        menuSession = false;
-        menuReturnScreen = null;
-        if (ClientScreen.current() != null) return;
-        if (mainScreen == null) {
-            mainScreen = new ClickGuiScreen();
-        }
+        Screen current = ClientScreen.current();
+        if (current != null && current != menuReturnScreen) return;
+        mainScreen = new ClickGuiScreen(menuReturnScreen);
         GuiSound.OPEN.feedback();
         ClientScreen.show(MC, mainScreen);
     }

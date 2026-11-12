@@ -8,7 +8,6 @@
 package combatant.client.features.module.modules.visuals;
 
 
-import combatant.client.features.theme.Theme;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
@@ -19,6 +18,8 @@ import combatant.client.render.engine.postprocess.*;
 import combatant.client.render.effects.weather.ProceduralRainRenderer;
 import combatant.client.render.engine.rhi.CombatantRhi;
 import combatant.client.render.engine.rhi.shader.RhiStorageImage;
+import combatant.client.render.sky.DreamFroxelCloudRenderer;
+import combatant.client.render.sky.DreamSkyPalette;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
 import org.joml.Matrix4f;
@@ -41,26 +42,33 @@ import java.util.Map;
         description = "module.reimaginedvisual.description")
 public class ReimaginedVisual extends Module implements PostProcessPass, PostProcessBackendResourceOwner {
 
+    static {
+        combatant.client.render.engine.hdr.HdrScene.registerConsumer("reimagined-sky", () -> {
+            ReimaginedVisual visual = Modules.get(ReimaginedVisual.class);
+            return visual != null && !IrisRuntime.isModLoaded() && visual.isShaderSkyboxEnabled();
+        });
+    }
+
     private static final String SETTING_EFFECTS = "effects";
     private static final String EFFECT_SHADER_SKY = "shader_sky";
     private static final String EFFECT_DEPTH_OF_FIELD = "depth_of_field";
     private static final String EFFECT_PROCEDURAL_RAIN = "procedural_rain";
     private static final String SETTING_RAIN_DENSITY = "procedural_rain_density";
     private static final String SETTING_RAIN_DISTANCE = "procedural_rain_distance";
-    private static final String SETTING_SKYBOX_SHADER_SYNC_THEME = "skybox_shader_sync_theme";
-    private static final String SETTING_SKYBOX_SHADER_COLOR = "skybox_shader_color";
-    private static final String SETTING_SKYBOX_SHADER_MOTION_SPEED = "skybox_shader_motion_speed";
-    private static final String SETTING_SKYBOX_SHADER_AURORA_ENABLED = "skybox_shader_aurora_enabled";
-    private static final String SETTING_SKYBOX_SHADER_AURORA_INTENSITY = "skybox_shader_aurora_intensity";
-    private static final String SETTING_SKYBOX_SHADER_AURORA_SPEED = "skybox_shader_aurora_speed";
-    private static final String SETTING_SKYBOX_SHADER_SMALL_STARS = "skybox_shader_small_stars";
-    private static final String SETTING_SKYBOX_SHADER_DUST_STARS = "skybox_shader_dust_stars";
-    private static final String SETTING_SKYBOX_SHADER_MEDIUM_STARS = "skybox_shader_medium_stars";
-    private static final String SETTING_SKYBOX_SHADER_LARGE_STARS = "skybox_shader_large_stars";
-    private static final String SETTING_SKYBOX_SHADER_STAR_BRIGHTNESS = "skybox_shader_star_brightness";
-    private static final String SETTING_SKYBOX_SHADER_TWINKLE_STRENGTH = "skybox_shader_twinkle_strength";
-    private static final String SETTING_SKYBOX_SHADER_LAYERS = "skybox_shader_layers";
-    private static final String SETTING_SKYBOX_SKY_FOG_BLEND = "skybox_sky_fog_blend";
+    private static final String SETTING_DREAM_CLOUDS = "dream_clouds";
+    private static final String SETTING_DREAM_CLOUD_HEIGHT = "dream_cloud_height";
+    private static final String SETTING_DREAM_CLOUD_THICKNESS = "dream_cloud_thickness";
+    private static final String SETTING_DREAM_CLOUD_COVERAGE = "dream_cloud_coverage";
+    private static final String SETTING_DREAM_CLOUD_SCALE = "dream_cloud_scale";
+    private static final String SETTING_DREAM_CLOUD_DENSITY = "dream_cloud_density";
+    private static final String SETTING_DREAM_CLOUD_QUALITY = "dream_cloud_quality";
+    private static final String SETTING_DREAM_FAR_CLOUDS = "dream_far_clouds";
+    private static final String SETTING_DREAM_CIRRUS = "dream_cirrus";
+    private static final String SETTING_DREAM_SKY_PALETTE = "dream_sky_palette";
+    private static final String SETTING_DREAM_AURORA = "dream_aurora";
+    private static final String SETTING_DREAM_AURORA_INTENSITY = "dream_aurora_intensity";
+    private static final String SETTING_DREAM_AURORA_SPEED = "dream_aurora_speed";
+
     private static final String SETTING_DOF_DEPTH_SOURCE = "dof_depth_source";
     private static final String SETTING_DOF_FAR_START = "dof_far_start";
     private static final String SETTING_DOF_FAR_TRANSITION = "dof_far_transition";
@@ -73,7 +81,6 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     private static final String IRIS_DOF_REASON_KEY = "setting.reimaginedvisual.depth_of_field.iris_blocked";
     private static final String IRIS_DOF_REASON_FALLBACK = "Iris shaderpack pipeline is active.";
     private static final Map<String, Boolean> DEFAULT_EFFECTS = createDefaultEffects();
-    private static final Map<String, Boolean> DEFAULT_SKYBOX_SHADER_LAYERS = createDefaultSkyboxShaderLayers();
     private final Matrix4f dofProjection = new Matrix4f();
     private TextureTarget dofFocusTarget;
     private final DepthOfFieldComputeBackend dofComputeBackend = new DepthOfFieldComputeBackend();
@@ -82,50 +89,99 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
             SETTING_EFFECTS,
             DEFAULT_EFFECTS
     );
-    private final BooleanValue skyboxShaderSyncTheme =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(bool("reimaginedVisualSkyboxShaderSyncTheme", SETTING_SKYBOX_SHADER_SYNC_THEME, true),
-                    this::isShaderSkyboxSettingsVisible));
-    private final RGBColorValue skyboxShaderColor =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(colorNoAlpha("reimaginedVisualSkyboxShaderColor", SETTING_SKYBOX_SHADER_COLOR, "#78A7FF"),
-                    () -> isShaderSkyboxSettingsVisible() && !skyboxShaderSyncTheme.get()));
-    private final NumberValue<Float> skyboxShaderMotionSpeed =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderMotionSpeed", SETTING_SKYBOX_SHADER_MOTION_SPEED, 0.45f, 0.0f, 2.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final BooleanValue skyboxShaderAuroraEnabled =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(bool("reimaginedVisualSkyboxShaderAuroraEnabled", SETTING_SKYBOX_SHADER_AURORA_ENABLED, false),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderAuroraIntensity =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderAuroraIntensity", SETTING_SKYBOX_SHADER_AURORA_INTENSITY, 0.70f, 0.0f, 1.5f),
-                    () -> isShaderSkyboxSettingsVisible() && skyboxShaderAuroraEnabled.get()));
-    private final NumberValue<Float> skyboxShaderAuroraSpeed =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderAuroraSpeed", SETTING_SKYBOX_SHADER_AURORA_SPEED, 0.38f, 0.0f, 2.0f),
-                    () -> isShaderSkyboxSettingsVisible() && skyboxShaderAuroraEnabled.get()));
-    private final NumberValue<Float> skyboxShaderSmallStars =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderSmallStars", SETTING_SKYBOX_SHADER_SMALL_STARS, 1.60f, 0.0f, 10.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderDustStars =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderDustStars", SETTING_SKYBOX_SHADER_DUST_STARS, 1.40f, 0.0f, 10.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderMediumStars =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderMediumStars", SETTING_SKYBOX_SHADER_MEDIUM_STARS, 1.30f, 0.0f, 10.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderLargeStars =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderLargeStars", SETTING_SKYBOX_SHADER_LARGE_STARS, 1.15f, 0.0f, 10.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderStarBrightness =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderStarBrightness", SETTING_SKYBOX_SHADER_STAR_BRIGHTNESS, 1.35f, 0.0f, 3.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxShaderTwinkleStrength =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(num("reimaginedVisualSkyboxShaderTwinkleStrength", SETTING_SKYBOX_SHADER_TWINKLE_STRENGTH, 1.35f, 0.0f, 3.0f),
-                    this::isShaderSkyboxSettingsVisible));
-    private final BooleanMapValue skyboxShaderLayers =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(group("reimaginedVisualSkyboxShaderLayers", SETTING_SKYBOX_SHADER_LAYERS, DEFAULT_SKYBOX_SHADER_LAYERS),
-                    this::isShaderSkyboxSettingsVisible));
-    private final NumberValue<Float> skyboxSkyFogBlend =
-            shaderSkyboxNotAppliedWithIris(visibleWhen(
-                    num("reimaginedVisualSkyboxSkyFogBlend", SETTING_SKYBOX_SKY_FOG_BLEND, 0.35f, 0.0f, 1.0f),
-                    this::isShaderSkyboxSettingsVisible
-            ));
+    public enum DreamCloudQuality {
+        // Froxels cache illumination, not silhouette detail. The lower-resolution
+        // raymarch is reconstructed temporally into the full-size image.
+        LOW(24, 4, 24), MEDIUM(20, 3, 28), HIGH(16, 2, 36), ULTRA(12, 2, 48);
+
+        private final int pixelStride;
+        private final int integrationStride;
+        private final int slices;
+
+        DreamCloudQuality(int pixelStride, int integrationStride, int slices) {
+            this.pixelStride = pixelStride;
+            this.integrationStride = integrationStride;
+            this.slices = slices;
+        }
+
+        public int pixelStride() { return pixelStride; }
+        public int integrationStride() { return integrationStride; }
+        public int slices() { return slices; }
+    }
+
+    private final BooleanValue dreamClouds = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            bool("reimaginedVisualDreamClouds", SETTING_DREAM_CLOUDS, true), this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> dreamCloudHeight = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            num("reimaginedVisualDreamCloudHeight", SETTING_DREAM_CLOUD_HEIGHT, 192.0f, -32.0f, 512.0f), this::areDreamCloudSettingsVisible));
+    private final NumberValue<Float> dreamCloudThickness = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            num("reimaginedVisualDreamCloudThickness", SETTING_DREAM_CLOUD_THICKNESS, 125.0f, 16.0f, 320.0f), this::areDreamCloudSettingsVisible));
+    private final NumberValue<Float> dreamCloudCoverage = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            num("reimaginedVisualDreamCloudCoverage", SETTING_DREAM_CLOUD_COVERAGE, 0.53f, 0.0f, 1.0f), this::areDreamCloudSettingsVisible));
+    private final NumberValue<Float> dreamCloudScale = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            num("reimaginedVisualDreamCloudScale", SETTING_DREAM_CLOUD_SCALE, 1.4f, 0.4f, 4.0f), this::areDreamCloudSettingsVisible));
+    private final NumberValue<Float> dreamCloudDensity = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            num("reimaginedVisualDreamCloudDensity", SETTING_DREAM_CLOUD_DENSITY, 0.75f, 0.05f, 2.0f), this::areDreamCloudSettingsVisible));
+    private final EnumValue<DreamCloudQuality> dreamCloudQuality = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            enumSetting("reimaginedVisualDreamCloudQuality", SETTING_DREAM_CLOUD_QUALITY,
+                    DreamCloudQuality.MEDIUM, DreamCloudQuality.values()), this::areDreamCloudSettingsVisible));
+    private final BooleanValue dreamFarClouds = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            bool("reimaginedVisualDreamFarClouds", SETTING_DREAM_FAR_CLOUDS, true), this::areDreamCloudSettingsVisible));
+    private final BooleanValue dreamCirrus = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            bool("reimaginedVisualDreamCirrus", SETTING_DREAM_CIRRUS, true), this::areDreamCloudSettingsVisible));
+    public enum SkyPaletteMode { THEME, WORLD_TWEAKS, CUSTOM }
+
+    private final EnumValue<SkyPaletteMode> dreamSkyPaletteMode = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            enumSetting("reimaginedVisualDreamSkyPalette", SETTING_DREAM_SKY_PALETTE,
+                    SkyPaletteMode.WORLD_TWEAKS, SkyPaletteMode.values()), this::isShaderSkyboxSettingsVisible));
+    private boolean areCustomSkyColorsVisible() {
+        return isShaderSkyboxSettingsVisible() && dreamSkyPaletteMode.get() == SkyPaletteMode.CUSTOM;
+    }
+    private final RGBColorValue dreamDayZenith = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamDayZenith", "dream_day_zenith", "#558ECC"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamDayHorizon = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamDayHorizon", "dream_day_horizon", "#B5C9E3"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamNightZenith = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamNightZenith", "dream_night_zenith", "#07122B"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamNightHorizon = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamNightHorizon", "dream_night_horizon", "#302E58"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamSkyGlow = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamSkyGlow", "dream_sky_glow", "#F4A9B7"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamStars = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamStars", "dream_stars", "#E4EEFF"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamCloudLight = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamCloudLight", "dream_cloud_light", "#F4F7FF"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamCloudShadow = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamCloudShadow", "dream_cloud_shadow", "#8295CC"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamAuroraPrimary = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamAuroraPrimary", "dream_aurora_primary", "#6BEBD2"), this::areCustomSkyColorsVisible));
+    private final RGBColorValue dreamAuroraSecondary = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            colorNoAlpha("reimaginedDreamAuroraSecondary", "dream_aurora_secondary", "#9B7CFF"), this::areCustomSkyColorsVisible));
+    private final BooleanValue dreamAurora = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            bool("reimaginedDreamAurora", SETTING_DREAM_AURORA, true), this::isShaderSkyboxSettingsVisible));
+    private final NumberValue<Float> dreamAuroraIntensity = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            num("reimaginedDreamAuroraIntensity", SETTING_DREAM_AURORA_INTENSITY, .55f, 0f, 2f),
+            () -> isShaderSkyboxSettingsVisible() && dreamAurora.get()));
+    private final NumberValue<Float> dreamAuroraSpeed = shaderSkyboxNotAppliedWithIris(visibleWhen(
+            num("reimaginedDreamAuroraSpeed", SETTING_DREAM_AURORA_SPEED, 1f, .05f, 3f),
+            () -> isShaderSkyboxSettingsVisible() && dreamAurora.get()));
+
+    public DreamSkyPalette dreamSkyPalette() {
+        if (dreamSkyPaletteMode.get() == SkyPaletteMode.THEME) return DreamSkyPalette.fromTheme();
+        if (dreamSkyPaletteMode.get() == SkyPaletteMode.WORLD_TWEAKS)
+            return DreamSkyPalette.fromWorldTweaks(Modules.get(WorldTweaks.class));
+        return new DreamSkyPalette(dreamDayZenith.getArgb(), dreamDayHorizon.getArgb(),
+                dreamNightZenith.getArgb(), dreamNightHorizon.getArgb(), dreamSkyGlow.getArgb(),
+                dreamStars.getArgb(), dreamCloudLight.getArgb(), dreamCloudShadow.getArgb(),
+                dreamAuroraPrimary.getArgb(), dreamAuroraSecondary.getArgb());
+    }
+    public boolean isDreamWorldTweaksPaletteSelected() {
+        return dreamSkyPaletteMode.get() == SkyPaletteMode.WORLD_TWEAKS;
+    }
+    public boolean isDreamAuroraEnabled() { return dreamAurora.get(); }
+    public float dreamAuroraIntensity() { return dreamAuroraIntensity.get(); }
+    public float dreamAuroraSpeed() { return dreamAuroraSpeed.get(); }
+
+    private final DreamFroxelCloudRenderer dreamCloudRenderer = new DreamFroxelCloudRenderer();
     private final Minecraft mc = Minecraft.getInstance();
     private final NumberValue<Float> proceduralRainDensity = visibleWhen(
             num("reimaginedVisualRainDensity", SETTING_RAIN_DENSITY, 1.0f, 0.4f, 2.0f),
@@ -161,37 +217,11 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
         PostProcessManager.register(proceduralRainRenderer);
     }
 
-    private static float clampStarAmount(float value) {
-        return Math.max(0.0f, Math.min(10.0f, value));
-    }
-
     private static Map<String, Boolean> createDefaultEffects() {
         LinkedHashMap<String, Boolean> defaults = new LinkedHashMap<>();
         defaults.put(EFFECT_SHADER_SKY, true);
         defaults.put(EFFECT_DEPTH_OF_FIELD, false);
         defaults.put(EFFECT_PROCEDURAL_RAIN, false);
-        return defaults;
-    }
-
-    private static Map<String, Boolean> createDefaultSkyboxShaderLayers() {
-        LinkedHashMap<String, Boolean> defaults = new LinkedHashMap<>();
-        defaults.put("waves", true);
-        defaults.put("ribbons", true);
-        defaults.put("sweeps", true);
-        defaults.put("veil", true);
-        defaults.put("nebula", true);
-        defaults.put("detail_curtains", true);
-        defaults.put("polar_arc", true);
-        defaults.put("bursts", true);
-        defaults.put("water_veil", true);
-        defaults.put("caustics", true);
-        defaults.put("refracted_aurora", true);
-        defaults.put("northern_aurora", true);
-        defaults.put("small_stars", true);
-        defaults.put("dust_stars", true);
-        defaults.put("medium_stars", true);
-        defaults.put("large_stars", true);
-        defaults.put("detail_stars", true);
         return defaults;
     }
 
@@ -203,68 +233,23 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
         return isEnabled() && isEffectSelected(EFFECT_SHADER_SKY);
     }
 
-    public int getShaderSkyboxColor() {
-        if (skyboxShaderSyncTheme.get()) {
-            return Theme.theme().accent() & 0x00FFFFFF;
-        }
-        return skyboxShaderColor.getArgb() & 0x00FFFFFF;
+    public boolean areDreamCloudsEnabled() {
+        return isShaderSkyboxEnabled() && dreamClouds.get() && dreamCloudCoverage.get() > 0.001f;
     }
 
-    public float getSkyboxSkyFogBlend() {
-        return Math.max(0.0f, Math.min(1.0f, skyboxSkyFogBlend.get()));
+    private boolean areDreamCloudSettingsVisible() {
+        return isShaderSkyboxSettingsVisible() && dreamClouds.get();
     }
 
-    public float getSkyboxShaderMotionSpeed() {
-        return Math.max(0.0f, Math.min(2.0f, skyboxShaderMotionSpeed.get()));
-    }
-
-    public boolean isSkyboxShaderAuroraEnabled() {
-        return skyboxShaderAuroraEnabled.get();
-    }
-
-    public float getSkyboxShaderAuroraIntensity() {
-        return skyboxShaderAuroraEnabled.get() ? Math.max(0.0f, Math.min(1.5f, skyboxShaderAuroraIntensity.get())) : 0.0f;
-    }
-
-    public float getSkyboxShaderAuroraSpeed() {
-        return Math.max(0.0f, Math.min(2.0f, skyboxShaderAuroraSpeed.get()));
-    }
-
-    public float getSkyboxShaderSmallStars() {
-        return clampStarAmount(skyboxShaderSmallStars.get());
-    }
-
-    public float getSkyboxShaderDustStars() {
-        return clampStarAmount(skyboxShaderDustStars.get());
-    }
-
-    public float getSkyboxShaderMediumStars() {
-        return clampStarAmount(skyboxShaderMediumStars.get());
-    }
-
-    public float getSkyboxShaderLargeStars() {
-        return clampStarAmount(skyboxShaderLargeStars.get());
-    }
-
-    public float getSkyboxShaderStarBrightness() {
-        return Math.max(0.0f, Math.min(3.0f, skyboxShaderStarBrightness.get()));
-    }
-
-    public float getSkyboxShaderTwinkleStrength() {
-        return Math.max(0.0f, Math.min(3.0f, skyboxShaderTwinkleStrength.get()));
-    }
-
-    public int getSkyboxShaderLayerMask() {
-        int mask = 0;
-        int bit = 0;
-        for (String key : DEFAULT_SKYBOX_SHADER_LAYERS.keySet()) {
-            if (skyboxShaderLayers.get(key)) {
-                mask |= 1 << bit;
-            }
-            bit++;
-        }
-        return mask;
-    }
+    public float dreamCloudHeight() { return dreamCloudHeight.get(); }
+    public float dreamCloudThickness() { return dreamCloudThickness.get(); }
+    public float dreamCloudCoverage() { return dreamCloudCoverage.get(); }
+    public float dreamCloudScale() { return dreamCloudScale.get(); }
+    public float dreamCloudDensity() { return dreamCloudDensity.get(); }
+    public DreamCloudQuality dreamCloudQuality() { return dreamCloudQuality.get(); }
+    public boolean areDreamFarCloudsEnabled() { return areDreamCloudsEnabled() && dreamFarClouds.get(); }
+    public boolean areDreamCirrusEnabled() { return areDreamCloudsEnabled() && dreamCirrus.get(); }
+    public DreamFroxelCloudRenderer dreamCloudRenderer() { return dreamCloudRenderer; }
 
     /** Only replace vanilla precipitation while the GPU implementation is healthy. */
     public static boolean isProceduralRainEnabledStatic() {
@@ -496,6 +481,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     @Override
     public void onEnable() {
         proceduralRainRenderer.reset();
+        dreamCloudRenderer.reset();
         depthSamplerSupported = true;
         dofFocusResolveSupported = true;
         dofComputeSupported = true;
@@ -504,6 +490,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     @Override
     public void onDisable() {
         proceduralRainRenderer.reset();
+        dreamCloudRenderer.close();
         closeDofFocusTarget();
         dofComputeBackend.close();
     }
@@ -512,6 +499,7 @@ public class ReimaginedVisual extends Module implements PostProcessPass, PostPro
     public void releaseBackendResources(CombatantRhi owner) {
         dofComputeBackend.release(owner);
         proceduralRainRenderer.releaseBackendResources(owner);
+        dreamCloudRenderer.release(owner);
         closeDofFocusTarget();
         dofComputeSupported = true;
         dofFocusResolveSupported = true;

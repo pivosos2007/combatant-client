@@ -31,12 +31,12 @@ export class SpectrumListView {
             alphaTerms:disabled?{}:{hover:.08,press:.14}}}),
         SpectrumFoundation.text(`${key}:item:${id}:title`,ui.str(item.label,id),textX,
           hasDescription?7:0,rw-textX-14,hasDescription?26:rowH-3,
-          {size:16,strong:checked,color:disabled?p.disabled:p.text}),
+          {size:ui.num(props.titleSize,16),strong:checked,color:disabled?p.disabled:p.text}),
         ...(!indicator&&item.icon?[ui.svg({key:`${key}:item:${id}:icon`,asset:ui.str(item.icon,'layers'),
           tint:disabled?p.disabled:checked?p.accent:p.muted,interactive:false,
           class:ui.abs(15,Math.max(5,(rowH-23)/2),22,22)})]:[]),
         ...(hasDescription?[SpectrumFoundation.text(`${key}:item:${id}:description`,item.description,
-          textX,31,rw-textX-12,23,{size:13,color:disabled?p.disabled:p.muted})]:[])
+          textX,31,rw-textX-12,23,{size:ui.num(props.descriptionSize,13),color:disabled?p.disabled:p.muted})]:[])
       ];
       if(indicator){
         rowChildren.push(SpectrumFoundation.rect(`${key}:item:${id}:check`,14,(rowH-22)/2,18,18,4,

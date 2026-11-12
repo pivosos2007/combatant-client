@@ -359,7 +359,10 @@ vec3 sampleRoughGlassScene(vec2 uv, vec2 logicalSize, float reveal, float roughn
                 + sampleLiquidScene(uv - transverse, logicalSize).rgb);
         blurred = mix(blurred, cross, smoothstep(0.55, 0.98, roughness) * 0.55);
     }
-    return mix(original, blurred, clamp(roughness * 0.94, 0.0, 1.0));
+    // Roughness spreads the transmitted radiance. The blurred pyramid already
+    // exists, so increase its footprint instead of changing glass opacity.
+    // At full roughness no sharp transmission remains even if clarity is high.
+    return mix(original, blurred, smoothstep(0.0, 1.0, roughness));
 }
 
 vec3 thinFilmReflectance(float filmThicknessNm, float refractiveIndex,
@@ -374,7 +377,11 @@ vec3 thinFilmReflectance(float filmThicknessNm, float refractiveIndex,
     vec3 response = 0.5 + 0.5 * cos(phase);
     float f0 = pow((refractiveIndex - 1.0) / (refractiveIndex + 1.0), 2.0);
     float reflectance = f0 + (1.0 - f0) * pow(1.0 - incident, 5.0);
-    return response * reflectance * strength;
+    // Thin films have weak absolute Fresnel reflectance at normal incidence.
+    // A UI-scale contrast boost preserves wavelength/angle variation while
+    // making the control observable over ordinary, non-HDR backdrops.
+    return response * strength * (0.075 + 0.32 * pow(1.0 - incident, 0.75))
+            * (0.75 + 0.25 * clamp(reflectance * 5.0, 0.0, 1.0));
 }
 
 void combatantDrawGlass() {
@@ -514,7 +521,11 @@ void combatantDrawGlass() {
     float pointerResponse = exp(-dot(pointerDeltaPx, pointerDeltaPx)
                                  / (pointerRadiusPx * pointerRadiusPx));
     float filmActivity = clamp(max(v_Params11.x, v_Params11.y), 0.0, 1.0);
-    float reactiveFilm = coatingResponse * filmActivity * pointerResponse;
+    // The coating remains present while idle; interaction excites it rather
+    // than gating its entire existence. Viscosity damps the transient response.
+    float viscosity = clamp(v_Params9.z, 0.0, 1.0);
+    float reactiveFilm = coatingResponse * (0.30
+            + filmActivity * pointerResponse * (0.80 - 0.45 * viscosity));
     float interiorMask = smoothstep(1.5, max(liquidBevelPx, 3.5), opticalInsideDistance);
     vec2 microNormal = vec2(0.0);
     if (frost > 0.001 || roughness > 0.001 || reactiveFilm > 0.001) {
@@ -523,7 +534,7 @@ void combatantDrawGlass() {
                 uGlassClock.x * (0.10 + reactiveFilm * 0.20),
                 interactionDisplacement * reactiveFilm);
         float response = (frost * 1.65 + roughness * 0.55
-                + reactiveFilm * 1.4) * interiorMask;
+                + reactiveFilm * 3.0) * interiorMask;
         liquidOffset += microNormal * response / fbSize;
     }
     vec2 localUv = (lensUv - 0.5) / magnification + 0.5;
@@ -600,14 +611,34 @@ void combatantDrawGlass() {
     // keep the original refraction, blur, magnification and interior chroma.
     float edgeInsidePx = max(-selfDistance, 0.0)
             / max(min(logicalScale.x, logicalScale.y), 1e-6);
-    float spectralSilhouette = smoothstep(0.75, 2.5, edgeInsidePx);
+    // Limit edge spectral samples by their *actual* displacement. A fixed
+    // 2px guard cannot contain large bevel/chromatic settings and produces
+    // long green/magenta stripes at the glass boundary.
+    float spectralReachPx = max(length(chroma * fbSize), length(flowChroma * fbSize));
+    float spectralGuardPx = clamp(1.5 + spectralReachPx * 1.5, 2.0, 18.0);
+    float spectralSilhouette = smoothstep(spectralGuardPx * 0.45,
+                                        spectralGuardPx, edgeInsidePx);
     float chromaticEnabled = step(0.001, spectralAberration);
     chromaCoverage *= spectralSilhouette * chromaticEnabled;
     flowCoverage *= spectralSilhouette * chromaticEnabled;
 
-    float reveal = clamp(field.cleanReveal, 0.0, 1.0);
+    // The native UI already controls blur coverage/opacity independently.
+    // Keeping blurAlpha out of the scene-source mix is required for the old
+    // glass appearance: it has never meant optical clarity. Clean Reveal is
+    // an explicit refraction control; zero keeps the full Kawase blur.
+    // The setting spans the full range, even with the pointer outside the lens.
+    float localClarity = clamp(v_Params9.w, 0.0, 1.0);
+    float viscosityDeviation = viscosity - 0.65;
+    // Viscosity can change clarity while the surface is actively responding,
+    // but does not change the resting optical density of pre-existing presets.
+    float viscousClarity = viscosityDeviation * 0.90
+            * filmActivity * pointerResponse;
+    float reveal = clamp(localClarity + viscousClarity
+            + field.cleanReveal, 0.0, 1.0);
     float scattering = clamp(max(roughness, frost * 0.86 + roughness * 0.55), 0.0, 1.0);
     vec3 centerScene = sampleRoughGlassScene(centerUv, logicalSize, reveal, scattering);
+    // Derivatives must be evaluated in uniform fragment control flow.
+    float sceneContrast = length(fwidth(centerScene));
     vec3 tint = clamp(v_Color.rgb, 0.0, 1.0);
 
     float lowerGlassCoverage = stackRegionMask(centerUv, logicalSize)
@@ -694,8 +725,12 @@ void combatantDrawGlass() {
 
         // Chromatic ripple on otherwise flat imagery; no caustic / luminous overlay.
         float sceneLuma = dot(centerScene, vec3(0.2126, 0.7152, 0.0722));
+        // Spectral energy must follow actual scene contrast. A constant color
+        // offset turns broad flat backgrounds into visible horizontal lines.
+        float contrastGate = smoothstep(0.003, 0.09, sceneContrast);
         float spectralShift = flowPhase * spectralAberration
-                * (0.035 + 0.055 * sqrt(clamp(sceneLuma, 0.0, 1.0)));
+                * (0.012 + 0.035 * sqrt(clamp(sceneLuma, 0.0, 1.0)))
+                * contrastGate * spectralSilhouette;
         flowScene += vec3(spectralShift, 0.0, -spectralShift);
         vec3 flowColor = mix(flowScene, flowScene * tint, tintStrength)
                 * surfaceTransmission;
@@ -710,6 +745,14 @@ void combatantDrawGlass() {
                 uBlendParams, uBlendTone0, uBlendTone1);
 #endif
         finalColor = mix(finalColor, flowColor, clamp(flowCoverage, 0.0, 1.0));
+    }
+    // Reactive clearcoat is a real surface layer, not an invisible pointer
+    // event. Fresnel-like reflection and the micro-normal both respond to it.
+    if (coatingResponse > 0.001) {
+        float coatingFresnel = pow(clamp(liquidEdge, 0.0, 1.0), 2.0);
+        float coatingGlint = coatingResponse * (0.015 + 0.115 * coatingFresnel)
+                * (0.78 + 0.22 * pointerResponse * filmActivity);
+        finalColor = mix(finalColor, vec3(0.80, 0.91, 1.0), coatingGlint);
     }
     if (filmStrength > 0.001 && filmThicknessNm > 0.001) {
         float surfaceSlope = clamp(liquidEdge * 0.66

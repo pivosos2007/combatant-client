@@ -80,6 +80,10 @@ public final class UiRenderer {
                     continue;
                 }
 
+                if (!node.state().visible()) {
+                    pc = tape.jump[pc] - 1;
+                    continue;
+                }
                 UiRenderContext parentContext = depth == 0 ? context : tape.childContexts[depth - 1];
                 UiStyle style = node.style();
                 UiRenderContext nodeContext = parentContext.multiplyAlpha(

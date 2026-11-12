@@ -13,17 +13,18 @@ export class SpectrumTextField {
       width=Math.max(160,ui.num(props.width,350)),disabled=!!props.disabled,
       focused=!!props.focused&&!disabled,
       value=ui.str(props.value,''),isQuiet=!!props.quiet;
-    const inline=!!props.labelHidden,top=inline?0:28,fieldH=44;
+    const inline=!!props.labelHidden,top=inline?0:28,fieldH=Math.max(32,ui.num(props.fieldHeight,44));
+    const fontSize=Math.max(12,ui.num(props.fontSize,17));
     const scroll=Math.max(0,ui.num(props.scrollOffset,0)),viewW=Math.max(1,width-26);
     const start=ui.num(props.selectionStart,0)-scroll,end=ui.num(props.selectionEnd,0)-scroll;
     const visible=[
       ...(focused && end>start?[SpectrumFoundation.rect(`${key}:selection`,
-        Math.max(0,start),8,Math.max(0,Math.min(viewW,end)-Math.max(0,start)),28,2,
+        Math.max(0,start),8,Math.max(0,Math.min(viewW,end)-Math.max(0,start)),fieldH-16,2,
         SpectrumFoundation.withOpacity(p.accent,.33))]:[]),
       SpectrumFoundation.text(`${key}:value`,value||props.placeholder||'',-scroll,0,viewW+scroll,fieldH,
-        {size:17,color:disabled?p.disabled:value?p.text:p.muted}),
+        {size:fontSize,color:disabled?p.disabled:value?p.text:p.muted}),
       ...(focused && end<=start?[SpectrumFoundation.rect(`${key}:caret`,
-        Math.max(0,Math.min(viewW-2,ui.num(props.caretOffset,0)-scroll)),10,1.5,24,0,p.text)]:[])
+        Math.max(0,Math.min(viewW-2,ui.num(props.caretOffset,0)-scroll)),10,1.5,fieldH-20,0,p.text)]:[])
     ];
     const children=[
       ...(!inline?[SpectrumFoundation.text(`${key}:label`,props.label||'Field',0,0,width,24,

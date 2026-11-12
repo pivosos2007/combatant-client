@@ -15,6 +15,8 @@ import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.features.gui.hud.HudRenderSpace;
 import combatant.client.features.gui.hud.HudRenderUtil;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
+import combatant.client.features.gui.preview.api.HudPreviewCanvas;
 import combatant.client.features.module.HudPhase;
 import combatant.client.features.relations.CategoryType;
 import combatant.client.render.engine.core.CombatantRenderSystem;
@@ -61,6 +63,9 @@ public final class CustomTabList extends AbstractHudElement {
 
     private final Minecraft mc = Minecraft.getInstance();
     private final TabListAnimator animator = new TabListAnimator();
+    private final TabListAnimator previewAnimator = new TabListAnimator();
+    private TabListAnimator renderAnimator = animator;
+    private boolean renderingPreview;
     private final ArrayList<RowRender> rowRenderCache = new ArrayList<>();
     private final RenderColor headColor = new RenderColor(255, 255, 255, 255);
     private final RenderColor transparentHeadOutline = new RenderColor(255, 255, 255, 0);
@@ -91,6 +96,34 @@ public final class CustomTabList extends AbstractHudElement {
 
     private CustomTabList() {
         super("tab_list", "Tab List", "hud.static.tab_list.description", true);
+    }
+
+    @Override
+    public PreviewCatalog.Definition<TabListModel.Snapshot, HudPreviewCanvas> previewDefinition() {
+        return PreviewCatalog.definition(
+                new PreviewCatalog.Id(PreviewCatalog.Surface.HUD, getId()), HudPreviewCanvas.class,
+                frame -> PreviewCatalog.Availability.READY,
+                frame -> TabListModel.preview(),
+                (canvas, sample) -> renderPreview(canvas, sample),
+                PreviewCatalog.PreviewSpace.LOGICAL_HUD);
+    }
+
+    private void renderPreview(HudPreviewCanvas canvas, TabListModel.Snapshot sample) {
+        if (canvas.graphics() == null) return;
+        TabListModel.Snapshot previous = snapshot;
+        TabListAnimator previousAnimator = renderAnimator;
+        boolean previousPreview = renderingPreview;
+        try {
+            snapshot = sample;
+            renderAnimator = previewAnimator;
+            renderingPreview = true;
+            renderTab(canvas.renderer(), canvas.graphics(), canvas.tickDelta(),
+                    canvas.virtualWidth(), canvas.virtualHeight(), true);
+        } finally {
+            snapshot = previous;
+            renderAnimator = previousAnimator;
+            renderingPreview = previousPreview;
+        }
     }
 
     public static boolean shouldReplaceVanilla() {
@@ -172,26 +205,26 @@ public final class CustomTabList extends AbstractHudElement {
                            int screenH,
                            boolean show) {
         if (mc == null || ctx == null || renderer == null) return;
-        float panelPresence = animator.updatePanel(show);
-        if (!show && panelPresence <= 0.01f && !animator.hasVisibleRows()) {
-            setBounds(0f, 0f, 0f, 0f);
+        float panelPresence = renderAnimator.updatePanel(show);
+        if (!show && panelPresence <= 0.01f && !renderAnimator.hasVisibleRows()) {
+            if (!renderingPreview) setBounds(0f, 0f, 0f, 0f);
             return;
         }
 
-        if (show) {
+        if (show && !renderingPreview) {
             try (ProfilerPhase.Scope ignored = ProfilerPhase.scope("tab_list:model_refresh")) {
                 refreshSnapshot(screenW, !wasShown);
             }
         }
-        wasShown = show;
-        animator.updateRows(show ? snapshot.visibleIds() : null);
+        if (!renderingPreview) wasShown = show;
+        renderAnimator.updateRows(show ? snapshot.visibleIds() : null);
 
         float panelAlpha = AnimationUtility.easeOutCubic(panelPresence);
         float width = tabPanelWidth(screenW);
         float height = snapshot.height();
         float drawX = (screenW - width) * 0.5f;
         float drawY = TOP_Y - (1f - panelAlpha) * 18f;
-        setBounds(drawX, drawY, width, height);
+        if (!renderingPreview) setBounds(drawX, drawY, width, height);
 
         updatePalette();
         int renderedRows;
@@ -335,7 +368,7 @@ public final class CustomTabList extends AbstractHudElement {
         int renderedRows = 0;
         for (int i = 0; i < entries.size(); i++) {
             TabListModel.Entry entry = entries.get(i);
-            TabListAnimator.RowState state = animator.row(entry.id());
+            TabListAnimator.RowState state = renderAnimator.row(entry.id());
             float presence = state.presence;
             float rowAlpha = panelAlpha * AnimationUtility.easeOutCubic(presence);
             if (rowAlpha <= 0.01f) continue;
@@ -396,7 +429,8 @@ public final class CustomTabList extends AbstractHudElement {
             float headY = row.y + (row.h - HEAD_SIZE) * 0.5f;
             int alpha = Math.max(0, Math.min(255, Math.round(255f * row.alpha)));
 
-            var skin = PlayerHeadRenderer.resolveCachedSkin(entry.id(), entry.name(), entry.skin());
+            var skin = renderingPreview ? null
+                    : PlayerHeadRenderer.resolveCachedSkin(entry.id(), entry.name(), entry.skin());
             if (skin != null) {
                 headColor.a = alpha;
                 PlayerHeadRenderer.drawRounded(
@@ -412,6 +446,9 @@ public final class CustomTabList extends AbstractHudElement {
                         0f,
                         false
                 );
+            } else if (renderingPreview) {
+                renderer.roundedRect(headX, headY, HEAD_SIZE, HEAD_SIZE, 3f, 0.75f,
+                        HudRenderUtil.scaleAlpha(uiAccent, row.alpha * 0.55f));
             }
         }
 

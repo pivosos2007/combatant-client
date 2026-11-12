@@ -20,6 +20,7 @@ import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.math.HudScale;
 import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.features.gui.preview.render.VisualPreviewBackgroundRenderer;
+import combatant.client.features.gui.preview.api.PreviewFrame;
 import combatant.client.features.gui.hud.HudRenderUtil;
 import combatant.client.features.theme.Theme;
 import combatant.client.render.helpers.SystemCursor;
@@ -32,7 +33,8 @@ public enum VisualPreviewRenderer {
 
     public static void renderTopLayer(GuiGraphicsExtractor context, float tickDelta) {
         VisualPreviewScreen screen = VisualPreviewRuntime.activeScreen();
-        if (screen == null || context == null) return;
+        if (screen == null || context == null
+                || screen.provider().requiresWorld() && !WorldRequiredVisualPreview.available()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return;
         screen.updateFrameState();
@@ -60,8 +62,14 @@ public enum VisualPreviewRenderer {
                 });
                 renderBackgroundShade(width, height);
                 Renderer2D.deferRenderThreadAction(() -> {
-                    if (VisualPreviewRuntime.activeScreen() == screen)
+                    if (VisualPreviewRuntime.activeScreen() != screen
+                            || screen.provider().requiresWorld() && !WorldRequiredVisualPreview.available()) return;
+                    boolean worldAvailable = mc.player != null && mc.level != null;
+                    try (PreviewFrame.Scope ignoredFrame = PreviewFrame.enter(
+                            new PreviewFrame(PreviewFrame.Mode.SAMPLE, worldAvailable,
+                                    screen.provider().id(), java.util.Map.of()))) {
                         screen.provider().renderSubject(scene);
+                    }
                 });
                 renderChrome(scene);
             } finally {

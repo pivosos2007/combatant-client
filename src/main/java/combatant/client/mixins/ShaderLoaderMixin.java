@@ -25,6 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import combatant.client.mixins.accessors.ShaderLoaderDefinitionsAccessor;
 import combatant.client.mixins.accessors.ShaderSourceKeyAccessor;
 import combatant.client.render.engine.shader.CombatantShaderSources;
+import combatant.client.render.engine.shader.EntityFadeShaderSource;
 import combatant.client.render.iris.IrisCompatibilityGuards;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.resources.RenderResourceReadiness;
@@ -37,9 +38,8 @@ import java.util.Map;
 @Mixin(ShaderManager.class)
 public abstract class ShaderLoaderMixin {
     @Unique
-    private static final Identifier COMBATANT_ENTITY_VERTEX = Identifier.fromNamespaceAndPath("combatant", "shaders/core/entity_dither.vsh");
-    @Unique
-    private static final Identifier COMBATANT_ENTITY_FRAGMENT = Identifier.fromNamespaceAndPath("combatant", "shaders/core/entity_dither.fsh");
+    private static final Identifier ENTITY_FADE_MARKER = Identifier.fromNamespaceAndPath(
+            "combatant", "shaders/include/entity_fade_marker.glsl");
     @Unique
     private static final Identifier VANILLA_ENTITY_ID = Identifier.withDefaultNamespace("core/entity");
     @Unique
@@ -91,56 +91,37 @@ public abstract class ShaderLoaderMixin {
 
     @Unique
     private static boolean combatant$applyEntityOverride(ResourceManager resourceManager, Map<Object, String> shaderSources) {
-        String entityFragmentSrc = combatant$loadShaderSource(resourceManager, COMBATANT_ENTITY_FRAGMENT);
-        String entityVertexSrc = combatant$loadShaderSource(resourceManager, COMBATANT_ENTITY_VERTEX);
-        if (((entityFragmentSrc == null || entityFragmentSrc.isEmpty()) || (entityVertexSrc == null || entityVertexSrc.isEmpty())) && !combatant$loggedEntityOverride) {
-            combatant$loggedEntityOverride = true;
-            DebugLog.warn("[ShaderOverride] entity fade override skipped: combatant entity_dither shader missing");
-        }
-
-        if ((entityFragmentSrc == null || entityFragmentSrc.isEmpty()) || (entityVertexSrc == null || entityVertexSrc.isEmpty())) {
+        String marker = combatant$loadShaderSource(resourceManager, ENTITY_FADE_MARKER);
+        if (marker == null || marker.isBlank()) {
+            DebugLog.warn("[ShaderOverride] entity fade marker unavailable; preserving vanilla entity shader");
             return false;
         }
 
-        boolean entityFragmentChanged = false;
-        boolean entityVertexChanged = false;
-
+        boolean changed = false;
         for (Map.Entry<Object, String> entry : shaderSources.entrySet()) {
-            Object key = entry.getKey();
-            if (entityVertexSrc != null && !entityVertexSrc.isEmpty() && combatant$isEntityVertexKey(key)) {
-                entry.setValue(entityVertexSrc);
-                entityVertexChanged = true;
-                continue;
+            if (!combatant$isEntityFragmentKey(entry.getKey())) continue;
+            String patched = EntityFadeShaderSource.patch(entry.getValue(), marker);
+            if (patched == null) {
+                DebugLog.warn("[ShaderOverride] entity fade marker insertion point missing; preserving vanilla entity shader");
+                return false;
             }
-            if (entityFragmentSrc != null && !entityFragmentSrc.isEmpty() && combatant$isEntityFragmentKey(key)) {
-                entry.setValue(entityFragmentSrc);
-                entityFragmentChanged = true;
-            }
+            entry.setValue(patched);
+            changed = true;
         }
-
-        if ((!entityFragmentChanged || !entityVertexChanged) && !combatant$loggedEntityOverride) {
+        if (!changed && !combatant$loggedEntityOverride) {
             combatant$loggedEntityOverride = true;
-            DebugLog.warn("[ShaderOverride] entity fade override skipped: entity shader key not found");
-        }
-
-        if (entityFragmentChanged && entityVertexChanged && !combatant$loggedEntityOverride) {
+            DebugLog.warn("[ShaderOverride] entity fade marker skipped: vanilla entity fragment key not found");
+        } else if (changed && !combatant$loggedEntityOverride) {
             combatant$loggedEntityOverride = true;
-            DebugLog.renderThread("[ShaderOverride] override applied: core/entity -> combatant entity_dither");
+            DebugLog.renderThread("[ShaderOverride] entity fade marker injected into vanilla entity fragment source");
         }
-
-        return entityFragmentChanged || entityVertexChanged;
+        return changed;
     }
 
     @Unique
     private static boolean combatant$isEntityFragmentKey(Object key) {
         if (!(key instanceof ShaderSourceKeyAccessor accessor)) return false;
         return VANILLA_ENTITY_ID.equals(accessor.combatant$getId()) && accessor.combatant$getType() == ShaderType.FRAGMENT;
-    }
-
-    @Unique
-    private static boolean combatant$isEntityVertexKey(Object key) {
-        if (!(key instanceof ShaderSourceKeyAccessor accessor)) return false;
-        return VANILLA_ENTITY_ID.equals(accessor.combatant$getId()) && accessor.combatant$getType() == ShaderType.VERTEX;
     }
 
     @Unique

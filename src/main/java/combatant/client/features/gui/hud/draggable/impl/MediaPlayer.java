@@ -80,7 +80,7 @@ public final class MediaPlayer extends DraggableHudElement {
     private final UiMaterialInteractionState glassFluid = new UiMaterialInteractionState();
     private static final UiGlassOpticsSpec MEDIA_GLASS = UiGlassOpticsSpec.LIQUID
             .withRefraction(0.011f).withBevel(0.25f, 0.046f)
-            .withFluid(0.68f, 0.78f).withCleanReveal(0.76f)
+            .withFluid(0.68f, 0.78f).withCleanReveal(0.0f)
             .withInteractionStrength(0.52f).withChromaticAberration(0.52f)
             .withMagnification(1.005f).withShapeDeformation(false).withSpecular(false)
             .withOpticalThickness(1.22f).withSurfaceRoughness(0.065f)

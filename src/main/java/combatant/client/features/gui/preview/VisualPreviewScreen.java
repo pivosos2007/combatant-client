@@ -84,7 +84,8 @@ public final class VisualPreviewScreen extends Screen {
 
     public static void open(VisualPreviewProvider provider) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || provider == null) return;
+        if (mc == null || provider == null
+                || provider.requiresWorld() && !WorldRequiredVisualPreview.available()) return;
         Screen parent = ClientScreen.current();
         if (parent instanceof ClickGuiScreen) {
             ClickGuiRenderer.captureMainScreen();
@@ -94,6 +95,7 @@ public final class VisualPreviewScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        // The preview only receives an actual player render state while a world is loaded.
         // The complete scene is rendered by VisualPreviewRenderer in the SCREEN_TOP phase.
     }
 
@@ -155,7 +157,7 @@ public final class VisualPreviewScreen extends Screen {
         float scale = sceneUiScale();
         if (provider.mousePressed(vx, vy, click.button())) return true;
         if (settingsVisible && settingsPanel.isActive()
-                && settingsPanel.mouseClicked(vx, vy, click.button(), scale)) return true;
+                && settingsPanel.mouseClicked(vx, vy, click.button())) return true;
 
         VisualPreviewInteractionProfile profile = provider.interactionProfile();
         boolean subjectDrag = profile.subjectMode() == VisualPreviewSubjectMode.ROTATE
@@ -246,6 +248,12 @@ public final class VisualPreviewScreen extends Screen {
             }
         }
         return super.charTyped(input);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (provider.requiresWorld() && !WorldRequiredVisualPreview.available()) onClose();
     }
 
     @Override
@@ -342,7 +350,7 @@ public final class VisualPreviewScreen extends Screen {
         float panelScale = Mth.clamp(inputScale * 1.5f, 2.55f, 3.0f);
         float expectedPanelW = 115.0f * panelScale;
         float anchorX = width - expectedPanelW - 24.0f * panelScale - 12.0f;
-        settingsPanel.render(anchorX, 12.0f, 0.0f, height - 24.0f, mouseX, mouseY, inputScale);
+        settingsPanel.render(anchorX, 12.0f, 0.0f, height - 24.0f, mouseX, mouseY, settingsPanel.panelWidth(inputScale));
     }
 
     private boolean insideSubject(float x, float y) {

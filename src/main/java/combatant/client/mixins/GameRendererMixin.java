@@ -381,6 +381,8 @@ public abstract class GameRendererMixin implements IrisFinalizedSceneRenderer {
         com.mojang.blaze3d.pipeline.RenderTarget msaa = MsaaWorldTarget.getFramebufferOverride();
         if (msaa != null) {
             cir.setReturnValue(msaa);
+        } else if (combatant.client.render.engine.hdr.HdrScene.active()) {
+            cir.setReturnValue(combatant.client.render.engine.hdr.HdrScene.target());
         }
     }
 

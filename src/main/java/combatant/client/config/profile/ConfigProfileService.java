@@ -64,12 +64,27 @@ public final class ConfigProfileService {
         return snapshot;
     }
 
+    public boolean backupExists(ConfigProfileType type, String idOrName) {
+        return storage.hasBackup(type, idOrName);
+    }
+
+    public void restoreBackup(ConfigProfileType type, String idOrName) throws IOException {
+        storage.restoreBackup(type, idOrName);
+        String id = ConfigProfileStorage.sanitizeFileName(idOrName);
+        // Replace live values before auto-save can write the pre-restore state back to disk.
+        if (id.equals(ConfigServerBindings.INSTANCE.activeProfile(type))) apply(type, id);
+    }
+
     public ConfigProfileSnapshot read(ConfigProfileType type, String idOrName) throws IOException {
         return storage.read(type, idOrName);
     }
 
     public ConfigProfileApplier.ApplyResult apply(ConfigProfileType type, String idOrName) throws IOException {
-        return applier.apply(storage.read(type, idOrName));
+        ConfigProfileSnapshot snapshot = storage.read(type, idOrName);
+        ConfigServerBindings.INSTANCE.beforeApply(type, snapshot.meta().getId());
+        ConfigProfileApplier.ApplyResult result = applier.apply(snapshot);
+        ConfigServerBindings.INSTANCE.applied(type, snapshot.meta().getId());
+        return result;
     }
 
     public ConfigProfileDiff diffWithCurrent(ConfigProfileType type, String idOrName) throws IOException {

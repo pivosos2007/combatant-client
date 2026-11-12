@@ -17,6 +17,7 @@ import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.features.gui.clickgui.ClickGuiRenderer;
 import combatant.client.features.gui.clickgui.ClickGuiSearch;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
+import combatant.client.features.gui.hud.draggable.DraggableHudElementRegistry;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.config.ConfigProfilesComponent;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.main.MainSettingsComponent;
 import combatant.client.features.gui.clickgui.layout.screen.settings.implement.module.ModuleComponent;
@@ -41,9 +42,8 @@ import java.util.List;
 
 public final class MenuScreen {
     private static final float INPUT_READY_PROGRESS = 0.72f;
-    private static final float S = 2f;
-    private static final float MENU_W = 400f;
-    private static final float MENU_H = 250f;
+    private static final float MENU_W = 800f;
+    private static final float MENU_H = 500f;
     private static final float CATEGORY_TRANSITION_DURATION_MS = 180f;
     private final BackgroundComponent backgroundComponent = new BackgroundComponent();
     private final CategoryContainerComponent categoryContainer = new CategoryContainerComponent();
@@ -117,6 +117,7 @@ public final class MenuScreen {
 
     public void close() {
         openTarget = false;
+        configProfilesComponent.unfocus();
         settingsPanel.mouseReleased(0f, 0f, 0);
         relationsComponent.resetScroll();
         activeThemeEditor = null;
@@ -159,11 +160,13 @@ public final class MenuScreen {
             if (renderMain) {
                 renderPanelShadow(palette);
 
-                backgroundComponent.render(shellX, shellY, shellW, shellH, S, prismProgress);
+                backgroundComponent.render(shellX, shellY, shellW, shellH, prismProgress);
                 renderShellChrome(palette);
 
-                categoryContainer.render(categoryX, categoryY, mx, my, category, S);
-                searchComponent.render(searchX, searchY, 80f * S, 15f * S);
+                categoryContainer.render(categoryX, categoryY, mx, my, category);
+                if (category != Category.CONFIGS || configProfilesComponent.usesGlobalSearch()) {
+                    searchComponent.render(searchX, searchY, 160f, 30f);
+                }
 
                 if (categoryTransition < 1f) {
                     float millisDt = AnimationUtility.deltaTime(AnimationUtility.Mode.MILLIS);
@@ -172,16 +175,16 @@ public final class MenuScreen {
 
                 try (SettingsCardTransition.SectionScope ignoredTransition = SettingsCardTransition.push(categoryTransition)) {
                     if (category == Category.THEMES) {
-                        themeComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
+                        themeComponent.render(menuX, menuY, menuW, menuH, mx, my);
                     } else if (category == Category.MAIN_SETTINGS) {
-                        mainSettingsComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
+                        mainSettingsComponent.render(menuX, menuY, menuW, menuH, mx, my);
                     } else if (category == Category.RELATIONS) {
-                        relationsComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
+                        relationsComponent.render(menuX, menuY, menuW, menuH, mx, my);
                     } else if (category == Category.CONFIGS) {
-                        configProfilesComponent.render(menuX, menuY, menuW, menuH, mx, my, S);
+                        configProfilesComponent.render(menuX, menuY, menuW, menuH, mx, my);
                     } else {
                         List<ModuleComponent.CardEntry> entries = visibleEntries(MenuSettingsResolver.buildCards(category));
-                        moduleComponent.render(menuX, menuY, menuW, menuH, entries, S);
+                        moduleComponent.render(menuX, menuY, menuW, menuH, entries);
                     }
                 }
             }
@@ -189,14 +192,18 @@ public final class MenuScreen {
             if (renderMain && menuMaskAnim > 0.01f) {
                 int c0 = LayoutRender2D.alpha(palette.menuMaskLeft(), menuMaskAnim * fadeProgress);
                 int c1 = LayoutRender2D.alpha(palette.menuMaskRight(), menuMaskAnim * fadeProgress);
-                LayoutRender2D.roundedQuad(shellX, shellY, shellW, shellH, 8f * S, c0, c1, c1, c0);
+                LayoutRender2D.roundedQuad(shellX, shellY, shellW, shellH, 16f, c0, c1, c1, c0);
             }
 
             if (activeThemeEditor != null && settingsPanel.isActive()) {
-                themeEditorPreview.render(activeThemeEditor, menuX, menuY, menuW, menuH, mx, my, S);
+                themeEditorPreview.render(activeThemeEditor, menuX, menuY, menuW, menuH, mx, my);
             }
 
-            settingsPanel.render(menuX, menuY, menuW, menuH, mx, my, S);
+            settingsPanel.render(menuX, menuY, menuW, menuH, mx, my);
+            if (category == Category.CONFIGS && renderMain) {
+                configProfilesComponent.renderDiff(shellX + shellW + 24f, shellY + 8f,
+                        410f, shellH - 16f);
+            }
         } finally {
             Renderer2D.COLOR.setAlpha(1.0f);
             LayoutRender2D.restoreRenderAlphaMultiplier(previousAlpha);
@@ -258,7 +265,6 @@ public final class MenuScreen {
                 areaY,
                 areaW,
                 areaH,
-                S,
                 alpha,
                 primary,
                 secondary,
@@ -272,6 +278,14 @@ public final class MenuScreen {
         return keyCode == combatant.client.input.InputKeys.H && (modifiers & combatant.client.input.InputModifierMask.ALT) != 0;
     }
 
+    /** HUD drag may start on the free backdrop, never on Settings chrome or its panel. */
+    public boolean allowsHudPreviewPointer(float mx, float my) {
+        return isInteractive() && settingsPanel.blocksMenuInput()
+                && !settingsPanel.containsPointer(mx, my)
+                && !(mx >= shellX && mx <= shellX + shellW
+                && my >= shellY && my <= shellY + shellH);
+    }
+
     public boolean mouseClicked(float mx, float my, int button) {
         if (!isInteractive()) return false;
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT && button != combatant.client.input.InputKeys.MOUSE_RIGHT) return false;
@@ -281,16 +295,25 @@ public final class MenuScreen {
             return true;
         }
 
-        if (settingsPanel.mouseClicked(mx, my, button, S)) return true;
-        if (settingsPanel.blocksMenuInput()) return true;
+        if (settingsPanel.mouseClicked(mx, my, button)) return true;
+        if (settingsPanel.blocksMenuInput()) {
+            // An open HUD settings panel owns its controls, but the free canvas
+            // outside the menu shell belongs to the draggable HUD editor.
+            return !DraggableHudElementRegistry.isForceVisible()
+                    || (mx >= shellX && mx <= shellX + shellW
+                    && my >= shellY && my <= shellY + shellH);
+        }
 
-        if (searchComponent.click(searchX, searchY, 80f * S, 15f * S, mx, my, button)) {
+        if (category == Category.CONFIGS) configProfilesComponent.pointerFocus(mx, my);
+        if ((category != Category.CONFIGS || configProfilesComponent.usesGlobalSearch())
+                && searchComponent.click(searchX, searchY, 160f, 30f, mx, my, button)) {
             return true;
         }
 
-        Category hitCategory = categoryContainer.click(categoryX, categoryY, mx, my, S);
+        Category hitCategory = categoryContainer.click(categoryX, categoryY, mx, my);
         if (hitCategory != null) {
             if (hitCategory != category) {
+                if (category == Category.CONFIGS) configProfilesComponent.unfocus();
                 category = hitCategory;
                 categoryTransition = 0f;
                 GuiSound.CHANGE_MODE.feedback(0.70);
@@ -357,7 +380,7 @@ public final class MenuScreen {
         themeComponent.mouseReleased(button);
         mainSettingsComponent.mouseReleased(mx, my, button);
         relationsComponent.mouseReleased(button);
-        configProfilesComponent.mouseReleased(button);
+        configProfilesComponent.mouseReleased(mx, my, button);
         moduleComponent.mouseReleased(button);
     }
 
@@ -366,15 +389,15 @@ public final class MenuScreen {
         if (settingsPanel.mouseScrolled(mx, my, delta)) return;
         if (settingsPanel.blocksMenuInput()) return;
         if (category == Category.THEMES) {
-            themeComponent.scroll(mx, my, menuX, menuY, menuW, menuH, delta, S);
+            themeComponent.scroll(mx, my, menuX, menuY, menuW, menuH, delta);
         } else if (category == Category.MAIN_SETTINGS) {
             mainSettingsComponent.scroll(mx, my, delta);
         } else if (category == Category.RELATIONS) {
             relationsComponent.scroll(mx, my, delta);
         } else if (category == Category.CONFIGS) {
-            configProfilesComponent.scroll(mx, my, menuX, menuY, menuW, menuH, delta, S);
+            configProfilesComponent.scroll(mx, my, menuX, menuY, menuW, menuH, delta);
         } else {
-            moduleComponent.scroll(mx, my, menuX, menuY, menuW, menuH, delta, S);
+            moduleComponent.scroll(mx, my, menuX, menuY, menuW, menuH, delta);
         }
     }
 
@@ -451,20 +474,25 @@ public final class MenuScreen {
     }
 
     private void layout(float areaX, float areaY, float areaW, float areaH) {
-        menuW = MENU_W * S;
-        menuH = MENU_H * S;
-        menuX = areaX + (areaW - menuW) * 0.5f;
+        boolean diff = category == Category.CONFIGS && configProfilesComponent.isDiffActive();
+        float auxiliaryWidth = diff ? 434f : 0f;
+        menuW = MENU_W;
+        menuH = MENU_H;
+        float groupWidth = MENU_W + 80f + auxiliaryWidth;
+        float centeredShellX = areaX + (areaW - (MENU_W + 80f)) * 0.5f;
+        float groupX = Math.max(areaX, Math.min(centeredShellX, areaX + areaW - groupWidth));
+        menuX = groupX + 40f;
         menuY = areaY + (areaH - menuH) * 0.5f;
 
-        shellX = menuX - 20f * S;
+        shellX = menuX - 40f;
         shellY = menuY;
-        shellW = menuW + 40f * S;
+        shellW = menuW + 80f;
         shellH = menuH;
 
-        categoryX = menuX - 20f * S;
-        categoryY = menuY + 40f * S;
-        searchX = menuX + 330f * S;
-        searchY = menuY + 7.5f * S;
+        categoryX = menuX - 40f;
+        categoryY = menuY + 80f;
+        searchX = menuX + 660f;
+        searchY = menuY + 15f;
     }
 
     private boolean isInteractive() {
@@ -479,12 +507,12 @@ public final class MenuScreen {
     }
 
     private void renderShellChrome(SettingsGuiPalette palette) {
-        float hLineY = shellY + 28f * S;
-        float lineThickness = 0.5f * S;
-        float hLineW = shellW - 43f * S;
+        float hLineY = shellY + 56f;
+        float lineThickness = 1f;
+        float hLineW = shellW - 86f;
 
         LayoutRender2D.rectQuad(
-                shellX + 43f * S, hLineY, hLineW, lineThickness,
+                shellX + 86f, hLineY, hLineW, lineThickness,
                 palette.menuLineStrong(),
                 palette.menuLineLow(),
                 palette.menuLineStrong(),
@@ -493,10 +521,10 @@ public final class MenuScreen {
 
         if (category.iconToken()) {
             TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
-            float iconSize = 11.5f * S;
-            float textSize = 11.5f * S;
-            float baseX = shellX + 50f * S;
-            float baseY = shellY + 13.5f * S;
+            float iconSize = 23f;
+            float textSize = 23f;
+            float baseX = shellX + 100f;
+            float baseY = shellY + 27f;
             LayoutRender2D.drawText(
                     icons,
                     category.token(),
@@ -510,21 +538,21 @@ public final class MenuScreen {
             LayoutRender2D.drawText(
                     BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     " " + category.title(),
-                    baseX + iconW + 1.5f * S,
+                    baseX + iconW + 3f,
                     baseY,
                     textSize,
                     palette.menuHeaderText(),
                     false
             );
         } else if (category.svgIcon()) {
-            float iconSize = 11.5f * S;
-            float textSize = 11.5f * S;
-            float baseX = shellX + 50f * S;
-            float baseY = shellY + 13.5f * S;
+            float iconSize = 23f;
+            float textSize = 23f;
+            float baseX = shellX + 100f;
+            float baseY = shellY + 27f;
             Renderer2D.COLOR.svg(
                     category.token(),
                     baseX,
-                    baseY + 0.5f * S,
+                    baseY + 1f,
                     iconSize,
                     iconSize,
                     SvgRenderOptions.overrideColor(palette.menuHeaderText())
@@ -532,7 +560,7 @@ public final class MenuScreen {
             LayoutRender2D.drawText(
                     BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     " " + category.title(),
-                    baseX + iconSize + 1.5f * S,
+                    baseX + iconSize + 3f,
                     baseY,
                     textSize,
                     palette.menuHeaderText(),
@@ -542,9 +570,9 @@ public final class MenuScreen {
             LayoutRender2D.drawText(
                     BuiltinFontCatalog.ONEST_REGULAR.renderer(),
                     "| " + category.title(),
-                    shellX + 50f * S,
-                    shellY + 13.5f * S,
-                    11.5f * S,
+                    shellX + 100f,
+                    shellY + 27f,
+                    23f,
                     palette.menuHeaderText(),
                     false
             );
@@ -557,8 +585,8 @@ public final class MenuScreen {
                 shellY,
                 shellW,
                 shellH,
-                8f * S,
-                8f * S,
+                16f,
+                16f,
                 0.018f,
                 palette.menuShadow()
         );

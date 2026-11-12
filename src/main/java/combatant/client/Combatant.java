@@ -197,6 +197,7 @@ public class Combatant implements ClientModInitializer {
 
             @Override
             public void shutdown(RuntimeShutdownContext context) {
+                combatant.client.config.profile.ConfigServerBindings.INSTANCE.flushActive();
                 combatant.client.config.ConfigSerializer.flushPending();
             }
         });

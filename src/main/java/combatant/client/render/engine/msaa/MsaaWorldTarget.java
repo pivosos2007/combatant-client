@@ -154,10 +154,13 @@ public enum MsaaWorldTarget {
     }
 
     private static void ensureBuffer(int w, int h, int sampleCount) {
-        if (msaa == null || allocationRequestSamples != sampleCount) {
+        com.mojang.renderpearl.api.GpuFormat format = combatant.client.render.engine.hdr.HdrScene.active()
+                ? combatant.client.render.engine.hdr.SceneColor.FORMAT : com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM;
+        if (msaa == null || allocationRequestSamples != sampleCount
+                || msaa.getColorTexture().getFormat() != format) {
             MsaaFramebuffer previous = msaa;
             try {
-                MsaaFramebuffer next = new MsaaFramebuffer("combatant-msaa-world", w, h, true, sampleCount);
+                MsaaFramebuffer next = new MsaaFramebuffer("combatant-msaa-world", w, h, true, sampleCount, format);
                 msaa = next;
                 samples = next.getSamples();
                 allocationRequestSamples = sampleCount;
@@ -213,7 +216,8 @@ public enum MsaaWorldTarget {
 
     private static RenderTarget rawMain(Minecraft mc) {
         return mc != null && mc.gameRenderer != null
-                ? ((GameRendererAccessor) mc.gameRenderer).combatant$getMainRenderTargetRaw()
+                ? combatant.client.render.engine.hdr.HdrScene.resolveTarget(
+                        ((GameRendererAccessor) mc.gameRenderer).combatant$getMainRenderTargetRaw())
                 : null;
     }
 

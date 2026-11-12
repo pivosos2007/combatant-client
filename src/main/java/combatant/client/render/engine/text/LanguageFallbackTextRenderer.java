@@ -490,16 +490,19 @@ public final class LanguageFallbackTextRenderer implements TextRenderer {
         try {
             closeActiveRenderer();
         } finally {
-            if (primedPrimary) {
+            try {
+                if (primedPrimary && primary.isBuilding()) primary.end();
+            } finally {
                 primedPrimary = false;
-                if (primary.isBuilding()) primary.end();
+                building = false;
+                activeRenderer = null;
+                ownsActiveRenderer = false;
+                scale = 1.0;
+                scaleOnly = false;
+                big = false;
+                backendPreference = TextBackendPreference.AUTO;
             }
         }
-        building = false;
-        scale = 1.0;
-        scaleOnly = false;
-        big = false;
-        backendPreference = TextBackendPreference.AUTO;
     }
 
     public void destroy() {

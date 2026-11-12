@@ -521,7 +521,6 @@ public final class CombatantAltManagerScreen extends Screen {
                 0.0f,
                 LayoutRender2D.alpha(0xFF000000, openAlpha * (0.18f + 0.08f * hoverAnim - 0.025f * pressAnim))
         );
-        LayoutRender2D.drawBlur(x, y, w, h, radius, 0xFF000000, (200f / 255f) * openAlpha);
         LayoutRender2D.roundedQuad(
                 x, y, w, h, radius,
                 LayoutRender2D.alpha(top, openAlpha),

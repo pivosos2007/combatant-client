@@ -259,6 +259,9 @@ public abstract class Setting {
     private static void addCommonI18nKey(ArrayList<String> keys, String key) {
         if (key == null) return;
         String normalized = key.trim();
+        if (normalized.startsWith("setting.common.")) {
+            normalized = normalized.substring("setting.common.".length());
+        }
         if (!normalized.isBlank() && !keys.contains(normalized)) {
             keys.add(normalized);
         }

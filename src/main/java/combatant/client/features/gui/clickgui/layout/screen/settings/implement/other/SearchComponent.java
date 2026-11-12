@@ -20,10 +20,8 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.SettingsGui
 import combatant.client.features.theme.Theme;
 
 public final class SearchComponent {
-    private static final float CORNER_RADIUS = 3f;
-    private static final float STROKE_WIDTH = 0.5f;
-    private static final float DIVIDER_X = 65.5f;
-    private static final float BLUR_STRENGTH = 135f / 255f;
+    private static final float CORNER_RADIUS = 6f;
+    private static final float STROKE_WIDTH = 1f;
 
     public void render(float x, float y, float w, float h) {
         render(x, y, w, h, CLICK_GUI_MODEL);
@@ -33,11 +31,9 @@ public final class SearchComponent {
         Model state = model != null ? model : CLICK_GUI_MODEL;
         boolean typing = state.focused();
         String text = state.text() == null ? "" : state.text();
-        float scale = w / 80f;
 
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        float radius = CORNER_RADIUS * scale;
-        LayoutRender2D.drawBlur(x, y, w, h, radius, palette.panelBlurTint(), BLUR_STRENGTH);
+        float radius = CORNER_RADIUS;
         LayoutRender2D.roundedQuad(
                 x, y, w, h, radius,
                 palette.panelBgLeft(),
@@ -45,24 +41,24 @@ public final class SearchComponent {
                 palette.panelBgRight(),
                 palette.panelBgLeft()
         );
-        LayoutRender2D.roundedStroke(x, y, w, h, radius, STROKE_WIDTH * scale,
+        LayoutRender2D.roundedStroke(x, y, w, h, radius, STROKE_WIDTH,
                 typing ? palette.glassEdgeStrong() : palette.panelStroke());
 
-        float dividerX = x + DIVIDER_X * scale;
-        LayoutRender2D.rect(dividerX, y + 4f * scale, 0.5f * scale, h - 8f * scale, palette.panelDivider());
+        float dividerX = x + w - 29f;
+        LayoutRender2D.rect(dividerX, y + 8f, 1f, h - 16f, palette.panelDivider());
 
-        float tx = x + 4f * scale;
-        float ts = 12f * scale;
+        float tx = x + 8f;
+        float ts = 24f;
         TextRenderer font = BuiltinFontCatalog.ONEST_REGULAR.renderer();
         String display = text.isEmpty() && !typing
-                ? LayoutRender2D.fitText(font, state.placeholder(), ts, Math.max(1f, DIVIDER_X * scale - 6f * scale))
+                ? LayoutRender2D.fitText(font, state.placeholder(), ts, Math.max(1f, w - 41f))
                 : text;
         float th = LayoutRender2D.textHeight(font, ts);
-        float ty = y + (h - th) * 0.5f - 0.5f * scale;
-        boolean clipped = ScissorFunction.pushRaw(x + scale, y, w - 16f * scale, h);
+        float ty = y + (h - th) * 0.5f - 1f;
+        boolean clipped = ScissorFunction.pushRaw(x + 2f, y, w - 32f, h);
         SingleLineTextInput editor = state.editor();
         if (editor != null && (!text.isEmpty() || typing)) {
-            editor.render(tx, ty, w - 17f * scale, h, font, ts,
+            editor.render(tx, ty, w - 34f, h, font, ts,
                     palette.panelText(), LayoutRender2D.alpha(Theme.theme().accent() | 0xFF000000, 0.5f), typing);
         } else {
             LayoutRender2D.drawText(font, display, tx, ty, ts,
@@ -71,12 +67,12 @@ public final class SearchComponent {
         if (clipped) ScissorFunction.pop();
 
         TextRenderer icons = BuiltinFontCatalog.ICONS.renderer(BuiltinFontCatalog.ONEST_REGULAR.renderer());
-        float iconSize = 8f * scale;
+        float iconSize = 16f;
         String icon = "s";
         float iconW = LayoutRender2D.textWidth(icons, icon, iconSize);
         float iconH = LayoutRender2D.textHeight(icons, iconSize);
         float iconX = dividerX + (w - (dividerX - x) - iconW) * 0.5f;
-        float iconY = y + (h - iconH) * 0.5f - 0.35f * scale;
+        float iconY = y + (h - iconH) * 0.5f - 0.7f;
         int iconColor = typing ? palette.panelText() : palette.panelMuted();
         LayoutRender2D.drawText(icons, icon, iconX, iconY, iconSize, iconColor, false);
     }
@@ -93,8 +89,7 @@ public final class SearchComponent {
         if (inside) {
             state.setFocused(true);
             if (state.editor() != null) {
-                float scale = w / 80f;
-                state.editor().layout(x + 4f * scale, w - 17f * scale, BuiltinFontCatalog.ONEST_REGULAR.renderer(), 12f * scale);
+                state.editor().layout(x + 8f, w - 34f, BuiltinFontCatalog.ONEST_REGULAR.renderer(), 24f);
                 var window = net.minecraft.client.Minecraft.getInstance().getWindow();
                 state.editor().beginDrag(mx,
                 combatant.client.input.CombatantInput.state().isPressed(

@@ -65,16 +65,22 @@ public final class PostProcessGraph implements AutoCloseable {
         for (PostProcessPass pass : passes) {
             if (pass.getPhase() == phase && selector.test(pass) && pass.isActive()) activePasses.add(pass);
         }
-        if (activePasses.isEmpty()) return false;
+        if (activePasses.isEmpty()) {
+            resources.releaseUnusedHdr();
+            return false;
+        }
 
         boolean preHand = phase == PostProcessPass.Phase.PRE_HAND;
         String gpuGraphLabel = preHand ? "3d:post_graph:pre_hand" : "3d:post_graph:post_hand";
         String cpuGraphLabel = preHand ? "graph:PRE_HAND" : "graph:POST_HAND";
         try (RenderCostProfiler.Scope ignoredGraph = RenderCostProfiler.postPass(cpuGraphLabel);
              TracyGpuProfiler.Scope ignoredGpuGraph = TracyGpuProfiler.beginZone(gpuGraphLabel)) {
+            RenderTarget target = targetOverride != null ? targetOverride
+                    : net.minecraft.client.Minecraft.getInstance().gameRenderer.mainRenderTarget();
+            var colorFormat = target.getColorTexture().getFormat();
             boolean preferStorageTargets = false;
             for (PostProcessPass pass : activePasses) {
-                if (pass.prefersStorageOutput(rhi)) {
+                if (pass.prefersStorageOutput(rhi) && pass.supportsStorageFormat(colorFormat)) {
                     preferStorageTargets = true;
                     break;
                 }
@@ -105,8 +111,8 @@ public final class PostProcessGraph implements AutoCloseable {
                             rhi,
                             resources.currentSource(),
                             resources.currentDestination(),
-                            resources.currentSourceStorage(),
-                            resources.currentDestinationStorage()
+                            pass.supportsStorageFormat(colorFormat) ? resources.currentSourceStorage() : null,
+                            pass.supportsStorageFormat(colorFormat) ? resources.currentDestinationStorage() : null
                     ));
                 }
                 if (applied) {

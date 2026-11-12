@@ -15,6 +15,7 @@ import combatant.client.render.engine.renderer.ui.runtime.script.UiScriptColor;
 import combatant.client.render.engine.text.TextSizing;
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.ModeValue;
@@ -175,7 +176,7 @@ public final class Statistics extends DraggableHudElement {
 
     @Override
     protected void defineSettings(List<SettingDef> defs) {
-        defs.add(SettingDef.mode(surfaceMaterial).common("setting.common.hud_surface_material"));
+        defs.add(SettingDef.mode(surfaceMaterial).common(CommonSettingSchemas.HUD_SURFACE_MATERIAL));
         defs.add(SettingDef.number(scaleValue));
         defs.add(SettingDef.mode(layoutMode));
         defs.add(SettingDef.group("statistics_information", information));

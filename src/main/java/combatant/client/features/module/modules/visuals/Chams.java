@@ -8,6 +8,7 @@
 package combatant.client.features.module.modules.visuals;
 
 
+import combatant.client.features.gui.preview.WorldRequiredVisualPreview;
 import combatant.client.features.theme.Theme;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.TextureTarget;
@@ -63,6 +64,11 @@ import combatant.client.render.engine.rhi.CombatantRhi;
 @ModuleInfo(id = "chams", displayName = "Chams", category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.COSMETIC,
         description = "module.chams.description")
 public class Chams extends Module {
+    @Override
+    protected void loadSettings(java.util.List<combatant.client.features.gui.clickgui.settings.Setting> settings) {
+        WorldRequiredVisualPreview.restrictSettings(settings, getKeyBindSetting());
+    }
+
 
     private static final int METALLIC_OCCUPANCY_CELL_SIZE = 8;
 
@@ -149,11 +155,13 @@ public class Chams extends Module {
                     CommonSettingSchemas.RENDER_SECONDARY_COLOR.commonI18nKey()),
             () -> hasColorFill() && AnimatedRenderColors.usesSecondary(fillColorMode.get()));
     private final NumberValue<Float> fillGradientAngle = visibleWhen(
-            num("handChamsFillGradientAngle", SETTING_FILL_GRADIENT_ANGLE, 90.0f, 0.0f, 360.0f),
+            common(num("handChamsFillGradientAngle", SETTING_FILL_GRADIENT_ANGLE, 90.0f, 0.0f, 360.0f),
+                    CommonSettingSchemas.VISUAL_GRADIENT_ANGLE.commonI18nKey()),
             () -> hasColorFill() && fillColorMode.get() != AnimatedRenderColors.Mode.STATIC
                     && fillColorMode.get() != AnimatedRenderColors.Mode.THEME);
     private final NumberValue<Float> fillGradientSpan = visibleWhen(
-            num("handChamsFillGradientSpan", SETTING_FILL_GRADIENT_SPAN, 1.0f, 0.25f, 4.0f),
+            common(num("handChamsFillGradientSpan", SETTING_FILL_GRADIENT_SPAN, 1.0f, 0.25f, 4.0f),
+                    CommonSettingSchemas.VISUAL_GRADIENT_SPAN.commonI18nKey()),
             () -> hasColorFill() && fillColorMode.get() != AnimatedRenderColors.Mode.STATIC
                     && fillColorMode.get() != AnimatedRenderColors.Mode.THEME);
 
@@ -256,11 +264,13 @@ public class Chams extends Module {
             () -> isGhostingVisible() && AnimatedRenderColors.usesSecondary(ghostingColorMode.get())
     );
     private final NumberValue<Float> ghostingGradientAngle = visibleWhen(
-            num("handChamsGhostingGradientAngle", SETTING_GHOSTING_GRADIENT_ANGLE, 90.0f, 0.0f, 360.0f),
+            common(num("handChamsGhostingGradientAngle", SETTING_GHOSTING_GRADIENT_ANGLE, 90.0f, 0.0f, 360.0f),
+                    CommonSettingSchemas.VISUAL_GRADIENT_ANGLE.commonI18nKey()),
             () -> isGhostingVisible() && ghostingColorMode.get() != AnimatedRenderColors.Mode.STATIC
                     && ghostingColorMode.get() != AnimatedRenderColors.Mode.THEME);
     private final NumberValue<Float> ghostingGradientSpan = visibleWhen(
-            num("handChamsGhostingGradientSpan", SETTING_GHOSTING_GRADIENT_SPAN, 1.0f, 0.25f, 4.0f),
+            common(num("handChamsGhostingGradientSpan", SETTING_GHOSTING_GRADIENT_SPAN, 1.0f, 0.25f, 4.0f),
+                    CommonSettingSchemas.VISUAL_GRADIENT_SPAN.commonI18nKey()),
             () -> isGhostingVisible() && ghostingColorMode.get() != AnimatedRenderColors.Mode.STATIC
                     && ghostingColorMode.get() != AnimatedRenderColors.Mode.THEME);
     private final NumberValue<Float> ghostingStrength = visibleWhen(
@@ -650,7 +660,8 @@ public class Chams extends Module {
     }
 
     private boolean isActiveForHandRender() {
-        return isEnabled() || VisualPreviewRuntime.isPreviewingModule("chams");
+        return WorldRequiredVisualPreview.available()
+                && (isEnabled() || VisualPreviewRuntime.isPreviewingModule("chams"));
     }
 
     private boolean isFirstPersonHandContext() {

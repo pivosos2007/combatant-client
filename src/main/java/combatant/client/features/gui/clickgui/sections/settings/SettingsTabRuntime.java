@@ -35,6 +35,10 @@ public enum SettingsTabRuntime {
         return SCREEN.isVisible();
     }
 
+    public static boolean allowsHudPreviewPointer(float mx, float my) {
+        return SCREEN.allowsHudPreviewPointer(mx, my);
+    }
+
     public static boolean mousePressed(float mx, float my, int button) {
         return SCREEN.mouseClicked(mx, my, button);
     }

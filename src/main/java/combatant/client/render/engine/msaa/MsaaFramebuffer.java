@@ -20,7 +20,11 @@ public final class MsaaFramebuffer extends RenderTarget {
     private int samples;
 
     public MsaaFramebuffer(String name, int width, int height, boolean useDepthAttachment, int samples) {
-        super(name, GpuFormat.RGBA8_UNORM, useDepthAttachment ? GpuFormat.D32_FLOAT : null);
+        this(name, width, height, useDepthAttachment, samples, GpuFormat.RGBA8_UNORM);
+    }
+
+    public MsaaFramebuffer(String name, int width, int height, boolean useDepthAttachment, int samples, GpuFormat format) {
+        super(name, format, useDepthAttachment ? GpuFormat.D32_FLOAT : null);
         this.samples = samples;
         RenderSystem.assertOnRenderThread();
         this.resize(width, height);
@@ -61,7 +65,7 @@ public final class MsaaFramebuffer extends RenderTarget {
             this.colorTexture = CombatantRenderSystem.rhi().msaa().createTexture(
                     this.label + " / Color",
                     usage,
-                    GpuFormat.RGBA8_UNORM,
+                    this.colorFormat,
                     width,
                     height,
                     samples

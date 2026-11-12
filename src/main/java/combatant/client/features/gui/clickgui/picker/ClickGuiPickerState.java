@@ -470,7 +470,6 @@ public final class ClickGuiPickerState {
             bgR = LayoutRender2D.mixColor(bgR, theme.accentSoft(), 0.16f);
         }
 
-        LayoutRender2D.drawBlur(searchX, searchY, SEARCH_W, SEARCH_H, 3f * SCALE, palette.panelBlurTint(), 105f / 255f);
         LayoutRender2D.roundedQuad(
                 searchX,
                 searchY,

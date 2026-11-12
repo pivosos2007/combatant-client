@@ -80,27 +80,6 @@ public class KeyboardMixin {
             ci.cancel();
             return;
         }
-        // VisualPreviewScreen owns its text fields. The enabled ClickGui module must not route
-        // characters into the hidden ClickGui section while this separate screen is active.
-        if (ClientScreen.current() instanceof VisualPreviewScreen) return;
-        if (!RuntimeGate.canRunClientLogic() || !ClickGuiRenderer.isGuiSessionActive()) return;
-        Screen activeScreen = ClientScreen.current();
-        if (!(activeScreen instanceof ClickGuiScreen
-                || activeScreen instanceof ClickGuiPickerScreen
-                || activeScreen instanceof ClickGuiEditorScreen
-                || activeScreen instanceof VisualPreviewScreen)) return;
-
-        char c = (char) input.codepoint();
-
-        if (ClickGuiSearch.isActive()) {
-            ClickGuiRenderer.onCharTyped(c);
-            ci.cancel();
-            return;
-        }
-
-        if (ClickGuiRenderer.onCharTyped(c)) {
-            ci.cancel();
-        }
     }
 
     @Inject(method = "keyPress", at = @At("HEAD"), cancellable = true)
@@ -225,39 +204,6 @@ public class KeyboardMixin {
                     BetterChatRenderer.applyAutoPrefixIfNeeded(field);
                 }
             }
-        }
-        if (!RuntimeGate.canRunClientLogic() || !ClickGuiRenderer.isGuiSessionActive()) return;
-        Screen activeScreen = ClientScreen.current();
-        if (!(activeScreen instanceof ClickGuiScreen
-                || activeScreen instanceof ClickGuiPickerScreen
-                || activeScreen instanceof ClickGuiEditorScreen
-                || activeScreen instanceof VisualPreviewScreen)) return;
-
-        int key = event.key().physicalKey();
-
-        if (key == InputKeys.ESCAPE && event.action() == InputAction.PRESS) {
-            if (ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers())) {
-                ci.cancel();
-                return;
-            }
-            if (ClientScreen.current() instanceof ClickGuiEditorScreen) {
-                ClickGuiRenderer.closeGuiEditor();
-                ci.cancel();
-                return;
-            }
-            ClickGuiRenderer.closeFromScreen();
-            ci.cancel();
-            return;
-        }
-
-        if (ClickGuiSearch.isActive()) {
-            ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers());
-            ci.cancel();
-            return;
-        }
-
-        if (ClickGuiRenderer.onKey(event.key(), event.action(), event.modifiers())) {
-            ci.cancel();
         }
     }
 

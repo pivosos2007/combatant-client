@@ -46,7 +46,6 @@ import java.util.List;
 
 public final class ModulesMenuScreen {
     private static final float INPUT_READY_PROGRESS = 0.72f;
-    private static final UiLiquidGlassMaterial SEARCH_GLASS = ModulesMenuStyle.glass();
     private static final float PANEL_W = 115.0f;
     private static final float BASE_PANEL_H = 240.0f;
     private static final float PANEL_H = 255.0f;
@@ -72,10 +71,13 @@ public final class ModulesMenuScreen {
     private static final float LIQUID_GLASS_LOGICAL_SCALE = 3.0f;
     private static float ACTIVE_PORT_SCALE = LIQUID_GLASS_LOGICAL_SCALE;
 
-    /** Modules ClickGUI always follows weather; no user HUD opt-out applies. */
+    /** ClickGUI has its own weather switch, separate from per-widget HUD controls. */
     private static UiLiquidGlassMaterial climateGlass(UiLiquidGlassMaterial base) {
+        var clickGui = combatant.client.features.module.Modules.get(
+                combatant.client.features.module.modules.misc.ClickGui.class);
+        if (clickGui == null || !clickGui.environmentalEffectsEnabled()) return base;
         var visual = combatant.client.features.gui.hud.HudClimateSurface.glassVisual(true);
-        return visual.custom() ? base.withVisual(visual) : base;
+        return visual.custom() && !base.visual().custom() ? base.withVisual(visual) : base;
     }
 
     private final List<ModulesMenuPanel> panels = new ArrayList<>();
@@ -397,11 +399,32 @@ public final class ModulesMenuScreen {
             return true;
         }
 
+        if (keyCode == combatant.client.input.InputKeys.ESCAPE) {
+            ModulesMenuPanel nearest = nearestOpenSettingsPanel(ClickGuiRenderer.mouseX(), ClickGuiRenderer.mouseY());
+            if (nearest != null) return nearest.keyPressed(keyCode, scanCode, modifiers);
+        }
         for (ModulesMenuPanel panel : panels) {
             if (panel.keyPressed(keyCode, scanCode, modifiers)) return true;
         }
 
         return false;
+    }
+
+    /** Select the nearest open category, not the first category in registration order. */
+    private ModulesMenuPanel nearestOpenSettingsPanel(float mx, float my) {
+        ModulesMenuPanel closest = null;
+        float bestDistance = Float.POSITIVE_INFINITY;
+        for (ModulesMenuPanel panel : panels) {
+            if (!panel.hasOpenSettings()) continue;
+            float dx = Math.max(Math.max(panel.x - mx, 0f), mx - (panel.x + panel.w));
+            float dy = Math.max(Math.max(panel.y - my, 0f), my - (panel.y + panel.h));
+            float distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                closest = panel;
+            }
+        }
+        return closest;
     }
 
     private static boolean isHintToggle(int keyCode, int modifiers) {
@@ -483,6 +506,8 @@ public final class ModulesMenuScreen {
 
     private void renderPanelGlass(ModulesMenuPanel panel, float alpha) {
         if (alpha <= 0.001f) return;
+        // Glass can be collected in a separate backdrop pass before renderPanel().
+        panel.syncGlassMaterial();
 
         LayoutRender2D.roundedSoftShadow(
                 panel.x,
@@ -497,7 +522,7 @@ public final class ModulesMenuScreen {
 
         float materialAlpha = alpha >= 0.999f ? 1.0f : alpha;
         drawLiquidGlass(panel.x, panel.y, panel.w, panel.h, PANEL_RADIUS * scale,
-                true, materialAlpha, panel.glass);
+                materialAlpha, panel.glass);
     }
 
     private void renderPanel(ModulesMenuPanel panel, float mouseX, float mouseY, float alpha) {
@@ -652,18 +677,7 @@ public final class ModulesMenuScreen {
                 int glassRgb = mix(ModulesMenuStyle.panelBgGlassDark(), themeGlass,
                         0.72f + 0.08f * hover);
                 int glassTint = withAlpha(glassRgb, Math.round(alpha * (108.0f + 18.0f * hover)));
-                UiLiquidGlassMaterial material = panel.controlGlass.withInnerGlow(
-                        0.006f + hover * 0.006f,
-                        2.15f + hover * 0.20f,
-                        withAlpha(themeGlass, Math.round(alpha * (4.0f + 4.0f * hover)))
-                );
-                renderer.withLiquidGlassMaterial(climateGlass(material), () -> renderer.liquidGlassRect(
-                        x, rowY, itemW, rowH, radius,
-                        glassTint,
-                        alpha * (0.92f + hover * 0.04f),
-                        alpha * (0.82f + hover * 0.06f),
-                        Renderer2D.LiquidGlassPreset.HUD_SMALL
-                ));
+                renderer.box(shape, UiPaint.linear(glassTint, glassTint, gradientAngle, 0.0f));
 
                 int idleStart = withAlpha(buttonGradient.start(), Math.round(alpha * (7.0f + 5.0f * hover)));
                 int idleEnd = withAlpha(buttonGradient.end(), Math.round(alpha * (5.0f + 5.0f * hover)));
@@ -706,21 +720,9 @@ public final class ModulesMenuScreen {
             int activeThemeGlass = mix(buttonGradient.start(), buttonGradient.end(), 0.50f);
             int activeGlassRgb = mix(ModulesMenuStyle.panelBgGlassDark(), activeThemeGlass, 0.86f);
             int activeGlassTint = withAlpha(activeGlassRgb, Math.round(alpha * 148.0f));
-            UiLiquidGlassMaterial activeMaterial = panel.controlGlass.withInnerGlow(
-                    0.012f + 0.004f * motion,
-                    2.45f + 0.18f * motion,
-                    withAlpha(activeThemeGlass, Math.round(alpha * 8.0f))
-            );
-            renderer.withLiquidGlassMaterial(climateGlass(activeMaterial), () -> renderer.liquidGlassCompound(
-                    activeShape,
-                    activeGlassTint,
-                    alpha * 0.98f,
-                    alpha * 0.90f,
-                    Renderer2D.LiquidGlassPreset.HUD_SMALL
-            ));
+            renderer.compoundSdf(activeShape,
+                    UiPaint.linear(activeGlassTint, activeGlassTint, gradientAngle, 0.0f));
 
-            // Preserve the configured theme gradient, but at surface-coating strength only. The
-            // scene/refraction remains the dominant body of the active control.
             int activeStart = withAlpha(buttonGradient.start(), Math.round(alpha * 20.0f));
             int activeEnd = withAlpha(buttonGradient.end(), Math.round(alpha * 15.0f));
             renderer.compoundSdf(activeShape, UiPaint.linear(activeStart, activeEnd, gradientAngle, 0.0f));
@@ -934,7 +936,7 @@ public final class ModulesMenuScreen {
                 ? LayoutRender2D.textWidth(semibold, moduleListLabel, moduleListTextSize)
                 : 0.0f;
         float moduleListW = moduleListEdit ? moduleListTextW + 3.0f * scale : 0.0f;
-        float checkReserve = entry.enabled() ? 18.0f * scale : 6.0f * scale;
+        float checkReserve = (6.0f + 12.0f * enabled) * scale;
         float moduleListX = x + rowW - checkReserve - moduleListW - 3.0f * scale;
         float moduleListY = y + middle(textHeight(semibold, moduleListTextSize), h) - 0.5f * scale;
 
@@ -1041,7 +1043,10 @@ public final class ModulesMenuScreen {
                                       float alpha) {
         float enabled = panel.enabledAnimValue(entry.getId());
         if (SettingErrorView.hasFailure(ModulesMenuResolver.moduleById(entry.getId()))) return;
-        if (enabled <= 0.001f) return;
+        // Fade all the way to zero: the previous 10% alpha floor made the icon
+        // abruptly disappear when enabled dropped below the rendering threshold.
+        int checkColor = withAlpha(ModulesMenuStyle.text(), alpha * enabled);
+        if ((checkColor >>> 24) == 0) return;
 
         float check = 6.0f * scale;
         float checkX = x + rowW - 15.0f * scale - 2.0f * scale * enabled;
@@ -1052,10 +1057,7 @@ public final class ModulesMenuScreen {
                 checkY,
                 check,
                 check,
-                SvgRenderOptions.overrideColor(withAlpha(
-                        ModulesMenuStyle.text(),
-                        alpha * (0.10f + 0.90f * enabled)
-                ))
+                SvgRenderOptions.overrideColor(checkColor)
         );
     }
 
@@ -1470,12 +1472,8 @@ public final class ModulesMenuScreen {
         float alpha = easeOutCubic(screenAnim) * searchAnim;
         if (alpha <= 0.001f) return;
 
-        float materialAlpha = alpha >= 0.999f ? 1.0f : alpha;
         float radius = 6.0f * scale;
-
-        drawLiquidGlass(searchX, searchY, searchW, searchH, radius, false, materialAlpha, SEARCH_GLASS);
-
-        int veil = withAlpha(ModulesMenuStyle.panelBgGlassDark(), alpha * 0.25f);
+        int veil = withAlpha(ModulesMenuStyle.panelBgGlassDark(), alpha * 0.72f);
         LayoutRender2D.roundedQuad(searchX, searchY, searchW, searchH, radius, veil, veil, veil, veil);
 
         String text = ClickGuiSearch.getText();
@@ -1516,24 +1514,20 @@ public final class ModulesMenuScreen {
     }
 
     private void drawLiquidGlass(float x, float y, float w, float h, float radius,
-                                 boolean panel, float alpha, UiLiquidGlassMaterial material) {
+                                 float alpha, UiLiquidGlassMaterial material) {
         if (alpha <= 0.001f) return;
 
         float materialAlpha = AnimationUtility.clamp(alpha, 0.0f, 1.0f);
-        Renderer2D.LiquidGlassPreset preset = panel
-                ? Renderer2D.LiquidGlassPreset.HUD_LARGE
-                : Renderer2D.LiquidGlassPreset.HUD_SMALL;
-
         Renderer2D.COLOR.withLiquidGlassBlurProfile(
                 Renderer2D.BlurQuality.LIQUID_GLASS,
-                panel ? 1.65f : 1.38f,
+                1.65f,
                 () -> Renderer2D.COLOR.withLiquidGlassMaterial(climateGlass(material), () -> Renderer2D.COLOR.liquidGlassRect(
                         x, y, w, h,
                         radius,
                         0xFFB4DBF3,
                         materialAlpha,
                         1.0f,
-                        preset
+                        Renderer2D.LiquidGlassPreset.HUD_LARGE
                 ))
         );
     }

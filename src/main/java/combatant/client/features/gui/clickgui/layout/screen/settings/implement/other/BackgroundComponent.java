@@ -14,13 +14,13 @@ import combatant.client.features.gui.clickgui.layout.screen.settings.render.Sett
 
 public final class BackgroundComponent {
 
-    public void render(float x, float y, float w, float h, float scale) {
+    public void render(float x, float y, float w, float h) {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        SettingsGlassMaterial.workspace(x, y, w, h, scale, palette);
+        SettingsGlassMaterial.workspace(x, y, w, h, palette);
     }
 
-    public void render(float x, float y, float w, float h, float scale, float prismProgress) {
+    public void render(float x, float y, float w, float h, float prismProgress) {
         SettingsGuiPalette palette = SettingsGuiPalette.current();
-        SettingsGlassMaterial.workspace(x, y, w, h, scale, palette, prismProgress);
+        SettingsGlassMaterial.workspace(x, y, w, h, palette, prismProgress);
     }
 }

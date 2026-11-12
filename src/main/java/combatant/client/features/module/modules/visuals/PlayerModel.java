@@ -5,6 +5,7 @@
  */
 package combatant.client.features.module.modules.visuals;
 
+import combatant.client.features.gui.preview.WorldRequiredVisualPreview;
 import combatant.client.config.values.*;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
@@ -21,6 +22,11 @@ import org.joml.Matrix4f;
 @ModuleInfo(id = "playermodel", displayName = "PlayerModel", category = ModuleCategory.VISUALS,
         subcategory = ModuleSubcategory.COSMETIC, description = "module.playermodel.description")
 public final class PlayerModel extends Module {
+    @Override
+    protected void loadSettings(java.util.List<combatant.client.features.gui.clickgui.settings.Setting> settings) {
+        WorldRequiredVisualPreview.restrictSettings(settings, getKeyBindSetting());
+    }
+
     public final ModeValue model = modelSetting();
     public final ModeValue textureResolution = textureResolutionSetting();
     public final ModeValue textureFiltering = mode("texture_filtering", "Linear", "Nearest", "Linear");

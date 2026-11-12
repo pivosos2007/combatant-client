@@ -15,7 +15,6 @@ import combatant.client.features.gui.hud.BaseHudElement;
 import combatant.client.features.gui.hud.HudAnchorX;
 import combatant.client.features.gui.hud.HudAnchorY;
 import combatant.client.features.gui.hud.WidgetAnchorSide;
-import combatant.client.runtime.CombatantBuild;
 import lombok.Getter;
 
 import java.util.Map;
@@ -26,7 +25,7 @@ import java.util.Map;
 public abstract class DraggableHudElement extends BaseHudElement {
 
     private final DraggableLayoutValue layoutValue = new DraggableLayoutValue("layout");
-    protected final BooleanValue environmentalEffects = bool("environmental_effects", CombatantBuild.isDevelopmentBuild());
+    protected final BooleanValue environmentalEffects = bool("environmental_effects", true);
     @Getter
     private boolean positionInitialized = false;
     @Getter
@@ -66,7 +65,7 @@ public abstract class DraggableHudElement extends BaseHudElement {
     }
 
     public boolean environmentalEffectsEnabled() {
-        return CombatantBuild.isDevelopmentBuild() && environmentalEffects.get();
+        return environmentalEffects.get();
     }
 
     public DraggableLayoutValue layoutValue() {

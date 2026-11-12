@@ -15,6 +15,10 @@ public enum DevDeferredRuntime {
     private static final DeferredWorldPipeline WORLD = new DeferredWorldPipeline();
     private static final DeferredPassGraph GRAPH = new DeferredPassGraph();
 
+    static {
+        combatant.client.render.engine.hdr.HdrScene.registerConsumer("deferred", WORLD::enabled);
+    }
+
     public static DeferredWorldPipeline world() { return WORLD; }
     public static DeferredPassGraph graph() { return GRAPH; }
 

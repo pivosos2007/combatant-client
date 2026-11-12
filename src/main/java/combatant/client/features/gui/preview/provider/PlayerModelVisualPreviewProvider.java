@@ -8,6 +8,7 @@ package combatant.client.features.gui.preview.provider;
 import combatant.client.features.gui.clickgui.settings.Setting;
 import combatant.client.features.gui.preview.*;
 import combatant.client.features.gui.preview.render.VisualPreviewItemRenderer;
+import combatant.client.features.playeranimator.PlayerRigInstance;
 import combatant.client.features.module.modules.visuals.PlayerModel;
 import combatant.client.features.playermodel.PlayerModels;
 import combatant.client.features.playermodel.PlayerModelRenderState;
@@ -38,6 +39,7 @@ public final class PlayerModelVisualPreviewProvider implements VisualPreviewProv
         this.selector = new PlayerModelSelector(module, target);
     }
     @Override public String id() { return "player_model:" + target.key(); }
+    @Override public boolean requiresWorld() { return true; }
     @Override public String title() { return module.getDisplayName() + " — " + target.label(); }
     @Override public VisualPreviewControlMode controlMode() { return VisualPreviewControlMode.OBJECT_ROTATE; }
     @Override public List<Setting> settings() {
@@ -64,7 +66,7 @@ public final class PlayerModelVisualPreviewProvider implements VisualPreviewProv
     @Override
     public void renderSubject(VisualPreviewSceneContext context) {
         var mc = context.minecraft();
-        if (mc.player == null || mc.level == null) return;
+        if (mc == null || mc.player == null || mc.level == null || mc.gameMode == null) return;
         PlayerModels.Ready asset = PlayerModels.prepare(module, target);
         VisualPreviewItemRenderer.renderScene(context, true, 0.68f, (matrices, storage) -> {
             var dispatcher = mc.getEntityRenderDispatcher();
@@ -75,7 +77,7 @@ public final class PlayerModelVisualPreviewProvider implements VisualPreviewProv
             applyPreviewPose(state);
             ((PlayerModelRenderState) state).combatant$setReplacement(null);
             if (module.replacement(target).get() && asset != null) {
-                var rig = PlayerAnimator.animate(mc.player, state, context.tickDelta(),
+                PlayerRigInstance rig = PlayerAnimator.animate(mc.player, state, context.tickDelta(),
                         TickDelta.frameDeltaSeconds(), "Hybrid", 1f);
                 ((PlayerRigRenderState) state).combatant$setPlayerRig(rig);
                 ((PlayerModelRenderState) state).combatant$setReplacement(PlayerModels.snapshot(asset, rig, module, target));

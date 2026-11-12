@@ -143,6 +143,11 @@ public enum DraggableHudElementRegistry {
 
     public static void setForceVisible(boolean value) {
         forceVisible = value;
+        if (!value) cancelDragging();
+    }
+
+    public static String editorPreviewTargetId() {
+        return editorWidgetId;
     }
 
     public static void setEditorWidgetId(String id) {
@@ -233,7 +238,9 @@ public enum DraggableHudElementRegistry {
             noteRendered(w);
             try (ProfilerPhase.Scope widgetScope =
                          ProfilerPhase.scope("2d:widget:" + w.getId());
-                 RenderProfiler2D.Section ignored = RenderProfiler2D.section("widget:" + w.getId())) {
+                 RenderProfiler2D.Section ignored = RenderProfiler2D.section("widget:" + w.getId());
+                 combatant.client.features.gui.preview.PreviewFontBoundary fontBoundary =
+                         combatant.client.features.gui.preview.PreviewFontBoundary.capture()) {
                 combatant.client.features.gui.hud.HudClimateSurface.withEnabled(
                     w.environmentalEffectsEnabled(),
                     () -> w.renderEngineSafely(renderer, textRenderer, ctx, tickDelta, screenW, screenH));
@@ -288,9 +295,11 @@ public enum DraggableHudElementRegistry {
             }
         }
 
-        renderDragOverlay(renderer, textRenderer, screenW, screenH);
+        boolean clickGuiOwnsInput = forceVisible
+                && ClientScreen.current() instanceof combatant.client.features.gui.clickgui.ClickGuiScreen;
+        if (!clickGuiOwnsInput) renderDragOverlay(renderer, textRenderer, screenW, screenH);
         BetterChatRenderer.renderCapturedTooltip(ctx);
-        if (phase == HudPhase.AFTER_SUBTITLES) {
+        if (phase == HudPhase.AFTER_SUBTITLES && !clickGuiOwnsInput) {
             float uiScale = HudScale.scale(fbw, fbh);
             handleDragging(mc, screenW, screenH, uiScale);
         }
@@ -438,6 +447,61 @@ public enum DraggableHudElementRegistry {
             DebugLog.config("[HUD] Applied default position for %s: (%.1f, %.1f)", w.getId(), w.getX(), w.getY());
         }
         w.markPositionInitialized();
+    }
+
+    /** Mouse coordinates here are unscaled logical UI coordinates, matching widget bounds. */
+    public static boolean editorMouseButton(float x, float y, int button, boolean pressed) {
+        if (!forceVisible) return false;
+        if (button != combatant.client.input.InputKeys.MOUSE_LEFT
+                && button != combatant.client.input.InputKeys.MOUSE_MIDDLE) return false;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return false;
+        int w = Math.max(1, Math.round(HudScale.virtualWidth(mc.getWindow().getWidth(), mc.getWindow().getHeight())));
+        int h = Math.max(1, Math.round(HudScale.virtualHeight(mc.getWindow().getWidth(), mc.getWindow().getHeight())));
+        if (!pressed) {
+            if (dragging == null) return false;
+            stopDragging(w, h);
+            return true;
+        }
+        if (dragging != null) return true;
+        if (button == combatant.client.input.InputKeys.MOUSE_LEFT
+                && findTopVisibleWidget(x, y, true) != null) return false;
+        DraggableHudElement widget = findTopVisibleWidget(x, y, false);
+        if (widget == null) return false;
+        dragging = widget;
+        draggingWithLeft = button == combatant.client.input.InputKeys.MOUSE_LEFT;
+        dragOffsetX = x - widget.getX();
+        dragOffsetY = y - widget.getY();
+        if (isWidgetAnchorModifierDown()) detachChildren(widget);
+        widget.clearParentAnchor();
+        widget.setAnchors(HudAnchorX.FREE, HudAnchorY.FREE, widget.getX(), widget.getY());
+        SystemCursor.set(SystemCursor.CursorType.MOVE);
+        hudCursorActive = true;
+        return true;
+    }
+
+    public static void editorMouseMoved(float x, float y) {
+        if (!forceVisible || dragging == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return;
+        int w = Math.max(1, Math.round(HudScale.virtualWidth(mc.getWindow().getWidth(), mc.getWindow().getHeight())));
+        int h = Math.max(1, Math.round(HudScale.virtualHeight(mc.getWindow().getWidth(), mc.getWindow().getHeight())));
+        moveDraggedWidget(dragging, x, y, w, h);
+        if (isWidgetAnchorModifierDown()) clearSnapPreview();
+        else updateSnapPreview(dragging, w, h);
+        SystemCursor.set(SystemCursor.CursorType.MOVE);
+        hudCursorActive = true;
+    }
+
+    /** Draws the normal dragging coordinates and snap guides in a non-world HUD editor. */
+    public static void renderEditorOverlay(Renderer2D renderer, TextRenderer text,
+                                           int screenW, int screenH) {
+        if (!forceVisible || dragging == null) return;
+        renderDragOverlay(renderer, text, screenW, screenH);
+    }
+
+    public static void cancelEditorDrag() {
+        cancelDragging();
     }
 
     private static void handleDragging(Minecraft mc, int screenW, int screenH, float uiScale) {

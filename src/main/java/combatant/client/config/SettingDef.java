@@ -346,6 +346,9 @@ public final class SettingDef {
     private void addCommonKey(String key) {
         if (key == null) return;
         String normalized = key.trim();
+        if (normalized.startsWith("setting.common.")) {
+            normalized = normalized.substring("setting.common.".length());
+        }
         if (!normalized.isBlank() && !commonI18nKeys.contains(normalized)) {
             commonI18nKeys.add(normalized);
         }

@@ -70,6 +70,37 @@ final class TabListModel {
         return MAX_ROWS_PER_COLUMN;
     }
 
+    private static Snapshot previewSnapshot;
+
+    static Snapshot preview() {
+        if (previewSnapshot == null) previewSnapshot = createPreview();
+        return previewSnapshot;
+    }
+
+    private static Snapshot createPreview() {
+        String[] names = {"PlayerOne", "SkyWalker", "Builder_07", "Alex", "Explorer"};
+        int[] latencies = {32, 64, 103, 48, 21};
+        List<Entry> entries = new ArrayList<>(names.length);
+        Set<UUID> ids = new HashSet<>();
+        for (int i = 0; i < names.length; i++) {
+            String name = names[i];
+            UUID id = UUID.nameUUIDFromBytes(("combatant.tab.preview." + name)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            String ping = String.valueOf(latencies[i]);
+            float pingWidth = TabRichTextRenderer.widthPlain(ping, 16.5f);
+            entries.add(new Entry(id, name, Component.literal(name), null,
+                    CategoryType.DEFAULT, 0, latencies[i], ping, pingWidth,
+                    pingWidth + 6f, false, null, 0f));
+            ids.add(id);
+        }
+        float top = SHELL_PAD_TOP;
+        float height = top + entries.size() * ROW_HEIGHT + SHELL_PAD_BOTTOM;
+        return new Snapshot(List.copyOf(entries), Set.copyOf(ids), null, null,
+                List.of(), List.of(), 1, entries.size(), 270f, ROW_HEIGHT,
+                0f, top, top, 0f, top + entries.size() * ROW_HEIGHT,
+                0f, 280f, height);
+    }
+
     static Snapshot collect(Minecraft mc, int screenW) {
         if (mc == null || mc.getConnection() == null) return Snapshot.empty();
 

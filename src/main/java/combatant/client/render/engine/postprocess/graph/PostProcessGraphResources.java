@@ -53,8 +53,7 @@ public final class PostProcessGraphResources implements AutoCloseable {
 
         int w = main.width;
         int h = main.height;
-        GpuFormat colorFormat = targetOverride != null
-                ? main.getColorTexture().getFormat() : GpuFormat.RGBA8_UNORM;
+        GpuFormat colorFormat = main.getColorTexture().getFormat();
         if (colorFormat != GpuFormat.RGBA8_UNORM && colorFormat != GpuFormat.RGBA16_FLOAT) return false;
         // Compute storage and sampler2D ping-pong surfaces cannot consume an MSAA view directly.
         // First resolve the scene into a single-sample framebuffer, then run ordinary effects.
@@ -152,9 +151,9 @@ public final class PostProcessGraphResources implements AutoCloseable {
             storageTargetsFailed = false;
         }
         long now = System.nanoTime();
-        if (colorFormat == GpuFormat.RGBA8_UNORM && preferStorageTargets && PostProcessExecutionPolicy.useCompute(rhi) && !storageTargetsFailed) {
+        if (preferStorageTargets && PostProcessExecutionPolicy.useCompute(rhi) && !storageTargetsFailed) {
             try {
-                ensureStoragePingPong(w, h, rhi);
+                ensureStoragePingPong(w, h, rhi, colorFormat);
                 pingView = pingStorage != null ? pingStorage.view() : null;
                 pongView = pongStorage != null ? pongStorage.view() : null;
                 if (pingView != null && pongView != null) {
@@ -180,33 +179,48 @@ public final class PostProcessGraphResources implements AutoCloseable {
         if ((pingStorage != null || pongStorage != null) && now - storageLastUsedNanos > STORAGE_IDLE_RELEASE_NANOS) {
             closeStoragePingPong();
         }
-        ping = CombatantRenderSystem.resources().persistentFramebuffer(
+        ping = colorFormat == GpuFormat.RGBA16_FLOAT
+                ? CombatantRenderSystem.resources().frameTransientHdr("postprocess-ping", w, h, false, "PostProcessGraph")
+                : CombatantRenderSystem.resources().persistentFramebuffer(
                 "combatant-postprocess-graph-ping", w, h, false, colorFormat, "PostProcessGraph");
-        pong = CombatantRenderSystem.resources().persistentFramebuffer(
+        pong = colorFormat == GpuFormat.RGBA16_FLOAT
+                ? CombatantRenderSystem.resources().frameTransientHdr("postprocess-pong", w, h, false, "PostProcessGraph")
+                : CombatantRenderSystem.resources().persistentFramebuffer(
                 "combatant-postprocess-graph-pong", w, h, false, colorFormat, "PostProcessGraph");
         pingView = ping != null ? ping.getColorTextureView() : null;
         pongView = pong != null ? pong.getColorTextureView() : null;
     }
 
-    private void ensureStoragePingPong(int w, int h, CombatantRhi rhi) {
+    private void ensureStoragePingPong(int w, int h, CombatantRhi rhi, GpuFormat colorFormat) {
         boolean ownerChanged = storageOwner != rhi;
         boolean sizeChanged = pingStorage == null || pongStorage == null
                 || pingStorage.descriptor().width() != w || pingStorage.descriptor().height() != h
-                || pongStorage.descriptor().width() != w || pongStorage.descriptor().height() != h;
+                || pongStorage.descriptor().width() != w || pongStorage.descriptor().height() != h
+                || pingStorage.descriptor().format() != colorFormat;
         if (!ownerChanged && !sizeChanged) return;
 
         closeStoragePingPong();
         storageOwner = rhi;
         pingStorage = rhi.advancedShaders().createStorageImage(new StorageImageDescriptor(
-                "combatant-postprocess-graph-ping-storage", w, h, GpuFormat.RGBA8_UNORM,
+                "combatant-postprocess-graph-ping-storage", w, h, colorFormat,
                 StorageAccess.READ_WRITE, true, true));
         try {
             pongStorage = rhi.advancedShaders().createStorageImage(new StorageImageDescriptor(
-                    "combatant-postprocess-graph-pong-storage", w, h, GpuFormat.RGBA8_UNORM,
+                    "combatant-postprocess-graph-pong-storage", w, h, colorFormat,
                     StorageAccess.READ_WRITE, true, true));
         } catch (Throwable t) {
             closeStoragePingPong();
             throw t;
+        }
+    }
+
+    public void releaseUnusedHdr() {
+        if (!combatant.client.render.engine.hdr.HdrScene.active()
+                && pingStorage != null && pingStorage.descriptor().format() == GpuFormat.RGBA16_FLOAT
+                && System.nanoTime() - storageLastUsedNanos > STORAGE_IDLE_RELEASE_NANOS) {
+            closeStoragePingPong();
+            pingView = pongView = null;
+            clearFrameState();
         }
     }
 

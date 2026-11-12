@@ -274,7 +274,7 @@ public enum CombatantShaderSources {
      *
      * Only GLSL #include is supported; paths resolve from the active ResourceManager.
      */
-    private static String expandIncludes(ResourceManager resources, Identifier sourceId,
+    public static String expandIncludes(ResourceManager resources, Identifier sourceId,
                                          String source, Set<Identifier> included) throws IOException {
         Matcher matches = INCLUDE_DIRECTIVE.matcher(source);
         StringBuilder output = new StringBuilder(source.length());

@@ -29,6 +29,8 @@ import net.minecraft.world.level.block.ShulkerBoxBlock;
 import combatant.client.config.SettingDef;
 import combatant.client.features.gui.hud.AbstractHudElement;
 import combatant.client.features.gui.hud.HudGlassSettings;
+import combatant.client.features.gui.preview.api.PreviewCatalog;
+import combatant.client.features.gui.preview.api.HudPreviewCanvas;
 import combatant.client.features.gui.hud.HudElementRegister;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.ProfilerPhase;
@@ -97,8 +99,51 @@ public final class BetterTooltips extends AbstractHudElement {
     private final HudGlassSettings itemGlassSettings = new HudGlassSettings(
             "bt_items", BetterTooltipPresentation.defaultGlassOptics());
     private final BetterTooltipPresentation presentation = new BetterTooltipPresentation();
+    /** Isolated animation and cached layout; drawing uses the same production presenter. */
+    private final BetterTooltipPresentation previewPresentation = new BetterTooltipPresentation();
     private BetterTooltips() {
         super("vanilla_tooltips", "Tooltips", "hud.static.vanilla_tooltips.description", true);
+    }
+
+    @Override
+    public PreviewCatalog.Definition<Boolean, HudPreviewCanvas> previewDefinition() {
+        return PreviewCatalog.definition(
+                new PreviewCatalog.Id(PreviewCatalog.Surface.HUD, getId()), HudPreviewCanvas.class,
+                frame -> PreviewCatalog.Availability.READY,
+                frame -> GROUP_TOOLTIP_ITEMS.equals(frame.scenario())
+                        || GROUP_SHULKER_PREVIEW.equals(frame.scenario()),
+                (canvas, item) -> {
+                    if (canvas.graphics() == null) return;
+                    Minecraft mc = Minecraft.getInstance();
+                    if (mc == null || mc.getWindow() == null) return;
+                    // Reserve the central region for settings. Use native GUI coordinates,
+                    // not virtual HUD coordinates, so the tooltip retains its real scale.
+                    float scaleX = canvas.guiWidth() * 0.08f;
+                    float scaleY = canvas.guiHeight() * 0.38f;
+                    List<BetterTooltipPresentation.Line> lines = item
+                            ? List.of(new BetterTooltipPresentation.Line("Example Item", 0xFFD8E8FF),
+                                    new BetterTooltipPresentation.Line("Preview of item information", 0xFFC4C9D0),
+                                    new BetterTooltipPresentation.Line("Additional properties", 0xFF98A3B2))
+                            : List.of(new BetterTooltipPresentation.Line("Tooltip preview", 0xFFE6EDFF),
+                                    new BetterTooltipPresentation.Line("Settings are applied live", 0xFFB8C5D6));
+                    BetterTooltipPresentation.Input example = new BetterTooltipPresentation.Input(
+                            lines, ItemStack.EMPTY, item, scaleX, scaleY,
+                            item ? 0xF02A111L : 0xF02A110L, 0f, 0f, ClientScreen.current(mc));
+                    float selectedScale = item ? itemScale.get() : genericScale.get();
+                    // The production presenter manages its own render batch. Flush the
+                    // preview host's preceding primitives before letting it take ownership.
+                    canvas.renderer().render();
+                    try {
+                        previewPresentation.render(mc, canvas.graphics(), example, selectedScale,
+                            item ? itemBlur.get() : guiBlur.get(),
+                            item ? itemDarkness.get() : guiDarkness.get(), rarityGlow.get(),
+                            rareModelEnabled.get(), modelRotationSpeed.get(),
+                            (item ? itemGlassSettings : guiGlassSettings)
+                                    .apply(BetterTooltipPresentation.defaultGlassOptics()));
+                    } finally {
+                        canvas.renderer().begin();
+                    }
+                }, PreviewCatalog.PreviewSpace.VANILLA_GUI);
     }
 
     public static BetterTooltips get() {

@@ -223,6 +223,17 @@ public enum CommonSettingSchemas {
     public static final CommonSettingSchema RENDER_SECONDARY_COLOR = key("render.secondary_color", "secondary_color");
     public static final CommonSettingSchema RENDER_DEPTH_TEST = key("render.depth_test", "depth_test");
     public static final CommonSettingSchema RENDER_SCALE = key("render.scale", "scale");
+    public static final CommonSettingSchema VISUAL_GRADIENT_ANGLE = key("gradient_angle");
+    public static final CommonSettingSchema VISUAL_GRADIENT_SPAN = key("gradient_span");
+    public static final CommonSettingSchema HUD_SURFACE_MATERIAL = key("hud_surface_material");
+    public static final CommonSettingSchema HUD_GLASS_CUSTOMIZE = key("hud_glass.customize");
+    public static final CommonSettingSchema HUD_GLASS_THEME_BLEND = key("hud_glass.theme_blend");
+    public static final CommonSettingSchema HUD_GLASS_SPECULAR = key("hud_glass.specular");
+
+    /** One canonical i18n namespace for optics shared by all HUD surfaces and ClickGui. */
+    public static CommonSettingSchema hudGlass(String property) {
+        return key("hud_glass." + property);
+    }
 
     private static CommonSettingSchema key(String key, String... aliases) {
         return new CommonKey(key, aliases);

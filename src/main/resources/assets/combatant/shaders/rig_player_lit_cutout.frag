@@ -8,6 +8,10 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#ifdef COMBATANT_RIG_SCENE_LINEAR
+#include "include/scene_color.glsl"
+#endif
+
 layout(location = 0) out vec4 color;
 uniform sampler2D u_Texture;
 uniform sampler2D u_Lightmap;
@@ -46,6 +50,9 @@ void main() {
     // Smooth damage coloration without switching to vanilla's flashing overlay.
     vec3 hurt = min(vec3(1.0), lit * vec3(1.2, 0.35, 0.35)
             + worldLight * vec3(0.08, 0.0, 0.0));
-    color = vec4(mix(lit, hurt, clamp(u_LightCoord.w, 0.0, 1.0)),
-            1.0); // coverage is cut out; write opaque color and depth
+    vec3 shaded = mix(lit, hurt, clamp(u_LightCoord.w, 0.0, 1.0));
+#ifdef COMBATANT_RIG_SCENE_LINEAR
+    shaded = combatantLegacyToSceneLinear(shaded);
+#endif
+    color = vec4(shaded, 1.0);
 }

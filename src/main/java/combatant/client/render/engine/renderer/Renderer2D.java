@@ -3489,10 +3489,12 @@ public final class Renderer2D {
         mesh.alpha = alpha;
         mesh.ensureQuadCapacity();
 
+        int tintedGlass = combatant.client.render.engine.renderer.ui.draw.LiquidGlassTheme.tint(
+                tintArgb, materialOptics(liquidGlassMaterial).themeBlend());
         int a = (tintArgb >>> 24) & 0xFF;
-        int r = (tintArgb >>> 16) & 0xFF;
-        int g = (tintArgb >>> 8) & 0xFF;
-        int b = tintArgb & 0xFF;
+        int r = (tintedGlass >>> 16) & 0xFF;
+        int g = (tintedGlass >>> 8) & 0xFF;
+        int b = tintedGlass & 0xFF;
         UiGlassOpticsSpec optics = materialOptics(liquidGlassMaterial);
         int finalA = Math.round(255.0f * clamp01(glassAlpha));
         float alphaPayload = materialTintStrength(liquidGlassMaterial);
@@ -3777,10 +3779,12 @@ public final class Renderer2D {
         mesh.alpha = alpha;
         mesh.ensureQuadCapacity();
 
+        int tintedGlass = combatant.client.render.engine.renderer.ui.draw.LiquidGlassTheme.tint(
+                tintArgb, materialOptics(liquidGlassMaterial).themeBlend());
         int a = (tintArgb >>> 24) & 0xFF;
-        int r = (tintArgb >>> 16) & 0xFF;
-        int g = (tintArgb >>> 8) & 0xFF;
-        int b = tintArgb & 0xFF;
+        int r = (tintedGlass >>> 16) & 0xFF;
+        int g = (tintedGlass >>> 8) & 0xFF;
+        int b = tintedGlass & 0xFF;
         UiGlassOpticsSpec optics = materialOptics(liquidGlassMaterial);
         int finalA = Math.round(255.0f * clamp01(glassAlpha));
         float mix = 0.0f;
@@ -4287,10 +4291,12 @@ public final class Renderer2D {
 
         mesh.ensureQuadCapacity();
 
+        int tintedGlass = combatant.client.render.engine.renderer.ui.draw.LiquidGlassTheme.tint(
+                tintArgb, materialOptics(liquidGlassMaterial).themeBlend());
         int a = (tintArgb >>> 24) & 0xFF;
-        int r = (tintArgb >>> 16) & 0xFF;
-        int g = (tintArgb >>> 8) & 0xFF;
-        int b = tintArgb & 0xFF;
+        int r = (tintedGlass >>> 16) & 0xFF;
+        int g = (tintedGlass >>> 8) & 0xFF;
+        int b = tintedGlass & 0xFF;
 
         float clampedGlassAlpha = clamp01(glassAlpha);
         float clampedBlurAlpha = clamp01(blurAlpha);
@@ -4432,7 +4438,9 @@ public final class Renderer2D {
     }
 
     private static float materialTintStrength(UiLiquidGlassMaterial material) {
-        return material != null ? material.tintStrength() : 0.12f;
+        float base = material != null ? material.tintStrength() : 0.12f;
+        // Theme blending increases the surface tint only, never the lens alpha.
+        return Math.max(base, materialOptics(material).themeBlend() * 0.40f);
     }
 
     private static float packLiquidGlassRgb(int argb) {

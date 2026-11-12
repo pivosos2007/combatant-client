@@ -9,7 +9,7 @@ export class SpectrumActionButton {
   static render(props={}) {
     const key=ui.str(props.key,'s2:action'),p=SpectrumFoundation.colors(props.colors);
     const width=Math.max(32,ui.num(props.width,126));
-    const height=({XS:24,S:32,M:36,L:44,XL:52})[ui.str(props.size,'M').toUpperCase()]||36;
+    const height=Math.max(24,ui.num(props.height,({XS:24,S:32,M:36,L:44,XL:52})[ui.str(props.size,'M').toUpperCase()]||36));
     const radius=Math.max(0,ui.num(props.radius,8));
     const selected=!!props.selected,disabled=!!props.disabled;
     const quiet=!!props.quiet,emphasized=!!props.emphasized;
@@ -35,7 +35,7 @@ export class SpectrumActionButton {
         tint:disabled?p.disabled:selected&&emphasized?p.onAccent:p.text,
         interactive:false,class:ui.abs(iconX,(height-iconSize)/2,iconSize,iconSize)})]:[]),
       ...(label?[SpectrumFoundation.text(`${key}:label`,label,textX,0,
-        Math.max(8,width-textX-8),height,{size:15,strong:selected,
+        Math.max(8,width-textX-8),height,{size:ui.num(props.fontSize,15),strong:selected,
           color:disabled?p.disabled:selected&&emphasized?p.onAccent:p.text,
           align:icon?'left':'center'})]:[])
     ];

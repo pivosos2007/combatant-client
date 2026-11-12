@@ -1,0 +1,143 @@
+#version 430 core
+/*
+ * This file is part of the Combatant Client distribution.
+ * Copyright (c) 2026 pivosos2007.
+ *
+ * Licensed under the GNU General Public License v3.0.
+ */
+/*
+ * Depth-aware far volumetric LOD. Renders distant cumulus by marching the
+ * SAME 3D medium as nearby froxels; a separate high cirrus medium is added.
+ * This replaces skybox-plane silhouettes and horizontal 2D cloud impostors.
+ */
+layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
+layout(binding=0,rgba16f) writeonly uniform image2D u_Far;
+layout(binding=3,r32f) writeonly uniform image2D u_FarDepth;
+layout(binding=2) uniform sampler2D u_Depth;
+#include "dream_cloud_medium.glsl"
+
+// The high layer uses elongated weather filaments: clouds have a nonzero
+// thickness and optical depth, but do not allocate an expensive 3D grid.
+float cirrusDensity(vec3 p,float footprint){
+    float s=max(.4,shape.w);
+    vec3 q=dreamCirrusFlow(p);
+    // Two nonparallel, domain-warped filaments contained inside sparse,
+    // low-frequency weather cells. Their envelopes are not a continuous sheet.
+    vec2 cell=q.xz/(4096.*s);
+    float macro=texture(u_CloudNoise,fract(vec3(cell,.27))).a;
+    float macro2=texture(u_CloudNoise,fract(vec3(cell.yx*.77+.37,.63))).r;
+    float patches=smoothstep(.48,.69,macro*.66+macro2*.34+.05*shape.z);
+    if(patches<.002)return 0.;
+
+    vec2 drift=vec2(texture(u_CloudNoise,fract(vec3(q.xz/(1500.*s)+.17,.31))).r,
+                    texture(u_CloudNoise,fract(vec3(q.zx/(1600.*s)+.71,.54))).a)-.5;
+    vec2 warped=q.xz+drift*(360.*s);
+    // Non-orthogonal integer transformations preserve tileability under
+    // 8192-block camera rebasing, but do not align with screen axes.
+    vec2 a=vec2(warped.x+warped.y*.5,warped.y-warped.x*.33);
+    vec2 b=vec2(warped.x-warped.y*.4,warped.x*.6+warped.y);
+    float strandA=texture(u_CloudNoise,fract(vec3(a.x/(1240.*s),a.y/(690.*s),.44))).r;
+    float strandB=texture(u_CloudNoise,fract(vec3(b.x/(1720.*s),b.y/(850.*s),.79))).a;
+    float coarse=strandA*.54+strandB*.46;
+    float wisps=smoothstep(.40,.65,coarse);
+    float fine=texture(u_CloudNoise,fract(vec3(warped/(320.*s),.56))).b;
+    // At grazing angles the ray step/footprint can cover entire filaments;
+    // suppress subpixel erosion instead of aliasing it into parallel stripes.
+    float detail=1.-smoothstep(90.*s,480.*s,footprint);
+    wisps*=mix(1.,smoothstep(.24,.80,fine),detail*.34);
+
+    float base=shape.x+shape.y*4.0+650.;
+    float h=(p.y-base)/(85.*s);
+    float vertical=smoothstep(0.,.20,h)*(1.-smoothstep(.72,1.,h));
+    return wisps*patches*vertical*.20;
+}
+vec2 slab(vec3 ray,float minY,float maxY){
+    if(abs(ray.y)<.0001)return vec2(1e9,-1e9);
+    vec2 t=(vec2(minY,maxY)-camera.y)/ray.y;
+    return vec2(min(t.x,t.y),max(t.x,t.y));
+}
+vec4 marchClouds(vec3 ray,float t0,float t1,int steps,bool high,float jitter,out float meanDepth){
+    meanDepth=0.;
+    if(t1<=t0)return vec4(0.);
+    vec3 sum=vec3(0.);
+    float tmit=1.;
+    float ds=(t1-t0)/float(steps);
+    float weightedDepth=0.;
+    float depthWeight=0.;
+    float night=clamp(appearance.y,0.,1.);
+    vec3 ldir=dreamLightDir();
+    for(int i=0;i<64;i++){
+        if(i>=steps || tmit<.025)break;
+        float t=t0+(float(i)+jitter)*ds;
+        vec3 p=camera.xyz+ray*t;
+        float rho=high?cirrusDensity(p,ds):dreamDensity(p,clamp((220.*max(.4,shape.w))/max(20.,ds),0.,1.));
+        if(rho<.003)continue;
+        // Two coarse light samples are sufficient for the far LOD. Full
+        // four-sample shadowing is retained only in the froxel lighting cache.
+        float lightT=1.;
+        if(high) lightT=.75;
+        else {
+            float reach=shape.y*.75;
+            float optical=dreamDensity(p+ldir*reach,.15)+dreamDensity(p+ldir*reach*1.9,.15);
+            lightT=exp(-optical*reach*.035);
+        }
+        vec3 scatter=high?
+            mix(vec3(.77,.86,1.04),vec3(.13,.18,.36),night)*(.68+.32*lightT):
+            dreamScattering(p,ray,rho,lightT);
+        float fade=high?1.:smoothstep(outputSize.z*.85,outputSize.z*1.55,t);
+        float opacity=1.-exp(-rho*ds*(high?.030:.021)*fade);
+        float contrib=tmit*opacity;
+        sum+=contrib*scatter;
+        weightedDepth+=t*contrib;
+        depthWeight+=contrib;
+        tmit*=1.-opacity;
+    }
+    float alpha=clamp(1.-tmit,0.,1.);
+    meanDepth=depthWeight>.0001?weightedDepth/depthWeight:0.;
+    return vec4(alpha>.0001?sum/alpha:vec3(0.),alpha);
+}
+void main(){
+    ivec2 pixel=ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size=imageSize(u_Far);
+    if(any(greaterThanEqual(pixel,size)))return;
+    float jitter=fract(fract(sin(dot(vec2(pixel),vec2(12.9898,78.233)))*43758.5453)
+                        +fract(sampling.y*.61803398875));
+    vec2 sub=vec2(fract(sampling.y*.5),fract(sampling.y*.25))*.45-.15;
+    vec2 uv=(vec2(pixel)+.5+sub)/vec2(size);
+    vec3 ray=dreamRay(uv);
+    float endDistance=dreamDepthLimit(u_Depth,uv,10000.);
+    int steps=clamp(int(outputSize.w+.5),12,64);
+    vec4 nearLayer=vec4(0.);
+    float lowDistance=0.;
+    if(shape.z>.002 && appearance.w>.5){
+        vec2 seg=slab(ray,shape.x-shape.y*.2,shape.x+shape.y*2.5);
+        float start=max(max(seg.x,outputSize.z*.84),1.);
+        float stop=min(min(seg.y,endDistance),9500.);
+        if(stop>start){
+            nearLayer=marchClouds(ray,start,stop,steps,false,jitter,lowDistance);
+        }
+    }
+    vec4 highLayer=vec4(0.);
+    float highDistance=0.;
+    if(light.w>.5){
+        float base=shape.x+shape.y*4.0+650.;
+        float t=max(.4,shape.w)*85.;
+        vec2 seg=slab(ray,base,base+t);
+        float start=max(seg.x,outputSize.z*.7);
+        float stop=min(min(seg.y,endDistance),15000.);
+        if(stop>start){
+            highLayer=marchClouds(ray,start,stop,clamp(int(outputSize.w*.56),16,32),true,fract(jitter+.43),highDistance);
+            // Do not integrate a visually infinite horizontal sheet at grazing
+            // angles when the viewer is well outside the high cloud layer.
+            if(camera.y<base || camera.y>base+t)
+                highLayer.a*=smoothstep(.012,.075,abs(ray.y));
+        }
+    }
+    // The high cirrus layer is behind near cumulus when looking from below.
+    float alpha=nearLayer.a+(1.-nearLayer.a)*highLayer.a;
+    vec3 premult=nearLayer.rgb*nearLayer.a+highLayer.rgb*highLayer.a*(1.-nearLayer.a);
+    imageStore(u_Far,pixel,vec4(alpha>.0001?premult/alpha:vec3(0.),alpha));
+    float denom=nearLayer.a+highLayer.a*(1.-nearLayer.a);
+    imageStore(u_FarDepth,pixel,vec4(denom>.0001?
+                (lowDistance*nearLayer.a+highDistance*highLayer.a*(1.-nearLayer.a))/denom:0.));
+}
