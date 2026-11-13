@@ -20,8 +20,10 @@ import combatant.client.render.ShaderEspRenderContext;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.world.entity.HumanoidArm;
+import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer;
 import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer.ReplacementSkinCache;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import org.joml.Matrix4f;
 import net.minecraft.resources.Identifier;
 
@@ -301,14 +303,36 @@ public final class PlayerModels {
         matrices.pushPose();
         try {
             matrices.mulPose(snapshot.fitting);
-            // Both opaque and translucent surfaces are GPU-skinned. The latter are
-            // flushed at the correct world transparency boundary, not via a second
-            // per-frame CPU mesh emission into Vanilla's collector.
             int maskColor = ShaderEspRenderContext.isActive() && state instanceof EntityRenderState entityState
                     ? entityState.outlineColor : outlineColor;
             if (PlayerModelGpuRenderer.trySubmit(snapshot, matrices, originalType, light, overlay, tint, maskColor)) {
                 target.combatant$setReplacementSubmitted(true);
+                PlayerModelRenderDiagnostics.queued(snapshot.asset());
                 return true;
+            }
+            if (PlayerModelGpuRenderer.canSubmitIrisCollectorFallback()) {
+                // Keep the imported geometry in Iris' ordinary entity collector when its
+                // optional GL compute path is unavailable. Returning false here would
+                // submit the vanilla player model despite having a valid replacement.
+                int color = tint == -1 ? 0xFFFFFFFF : tint;
+                int alpha = Math.round(((color >>> 24) & 0xFF) * snapshot.opacity());
+                int effectiveTint = (color & 0x00FFFFFF) | (alpha << 24);
+                boolean submitted = false;
+                for (PlayerModelCompiler.Surface surface : snapshot.asset().surfaces()) {
+                    RenderType type = originalType.isOutline() ? originalType
+                            : surface.translucent() || snapshot.faded()
+                                    ? RenderTypes.entityTranslucent(snapshot.asset().texture())
+                                    : RenderTypes.entityCutout(snapshot.asset().texture());
+                    PlayerRigCpuRenderer.submitReplacement(collector, surface.mesh(), snapshot.rig(), matrices,
+                            type, light, overlay, effectiveTint, maskColor,
+                            snapshot.asset(), snapshot.skin(), part -> true);
+                    submitted = true;
+                }
+                if (submitted) {
+                    target.combatant$setReplacementSubmitted(true);
+                    PlayerModelRenderDiagnostics.fallback(snapshot.asset(), PlayerModelGpuRenderer.lastRejectReason());
+                    return true;
+                }
             }
             return false;
         } finally { matrices.popPose(); }

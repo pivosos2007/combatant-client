@@ -103,6 +103,7 @@ public final class PlayerModelGpuRenderer {
     private static final List<Submission> SHADER_ESP_PENDING = new ArrayList<>(2);
     private static RenderTarget shaderEspMaskTarget;
     private static boolean opaqueDrawn;
+    private static boolean irisQueued;
     // A screen can be open while the LEVEL renderer still draws the world.
     // Only the actual LevelRenderer.render lifetime determines whether a
     // submit belongs to the deferred world GPU pass.
@@ -116,6 +117,15 @@ public final class PlayerModelGpuRenderer {
     public static String lastRejectReason() { return lastReject; }
 
     private static boolean reject(String why) { lastReject = why; return false; }
+
+    /** True only for the visible world entity collector, not ESP/depth/preview captures. */
+    public static boolean canSubmitIrisCollectorFallback() {
+        return collectingWorld && entityDepthTarget == null && shaderEspMaskTarget == null
+                && !VisualPreviewRuntime.isRenderingSubject()
+                && !SeeInvisiblesVisualDepth.isCapturing()
+                && !ShaderEspRenderContext.isActive()
+                && IrisRuntime.isShaderpackRendererActive();
+    }
 
     private PlayerModelGpuRenderer() {}
 
@@ -189,6 +199,7 @@ public final class PlayerModelGpuRenderer {
                     : depthCapture ? ENTITY_DEPTH_PENDING : preview ? PREVIEW_PENDING : PENDING).add(
                     new Submission(snapshot, new Matrix4f(matrices.last().pose()), light, overlay,
                             shaderEspCapture ? outlineColor : tint));
+            if (iris) irisQueued = true;
             lastReject = "none";
             return true;
         } catch (RuntimeException | LinkageError failure) {
@@ -215,6 +226,7 @@ public final class PlayerModelGpuRenderer {
         entityDepthTarget = null;
         abortShaderEspMaskCapture();
         opaqueDrawn = false;
+        irisQueued = false;
         collectingWorld = true;
     }
 
@@ -328,8 +340,10 @@ public final class PlayerModelGpuRenderer {
 
     public static void endWorldFrame() {
         collectingWorld = false;
-        // Never replay stranded world geometry in an unrelated UI pass.
-        PENDING.clear();
+        // Iris flushes the queued rigs from its own pipeline callbacks. These can
+        // run after LevelRenderer.render returns, unlike the native world passes.
+        // The next beginWorldFrame still discards any submissions left by an aborted frame.
+        if (!irisQueued) PENDING.clear();
         opaqueDrawn = false;
     }
 
@@ -518,7 +532,10 @@ public final class PlayerModelGpuRenderer {
                     submission.overlay(), submission.tint));
         }
         IrisRuntime.drawPlayerRigs(draws, translucent);
-        if (translucent) PENDING.clear();
+        if (translucent) {
+            PENDING.clear();
+            irisQueued = false;
+        }
     }
 
     public static void reset() {
@@ -530,6 +547,7 @@ public final class PlayerModelGpuRenderer {
         abortEntityDepthCapture();
         abortShaderEspMaskCapture();
         opaqueDrawn = false;
+        irisQueued = false;
         collectingWorld = false;
         retryAfterNanos = 0;
         lastReject = "none";
@@ -539,6 +557,7 @@ public final class PlayerModelGpuRenderer {
     private static void disable(Throwable reason) {
         retryAfterNanos = System.nanoTime() + ERROR_RETRY_NS;
         PENDING.clear();
+        irisQueued = false;
         PREVIEW_PENDING.clear();
         HAND_PENDING.clear();
         previewHandMaskCapture = null;
