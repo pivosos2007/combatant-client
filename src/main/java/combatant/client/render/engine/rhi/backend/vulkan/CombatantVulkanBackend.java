@@ -14,9 +14,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.commands.CommandEncoder;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.rhi.*;
-import net.minecraft.client.Minecraft;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fStack;
 import org.joml.Vector4f;
 import org.joml.Vector4fc;
 import combatant.client.render.engine.RenderState;
@@ -100,13 +98,6 @@ public final class CombatantVulkanBackend implements CombatantRhi {
         return modelViewScratch.identity();
     }
 
-
-    private static void applyCameraPosY(Matrix4fStack stack) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.gameRenderer == null || mc.gameRenderer.mainCamera() == null) return;
-        double y = mc.gameRenderer.mainCamera().position().y;
-        stack.translate(0.0f, (float) -y, 0.0f);
-    }
 
     @Override
     public DynamicMeshBackend dynamicMeshes() {
@@ -232,11 +223,10 @@ public final class CombatantVulkanBackend implements CombatantRhi {
                             PassBindingCache bindings) {
         command.mesh.validateForDraw(command.label);
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
-            boolean pushMv = command.transform != null || command.applyWorldCameraY;
+            boolean pushMv = command.transform != null;
             try {
                 if (pushMv) RenderSystem.getModelViewStack().pushMatrix();
                 if (command.transform != null) RenderSystem.getModelViewStack().mul(command.transform);
-                if (command.applyWorldCameraY) applyCameraPosY(RenderSystem.getModelViewStack());
 
                 RenderPipelineSpec resolvedSpec = command.pipelineSpec != null
                         ? command.pipelineSpec : pipelines.require(command.pipeline);

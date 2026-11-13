@@ -83,7 +83,8 @@ public enum WorldWideLineMeshCompiler {
             POOL.put(pipeline, out);
         }
         if (out.isBuilding()) out.close();
-        out.beginWorld(new net.minecraft.world.phys.Vec3(source.cameraAnchorX(), 0.0, source.cameraAnchorZ()));
+        // Source positions already have the camera subtracted on all axes.
+        out.beginWorld(net.minecraft.world.phys.Vec3.ZERO);
         out.reserve(Math.max(4, lineCount * 4), Math.max(6, lineCount * 6));
 
         ByteBuffer vertices = source.vertexBufferView();
@@ -100,7 +101,7 @@ public enum WorldWideLineMeshCompiler {
             if (!validIndex(a, vertexCount) || !validIndex(b, vertexCount)) {
                 continue;
             }
-            appendLine(out, vertexBase, stride, source.cameraAnchorX(), source.cameraAnchorZ(), a, b, width);
+            appendLine(out, vertexBase, stride, a, b, width);
             validLines++;
         }
 
@@ -116,8 +117,6 @@ public enum WorldWideLineMeshCompiler {
     private static void appendLine(MeshBuilder out,
                                    long vertices,
                                    int stride,
-                                   double cameraX,
-                                   double cameraZ,
                                    int a,
                                    int b,
                                    float width) {
@@ -142,10 +141,10 @@ public enum WorldWideLineMeshCompiler {
 
         out.ensureCapacity(4, 6);
 
-        int aNeg = endpoint(out, ax + cameraX, ay, az + cameraZ, ar, ag, ab, aa, bx, by, bz, -width);
-        int aPos = endpoint(out, ax + cameraX, ay, az + cameraZ, ar, ag, ab, aa, bx, by, bz, width);
-        int bPos = endpoint(out, bx + cameraX, by, bz + cameraZ, br, bg, bb, ba, ax, ay, az, -width);
-        int bNeg = endpoint(out, bx + cameraX, by, bz + cameraZ, br, bg, bb, ba, ax, ay, az, width);
+        int aNeg = endpoint(out, ax, ay, az, ar, ag, ab, aa, bx, by, bz, -width);
+        int aPos = endpoint(out, ax, ay, az, ar, ag, ab, aa, bx, by, bz, width);
+        int bPos = endpoint(out, bx, by, bz, br, bg, bb, ba, ax, ay, az, -width);
+        int bNeg = endpoint(out, bx, by, bz, br, bg, bb, ba, ax, ay, az, width);
 
         out.quad(aNeg, bNeg, bPos, aPos);
     }

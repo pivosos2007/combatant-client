@@ -41,7 +41,6 @@ public final class RhiDrawCommand {
     public final GpuMeshHandle mesh;
     public final int instanceCount;
     public final @Nullable Matrix4f transform;
-    public final boolean applyWorldCameraY;
     public final float lineWidth;
     public final List<RhiUniformBinding> uniforms;
     public final List<RhiSamplerBinding> samplers;
@@ -59,7 +58,6 @@ public final class RhiDrawCommand {
         this.mesh = b.mesh;
         this.instanceCount = b.instanceCount;
         this.transform = b.transform;
-        this.applyWorldCameraY = b.applyWorldCameraY;
         this.lineWidth = b.lineWidth;
         this.uniforms = b.uniforms == null ? List.of() : List.copyOf(b.uniforms);
         this.samplers = b.samplers == null ? List.of() : List.copyOf(b.samplers);
@@ -98,7 +96,6 @@ public final class RhiDrawCommand {
                 .mesh(mesh)
                 .instanceCount(instanceCount)
                 .transform(transform)
-                .applyWorldCameraY(applyWorldCameraY)
                 .lineWidth(lineWidth)
                 .uiUnderlayReplay(true);
         for (RhiUniformBinding uniform : uniforms) copy.uniform(uniform.name(), uniform.slice());
@@ -119,7 +116,6 @@ public final class RhiDrawCommand {
         private GpuMeshHandle mesh;
         private int instanceCount = 1;
         private @Nullable Matrix4f transform;
-        private boolean applyWorldCameraY;
         private float lineWidth = 1.0f;
         private boolean uiUnderlayReplay;
 
@@ -192,11 +188,6 @@ public final class RhiDrawCommand {
 
         public Builder transform(@Nullable Matrix4f transform) {
             this.transform = transform != null ? new Matrix4f(transform) : null;
-            return this;
-        }
-
-        public Builder applyWorldCameraY(boolean applyWorldCameraY) {
-            this.applyWorldCameraY = applyWorldCameraY;
             return this;
         }
 

@@ -168,7 +168,6 @@ public final class WorldPassCompiler {
                     .depthAttachment(depthAttachment)
                     .mesh(uploaded)
                     .transform(transform)
-                    .applyWorldCameraY(true)
                     .lineWidth(1.0f);
 
             bindWorldPolicy(ctx, spec, draw);

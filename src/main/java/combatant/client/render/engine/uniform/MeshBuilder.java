@@ -61,7 +61,7 @@ public final class MeshBuilder implements AutoCloseable {
     private int indicesCount;
     private boolean building;
     private boolean worldCameraAnchored;
-    private double cameraX, cameraZ;
+    private double cameraX, cameraY, cameraZ;
 
     private static boolean resolveDebug() {
         String configured = System.getProperty("combatant.render.debug");
@@ -146,11 +146,10 @@ public final class MeshBuilder implements AutoCloseable {
     /**
      * Begin a world-space mesh with an explicit camera anchor.
      *
-     * <p>World vertices keep full Y, but X/Z are written camera-relative to avoid
-     * float precision loss. The RHI world pass then applies the matching -cameraY
-     * translation immediately before writing the MeshData UBO. Do not make this
-     * depend on ambient RenderState in world command paths: the caller must pass
-     * the camera that belongs to the current frame.</p>
+     * <p>All three coordinates are written camera-relative, with subtraction in double
+     * precision before conversion to GPU floats. The world view matrix must contain
+     * rotation only, with no additional camera-position translation. The caller must
+     * supply the camera belonging to the current frame.</p>
      */
     public void beginWorld(Vec3 cameraPos) {
         if (cameraPos == null) {
@@ -170,6 +169,7 @@ public final class MeshBuilder implements AutoCloseable {
 
         this.worldCameraAnchored = worldCameraAnchored;
         this.cameraX = worldCameraAnchored ? cameraPos.x : 0.0;
+        this.cameraY = worldCameraAnchored ? cameraPos.y : 0.0;
         this.cameraZ = worldCameraAnchored ? cameraPos.z : 0.0;
 
         building = true;
@@ -192,7 +192,7 @@ public final class MeshBuilder implements AutoCloseable {
         long p = verticesPtr;
 
         memPutFloat(p, (float) (x - cameraX));
-        memPutFloat(p + 4, (float) y);
+        memPutFloat(p + 4, (float) (y - cameraY));
         memPutFloat(p + 8, (float) (z - cameraZ));
 
         verticesPtr += 12;
@@ -668,6 +668,10 @@ public final class MeshBuilder implements AutoCloseable {
         return cameraX;
     }
 
+    public double cameraAnchorY() {
+        return cameraY;
+    }
+
     public double cameraAnchorZ() {
         return cameraZ;
     }
@@ -742,6 +746,7 @@ public final class MeshBuilder implements AutoCloseable {
         indicesCount = 0;
         worldCameraAnchored = false;
         cameraX = 0.0;
+        cameraY = 0.0;
         cameraZ = 0.0;
     }
 

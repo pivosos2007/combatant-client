@@ -15,9 +15,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.rhi.*;
 import combatant.client.util.logging.DebugLog;
-import net.minecraft.client.Minecraft;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fStack;
 import org.joml.Vector4f;
 import org.joml.Vector4fc;
 import org.lwjgl.PointerBuffer;
@@ -26,7 +24,6 @@ import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.ViewportContext;
 import combatant.client.render.engine.profiler.RenderCostProfiler;
 import combatant.client.render.engine.rhi.backend.gl.clip.GlStencilShapeClipBackend;
-import combatant.client.render.engine.rhi.backend.gl.GlAdvancedShaderBackend;
 import combatant.client.render.engine.rhi.backend.gl.state.GlPipelineStateBackend;
 import combatant.client.render.engine.rhi.blit.GlTextureBlitter;
 import combatant.client.render.engine.rhi.blit.TextureBlitter;
@@ -109,13 +106,6 @@ public final class CombatantGlBackend implements CombatantRhi {
         return modelViewScratch.identity();
     }
 
-
-    private static void applyCameraPosY(Matrix4fStack mv) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.gameRenderer == null || mc.gameRenderer.mainCamera() == null) return;
-        var cameraPos = mc.gameRenderer.mainCamera().position();
-        mv.translate(0.0f, (float) -cameraPos.y, 0.0f);
-    }
 
     @Override
     public DynamicMeshBackend dynamicMeshes() {
@@ -288,13 +278,12 @@ public final class CombatantGlBackend implements CombatantRhi {
     private void drawInPass(RenderPass pass, RhiDrawCommand command, boolean bindPipeline, PassBindingCache bindings) {
         // GpuMeshHandle.drawIndexed() validates the range itself; validating here as well doubled the work.
         try (RenderCostProfiler.Scope ignoredCost = RenderCostProfiler.rhiDraw(command.label)) {
-            boolean pushMv = command.transform != null || command.applyWorldCameraY;
+            boolean pushMv = command.transform != null;
             float previousLineWidth = RenderState.lineWidth;
             try {
                 RenderState.lineWidth = command.lineWidth > 0.0f ? command.lineWidth : previousLineWidth;
                 if (pushMv) RenderSystem.getModelViewStack().pushMatrix();
                 if (command.transform != null) RenderSystem.getModelViewStack().mul(command.transform);
-                if (command.applyWorldCameraY) applyCameraPosY(RenderSystem.getModelViewStack());
 
                 BindingCounts emitted = bindDrawState(pass, command, bindPipeline, bindings);
                 stats.pipelineUse(command.pipeline, command.pipelineSpec, emitted.uniforms(), emitted.samplers(), bindPipeline);
@@ -317,13 +306,12 @@ public final class CombatantGlBackend implements CombatantRhi {
                 commands.get(i).mesh.validateForDraw(commands.get(i).label);
             }
 
-            boolean pushMv = first.transform != null || first.applyWorldCameraY;
+            boolean pushMv = first.transform != null;
             float previousLineWidth = RenderState.lineWidth;
             try {
                 RenderState.lineWidth = first.lineWidth > 0.0f ? first.lineWidth : previousLineWidth;
                 if (pushMv) RenderSystem.getModelViewStack().pushMatrix();
                 if (first.transform != null) RenderSystem.getModelViewStack().mul(first.transform);
-                if (first.applyWorldCameraY) applyCameraPosY(RenderSystem.getModelViewStack());
                 BindingCounts emitted = bindDrawState(pass, first, bindPipeline, bindings);
 
                 int drawCount = end - start;
@@ -424,7 +412,6 @@ public final class CombatantGlBackend implements CombatantRhi {
                 && first.mesh.indexBuffer() == next.mesh.indexBuffer()
                 && first.mesh.indexType() == next.mesh.indexType()
                 && Float.compare(first.lineWidth, next.lineWidth) == 0
-                && first.applyWorldCameraY == next.applyWorldCameraY
                 && java.util.Objects.equals(first.transform, next.transform)
                 && first.uniforms.equals(next.uniforms)
                 && first.samplers.equals(next.samplers);

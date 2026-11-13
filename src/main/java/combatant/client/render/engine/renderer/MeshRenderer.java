@@ -19,12 +19,8 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.Minecraft;
-import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fStack;
-import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.rhi.GpuMeshHandle;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
@@ -75,17 +71,6 @@ public final class MeshRenderer {
         if (taken) throw new IllegalStateException("Previous MeshRenderer.begin() was not ended.");
         taken = true;
         return INSTANCE;
-    }
-
-    /**
-     * Apply camera Y translation in MV (X/Z handled in MeshBuilder for precision).
-     */
-    private static void applyCameraPosY(Matrix4fStack mv) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null) return;
-
-        Vec3 cameraPos = mc.gameRenderer.mainCamera().position();
-        mv.translate(0.0f, (float) -cameraPos.y, 0.0f);
     }
 
     public MeshRenderer attachments(GpuTextureView color, @Nullable GpuTextureView depth) {
@@ -179,8 +164,7 @@ public final class MeshRenderer {
                     .depthAttachment(depthAttachment)
                     .clearColor(clearColorArgb)
                     .mesh(uploaded)
-                    .transform(transform)
-                    .applyWorldCameraY(RenderState.rendering3D);
+                    .transform(transform);
 
             for (var e : uniforms.entrySet()) {
                 command.uniform(e.getKey(), e.getValue());
