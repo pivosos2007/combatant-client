@@ -43,7 +43,7 @@ import static combatant.client.features.theme.Theme.theme;
         description = "hud.draggable.system_time.description")
 public final class SystemTime extends DraggableHudElement implements ScriptableHudStatWidget {
 
-    private static final float SCALE_MULT = 0.68f;
+    private static final float SCALE_MULT = 1.53f;
     private static final float BOX_HEIGHT = 20f;
     private static final float BOX_RADIUS = 5f;
     private static final float BOX_SOFTNESS = 1.0f;
@@ -80,7 +80,7 @@ public final class SystemTime extends DraggableHudElement implements ScriptableH
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final BooleanValue showSeconds = bool("system_time_seconds", false);
-    private final NumberValue<Double> scale = num("system_time_scale", 2.37, 0.5, 5.0);
+    private final NumberValue<Double> scale = num("system_time_scale", 1.0, 0.5, 5.0);
     private final ModeValue colorMode = mode("system_time_color_mode", "color_mode", "Theme", new String[]{COLOR_THEME, COLOR_CUSTOM});
     private final ModeValue panelStyle = visibleWhen(
             mode("system_time_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,

@@ -11,6 +11,7 @@ import combatant.client.config.ConfigPaths;
 import combatant.client.config.persist.AtomicFileStore;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.WorldChangeEvent;
+import combatant.client.events.impl.GameTickEvent;
 import combatant.client.features.command.CommandOutput;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.client.Minecraft;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
@@ -37,19 +39,24 @@ import java.util.TreeMap;
  *
  * <p>One profile per (type, world key) is stored in
  * {@code profiles/server-bindings.properties} as {@code <type>|<world key>=<profile id>}.
- * Local worlds use {@code local:<folder>} keys. The active profile is saved before a different
- * profile is applied and on disconnect; a bound profile is loaded once per world connection.
+ * Local worlds use {@code local:<folder>} keys. Bound profiles are saved after a quiet period
+ * when their settings change, and synchronously before leaving or switching worlds.
  */
 public final class ConfigServerBindings {
     public static final ConfigServerBindings INSTANCE = new ConfigServerBindings();
 
     private static final String FILE_NAME = "server-bindings.properties";
     private static final int DEFAULT_PORT = 25565;
+    private static final int AUTO_SAVE_POLL_TICKS = 20;
+    private static final long AUTO_SAVE_QUIET_NANOS = 1_000_000_000L;
+    private static final long AUTO_SAVE_MAX_NANOS = 10_000_000_000L;
 
+    private final ConfigProfileCollector collector = new ConfigProfileCollector();
     private final Map<String, String> bindings = new LinkedHashMap<>();
     private final Path bindingsFile;
     private final EnumMap<ConfigProfileType, ActiveProfile> active = new EnumMap<>(ConfigProfileType.class);
     private boolean loaded;
+    private int autoSaveTicks;
     /** World key last processed for automatic loading; reset on disconnect. */
     private String appliedFor = "";
 
@@ -112,22 +119,67 @@ public final class ConfigServerBindings {
 
     public synchronized String activeProfile(ConfigProfileType type) {
         ActiveProfile profile = active.get(type);
-        return profile == null ? null : profile.id();
+        return profile == null ? null : profile.id;
     }
 
     public synchronized String activeContext(ConfigProfileType type) {
         ActiveProfile profile = active.get(type);
-        return profile == null ? "" : profile.context();
+        return profile == null ? "" : profile.context;
     }
 
-    /** Save before replacing a live profile, preserving its existing .cbcfg backup. */
+    /** Saves edits to the previous live profile before applying a different one. */
     public synchronized void beforeApply(ConfigProfileType type, String nextId) throws IOException {
         ActiveProfile previous = active.get(type);
-        if (previous != null && !previous.id().equals(nextId)) saveActive(type, previous);
+        if (previous != null && !previous.id.equals(nextId)) saveActive(type, previous);
     }
 
-    public synchronized void applied(ConfigProfileType type, String id) {
-        active.put(type, new ActiveProfile(id, currentAddress()));
+    /** Called after the profile has been applied, so the baseline reflects the actual runtime values. */
+    public synchronized void applied(ConfigProfileType type, ConfigProfileSnapshot snapshot) {
+        active.put(type, new ActiveProfile(snapshot.meta().getId(), currentAddress(),
+                collector.collectEntries(type)));
+    }
+
+    /** Aligns dirty tracking with an explicit manual overwrite. */
+    public synchronized void saved(ConfigProfileType type, String id, List<ConfigProfileEntry> entries) {
+        ActiveProfile profile = active.get(type);
+        if (profile != null && profile.id.equals(id)) profile.acceptSaved(entries);
+    }
+
+    @EventHandler
+    public synchronized void onGameTick(GameTickEvent event) {
+        if (++autoSaveTicks < AUTO_SAVE_POLL_TICKS) return;
+        autoSaveTicks = 0;
+        if (active.isEmpty()) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.level == null) return;
+        String address = currentAddress();
+        if (address.isEmpty()) return;
+        long now = System.nanoTime();
+        for (var entry : new ArrayList<>(active.entrySet())) {
+            ConfigProfileType type = entry.getKey();
+            ActiveProfile profile = entry.getValue();
+            if (!address.equals(profile.context) || !profile.id.equals(boundProfile(type, address))) continue;
+            try {
+                List<ConfigProfileEntry> current = collector.collectEntries(type);
+                if (!ConfigProfileChangeSet.hasChanges(profile.baseline, current)) {
+                    profile.resetPending();
+                    continue;
+                }
+                if (profile.firstDirtyAt == 0L) {
+                    profile.firstDirtyAt = now;
+                    profile.lastChangedAt = now;
+                }
+                if (!current.equals(profile.lastObserved)) {
+                    profile.lastObserved = current;
+                    profile.lastChangedAt = now;
+                }
+                if (now - profile.lastChangedAt < AUTO_SAVE_QUIET_NANOS
+                        && now - profile.firstDirtyAt < AUTO_SAVE_MAX_NANOS) continue;
+                saveActive(type, profile, current);
+            } catch (IOException | RuntimeException e) {
+                DebugLog.error("Failed to auto-save bound profile %s", e, profile.id);
+            }
+        }
     }
 
     public synchronized void flushActive() {
@@ -135,15 +187,29 @@ public final class ConfigServerBindings {
             try {
                 saveActive(entry.getKey(), entry.getValue());
             } catch (IOException | RuntimeException e) {
-                DebugLog.error("Failed to auto-save active profile %s", e, entry.getValue().id());
+                DebugLog.error("Failed to auto-save active profile %s", e, entry.getValue().id);
             }
         }
     }
 
     private void saveActive(ConfigProfileType type, ActiveProfile profile) throws IOException {
-        if (!ConfigProfileService.INSTANCE.storage().exists(type, profile.id())) return;
-        ConfigProfileSnapshot snapshot = ConfigProfileService.INSTANCE.read(type, profile.id());
-        ConfigProfileService.INSTANCE.overwriteCurrent(snapshot.meta());
+        saveActive(type, profile, collector.collectEntries(type));
+    }
+
+    private void saveActive(ConfigProfileType type, ActiveProfile profile,
+                            List<ConfigProfileEntry> current) throws IOException {
+        if (!ConfigProfileChangeSet.hasChanges(profile.baseline, current)) {
+            profile.resetPending();
+            return;
+        }
+        if (!ConfigProfileService.INSTANCE.storage().exists(type, profile.id)) return;
+        ConfigProfileSnapshot stored = ConfigProfileService.INSTANCE.read(type, profile.id);
+        List<ConfigProfileEntry> merged = ConfigProfileChangeSet.merge(stored.entries(), profile.baseline, current);
+        if (!merged.equals(stored.entries())) {
+            ConfigProfileService.INSTANCE.storage().save(new ConfigProfileSnapshot(
+                    stored.meta().withUpdatedAt(System.currentTimeMillis()), merged));
+        }
+        profile.acceptSaved(current);
     }
 
     public synchronized void set(ConfigProfileType type, String id, String context) throws IOException {
@@ -206,7 +272,32 @@ public final class ConfigServerBindings {
         return key(type, normalized);
     }
 
-    private record ActiveProfile(String id, String context) { }
+    private static final class ActiveProfile {
+        private String id;
+        private final String context;
+        private List<ConfigProfileEntry> baseline;
+        private List<ConfigProfileEntry> lastObserved;
+        private long firstDirtyAt;
+        private long lastChangedAt;
+
+        private ActiveProfile(String id, String context, List<ConfigProfileEntry> baseline) {
+            this.id = id;
+            this.context = context;
+            acceptSaved(baseline);
+        }
+
+        private void acceptSaved(List<ConfigProfileEntry> entries) {
+            baseline = entries;
+            lastObserved = entries;
+            resetPending();
+        }
+
+        private void resetPending() {
+            firstDirtyAt = 0L;
+            lastChangedAt = 0L;
+            lastObserved = baseline;
+        }
+    }
 
     public synchronized String boundProfile(ConfigProfileType type, String address) {
         ensureLoaded();
@@ -255,7 +346,7 @@ public final class ConfigServerBindings {
         }
         if (changed) saveQuietly();
         ActiveProfile live = active.get(type);
-        if (live != null && live.id().equals(oldId)) active.put(type, new ActiveProfile(newId, live.context()));
+        if (live != null && live.id.equals(oldId)) live.id = newId;
     }
 
     /** Drops every binding to a deleted profile. */
@@ -265,10 +356,10 @@ public final class ConfigServerBindings {
         boolean changed = bindings.entrySet().removeIf(e -> e.getKey().startsWith(prefix) && e.getValue().equals(profileId));
         if (changed) saveQuietly();
         ActiveProfile live = active.get(type);
-        if (live != null && live.id().equals(profileId)) active.remove(type);
+        if (live != null && live.id.equals(profileId)) active.remove(type);
     }
 
-    @EventHandler
+    @EventHandler(priority = 1000)
     public synchronized void onWorldChange(WorldChangeEvent event) {
         if (event.reason() == WorldChangeEvent.Reason.DISCONNECT) {
             flushActive();
@@ -276,6 +367,9 @@ public final class ConfigServerBindings {
             appliedFor = "";
             return;
         }
+        // This event fires before setLevel replaces the old world. Preserve that world's edits
+        // while the old runtime state is still available.
+        flushActive();
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
         // The event fires at setLevel HEAD. Resolve the local world path only after setLevel returns.
@@ -283,7 +377,6 @@ public final class ConfigServerBindings {
             if (mc.level == null) return;
             String address = currentAddress();
             if (address.isEmpty() || address.equals(appliedFor)) return;
-            flushActive();
             active.clear();
             appliedFor = address;
             applyFor(address);

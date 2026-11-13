@@ -41,27 +41,31 @@ public final class HudGlassSettings {
     private final NumberValue<Float> themeBlend;
 
     public HudGlassSettings(String owner, UiGlassOpticsSpec defaults) {
+        this(owner, defaults, defaults);
+    }
+
+    public HudGlassSettings(String owner, UiGlassOpticsSpec defaults, UiGlassOpticsSpec initialValues) {
         this.defaults = defaults;
         String prefix = owner + "_glass_";
         customize = new BooleanValue(prefix + "customize", false);
         themeBlend = number(prefix, "theme_blend", 0.30f, 0f, 1f);
-        refraction = number(prefix, "refraction", defaults.refraction(), -0.08f, 0.08f);
-        chromatic = number(prefix, "chromatic", defaults.chromaticAberration(), 0f, 0.95f);
-        magnification = number(prefix, "magnification", defaults.magnification(), 0.65f, 1.8f);
-        bevelWidth = number(prefix, "bevel_width", defaults.bevelWidth(), 0.001f, 1f);
-        bevelDepth = number(prefix, "bevel_depth", defaults.bevelDepth(), -0.15f, 0.15f);
-        cleanReveal = number(prefix, "clean_reveal", defaults.cleanReveal(), 0f, 1f);
-        interaction = number(prefix, "interaction", defaults.interactionStrength(), 0f, 5f);
-        interactionRadius = number(prefix, "interaction_radius", defaults.interactionRadius(), 0f, 2f);
-        viscosity = number(prefix, "viscosity", defaults.interactionViscosity(), 0f, 1f);
-        thickness = number(prefix, "optical_thickness", defaults.opticalThickness(), 0f, 2.5f);
-        refractiveIndex = number(prefix, "ior", defaults.refractiveIndex(), 1f, 2f);
-        roughness = number(prefix, "roughness", defaults.surfaceRoughness(), 0f, 1f);
-        frost = number(prefix, "frost", defaults.frost(), 0f, 1f);
-        filmThickness = number(prefix, "film_thickness", defaults.filmThicknessNm(), 0f, 1200f);
-        filmStrength = number(prefix, "film_strength", defaults.filmStrength(), 0f, 1f);
-        coating = number(prefix, "reactive_coating", defaults.reactiveCoating(), 0f, 1f);
-        specular = new BooleanValue(prefix + "specular", defaults.specular());
+        refraction = number(prefix, "refraction", initialValues.refraction(), -0.08f, 0.08f);
+        chromatic = number(prefix, "chromatic", initialValues.chromaticAberration(), 0f, 0.95f);
+        magnification = number(prefix, "magnification", initialValues.magnification(), 0.65f, 1.8f);
+        bevelWidth = number(prefix, "bevel_width", initialValues.bevelWidth(), 0.001f, 1f);
+        bevelDepth = number(prefix, "bevel_depth", initialValues.bevelDepth(), -0.15f, 0.15f);
+        cleanReveal = number(prefix, "clean_reveal", initialValues.cleanReveal(), 0f, 1f);
+        interaction = number(prefix, "interaction", initialValues.interactionStrength(), 0f, 5f);
+        interactionRadius = number(prefix, "interaction_radius", initialValues.interactionRadius(), 0f, 2f);
+        viscosity = number(prefix, "viscosity", initialValues.interactionViscosity(), 0f, 1f);
+        thickness = number(prefix, "optical_thickness", initialValues.opticalThickness(), 0f, 2.5f);
+        refractiveIndex = number(prefix, "ior", initialValues.refractiveIndex(), 1f, 2f);
+        roughness = number(prefix, "roughness", initialValues.surfaceRoughness(), 0f, 1f);
+        frost = number(prefix, "frost", initialValues.frost(), 0f, 1f);
+        filmThickness = number(prefix, "film_thickness", initialValues.filmThicknessNm(), 0f, 1200f);
+        filmStrength = number(prefix, "film_strength", initialValues.filmStrength(), 0f, 1f);
+        coating = number(prefix, "reactive_coating", initialValues.reactiveCoating(), 0f, 1f);
+        specular = new BooleanValue(prefix + "specular", initialValues.specular());
     }
 
     private static NumberValue<Float> number(String prefix, String name, float initial, float min, float max) {

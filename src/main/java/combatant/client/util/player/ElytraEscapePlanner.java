@@ -8,11 +8,19 @@ package combatant.client.util.player;
 
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.player.ElytraFlightPhysics.FlightModel;
+import combatant.client.util.player.ElytraFlightPhysics.GlideHeading;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /** Evaluates swept collision paths under gliding and attached-firework acceleration. */
@@ -47,17 +55,95 @@ public final class ElytraEscapePlanner {
     }
 
     public static CollisionWorld world(LocalPlayer player) {
-        return new CollisionWorld() {
-            @Override
-            public boolean loaded(AABB bounds, Vec3 movement) {
-                return ElytraImpactDamageUtil.hasLoadedSweep(player, bounds, movement);
-            }
+        return new CachedCollisionWorld(player);
+    }
 
-            @Override
-            public Vec3 move(AABB bounds, Vec3 movement) {
-                return ElytraImpactDamageUtil.allowedMovement(player, bounds, movement);
+    public static CollisionWorld searchWorld(LocalPlayer player) {
+        CachedCollisionWorld world = new CachedCollisionWorld(player);
+        world.probeEmptySpace = true;
+        return world;
+    }
+
+    /** The collision cache is scoped to one synchronous evaluation on the client thread. */
+    private static final class CachedCollisionWorld implements CollisionWorld {
+        private static final int CELL_SIZE = 4;
+        private static final int MAX_PROBES = 32;
+        private final LocalPlayer player;
+        private final Map<Long, Boolean> loadedChunks = new HashMap<>();
+        private final Set<Cell> probed = new HashSet<>();
+        private final List<AABB> emptyVolumes = new ArrayList<>();
+        private int probes;
+        private boolean probeEmptySpace;
+
+        private CachedCollisionWorld(LocalPlayer player) {
+            this.player = player;
+        }
+
+        @Override
+        public boolean loaded(AABB bounds, Vec3 movement) {
+            return loadedBox(bounds.expandTowards(movement));
+        }
+
+        @Override
+        public Vec3 move(AABB bounds, Vec3 movement) {
+            AABB swept = bounds.expandTowards(movement);
+            if (probeEmptySpace && (insideKnownEmptyVolume(swept) || probeEmptyVolume(swept))) {
+                return movement;
             }
-        };
+            return ElytraImpactDamageUtil.allowedMovement(player, bounds, movement);
+        }
+
+        private boolean loadedBox(AABB bounds) {
+            int minX = Mth.floor(bounds.minX) >> 4;
+            int maxX = Mth.floor(bounds.maxX) >> 4;
+            int minZ = Mth.floor(bounds.minZ) >> 4;
+            int maxZ = Mth.floor(bounds.maxZ) >> 4;
+            for (int x = minX; x <= maxX; x++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    long key = ((long) x << 32) | (z & 0xffffffffL);
+                    Boolean loaded = loadedChunks.get(key);
+                    if (loaded == null) {
+                        loaded = player.level().hasChunkAt(new BlockPos(x << 4, Mth.floor(bounds.minY), z << 4));
+                        loadedChunks.put(key, loaded);
+                    }
+                    if (!loaded) return false;
+                }
+            }
+            return true;
+        }
+
+        private boolean insideKnownEmptyVolume(AABB query) {
+            for (AABB region : emptyVolumes) {
+                if (contains(region, query)) return true;
+            }
+            return false;
+        }
+
+        private boolean probeEmptyVolume(AABB query) {
+            if (probes >= MAX_PROBES) return false;
+            Cell cell = new Cell(Mth.floor(query.getCenter().x / CELL_SIZE),
+                    Mth.floor(query.getCenter().y / CELL_SIZE),
+                    Mth.floor(query.getCenter().z / CELL_SIZE));
+            AABB region = new AABB(
+                    cell.x() * CELL_SIZE - 1.0, cell.y() * CELL_SIZE - 1.0, cell.z() * CELL_SIZE - 1.0,
+                    (cell.x() + 1) * CELL_SIZE + 1.0,
+                    (cell.y() + 1) * CELL_SIZE + 1.0,
+                    (cell.z() + 1) * CELL_SIZE + 1.0);
+            if (!contains(region, query) || !probed.add(cell)) return false;
+            probes++;
+            if (!loadedBox(region) || !player.level().noCollision(player, region)) return false;
+            emptyVolumes.add(region);
+            return true;
+        }
+
+        private static boolean contains(AABB outer, AABB inner) {
+            return inner.minX >= outer.minX && inner.maxX <= outer.maxX
+                    && inner.minY >= outer.minY && inner.maxY <= outer.maxY
+                    && inner.minZ >= outer.minZ && inner.maxZ <= outer.maxZ;
+        }
+
+        private record Cell(int x, int y, int z) {
+        }
     }
 
     public static int horizon(Vec3 velocity, Rotation heading, double clearance, int minimum, FlightModel physics) {
@@ -66,8 +152,9 @@ public final class ElytraEscapePlanner {
                 ? Rotation.fromRotationVec(forward.scale(-1)) : heading;
         int recovery = 1;
         Vec3 braking = velocity;
+        GlideHeading reverseHeading = ElytraFlightPhysics.prepare(reverse);
         for (; recovery < MAX_HORIZON; recovery++) {
-            braking = physics.glide(braking, reverse);
+            braking = physics.glide(braking, reverseHeading);
             if (braking.dot(forward) <= 0.3) break;
         }
         double speed = Math.max(0.3, Math.max(velocity.length(),
@@ -82,18 +169,19 @@ public final class ElytraEscapePlanner {
 
     public static Trajectory forecast(CollisionWorld world, AABB bounds, Vec3 velocity, Rotation heading,
                                       int ticks, FlightModel physics, Vec3 avoidPoint) {
-        Trajectory result = forecast(world, bounds, velocity, heading, ticks, physics,
+        GlideHeading prepared = ElytraFlightPhysics.prepare(heading);
+        Trajectory result = forecast(world, bounds, velocity, heading, prepared, ticks, physics,
                 physics.guaranteedBoostTicks(), false, avoidPoint);
         if (physics.possibleBoostTicks() != physics.guaranteedBoostTicks()) {
-            result = worst(result, forecast(world, bounds, velocity, heading, ticks, physics,
+            result = worst(result, forecast(world, bounds, velocity, heading, prepared, ticks, physics,
                     physics.possibleBoostTicks(), false, avoidPoint));
         }
         if (physics.possibleBoostTicks() > 0) {
-            result = worst(result, forecast(world, bounds, velocity, heading, ticks, physics,
+            result = worst(result, forecast(world, bounds, velocity, heading, prepared, ticks, physics,
                     physics.possibleBoostTicks(), true, avoidPoint));
             if (physics.guaranteedBoostTicks() > 0
                     && physics.possibleBoostTicks() != physics.guaranteedBoostTicks()) {
-                result = worst(result, forecast(world, bounds, velocity, heading, ticks, physics,
+                result = worst(result, forecast(world, bounds, velocity, heading, prepared, ticks, physics,
                         physics.guaranteedBoostTicks(), true, avoidPoint));
             }
         }
@@ -101,7 +189,8 @@ public final class ElytraEscapePlanner {
     }
 
     private static Trajectory forecast(CollisionWorld world, AABB bounds, Vec3 velocity, Rotation heading,
-                                       int ticks, FlightModel physics, int boostTicks, boolean boostBeforeMove,
+                                       GlideHeading prepared, int ticks, FlightModel physics,
+                                       int boostTicks, boolean boostBeforeMove,
                                        Vec3 avoidPoint) {
         float totalDamage = 0;
         int impactTick = 0;
@@ -110,7 +199,7 @@ public final class ElytraEscapePlanner {
         double nearestDistance = Double.POSITIVE_INFINITY;
         for (int tick = 1; tick <= ticks; tick++) {
             if (boostBeforeMove) velocity = physics.afterMove(velocity, heading, tick, boostTicks);
-            Vec3 attempted = physics.glide(velocity, heading);
+            Vec3 attempted = physics.glide(velocity, prepared);
             if (!finite(attempted) || !world.loaded(bounds, attempted)) {
                 return new Trajectory(totalDamage, impactTick, true, blockedSteering,
                         bounds.getCenter(), nearestDistance, firstCollisionTick);
@@ -191,6 +280,7 @@ public final class ElytraEscapePlanner {
                                                FlightModel physics, Trajectory baseline,
                                                UnaryOperator<Rotation> normalize) {
         if (baseline.safe()) return null;
+        if (world instanceof CachedCollisionWorld cached) cached.probeEmptySpace = true;
         EscapeChoice best = null;
         if (committed != null) {
             Trajectory held = forecast(world, bounds, velocity, committed, horizon, physics);

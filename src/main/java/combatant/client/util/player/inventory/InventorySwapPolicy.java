@@ -10,7 +10,7 @@ package combatant.client.util.player.inventory;
 import combatant.client.config.values.EnumValue;
 
 public enum InventorySwapPolicy implements EnumValue.IdProvider {
-    NONE("none"), GRIM_STRICT("grim_strict"), LEGIT("legit");
+    NONE("none"), VULCAN("vulcan"), GRIM_STRICT("grim_strict"), LEGIT("legit");
 
     private final String id;
 

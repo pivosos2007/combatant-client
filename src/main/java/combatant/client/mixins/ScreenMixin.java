@@ -35,6 +35,7 @@ import combatant.client.render.engine.renderer.Renderer2D;
 import combatant.client.render.engine.svg.SvgRenderOptions;
 import combatant.client.render.engine.core.RenderPhase;
 import combatant.client.render.engine.core.RenderPhaseScope;
+import combatant.client.runtime.RuntimeGate;
 import combatant.client.util.NarratorBlocker;
 import combatant.client.util.proxy.ProxyBackend;
 import combatant.client.util.proxy.ProxyEntry;
@@ -122,7 +123,7 @@ public abstract class ScreenMixin {
     @Inject(method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V", at = @At("RETURN"))
     private void combatant$renderProxyEntry(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
         Screen self = (Screen) (Object) this;
-        if (!(self instanceof JoinMultiplayerScreen)) return;
+        if (!(self instanceof JoinMultiplayerScreen) || !RuntimeGate.canRunHud()) return;
         float dt = AnimationUtility.deltaTime();
         boolean hovered = combatant$inside(mouseX, mouseY, COMBATANT_PROXY_BUTTON_X, COMBATANT_PROXY_BUTTON_Y,
                 COMBATANT_PROXY_BUTTON_W, COMBATANT_PROXY_BUTTON_H);

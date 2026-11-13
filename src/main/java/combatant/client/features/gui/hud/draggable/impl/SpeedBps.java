@@ -44,7 +44,7 @@ import static combatant.client.features.theme.Theme.theme;
 public final class SpeedBps extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final Identifier SPEED_ICON = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/speedometer.png");
-    private static final float SCALE_MULT = 0.68f;
+    private static final float SCALE_MULT = 1.53f;
     private static final float BOX_HEIGHT = 20f;
     private static final float BOX_RADIUS = 5f;
     private static final float BOX_SOFTNESS = 1.0f;
@@ -70,7 +70,7 @@ public final class SpeedBps extends DraggableHudElement implements ScriptableHud
     private final HudGlobalConfig hud = HudGlobalConfig.get();
     private final BooleanValue useBps = bool("speed_bps_bps", true);
     private final BooleanValue average = bool("speed_bps_average", false);
-    private final NumberValue<Double> scale = num("speed_bps_scale", 2.37, 0.5, 5.0);
+    private final NumberValue<Double> scale = num("speed_bps_scale", 1.0, 0.5, 5.0);
     private final ModeValue colorMode = mode("speed_bps_color_mode", "color_mode", "Theme", new String[]{COLOR_THEME, COLOR_CUSTOM});
     private final ModeValue panelStyle = visibleWhen(
             mode("speed_bps_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,

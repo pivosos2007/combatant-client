@@ -43,7 +43,7 @@ import static combatant.client.features.theme.Theme.theme;
 public final class Fps extends DraggableHudElement implements ScriptableHudStatWidget {
 
     private static final Identifier FPS_ICON = Identifier.fromNamespaceAndPath("combatant", "textures/hud/elements/fps.png");
-    private static final float SCALE_MULT = 0.68f;
+    private static final float SCALE_MULT = 1.53f;
     private static final float BOX_HEIGHT = 20f;
     private static final float BOX_RADIUS = 5f;
     private static final float BOX_SOFTNESS = 1.0f;
@@ -66,7 +66,7 @@ public final class Fps extends DraggableHudElement implements ScriptableHudStatW
     private final ModeValue surfaceMaterial = mode("fps_surface_material", HudMaterialChoice.DEFAULT, HudMaterialChoice.OPTIONS);
     private final Minecraft mc = Minecraft.getInstance();
     private final HudGlobalConfig hud = HudGlobalConfig.get();
-    private final NumberValue<Double> scale = num("fps_scale", 2.37, 0.5, 5.0);
+    private final NumberValue<Double> scale = num("fps_scale", 1.0, 0.5, 5.0);
     private final ModeValue colorMode = mode("fps_color_mode", "color_mode", "Theme", new String[]{COLOR_THEME, COLOR_CUSTOM});
     private final ModeValue panelStyle = visibleWhen(
             mode("fps_panel_style", HudRenderUtil.PANEL_STYLE_DEFAULT,

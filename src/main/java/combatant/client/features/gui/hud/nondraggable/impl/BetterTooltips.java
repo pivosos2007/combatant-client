@@ -82,10 +82,10 @@ public final class BetterTooltips extends AbstractHudElement {
     private final BooleanValue rareModelEnabled = bool("bt_rare_model", true);
     private final NumberValue<Float> modelRotationSpeed = num("bt_model_rotation", 1.0f, 0.0f, 4.0f);
     private final NumberValue<Float> rarityGlow = num("bt_rarity_fresnel", 0.75f, 0.0f, 1.0f);
-    private final NumberValue<Float> genericScale = num("bt_generic_scale", 0.68f, 0.5f, 1.5f);
-    private final NumberValue<Float> itemScale = num("bt_item_scale", 0.68f, 0.5f, 1.5f);
-    private final NumberValue<Float> guiBlur = num("bt_gui_blur", 1.0f, 0.0f, 1.0f);
-    private final NumberValue<Float> itemBlur = num("bt_item_blur", 1.0f, 0.0f, 1.0f);
+    private final NumberValue<Float> genericScale = num("bt_generic_scale", 0.64f, 0.5f, 1.5f);
+    private final NumberValue<Float> itemScale = num("bt_item_scale", 0.67f, 0.5f, 1.5f);
+    private final NumberValue<Float> guiBlur = num("bt_gui_blur", 0.52f, 0.0f, 1.0f);
+    private final NumberValue<Float> itemBlur = num("bt_item_blur", 0.52f, 0.0f, 1.0f);
     private final NumberValue<Float> guiDarkness = num("bt_gui_darkness", 0.76f, 0.0f, 1.0f);
     private final NumberValue<Float> itemDarkness = num("bt_item_darkness", 0.76f, 0.0f, 1.0f);
     private boolean lastPresentedItem;

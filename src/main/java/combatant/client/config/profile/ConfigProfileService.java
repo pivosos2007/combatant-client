@@ -53,6 +53,7 @@ public final class ConfigProfileService {
             snapshot = collector.collectWithMeta(meta);
         }
         storage.save(snapshot);
+        ConfigServerBindings.INSTANCE.saved(type, snapshot.meta().getId(), snapshot.entries());
         return snapshot;
     }
 
@@ -61,6 +62,7 @@ public final class ConfigProfileService {
         ConfigProfileMeta meta = target.withUpdatedAt(System.currentTimeMillis());
         ConfigProfileSnapshot snapshot = collector.collectWithMeta(meta);
         storage.save(snapshot);
+        ConfigServerBindings.INSTANCE.saved(target.type(), target.getId(), snapshot.entries());
         return snapshot;
     }
 
@@ -83,7 +85,7 @@ public final class ConfigProfileService {
         ConfigProfileSnapshot snapshot = storage.read(type, idOrName);
         ConfigServerBindings.INSTANCE.beforeApply(type, snapshot.meta().getId());
         ConfigProfileApplier.ApplyResult result = applier.apply(snapshot);
-        ConfigServerBindings.INSTANCE.applied(type, snapshot.meta().getId());
+        ConfigServerBindings.INSTANCE.applied(type, snapshot);
         return result;
     }
 

@@ -25,13 +25,15 @@ import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.world.entity.player.Input;
 
 /**
- * Tracks what the server (Grim) has seen in the current "tick window" of outgoing packets.
+ * Tracks outgoing action order and the time since the last movement packet.
  * <p>
  * A window ends at the movement packet, or, on a client tick that sent none, at the client-tick-end packet.
  * Within a window Grim's PacketOrderE flags a held-slot change that follows an attack, a right click, a release,
  * a sprint/sneak/glide/bed/mount state change or an inventory open. Grim's Post check flags a held-slot change that
  * arrives after the movement packet of the tick, so the only safe moment for one is the start of a client tick,
  * before the vanilla key handling has produced any packet.
+ * Vulcan Type R also requires a held-slot change to be at least 5 ms after the previous movement;
+ * starting another client tick does not clear that timestamp.
  * <p>
  * The state machine is driven by {@code note*} methods so it can be exercised without a running game;
  * {@link #onPacketSend} classifies real packets into them.
@@ -43,6 +45,9 @@ public final class PacketWindow {
 
     /** True from this tick's movement packet until the next client tick starts (Grim Post). */
     private boolean movementSent;
+    private long lastMovementNanos = Long.MIN_VALUE;
+    // Vulcan Type R arms on held-slot changes less than 5 ms after movement, across client tick boundaries.
+    private static final long SLOT_MOVEMENT_GAP_NANOS = 5_000_000L;
     // Held-slot conflicts of the current window (PacketOrderE).
     private boolean attacked;
     private boolean rightClicked;
@@ -60,9 +65,14 @@ public final class PacketWindow {
     }
 
 
-    /** A held-slot packet sent right now is neither a PacketOrderE conflict nor a Post violation. */
+    /** Checks action order, the movement phase and the interval since the previous movement packet. */
     public boolean slotChangeAllowed() {
-        return !movementSent && !attacked && !rightClicked && !released && !stateChanged;
+        return slotChangeAllowed(System.nanoTime());
+    }
+
+    boolean slotChangeAllowed(long nowNanos) {
+        return !movementSent && !attacked && !rightClicked && !released && !stateChanged
+                && (lastMovementNanos == Long.MIN_VALUE || nowNanos - lastMovementNanos >= SLOT_MOVEMENT_GAP_NANOS);
     }
 
     /** True once this client tick's movement packet went out; item/slot packets sent now are "post" packets. */
@@ -126,8 +136,13 @@ public final class PacketWindow {
     }
 
     void noteMovement() {
+        noteMovement(System.nanoTime());
+    }
+
+    void noteMovement(long nowNanos) {
         clearWindow();
         movementSent = true;
+        lastMovementNanos = nowNanos;
     }
 
     void noteTickEnd() {
@@ -176,6 +191,7 @@ public final class PacketWindow {
     void reset() {
         clearWindow();
         movementSent = false;
+        lastMovementNanos = Long.MIN_VALUE;
         lastInputMoving = false;
         lastInputSneaking = false;
     }

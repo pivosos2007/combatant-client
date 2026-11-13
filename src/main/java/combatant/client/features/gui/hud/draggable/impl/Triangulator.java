@@ -91,6 +91,7 @@ public final class Triangulator extends DraggableHudElement {
     private static final float ROW_MARKER_X = 4.0f;
     private static final float ROW_MARKER_SIZE = 7.5f;
     private static final float SEARCH_RANGE = 196.0f;
+    private static final float PANEL_LAYOUT_SCALE = 1.375f;
 
     private static final double MIN_HORIZONTAL_SPEED = 0.03;
     private static final double CAPTURE_DEVIATION_LIMIT = 0.35;
@@ -116,7 +117,7 @@ public final class Triangulator extends DraggableHudElement {
     private final ScriptedTriangulatorHudPanel scriptedPanel = new ScriptedTriangulatorHudPanel();
 
     private final NumberValue<Double> scaleValue =
-            new NumberValue<>("triangulator_scale", 1.68, 0.5, 5.0);
+            new NumberValue<>("triangulator_scale", 1.0, 0.5, 5.0);
     private final ModeValue colorMode =
             new ModeValue("triangulator_color_mode", "Theme", COLOR_THEME, COLOR_CUSTOM);
     private final ModeValue panelStyle =
@@ -482,7 +483,7 @@ public final class Triangulator extends DraggableHudElement {
         if (headerTextRenderer == null) headerTextRenderer = textRenderer;
         if (rowTextRenderer == null) rowTextRenderer = textRenderer;
 
-        float baseScale = HudScale.scale(screenW, screenH) * 1.1f * scaleValue.get().floatValue();
+        float baseScale = HudScale.scale(screenW, screenH) * PANEL_LAYOUT_SCALE * scaleValue.get().floatValue();
         float fontScale = 0.98f * TextSizing.scaleForSize(hud.getFontSize());
 
         headerTextRenderer.begin(fontScale, true, false);

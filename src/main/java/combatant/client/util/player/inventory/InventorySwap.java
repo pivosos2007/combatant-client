@@ -22,6 +22,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
@@ -39,18 +40,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-/**
- * Single entry point for held-slot changes, silent item use and inventory window clicks.
- * <p>
- * Everything here obeys Grim's packet-order rules, tracked by {@link PacketWindow}: a held-slot change is only sent
- * while it neither follows a conflicting action of the same tick window nor follows this tick's movement packet, and
- * window clicks only while the server sees a stationary player. A silent use therefore is "swap, use now, keep the
- * swapped slot until the start of the next client tick, restore there". Operations that are not allowed right now
- * return {@code false} (callers retry next tick) or, for window clicks queued through {@link #command}, run once the
- * window opens.
- */
+/** Single entry point for held-slot changes, silent item use and owner-scoped inventory operations. */
 public final class InventorySwap {
     public static final InventorySwap INSTANCE = new InventorySwap();
 
@@ -83,6 +76,7 @@ public final class InventorySwap {
     private int silentSlot = -1;
     /** The server slot is off the desired slot because the restore was not allowed yet (sent at the next safe point). */
     private boolean restorePending;
+    private int clientRestoreSlot = -1;
     private int oneShotDepth;
     private int internalSwapDepth;
     private int clientViewDepth;
@@ -91,6 +85,7 @@ public final class InventorySwap {
     private Object inventoryActionOwner;
     private int movementLockTicks;
     private boolean sendingLockedInput;
+    private long sentWindowClicks;
 
     private InventorySwap() {
     }
@@ -153,9 +148,7 @@ public final class InventorySwap {
     @EventHandler
     private void onPacketSend(PacketEvent.Send event) {
         Object packet = event.getPacket();
-        if (packet instanceof ServerboundSetCarriedItemPacket selectedSlot) {
-            lastServerSelectedSlot = selectedSlot.getSlot();
-        } else if (packet instanceof ServerboundPlayerInputPacket(Input input)) {
+        if (packet instanceof ServerboundPlayerInputPacket(Input input)) {
             boolean moving = input.forward() || input.backward() || input.left() || input.right();
             if (isMovementLocked() && !sendingLockedInput && (moving || input.shift()) && mc.getConnection() != null) {
                 event.cancel();
@@ -168,6 +161,16 @@ public final class InventorySwap {
                     sendingLockedInput = false;
                 }
             }
+        }
+    }
+
+    @EventHandler(priority = -20001)
+    private void onCarriedSlotSend(PacketEvent.Send event) {
+        if (event.isCancelled()) return;
+        if (event.getPacket() instanceof ServerboundSetCarriedItemPacket packet) {
+            lastServerSelectedSlot = packet.getSlot();
+        } else if (event.getPacket() instanceof ServerboundContainerClickPacket) {
+            sentWindowClicks++;
         }
     }
 
@@ -185,13 +188,14 @@ public final class InventorySwap {
                 lastPolicyActionTick = Integer.MIN_VALUE;
                 silentSlot = -1;
                 restorePending = false;
+                clientRestoreSlot = -1;
                 hotbarLease = null;
                 clearQueue();
             });
         }
     }
 
-    /** Start of the client tick: the one point where nothing was sent yet, so held-slot restores are always safe. */
+    /** Retries restores at tick start; the packet window also checks the preceding movement timestamp. */
     @EventHandler(priority = Integer.MAX_VALUE - 1)
     private void onGameTick(GameTickEvent event) {
         tick();
@@ -264,6 +268,7 @@ public final class InventorySwap {
     public boolean enqueueInventoryAction(Object owner, InventoryActionKind kind, boolean priority,
                                           BooleanSupplier valid, Runnable action, Runnable onCancel) {
         if (owner == null || action == null) return false;
+        if (!inventoryAccessAllowed(owner)) return false;
         if (hasQueuedInventoryAction(owner, kind)) return false;
         return enqueue(new QueuedAction(owner, kind, priority, valid, action, onCancel, randomQueuedDelay()));
     }
@@ -321,9 +326,38 @@ public final class InventorySwap {
         strictMovementLockTicks = Math.max(0, Math.min(20, ticks));
     }
 
+    public String diagnosticState() {
+        LocalPlayer player = mc.player;
+        return "policy=" + defaultPolicy + " scope=" + defaultScope + " preferHotbar=" + preferHotbar
+                + " visibility=" + defaultVisibility + " restoreDefault=" + restoreByDefault
+                + " clientSlot=" + clientSelectedSlot() + " serverSlot=" + lastServerSelectedSlot
+                + " silentSlot=" + silentSlot + " restorePending=" + restorePending
+                + " inventoryLease=" + (activeInventoryLease() != null) + " hotbarLease=" + (activeLease() != null)
+                + " queued=" + queue.size() + " movementLock=" + movementLockTicks
+                + " policyReady=" + policyReady() + " slotAllowed=" + window.slotChangeAllowed()
+                + " postMovement=" + window.isPostMovement() + " oneShot=" + oneShotDepth
+                + " container=" + (player == null || player.containerMenu == null ? -1 : player.containerMenu.containerId);
+    }
+
+    public int combatSearchEnd() {
+        return combatHotbarOnly() ? 9 : 36;
+    }
+
+    public boolean combatHotbarOnly() {
+        return defaultPolicy == InventorySwapPolicy.GRIM_STRICT;
+    }
+
+    public boolean allowsDirectCombatSwap() {
+        return defaultPolicy == InventorySwapPolicy.NONE || defaultPolicy == InventorySwapPolicy.VULCAN;
+    }
+
+    private boolean windowClickAllowed() {
+        return allowsDirectCombatSwap() || window.windowClickAllowed(isMovementLocked());
+    }
+
     private int policyWaitTicks() {
         return switch (defaultPolicy) {
-            case NONE -> 0;
+            case NONE, VULCAN -> 0;
             case LEGIT -> legitWaitTicks;
             case GRIM_STRICT -> strictInventoryWaitTicks;
         };
@@ -398,10 +432,8 @@ public final class InventorySwap {
         if (!policyReady()) return;
         if (isWindowKind(queued.kind)) {
             if (!inventoryAccessAllowed(queued.owner)) return;
-            if (!window.windowClickAllowed(isMovementLocked())) {
-                // A window click must not execute against a moving player's input packet; pause movement until
-                // the server has seen a stationary player.
-                requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
+            if (!windowClickAllowed()) {
+                if (!allowsDirectCombatSwap()) requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
                 return;
             }
         } else if (!window.actionAllowed(queued.kind)) {
@@ -419,9 +451,8 @@ public final class InventorySwap {
     }
 
 
-    /** Slot the server holds right now (silent hold, then the server's own state, then the client's). */
+    /** Last transmitted or server-corrected selection, falling back to the client before the first update. */
     public int serverSelectedSlot() {
-        if (isHotbarSlot(silentSlot)) return silentSlot;
         if (isHotbarSlot(lastServerSelectedSlot)) return lastServerSelectedSlot;
         return clientSelectedSlot();
     }
@@ -431,7 +462,7 @@ public final class InventorySwap {
      * deferred restore keeps it off the client's slot, otherwise the client's own.
      */
     public int effectiveSelectedSlot() {
-        if (isHotbarSlot(silentSlot)) return silentSlot;
+        if (isHotbarSlot(silentSlot)) return serverSelectedSlot();
         HotbarLease active = activeLease();
         if (active != null) return isHotbarSlot(lastServerSelectedSlot) ? lastServerSelectedSlot : active.slot;
         if (restorePending && isHotbarSlot(lastServerSelectedSlot)) return lastServerSelectedSlot;
@@ -461,6 +492,7 @@ public final class InventorySwap {
     public boolean leaseHotbar(Object owner, int slot, int ticksUntilReset) {
         LocalPlayer player = mc.player;
         if (player == null || mc.getConnection() == null || owner == null || !isHotbarSlot(slot)) return false;
+        if (!inventoryAccessAllowed(owner) || oneShotDepth > 0 || isHotbarSlot(silentSlot) || restorePending) return false;
 
         // An unrelated mining/placement transaction cannot replace another owner's active tool lease.
         HotbarLease active = activeLease();
@@ -476,8 +508,7 @@ public final class InventorySwap {
         if (!window.slotChangeAllowed()) return false;
         silentSlot = -1;
         restorePending = false;
-        sendCarriedSlot(slot);
-        return true;
+        return sendCarriedSlot(slot);
     }
 
     public void releaseHotbar(Object owner) {
@@ -489,7 +520,7 @@ public final class InventorySwap {
 
     public boolean leaseInventory(Object owner, int ticksUntilReset) {
         LocalPlayer player = mc.player;
-        if (player == null || owner == null) return false;
+        if (player == null || owner == null || oneShotDepth > 0) return false;
 
         InventoryLease active = activeInventoryLease();
         if (active != null && active.owner != owner) return false;
@@ -522,14 +553,24 @@ public final class InventorySwap {
     public boolean selectHotbar(int slot) {
         LocalPlayer player = mc.player;
         if (player == null || mc.getConnection() == null || !isHotbarSlot(slot)) return false;
+        if (!inventoryAccessAllowed(inventoryActionOwner)) return false;
+        if (oneShotDepth > 0 || restorePending || isHotbarSlot(silentSlot)) return false;
+        HotbarLease lease = activeLease();
+        if (lease != null && lease.owner != inventoryActionOwner) return false;
 
         if (lastServerSelectedSlot != slot) {
             if (activeLease() != null || isHotbarSlot(silentSlot) || !window.slotChangeAllowed()) return false;
-            sendCarriedSlot(slot);
+            if (!sendCarriedSlot(slot)) return false;
         }
         setClientSelectedSlot(slot);
         restorePending = false;
         return true;
+    }
+
+    public boolean selectHotbar(int slot, Object owner) {
+        boolean[] selected = {false};
+        runGuarded(owner, () -> selected[0] = selectHotbar(slot));
+        return selected[0];
     }
 
     /**
@@ -542,16 +583,12 @@ public final class InventorySwap {
         if (player == null || mc.getConnection() == null || !isHotbarSlot(slot)) return;
 
         setClientSelectedSlot(slot);
+        clientRestoreSlot = -1;
         if (activeLease() != null || isHotbarSlot(silentSlot) || lastServerSelectedSlot == slot) {
             restorePending = false;
             return;
         }
-        if (window.slotChangeAllowed()) {
-            restorePending = false;
-            sendCarriedSlot(slot);
-        } else {
-            restorePending = true;
-        }
+        restorePending = !window.slotChangeAllowed() || !sendCarriedSlot(slot);
     }
 
     private void setClientSelectedSlot(int slot) {
@@ -562,12 +599,12 @@ public final class InventorySwap {
     }
 
     /** Sends the carried slot (deduplicated: Grim BadPacketsA flags the same slot twice in a row). */
-    private void sendCarriedSlot(int slot) {
+    private boolean sendCarriedSlot(int slot) {
         LocalPlayer player = mc.player;
         boolean changed = lastServerSelectedSlot != slot;
         if (changed) {
             mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
-            lastServerSelectedSlot = slot;
+            if (lastServerSelectedSlot != slot) return false;
         }
         syncInteractionManagerSlot(slot);
         // Vanilla servers stop main-hand item use whenever the carried slot changes. Mirror that locally,
@@ -575,6 +612,7 @@ public final class InventorySwap {
         if (changed && player != null && player.isUsingItem() && player.getUsedItemHand() == InteractionHand.MAIN_HAND) {
             player.stopUsingItem();
         }
+        return true;
     }
 
     private void syncInteractionManagerSlot(int slot) {
@@ -595,16 +633,21 @@ public final class InventorySwap {
         boolean managed = isHotbarSlot(silentSlot) || restorePending || lease != null;
         if (!managed) return;
 
-        int desired = lease != null ? lease.slot : clientSelectedSlot();
+        int desired = lease != null ? lease.slot
+                : isHotbarSlot(clientRestoreSlot) ? clientRestoreSlot : clientSelectedSlot();
         if (lastServerSelectedSlot < 0 && lease == null || lastServerSelectedSlot == desired) {
             silentSlot = -1;
             restorePending = false;
+            if (isHotbarSlot(clientRestoreSlot)) setClientSelectedSlot(clientRestoreSlot);
+            clientRestoreSlot = -1;
             return;
         }
         if (!window.slotChangeAllowed()) return;
+        if (!sendCarriedSlot(desired)) return;
         silentSlot = -1;
         restorePending = false;
-        sendCarriedSlot(desired);
+        if (isHotbarSlot(clientRestoreSlot)) setClientSelectedSlot(clientRestoreSlot);
+        clientRestoreSlot = -1;
     }
 
     private HotbarLease activeLease() {
@@ -658,14 +701,20 @@ public final class InventorySwap {
         MultiPlayerGameMode interaction = mc.gameMode;
         AbstractContainerMenu handler = player != null ? player.containerMenu : null;
         if (player == null || interaction == null || handler == null) return false;
-        if (!isSwapButton(hotbarButton) || containerSlot < 0) return false;
+        if (!isSwapButton(hotbarButton) || containerSlot < 0 || containerSlot >= handler.slots.size()) return false;
         if (InventorySlotLocks.blocks(handler, containerSlot, hotbarButton,
                 ContainerInput.SWAP, player, executingActionOwner())) return false;
 
         beginInternalSwap();
         try {
+            long sentBefore = sentWindowClicks;
+            ItemStack source = handler.getSlot(containerSlot).getItem().copy();
+            ItemStack destination = player.getInventory().getItem(hotbarButton).copy();
+
             interaction.handleContainerInput(handler.containerId, containerSlot, hotbarButton, ContainerInput.SWAP, player);
-            return true;
+            return sentWindowClicks == sentBefore + 1
+                    && ItemStack.matches(source, player.getInventory().getItem(hotbarButton))
+                    && ItemStack.matches(destination, handler.getSlot(containerSlot).getItem());
         } finally {
             endInternalSwap();
         }
@@ -678,16 +727,24 @@ public final class InventorySwap {
         AbstractContainerMenu handler = player != null ? player.containerMenu : null;
         if (player == null || interaction == null || handler == null) return false;
         if (slotA < 0 || slotB < 0 || slotA == slotB) return false;
+        if (slotA >= handler.slots.size() || slotB >= handler.slots.size() || !handler.getCarried().isEmpty()) return false;
+        Slot first = handler.getSlot(slotA);
+        Slot second = handler.getSlot(slotB);
+        if (!first.mayPickup(player) || !second.mayPickup(player)
+                || !first.getItem().isEmpty() && !second.mayPlace(first.getItem())
+                || !second.getItem().isEmpty() && !first.mayPlace(second.getItem())) return false;
         if (InventorySlotLocks.blocks(handler, slotA, 0, ContainerInput.PICKUP,
                 player, executingActionOwner()) || InventorySlotLocks.blocks(handler, slotB,
                 0, ContainerInput.PICKUP, player, executingActionOwner())) return false;
 
         beginInternalSwap();
         try {
+            long sentBefore = sentWindowClicks;
+
             interaction.handleContainerInput(handler.containerId, slotA, 0, ContainerInput.PICKUP, player);
             interaction.handleContainerInput(handler.containerId, slotB, 0, ContainerInput.PICKUP, player);
             interaction.handleContainerInput(handler.containerId, slotA, 0, ContainerInput.PICKUP, player);
-            return true;
+            return sentWindowClicks == sentBefore + 3;
         } finally {
             endInternalSwap();
         }
@@ -758,12 +815,61 @@ public final class InventorySwap {
         }
     }
 
+    private boolean swapScreenSlotsNow(int slotA, int slotB) {
+        LocalPlayer player = mc.player;
+        if (player == null) return false;
+        AbstractContainerMenu menu = player.containerMenu;
+        if (menu == null || !menu.getCarried().isEmpty()) return false;
+        Slot first = menu.getSlot(slotA);
+        Slot second = menu.getSlot(slotB);
+        if (!first.mayPickup(player) || !second.mayPickup(player)
+                || !first.getItem().isEmpty() && !second.mayPlace(first.getItem())
+                || !second.getItem().isEmpty() && !first.mayPlace(second.getItem())) return false;
+        int firstIndex = InventoryComponentMap.playerInventoryIndex(menu, slotA, player);
+        int secondIndex = InventoryComponentMap.playerInventoryIndex(menu, slotB, player);
+        if (isHotbarSlot(firstIndex)) return clickSwap(slotB, firstIndex);
+        if (isHotbarSlot(secondIndex)) return clickSwap(slotA, secondIndex);
+        return pickupSwap(slotA, slotB);
+    }
+
     public boolean swapScreenSlots(int slotA, int slotB) {
         return swapScreenSlots(slotA, slotB, null);
     }
 
     public boolean swapScreenSlots(int slotA, int slotB, Object owner) {
         return command(owner, InventoryActionKind.INVENTORY_CLICK, () -> pickupSwap(slotA, slotB));
+    }
+
+    /**
+     * Captures the menu and both stacks. Completion runs on the client thread after execution and local
+     * slot verification, or with false on cancellation. Acceptance is not completion or a server acknowledgement.
+     */
+    public boolean swapScreenSlots(int slotA, int slotB, Object owner, BooleanSupplier valid,
+                                   Consumer<Boolean> completion) {
+        LocalPlayer player = mc.player;
+        if (player == null || owner == null || completion == null || !inventoryAccessAllowed(owner)) return false;
+        AbstractContainerMenu menu = player.containerMenu;
+        if (menu == null || slotA < 0 || slotB < 0 || slotA == slotB
+                || slotA >= menu.slots.size() || slotB >= menu.slots.size()) return false;
+        ItemStack first = menu.getSlot(slotA).getItem().copy();
+        ItemStack second = menu.getSlot(slotB).getItem().copy();
+        BooleanSupplier stillValid = () -> mc.player == player && player.containerMenu == menu
+                && menu.getCarried().isEmpty() && valid.getAsBoolean()
+                && ItemStack.matches(first, menu.getSlot(slotA).getItem())
+                && ItemStack.matches(second, menu.getSlot(slotB).getItem());
+        Runnable action = () -> completion.accept(stillValid.getAsBoolean() && swapScreenSlotsNow(slotA, slotB)
+                && menu.getCarried().isEmpty()
+                && ItemStack.matches(second, menu.getSlot(slotA).getItem())
+                && ItemStack.matches(first, menu.getSlot(slotB).getItem()));
+        if (hasQueuedInventoryAction(owner, InventoryActionKind.INVENTORY_CLICK)) return false;
+        if (queue.isEmpty() && policyReady() && windowClickAllowed()) {
+            runGuarded(owner, action);
+            notePolicyAction();
+            return true;
+        }
+        if (!allowsDirectCombatSwap()) requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
+        return enqueue(new QueuedAction(owner, InventoryActionKind.INVENTORY_CLICK, false, stillValid,
+                action, () -> completion.accept(false), policyWaitTicks()));
     }
 
     public boolean swapInventoryToHotbar(int inventorySlot, int hotbarSlot) {
@@ -851,40 +957,59 @@ public final class InventorySwap {
         }
 
         if (!inventoryAccessAllowed(owner)) return false;
-        if (queue.isEmpty() && policyReady() && window.windowClickAllowed(isMovementLocked())) {
+        if (queue.isEmpty() && policyReady() && windowClickAllowed()) {
             runGuarded(owner, action);
             notePolicyAction();
             return true;
         }
-        requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
+        if (!allowsDirectCombatSwap()) requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
         return enqueue(new QueuedAction(owner, kind, false, null, action, null, policyWaitTicks()));
     }
 
     /**
-     * Finds the item, brings it to the server-held slot, runs the action and (silent) leaves the restore to the
-     * start of the next tick. Returns {@code true} only if the action ran now; {@code false} means nothing happened
-     * and the caller should retry on a later tick.
+     * Runs the action only after selecting its item. Returns false if the caller must retry. Held-slot restores
+     * wait for an allowed packet window; inventory swaps restore in the same serialized action when requested.
      */
     public boolean execute(InventorySwapRequest request) {
+        return execute(request, null);
+    }
+
+    public boolean execute(InventorySwapRequest request, Object owner) {
+        boolean[] result = {false};
+        runGuarded(owner, () -> result[0] = executeOwned(request, owner));
+        return result[0];
+    }
+
+    private boolean executeOwned(InventorySwapRequest request, Object owner) {
         LocalPlayer player = mc.player;
         if (request == null || player == null || mc.getConnection() == null || mc.gameMode == null) return false;
-        if (!window.actionAllowed(request.actionKind()) || !policyReady()) return false;
+        if (!window.actionAllowed(request.actionKind()) || !policyReady()) {
+
+            return false;
+        }
+        if (!itemUseAvailable(owner)) {
+
+            return false;
+        }
 
         InventorySearchScope scope = request.scope() != null ? request.scope() : defaultScope;
         SlotResult found = find(request.predicate(), scope);
-        if (!found.found()) return false;
+        if (!found.found()) {
+
+            return false;
+        }
+
 
         InventorySwapVisibility visibility = request.visibility() != null ? request.visibility() : defaultVisibility;
-        boolean silent = visibility == InventorySwapVisibility.SILENT || request.restore(restoreByDefault);
+        boolean silent = visibility == InventorySwapVisibility.SILENT;
+        boolean restore = request.restore(restoreByDefault);
         beginInternalSwap();
         try {
             boolean result;
             if (found.isHotbar()) {
-                result = silent ? runSilentHotbar(found.slot(), request.action())
-                        : runNormalHotbar(found.slot(), request.action());
+                result = runHotbarUse(found.slot(), request.action(), silent, restore);
             } else {
-                result = silent ? runSilentInventory(found.slot(), request.action())
-                        : runNormalInventory(found.slot(), request.action());
+                result = runInventoryUse(found.slot(), request.action(), restore);
             }
             if (result) notePolicyAction();
             return result;
@@ -948,67 +1073,102 @@ public final class InventorySwap {
     }
 
 
-    private boolean runNormalHotbar(int slot, Runnable action) {
-        if (lastServerSelectedSlot != slot && !window.slotChangeAllowed()) return false;
-        if (!selectHotbar(slot)) return false;
-        action.run();
-        return true;
-    }
-
-    private boolean runSilentHotbar(int slot, Runnable action) {
+    private boolean runHotbarUse(int slot, Runnable action, boolean silent, boolean restore) {
         LocalPlayer player = mc.player;
         if (player == null || mc.getConnection() == null || !isHotbarSlot(slot)) return false;
         if (lastServerSelectedSlot != slot && !window.slotChangeAllowed()) return false;
 
         int previousClientSlot = clientSelectedSlot();
+        if (!sendCarriedSlot(slot)) return false;
         // The raw client slot moves too: setItemInHand writes through Inventory.selected, so a bucket fill or
         // similar result stack must land in the swapped slot, not the one the player is looking at.
         oneShotDepth++;
         silentSlot = slot;
         setClientSelectedSlot(slot);
-        sendCarriedSlot(slot);
         try {
             action.run();
             return true;
         } finally {
             oneShotDepth--;
-            setClientSelectedSlot(previousClientSlot);
-            // The restore is a held-slot change after the action: sending it now would be a PacketOrderE conflict
-            // and, after the movement packet, a Post violation. Keep the slot until the next tick start.
-            int desired = hotbarLease != null ? hotbarLease.slot : previousClientSlot;
-            silentSlot = lastServerSelectedSlot == desired ? -1 : lastServerSelectedSlot;
+            silentSlot = -1;
+            if (restore && previousClientSlot != slot) {
+                if (silent) {
+                    setClientSelectedSlot(previousClientSlot);
+                    silentSlot = lastServerSelectedSlot;
+                } else {
+                    clientRestoreSlot = previousClientSlot;
+                    restorePending = true;
+                }
+            }
         }
     }
 
-    private boolean runNormalInventory(int inventorySlot, Runnable action) {
+    private boolean runInventoryUse(int inventorySlot, Runnable action, boolean restore) {
+        if (mc.player == null || mc.player.containerMenu != mc.player.inventoryMenu) return false;
         if (!inventoryClickReady()) return false;
-        int screenSlot = mapInventoryToScreenSlot(inventorySlot);
-        if (screenSlot < 0 || !clickSwap(screenSlot)) return false;
-        action.run();
-        return true;
-    }
-
-    private boolean runSilentInventory(int inventorySlot, Runnable action) {
-        if (!inventoryClickReady()) return false;
+        if (!selectHotbar(clientSelectedSlot())) return false;
         int screenSlot = mapInventoryToScreenSlot(inventorySlot);
         if (screenSlot < 0) return false;
         // Swap into the slot the server is actually holding (lease or silent hold), not the one on screen.
         int hotbarButton = effectiveSelectedSlot();
         if (!clickSwap(screenSlot, hotbarButton)) return false;
 
+        oneShotDepth++;
         try {
-            return runSilentHotbar(hotbarButton, action);
+            action.run();
+            return true;
         } finally {
-            clickSwap(screenSlot, hotbarButton);
+            try {
+                if (restore) clickSwap(screenSlot, hotbarButton);
+            } finally {
+                oneShotDepth--;
+            }
         }
     }
 
-    /** Window clicks need a stationary player on the server's side; pause movement until that holds. */
     private boolean inventoryClickReady() {
         if (!inventoryAccessAllowed(inventoryActionOwner)) return false;
-        if (window.windowClickAllowed(isMovementLocked())) return true;
-        requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
+        if (!queue.isEmpty()) return false;
+        if (windowClickAllowed()) return true;
+        if (!allowsDirectCombatSwap()) requestMovementLock(defaultPolicy == InventorySwapPolicy.NONE ? MOVEMENT_LOCK_TICKS : strictMovementLockTicks);
         return false;
+    }
+
+    public boolean itemUseAvailable() {
+        return itemUseAvailable(null);
+    }
+
+    private boolean itemUseAvailable(Object owner) {
+        return oneShotDepth == 0 && activeLease() == null && inventoryAccessAllowed(owner) && queue.isEmpty()
+                && !isHotbarSlot(silentSlot) && !restorePending;
+    }
+
+    public boolean attackSlotReady() {
+        HotbarLease lease = activeLease();
+        return (oneShotDepth > 0 || !isHotbarSlot(silentSlot)) && !restorePending
+                && (lease == null || lastServerSelectedSlot == lease.slot);
+    }
+
+    /** Uses an already held item without allowing vanilla to synchronize an unrelated client selection. */
+    public boolean withHeldItem(InteractionHand hand, Runnable action) {
+        if (mc.player == null || hand == null || action == null || !itemUseAvailable()
+                || !window.actionAllowed(InventoryActionKind.USE_ITEM)) return false;
+        int slot = serverSelectedSlot();
+        if (lastServerSelectedSlot != slot && !window.slotChangeAllowed()) return false;
+        if (!sendCarriedSlot(slot)) return false;
+        int previous = clientSelectedSlot();
+        runGuarded(null, () -> {
+            oneShotDepth++;
+            setClientSelectedSlot(slot);
+            try {
+                action.run();
+            } finally {
+                oneShotDepth--;
+                setClientSelectedSlot(previous);
+                if (previous != slot) silentSlot = slot;
+            }
+        });
+        return true;
     }
 
 

@@ -91,7 +91,7 @@ public final class Inventory extends DraggableHudElement {
     private final KeyBindValue toggleBind =
             new KeyBindValue("toggle_bind", "I");
     private final NumberValue<Double> scaleValue =
-            new NumberValue<>("inventory_scale", 1.32, HudPanelLayoutModes.SCALE_MIN, HudPanelLayoutModes.SCALE_MAX);
+            new NumberValue<>("inventory_scale", 1.2, HudPanelLayoutModes.SCALE_MIN, HudPanelLayoutModes.SCALE_MAX);
     private final ModeValue layoutMode =
             new ModeValue("inventory_layout", "Unified Divider", HudPanelLayoutModes.SPLIT_HEADER, HudPanelLayoutModes.UNIFIED_DIVIDER);
     private final ModeValue colorMode =

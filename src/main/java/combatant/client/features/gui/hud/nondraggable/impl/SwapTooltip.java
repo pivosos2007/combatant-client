@@ -42,13 +42,21 @@ public final class SwapTooltip extends AbstractHudElement {
     private static final float EXTRA_OFFSET_NO_BARS = 14.0f;
     private static final int GLASS_TINT = 0xFFFFFFFF;
     private static final int GLASS_VEIL = 0x2A141414;
+    private static final UiGlassOpticsSpec SWAP_GLASS_PRESET = UiGlassOpticsSpec.LIQUID
+            .withRefraction(0.08f).withBevel(0.15f, 0.055f)
+            .withFluid(0.35f, 0.65f).withCleanReveal(0.55f)
+            .withInteractionStrength(1.9157f).withChromaticAberration(0.95f)
+            .withMagnification(1.0f).withSpecular(true)
+            .withOpticalThickness(2.5f).withRefractiveIndex(1.567f)
+            .withSurfaceRoughness(0.0f).withFrost(0.9349f)
+            .withThinFilm(430f, 0.0f).withReactiveCoating(0.0f);
 
     private static String text;
     private static int color;
     private static float targetAlpha;
     private static boolean hasBars;
 
-    private final HudGlassSettings glassSettings = new HudGlassSettings("swap_tooltip", UiGlassOpticsSpec.LIQUID);
+    private final HudGlassSettings glassSettings = new HudGlassSettings("swap_tooltip", UiGlassOpticsSpec.LIQUID, SWAP_GLASS_PRESET);
     private final NumberValue<Float> scale =
             num("swap_scale", 0.24f, 0.2f, 1.0f);
     private final NumberValue<Float> offsetY =

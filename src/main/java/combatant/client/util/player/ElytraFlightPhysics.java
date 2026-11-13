@@ -24,8 +24,24 @@ public final class ElytraFlightPhysics {
     public static Vec3 glide(Vec3 velocity, Vec3 look, float pitchDegrees, double gravity) {
         float pitch = pitchDegrees * Mth.DEG_TO_RAD;
         double lookHorizontal = look.horizontalDistance();
-        double horizontalSpeed = velocity.horizontalDistance();
         double lift = Mth.square(Math.cos(pitch));
+        return glide(velocity, look, pitch, lookHorizontal, lift, Mth.sin(pitch), gravity);
+    }
+
+    public record GlideHeading(Vec3 look, float pitchRadians, double lookHorizontal,
+                               double lift, float sinPitch) {
+    }
+
+    public static GlideHeading prepare(Rotation rotation) {
+        Vec3 look = rotation.directionVector();
+        float pitch = rotation.pitch() * Mth.DEG_TO_RAD;
+        return new GlideHeading(look, pitch, look.horizontalDistance(),
+                Mth.square(Math.cos(pitch)), Mth.sin(pitch));
+    }
+
+    private static Vec3 glide(Vec3 velocity, Vec3 look, float pitch,
+                              double lookHorizontal, double lift, float sinPitch, double gravity) {
+        double horizontalSpeed = velocity.horizontalDistance();
         Vec3 next = velocity.add(0.0, gravity * (-1.0 + lift * 0.75), 0.0);
         if (next.y < 0.0 && lookHorizontal > 0.0) {
             double transfer = next.y * -0.1 * lift;
@@ -33,7 +49,7 @@ public final class ElytraFlightPhysics {
                     look.z * transfer / lookHorizontal);
         }
         if (pitch < 0.0f && lookHorizontal > 0.0) {
-            double transfer = horizontalSpeed * -Mth.sin(pitch) * 0.04;
+            double transfer = horizontalSpeed * -sinPitch * 0.04;
             next = next.add(-look.x * transfer / lookHorizontal, transfer * 3.2,
                     -look.z * transfer / lookHorizontal);
         }
@@ -57,6 +73,12 @@ public final class ElytraFlightPhysics {
         public Vec3 glide(Vec3 velocity, Rotation heading) {
             double effectiveGravity = slowFalling && velocity.y <= 0.0 ? Math.min(gravity, 0.01) : gravity;
             return ElytraFlightPhysics.glide(velocity, heading, effectiveGravity);
+        }
+
+        public Vec3 glide(Vec3 velocity, GlideHeading heading) {
+            double effectiveGravity = slowFalling && velocity.y <= 0.0 ? Math.min(gravity, 0.01) : gravity;
+            return ElytraFlightPhysics.glide(velocity, heading.look(), heading.pitchRadians(),
+                    heading.lookHorizontal(), heading.lift(), heading.sinPitch(), effectiveGravity);
         }
 
         public Vec3 afterMove(Vec3 velocity, Rotation heading, int tick, int boostTicks) {

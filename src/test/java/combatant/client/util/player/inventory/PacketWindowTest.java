@@ -53,7 +53,7 @@ class PacketWindowTest {
     void movementPacketClosesTheWindowButBlocksSlotChangesUntilNextTick() {
         window.noteTickStart();
         window.noteUseItem();
-        window.noteMovement();
+        window.noteMovement(0);
         // Grim Post: nothing held-slot related after this tick's movement packet.
         assertFalse(window.slotChangeAllowed());
         assertTrue(window.isPostMovement());
@@ -71,7 +71,7 @@ class PacketWindowTest {
         assertTrue(window.slotChangeAllowed());
 
         window.noteTickStart();
-        window.noteMovement();
+        window.noteMovement(0);
         window.noteUseItem();
         window.noteTickEnd();
         assertFalse(window.slotChangeAllowed());
@@ -94,7 +94,7 @@ class PacketWindowTest {
         assertFalse(window.actionAllowed(InventoryActionKind.ENTITY_INTERACT, false));
         assertTrue(window.actionAllowed(InventoryActionKind.BLOCK_INTERACT, false));
 
-        window.noteMovement();
+        window.noteMovement(0);
         window.noteTickStart();
         window.noteAttack();
         assertFalse(window.actionAllowed(InventoryActionKind.BLOCK_INTERACT, false));
@@ -132,4 +132,35 @@ class PacketWindowTest {
         assertTrue(PacketWindow.isMoving(new net.minecraft.world.entity.player.Input(false, false, false, false, true, false, false)));
         assertFalse(PacketWindow.isMoving(new net.minecraft.world.entity.player.Input(false, false, false, false, false, true, false)));
     }
+    @Test
+    void catchUpTickCannotRestoreWithinFiveMillisecondsOfMovement() {
+        window.noteMovement(100_000_000L);
+        window.noteTickStart();
+        assertFalse(window.slotChangeAllowed(100_000_000L));
+        assertFalse(window.slotChangeAllowed(104_999_999L));
+        assertTrue(window.slotChangeAllowed(105_000_000L));
+    }
+
+    @Test
+    void elapsedTimeDoesNotOverridePostOrActionOrdering() {
+        window.noteMovement(100_000_000L);
+        assertFalse(window.slotChangeAllowed(150_000_000L));
+        window.noteTickStart();
+        window.noteUseItem();
+        assertFalse(window.slotChangeAllowed(150_000_000L));
+        window.noteTickEnd();
+        assertTrue(window.slotChangeAllowed(150_000_000L));
+    }
+
+    @Test
+    void tickWithoutMovementDoesNotEraseThePreviousTimestamp() {
+        window.noteMovement(100_000_000L);
+        window.noteTickStart();
+        window.noteTickEnd();
+        window.noteTickStart();
+        assertFalse(window.slotChangeAllowed(101_000_000L));
+        window.reset();
+        assertTrue(window.slotChangeAllowed(101_000_000L));
+    }
+
 }

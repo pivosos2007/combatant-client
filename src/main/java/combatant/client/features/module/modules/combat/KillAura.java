@@ -546,11 +546,25 @@ public class KillAura extends Module {
         SprintController.INSTANCE.clearSprintBlock();
     }
 
+    private boolean isElytraCombatReserved() {
+        ElytraTarget elytraTarget = Modules.get(ElytraTarget.class);
+        return elytraTarget != null && elytraTarget.shouldSuspendKillAura();
+    }
+
     @EventHandler(priority = 10)
     public void onRotationUpdate(RotationUpdateEvent event) {
         if (!isEnabled()) return;
         if (mc.player == null || mc.level == null) {
             clearTargetImmediate();
+            return;
+        }
+
+        if (isElytraCombatReserved()) {
+            if (event.getType() == RotationUpdateEvent.Type.PRE) {
+                CombatAttackPlanner.INSTANCE.clearCommitment();
+                SprintController.INSTANCE.clearSprintBlock();
+                clearRotationState(false);
+            }
             return;
         }
 
@@ -561,18 +575,7 @@ public class KillAura extends Module {
                     clicker.tick();
                 }
 
-                TargetingSettings settings = new TargetingSettings(
-                        getAcquireRange(),
-                        fov.get(),
-                        toggles.get(TargetFilters.PLAYERS_ONLY),
-                        toggles.get(TargetFilters.IGNORE_FRIENDS),
-                        toggles.get(TargetFilters.IGNORE_STAFF),
-                        toggles.get(TargetFilters.IGNORE_ENEMIES),
-                        toggles.get(TargetFilters.IGNORE_NAKED),
-                        toggles.get(TargetFilters.IGNORE_ENTITIES),
-                        false,
-                        priority.get()
-                );
+                TargetingSettings settings = targetingSettings(getAcquireRange());
 
                 List<LivingEntity> targets = filterDynamicReachTargets(TargetingUtil.findTargets(mc, settings));
                 syncPredictionTarget(targets);
@@ -613,7 +616,7 @@ public class KillAura extends Module {
     /** Runs after TargetStrafe updates movement input so critical-jump prediction uses the resulting flags. */
     @EventHandler(priority = -5)
     private void onSmartCritMovement(MovementInputEvent event) {
-        if (!usesSmartCriticalTiming() || mc.player == null || mc.level == null) return;
+        if (isElytraCombatReserved() || !usesSmartCriticalTiming() || mc.player == null || mc.level == null) return;
 
         LivingEntity target = currentTarget;
         if (target == null || !isInRange(target)) return;
@@ -649,7 +652,7 @@ public class KillAura extends Module {
 
     /** Suppresses the optional Grim clear-ground hop while Smart critical timing controls jumps. */
     public boolean controlsGrimStrafeJump(LivingEntity target) {
-        if (!isEnabled() || target == null || target != currentTarget || mc.player == null) return false;
+        if (isElytraCombatReserved() || !isEnabled() || target == null || target != currentTarget || mc.player == null) return false;
         if (isLegacyAttackProtocol() || criticalsSelection.get() != Criticals.SelectionMode.SMART) return false;
         Criticals criticals = Modules.get(Criticals.class);
         return canPlanNaturalCrit(criticals, target);
@@ -667,7 +670,7 @@ public class KillAura extends Module {
     }
 
     private void tryAttackPost() {
-        if (mc.player == null || mc.level == null) return;
+        if (isElytraCombatReserved() || mc.player == null || mc.level == null) return;
         if (mc.player.tickCount == lastAttackExecutionAge) return;
 
         LivingEntity target = currentTarget;
@@ -757,27 +760,22 @@ public class KillAura extends Module {
         return isEnabled() && CombatRotationModeUtil.isNoRotations(attackMode);
     }
 
-    public List<LivingEntity> findElytraTargetCandidates(double range, float fov) {
-        if (!isEnabled() || mc.player == null || mc.level == null) {
-            return List.of();
-        }
+    public List<LivingEntity> findElytraTargetCandidates(double range) {
+        if (!isEnabled() || mc.player == null || mc.level == null) return List.of();
+        return TargetingUtil.findTargets(mc, targetingSettings(Math.max(1.0, range)));
+    }
 
-        double safeRange = Math.max(1.0, range);
-        float safeFov = Math.max(1.0f, Math.min(180.0f, fov));
-        TargetingSettings settings = new TargetingSettings(
-                safeRange,
-                safeFov,
+    private TargetingSettings targetingSettings(double range) {
+        return new TargetingSettings(
+                range, fov.get(),
                 toggles.get(TargetFilters.PLAYERS_ONLY),
                 toggles.get(TargetFilters.IGNORE_FRIENDS),
                 toggles.get(TargetFilters.IGNORE_STAFF),
                 toggles.get(TargetFilters.IGNORE_ENEMIES),
                 toggles.get(TargetFilters.IGNORE_NAKED),
                 toggles.get(TargetFilters.IGNORE_ENTITIES),
-                false,
-                priority.get()
+                false, priority.get()
         );
-
-        return TargetingUtil.findTargets(mc, settings);
     }
 
     private void clearTargetImmediate() {

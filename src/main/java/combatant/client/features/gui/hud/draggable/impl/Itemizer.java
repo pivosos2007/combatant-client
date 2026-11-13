@@ -56,6 +56,7 @@ import java.util.Set;
 @HudElementRegister(order = 200)
 @UiScriptAsset("combatant:modules/hud/draggable/itemizer")
 public final class Itemizer extends DraggableHudElement {
+    private static final float BASE_LAYOUT_SCALE = 2.05f;
     private static final float CARD_HEIGHT = 16.0f;
     private static final float ROW_STEP = 22.0f;
     private static final float ICON_AREA = 16.0f;
@@ -99,7 +100,7 @@ public final class Itemizer extends DraggableHudElement {
     private final DimensionTween heightTween = new DimensionTween();
 
     public Itemizer() {
-        super("itemizer", "Itemizer", "hud.draggable.itemizer.description", true);
+        super("itemizer", "Itemizer", "hud.draggable.itemizer.description", false);
         defaultLayout(-16.0f, 48.0f, "CENTER", "CENTER");
         INSTANCE = this;
     }
@@ -146,7 +147,7 @@ public final class Itemizer extends DraggableHudElement {
 
     @Override
     public void applyDefaultPosition(int screenW, int screenH) {
-        x = (screenW - 140.0f) * 0.5f;
+        x = (screenW - 140.0f * BASE_LAYOUT_SCALE * scale.get().floatValue()) * 0.5f;
         y = screenH * 0.5f + 48.0f;
         setAnchors(HudAnchorX.FREE, HudAnchorY.FREE, x, y);
     }
@@ -256,7 +257,7 @@ public final class Itemizer extends DraggableHudElement {
         }
         float contentW = widthTween.update(layoutW, dt);
         float contentH = heightTween.update(layoutH, dt);
-        float baseScale = scale.get().floatValue();
+        float baseScale = BASE_LAYOUT_SCALE * scale.get().floatValue();
         width = contentW * baseScale;
         height = contentH * baseScale;
         if (drawn.isEmpty() && visibilityAnim <= FADE_EPSILON) {

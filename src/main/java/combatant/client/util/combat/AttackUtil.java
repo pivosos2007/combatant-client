@@ -36,6 +36,7 @@ import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
 import combatant.client.util.item.FoodUtil;
 import combatant.client.util.player.ResetAttackCooldown;
+import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.target.TargetManager;
 
 /**
@@ -150,6 +151,7 @@ public enum AttackUtil {
                                          LocalPlayer player,
                                          LivingEntity target,
                                          boolean keepSprint) {
+        if (!InventorySwap.INSTANCE.attackSlotReady()) return false;
         Criticals criticals = Modules.get(Criticals.class);
         if (criticals != null && criticals.isEnabled()) {
             criticals.beforeAttack(mc, player, target);

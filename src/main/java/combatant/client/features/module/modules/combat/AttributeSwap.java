@@ -17,6 +17,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -48,9 +49,11 @@ import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.EnumValue;
-import combatant.client.config.values.ModeValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
+import combatant.client.events.Events;
+import combatant.client.events.impl.GameTickEvent;
+import combatant.client.events.impl.PacketEvent;
 import combatant.client.events.impl.EventSync;
 import combatant.client.events.impl.ManualAttackEvent;
 import combatant.client.features.module.Module;
@@ -63,10 +66,17 @@ import combatant.client.features.module.modules.player.Offhand;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.click.AttackPressing;
 import combatant.client.util.combat.AttackUtil;
+import combatant.client.util.combat.SmashTrajectory;
 import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.player.ResetAttackCooldown;
 import combatant.client.util.player.inventory.InventorySwap;
+import combatant.client.util.player.inventory.InventorySwapRequest;
+import combatant.client.util.player.inventory.InventorySwapVisibility;
+import combatant.client.util.player.inventory.InventorySearchScope;
+import combatant.client.util.player.inventory.InventoryActionKind;
+import combatant.client.util.player.inventory.InventorySlotLocks;
+import combatant.client.util.player.inventory.PacketWindow;
 import combatant.client.util.combat.protocol.ProtocolUtil;
 
 import java.util.LinkedHashMap;
@@ -86,10 +96,10 @@ public class AttributeSwap extends Module {
     private static final long FAST_AURA_MACE_DELAY_MAX_MS = 230L;
     private static final int CHEST_SCREEN_SLOT = 6;
     private static final int CYCLE_NONE = 0;
+    private static final int CYCLE_WAIT_CHEST_SWAP = 1;
     private static final int CYCLE_WAIT_MACE_SYNC = 2;
     private static final int CYCLE_WAIT_ELYTRA_RESTORE = 3;
     private static final int TARGET_DIVE_TIMEOUT_TICKS = 30;
-    private static final double TARGET_DIVE_MIN_VERTICAL_CLEARANCE = 2.8;
     private static final int WIND_BURST_ABSORPTION_MIN_TICKS = 200;
     private static final int WIND_BURST_PREDICTION_TICKS = 140;
     private static final double WIND_BURST_EXPLOSION_RADIUS = 3.5;
@@ -110,15 +120,6 @@ public class AttributeSwap extends Module {
                     "protocol_heuristics",
                     CombatProtocolHeuristics.defaultSourceToggles()
             );
-    private final ModeValue searchMode =
-            visibleWhen(modeCommon(
-                    "attributeSwapSearch",
-                    "search_scope",
-                    CommonSettingSchemas.INVENTORY_SEARCH_SCOPE,
-                    "HOTBAR",
-                    "HOTBAR",
-                    "INVENTORY"
-            ), this::isHeightMaceEnabled);
     private final EnumValue<BestDamageWeaponMode> bestDamageWeaponMode =
             visibleWhen(enumSetting(
                     "attributeSwapBestDamageWeaponMode",
@@ -237,19 +238,49 @@ public class AttributeSwap extends Module {
             ), this::isWindBurstSafetyEnabled);
     private int pendingTargetId = -1;
     private boolean pendingKeepSprint = false;
-    private int pendingRestoreSyncId = -1;
-    private int pendingRestoreFromScreenSlot = -1;
-    private int pendingRestoreToScreenSlot = -1;
-    private int pendingRestoreAge = -1;
     private boolean elytraCycleActive;
     private int elytraCycleTargetId = -1;
     private int elytraReturnInventorySlot = -1;
     private int elytraCycleExpireAge = -1;
     private int elytraCycleStage = CYCLE_NONE;
-    private int elytraMaceAttackAge = -1;
     private int elytraRestoreAge = -1;
     private boolean elytraCycleKeepSprint;
     private boolean elytraCycleFromTarget;
+    private int cyclePredictionTicks;
+    private boolean cycleInventoryPending;
+    private int cycleMaceFromSlot = -1;
+    private int cycleMaceToSlot = -1;
+    private LocalPlayer cyclePlayer;
+    private Vec3 cycleReportedEye;
+    private int lastElytraCycleAttackAge = -1;
+    private int lastElytraCycleAttackTargetId = -1;
+    private LocalPlayer lastElytraCycleAttackPlayer;
+    private final CycleAttackWindow cycleAttackWindow = new CycleAttackWindow();
+    private final Object cycleLifecycle = new Object() {
+        @EventHandler(priority = Integer.MAX_VALUE - 2)
+        private void onGameTick(GameTickEvent event) {
+            if (!elytraCycleActive) return;
+            if (mc.player != cyclePlayer || mc.level == null) {
+                InventorySwap.INSTANCE.cancelQueuedInventoryActions(AttributeSwap.this);
+                clearElytraCycle();
+                return;
+            }
+            InventorySwap.INSTANCE.leaseInventory(AttributeSwap.this, 2);
+            if (!isEnabled()) restoreElytraIfNeeded();
+            else tickElytraCycle();
+        }
+
+        @EventHandler(priority = -20002)
+        private void onMovementSent(PacketEvent.Send event) {
+            if (!event.isCancelled() && event.getPacket() instanceof ServerboundMovePlayerPacket packet
+                    && packet.hasPosition() && mc.player == cyclePlayer && cyclePlayer != null
+                    && elytraCycleStage == CYCLE_WAIT_MACE_SYNC) {
+                cycleReportedEye = new Vec3(packet.getX(cyclePlayer.getX()), packet.getY(cyclePlayer.getY()),
+                        packet.getZ(cyclePlayer.getZ())).add(0, cyclePlayer.getEyeHeight(), 0);
+                cycleAttackWindow.notePosition(cyclePlayer.fallDistance, cyclePlayer.isFallFlying(), packet.isOnGround());
+            }
+        }
+    };
     private boolean queuedRestoreGlide;
     private int restoreGlideAge = -1;
     private int restoreGlideExpireAge = -1;
@@ -389,7 +420,6 @@ public class AttributeSwap extends Module {
     public void onDisable() {
         pendingTargetId = -1;
         pendingKeepSprint = false;
-        clearPendingRestore();
         restoreElytraIfNeeded();
         clearRestoreGlide();
         clearAuraControl();
@@ -401,8 +431,6 @@ public class AttributeSwap extends Module {
     public void onTick() {
         if (isEnabled()) {
             InventorySwap.INSTANCE.tick();
-            flushPendingRestore();
-            tickElytraCycle();
             tickRestoreGlide();
             tickAuraControl();
             externalTargetBlocking = false;
@@ -430,11 +458,9 @@ public class AttributeSwap extends Module {
         }
 
         if (isHeightMaceEnabled()) {
+            if (tryStartElytraCycle(mc.player, target, keepSprint)) return QueueResult.SUPPRESS;
             int maceSlot = findDesiredMaceSlot(mc.player, target);
             if (maceSlot != -1) {
-                if (tryStartElytraCycle(mc.player, target, keepSprint)) {
-                    return QueueResult.SUPPRESS;
-                }
 
                 boolean fastAuraMace = shouldBypassAuraCooldown(mc.player, target, maceSlot);
                 if (fastAuraMace && maceSlot < 9) {
@@ -465,10 +491,10 @@ public class AttributeSwap extends Module {
 
     @EventHandler(priority = -2000)
     private void onSync(EventSync event) {
-        flushPendingRestore();
         if (!isEnabled()) return;
-        tickElytraCycleSync();
+        tickElytraCycleSync(event);
         tickRestoreGlideSync();
+        if (elytraCycleActive) return;
         if (pendingTargetId == -1) return;
 
         LocalPlayer player = mc.player;
@@ -482,33 +508,18 @@ public class AttributeSwap extends Module {
 
         Entity entity = mc.level.getEntity(targetId);
         if (!(entity instanceof LivingEntity target) || !isValidTarget(target)) return;
+        KillAura aura = Modules.get(KillAura.class);
+        double reach = aura != null && aura.isEnabled() ? aura.getEffectiveRange(target) : 3.0;
+        Vec3 eye = player.getEyePosition();
+        AABB box = target.getBoundingBox();
+        if (eye.distanceToSqr(Mth.clamp(eye.x, box.minX, box.maxX),
+                Mth.clamp(eye.y, box.minY, box.maxY), Mth.clamp(eye.z, box.minZ, box.maxZ)) > reach * reach) return;
 
         int maceSlot = findDesiredMaceSlot(player, target);
         if (maceSlot == -1) return;
 
-        if (maceSlot < 9) {
-            attackWithLeasedHotbar(player, target, keepSprint, maceSlot);
-            return;
-        }
-
-        PlayerInventoryAccessor inv = (PlayerInventoryAccessor) player.getInventory();
-        int selectedSlot = inv.combatant$getSelectedSlot();
-        int syncId = player.inventoryMenu != null ? player.inventoryMenu.containerId : -1;
-        int maceScreenSlot = InventorySwap.mapInventoryToScreenSlot(maceSlot);
-        int selectedScreenSlot = InventorySwap.mapHotbarToScreenSlot(selectedSlot);
-        boolean needsSwap = maceScreenSlot != selectedScreenSlot;
-        if (needsSwap) {
-            if (syncId < 0) return;
-            InventorySwap.INSTANCE.swapScreenSlots(maceScreenSlot, selectedScreenSlot);
-        }
-        try {
-            if (!AttackUtil.attackCurrentItem(mc, target, keepSprint)) return;
-            ResetAttackCooldown.resetAttackCooldown(player);
-            restoreElytraIfNeeded();
-        } finally {
-            if (needsSwap && restoreItem.get()) {
-                schedulePendingRestore(player.tickCount, syncId, maceScreenSlot, selectedScreenSlot);
-            }
+        if (!attackMaceNow(player, target, keepSprint, maceSlot)) {
+            queuePendingMaceAttack(target, keepSprint);
         }
     }
 
@@ -525,7 +536,9 @@ public class AttributeSwap extends Module {
                                            int hotbarSlot,
                                            boolean updateFastMaceDelay) {
         int resetTicks = restoreItem.get() ? 1 : HOTBAR_RESET_TICKS;
-        if (!InventorySwap.INSTANCE.leaseHotbar(this, hotbarSlot, resetTicks)) return false;
+        if (restoreItem.get()) {
+            if (!InventorySwap.INSTANCE.leaseHotbar(this, hotbarSlot, resetTicks)) return false;
+        } else if (!InventorySwap.INSTANCE.selectHotbar(hotbarSlot, this)) return false;
         if (!AttackUtil.attackCurrentItem(mc, target, keepSprint)) return false;
         ResetAttackCooldown.resetAttackCooldown(player);
         if (updateFastMaceDelay) {
@@ -614,6 +627,8 @@ public class AttributeSwap extends Module {
     }
 
     public boolean tryBreakShield(Player target, boolean keepSprint) {
+        if (elytraCycleActive && (elytraCycleStage != CYCLE_WAIT_MACE_SYNC || cycleInventoryPending
+                || !InventorySwap.INSTANCE.allowsDirectCombatSwap())) return false;
         if (!isActionEnabled(ACTION_SHIELD_BREAKER)) return false;
         if (attributeSwapSequence) return false;
         if (mc.player == null || mc.gameMode == null) return false;
@@ -622,49 +637,52 @@ public class AttributeSwap extends Module {
         if (!isUsingShield(target)) return false;
         if (!isShieldFacingPlayer(target)) return false;
 
-        int axeSlot = findHotbarAxeSlot(mc.player);
+        int axeSlot = findAxeSlot(mc.player);
         if (axeSlot == -1) return false;
 
         int selected = ((PlayerInventoryAccessor) mc.player.getInventory()).combatant$getSelectedSlot();
         if (axeSlot == selected && isAxe(mc.player.getMainHandItem())) return false;
 
-        return attackWithAttributeHotbar(mc.player, target, keepSprint, axeSlot);
+        if (axeSlot < 9) return attackWithAttributeHotbar(mc.player, target, keepSprint, axeSlot);
+        boolean[] attacked = {false};
+        InventorySwap.INSTANCE.execute(InventorySwapRequest.builder(this::isAxe, () -> {
+            attributeSwapSequence = true;
+            try {
+                attacked[0] = AttackUtil.attackCurrentItem(mc, target, keepSprint);
+                if (attacked[0]) {
+                    lastAttributeSwapTargetId = target.getId();
+                    lastAttributeSwapAge = mc.player.tickCount;
+                    ResetAttackCooldown.resetAttackCooldown(mc.player);
+                }
+            } finally {
+                attributeSwapSequence = false;
+            }
+        }).scope(InventorySearchScope.INVENTORY).restore(restoreItem.get())
+                .actionKind(InventoryActionKind.ATTACK_ENTITY).build(), elytraCycleActive ? this : null);
+        return attacked[0];
     }
 
     private boolean attackMaceNow(LocalPlayer player,
                                   LivingEntity target,
                                   boolean keepSprint,
                                   int maceSlot) {
-        if (player.getMainHandItem().is(Items.MACE)
-                && maceSlot == ((PlayerInventoryAccessor) player.getInventory()).combatant$getSelectedSlot()) {
-            if (!AttackUtil.attackCurrentItem(mc, target, keepSprint)) return false;
-            ResetAttackCooldown.resetAttackCooldown(player);
-            return true;
-        }
         if (maceSlot < 9) {
             return attackWithLeasedHotbar(player, target, keepSprint, maceSlot);
         }
 
-        if (player.inventoryMenu == null) return false;
-
-        int selectedSlot = ((PlayerInventoryAccessor) player.getInventory()).combatant$getSelectedSlot();
-        int syncId = player.inventoryMenu.containerId;
-        int maceScreenSlot = InventorySwap.mapInventoryToScreenSlot(maceSlot);
-        int selectedScreenSlot = InventorySwap.mapHotbarToScreenSlot(selectedSlot);
-        boolean needsSwap = maceScreenSlot != selectedScreenSlot;
-        if (needsSwap) {
-            InventorySwap.INSTANCE.swapScreenSlots(maceScreenSlot, selectedScreenSlot);
-        }
-
-        try {
-            if (!AttackUtil.attackCurrentItem(mc, target, keepSprint)) return false;
-            ResetAttackCooldown.resetAttackCooldown(player);
-            return true;
-        } finally {
-            if (needsSwap && restoreItem.get()) {
-                schedulePendingRestore(player.tickCount, syncId, maceScreenSlot, selectedScreenSlot);
-            }
-        }
+        if (player.containerMenu != player.inventoryMenu) return false;
+        ItemStack mace = player.getInventory().getItem(maceSlot).copy();
+        boolean[] attacked = {false};
+        InventorySwap.INSTANCE.execute(InventorySwapRequest.builder(
+                stack -> ItemStack.isSameItemSameComponents(stack, mace),
+                () -> {
+                    if (isUnsafeWindBurstMace(player, player.getMainHandItem())) return;
+                    attacked[0] = AttackUtil.attackCurrentItem(mc, target, keepSprint);
+                    if (attacked[0]) ResetAttackCooldown.resetAttackCooldown(player);
+                }).scope(InventorySearchScope.INVENTORY)
+                .visibility(InventorySwapVisibility.NORMAL).restore(restoreItem.get())
+                .actionKind(InventoryActionKind.ATTACK_ENTITY).build(), elytraCycleActive ? this : null);
+        return attacked[0];
     }
 
     @EventHandler(priority = 2000)
@@ -687,6 +705,7 @@ public class AttributeSwap extends Module {
         LivingEntity target = resolveCrosshairTarget();
         if (!isValidTarget(target)) return false;
         if (isBlockingShieldTarget(target)) return false;
+        if (tryStartElytraCycle(player, target, false)) return true;
 
         if (isHeightMaceEnabled() && canAttackNow(player)) {
             int maceSlot = findDesiredMaceSlot(player, target);
@@ -709,26 +728,8 @@ public class AttributeSwap extends Module {
                     }
                 }
 
-                if (player.inventoryMenu == null) {
-                    return false;
-                }
-
-                int syncId = player.inventoryMenu.containerId;
-                int maceScreenSlot = InventorySwap.mapInventoryToScreenSlot(maceSlot);
-                int selectedScreenSlot = InventorySwap.mapHotbarToScreenSlot(selectedSlot);
-                boolean needsSwap = maceScreenSlot != selectedScreenSlot;
-                if (needsSwap) {
-                    InventorySwap.INSTANCE.swapScreenSlots(maceScreenSlot, selectedScreenSlot);
-                }
-                try {
-                    if (!AttackUtil.attackCurrentItem(mc, target, false)) return false;
-                    ResetAttackCooldown.resetAttackCooldown(player);
-                    return true;
-                } finally {
-                    if (needsSwap && restoreItem.get()) {
-                        InventorySwap.INSTANCE.swapScreenSlots(maceScreenSlot, selectedScreenSlot);
-                    }
-                }
+                if (!attackMaceNow(player, target, false, maceSlot)) queuePendingMaceAttack(target, false);
+                return true;
             }
         }
 
@@ -736,69 +737,60 @@ public class AttributeSwap extends Module {
         return bestWeaponPrepare == BestWeaponPrepareResult.FAILED;
     }
 
-    private void schedulePendingRestore(int currentAge, int syncId, int fromScreenSlot, int toScreenSlot) {
-        pendingRestoreSyncId = syncId;
-        pendingRestoreFromScreenSlot = fromScreenSlot;
-        pendingRestoreToScreenSlot = toScreenSlot;
-        pendingRestoreAge = currentAge + 1;
-    }
-
-    private void flushPendingRestore() {
-        if (pendingRestoreAge == -1) {
-            return;
-        }
-
-        LocalPlayer player = mc.player;
-        MultiPlayerGameMode manager = mc.gameMode;
-        if (player == null || manager == null) {
-            clearPendingRestore();
-            return;
-        }
-
-        if (player.tickCount < pendingRestoreAge) {
-            return;
-        }
-
-        InventorySwap.INSTANCE.swapScreenSlots(pendingRestoreFromScreenSlot, pendingRestoreToScreenSlot);
-        clearPendingRestore();
-    }
-
-    private void clearPendingRestore() {
-        pendingRestoreSyncId = -1;
-        pendingRestoreFromScreenSlot = -1;
-        pendingRestoreToScreenSlot = -1;
-        pendingRestoreAge = -1;
-    }
-
     private boolean tryStartElytraCycle(LocalPlayer player, LivingEntity target, boolean keepSprint) {
         if (!canPrepareElytraTargetDive(player, target) || elytraCycleActive) return false;
         if (!player.isFallFlying() || !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) return false;
-        if (!isVectorFallingDown(player) || !isHorizontallyMovingIntoTarget(player, target)) return false;
-        if (!beginElytraCycle(player, target, false, Math.max(elytraCycleTimeout.get(), 12))) return false;
+        if (!hasPredictedSmashContact(player, target)) return false;
+        if (!beginElytraCycle(player, target, false, elytraCycleTimeout.get(), predictionTicks.get())) return false;
         elytraCycleKeepSprint = keepSprint;
         return true;
     }
 
-    private boolean beginElytraCycle(LocalPlayer player, LivingEntity target, boolean fromTarget, int duration) {
+    private boolean beginElytraCycle(LocalPlayer player, LivingEntity target, boolean fromTarget, int duration, int forecastTicks) {
         int swapSlot = findElytraRemovalSlot(player);
-        if (swapSlot < 0 || player.inventoryMenu == null) return false;
-        if (!InventorySwap.INSTANCE.swapScreenSlots(InventorySwap.mapInventoryToScreenSlot(swapSlot), CHEST_SCREEN_SLOT)) {
-            return false;
-        }
-
+        InventorySwap inventory = InventorySwap.INSTANCE;
+        if (swapSlot < 0 || player.inventoryMenu == null || player.containerMenu != player.inventoryMenu
+                || !inventory.itemUseAvailable() || !inventory.leaseInventory(this, 2)) return false;
         elytraCycleActive = true;
+        pendingTargetId = -1;
+        pendingKeepSprint = false;
+        cycleAttackWindow.reset();
+        cycleReportedEye = null;
         elytraCycleFromTarget = fromTarget;
+        cyclePredictionTicks = forecastTicks;
         elytraCycleTargetId = target.getId();
         elytraReturnInventorySlot = swapSlot;
         elytraCycleExpireAge = player.tickCount + duration;
-        elytraCycleStage = CYCLE_WAIT_MACE_SYNC;
-        elytraMaceAttackAge = player.tickCount + 1;
+        elytraCycleStage = CYCLE_WAIT_CHEST_SWAP;
         elytraRestoreAge = -1;
         elytraCycleKeepSprint = true;
+        cyclePlayer = player;
+        Events.BUS.register(cycleLifecycle);
+        cycleInventoryPending = true;
+        boolean accepted = inventory.swapScreenSlots(InventorySwap.mapInventoryToScreenSlot(swapSlot),
+                CHEST_SCREEN_SLOT, this,
+                () -> elytraCycleStage == CYCLE_WAIT_CHEST_SWAP && isEnabled()
+                        && isValidTarget(target) && player.tickCount < elytraCycleExpireAge
+                        && hasPredictedSmashContact(player, target, cyclePredictionTicks),
+                completed -> {
+                    cycleInventoryPending = false;
+                    if (completed && !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)
+                            && player.getInventory().getItem(swapSlot).is(Items.ELYTRA)) {
+                        elytraCycleStage = CYCLE_WAIT_MACE_SYNC;
+                    } else {
+                        elytraCycleStage = CYCLE_WAIT_ELYTRA_RESTORE;
+                        elytraRestoreAge = player.tickCount;
+                    }
+                });
+        if (!accepted) {
+            cycleInventoryPending = false;
+            clearElytraCycle();
+            return false;
+        }
         return true;
     }
 
-    private void tickElytraCycleSync() {
+    private void tickElytraCycleSync(EventSync event) {
         if (!elytraCycleActive || elytraCycleStage != CYCLE_WAIT_MACE_SYNC) return;
 
         LocalPlayer player = mc.player;
@@ -806,7 +798,11 @@ public class AttributeSwap extends Module {
             clearElytraCycle();
             return;
         }
-        if (player.tickCount < elytraMaceAttackAge) return;
+        if (cycleInventoryPending || player.containerMenu != player.inventoryMenu) return;
+        if (player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
+            restoreElytraIfNeeded();
+            return;
+        }
 
         Entity entity = mc.level.getEntity(elytraCycleTargetId);
         if (!(entity instanceof LivingEntity target) || !isValidTarget(target) || target.getHealth() <= 0.0f) {
@@ -817,32 +813,94 @@ public class AttributeSwap extends Module {
             restoreElytraIfNeeded();
             return;
         }
-        if (player.isFallFlying() || !MaceItem.canSmashAttack(player) || player.getDeltaMovement().y >= 0.0) return;
-        if (player.isUsingItem() || player.getAttackStrengthScale(0.5f) < 0.9f) return;
+        int maceSlot = findCycleMaceSlot(player);
+        if (maceSlot < 0) {
+            restoreElytraIfNeeded();
+            return;
+        }
+        boolean directInventory = maceSlot >= 9 && InventorySwap.INSTANCE.allowsDirectCombatSwap();
+        if (maceSlot >= 9 && !directInventory) {
+            prepareCycleInventoryMace(player, target, maceSlot);
+            if (cycleInventoryPending) return;
+            maceSlot = findCycleMaceSlot(player);
+            if (maceSlot < 0 || maceSlot >= 9) return;
+        }
+        if (!MaceItem.canSmashAttack(player)) return;
+        if (player.fallDistance < minFallDistance.get()) return;
+        if (player.getDeltaMovement().y >= 0) return;
+        if (player.isUsingItem()) return;
+        if (player.getAttackStrengthScale(0.5f) < 0.9f) return;
+        if (!isCycleContactReachable(player, target)) {
+            if (!hasPredictedSmashContact(player, target, cyclePredictionTicks)) restoreElytraIfNeeded();
+            return;
+        }
+        if (!cycleAttackWindow.ready(minFallDistance.get())) return;
+        if (PacketWindow.INSTANCE.isPostMovement()) return;
+        if (cycleReportedEye == null) return;
+        if (!isCycleContactReachable(player, target, cycleReportedEye)) return;
+        if (target instanceof Player shieldTarget && isBlockingShieldTarget(target)
+                && tryBreakShield(shieldTarget, elytraCycleKeepSprint)) return;
+        if (directInventory) {
+            int inventorySlot = maceSlot;
+            cycleAttackWindow.beforeMovement(minFallDistance.get(),
+                    () -> attackElytraCycleBeforeMovement(player, target, inventorySlot));
+            return;
+        }
+        if (InventorySwap.INSTANCE.serverSelectedSlot() != maceSlot
+                && !PacketWindow.INSTANCE.slotChangeAllowed()) return;
+        if (restoreItem.get()) {
+            if (!InventorySwap.INSTANCE.leaseHotbar(this, maceSlot, 2)) return;
+        } else if (!InventorySwap.INSTANCE.selectHotbar(maceSlot, this)) return;
+        int preparedSlot = maceSlot;
+        cycleAttackWindow.beforeMovement(minFallDistance.get(),
+                () -> attackElytraCycleBeforeMovement(player, target, preparedSlot));
+    }
 
+    private void attackElytraCycleBeforeMovement(LocalPlayer player, LivingEntity target, int maceSlot) {
+        if (!isEnabled() || mc.player != player || mc.level == null || !elytraCycleActive
+                || elytraCycleStage != CYCLE_WAIT_MACE_SYNC || cycleInventoryPending
+                || elytraCycleTargetId != target.getId() || !isValidTarget(target)) return;
+        if (player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)
+                || maceSlot < 9 && InventorySwap.INSTANCE.serverSelectedSlot() != maceSlot
+                || !player.getInventory().getItem(maceSlot).is(Items.MACE)
+                || isUnsafeWindBurstMace(player, player.getInventory().getItem(maceSlot))) return;
+        if (player.isFallFlying() || !MaceItem.canSmashAttack(player)
+                || player.fallDistance < minFallDistance.get()
+                || player.getDeltaMovement().y >= 0.0) return;
+        if (player.isUsingItem() || player.getAttackStrengthScale(0.5f) < 0.9f) return;
+        if (!isCycleContactReachable(player, target) || cycleReportedEye == null
+                || !isCycleContactReachable(player, target, cycleReportedEye)) return;
+        if (maceSlot >= 9) {
+            if (!attackMaceNow(player, target, elytraCycleKeepSprint, maceSlot)) return;
+        } else if (!AttackUtil.attackCurrentItem(mc, target, elytraCycleKeepSprint)) return;
+        lastElytraCycleAttackAge = player.tickCount;
+        lastElytraCycleAttackTargetId = target.getId();
+        lastElytraCycleAttackPlayer = player;
+        ResetAttackCooldown.resetAttackCooldown(player);
+        lastFastAuraMaceAttackMs = System.currentTimeMillis();
+        nextFastAuraMaceDelayMs = randomFastAuraMaceDelay();
+        elytraCycleStage = CYCLE_WAIT_ELYTRA_RESTORE;
+        elytraRestoreAge = player.tickCount + 1;
+    }
+
+    private boolean isCycleContactReachable(LocalPlayer player, LivingEntity target) {
+        return isCycleContactReachable(player, target, player.getEyePosition());
+    }
+
+    private boolean isCycleContactReachable(LocalPlayer player, LivingEntity target, Vec3 eye) {
         KillAura aura = Modules.get(KillAura.class);
         double reach = aura != null && aura.isEnabled() ? aura.getEffectiveRange(target) : 3.0;
-        Vec3 eye = player.getEyePosition();
         AABB box = target.getBoundingBox();
         Vec3 contact = new Vec3(
                 Mth.clamp(eye.x, box.minX, box.maxX),
                 Mth.clamp(eye.y, box.minY, box.maxY),
                 Mth.clamp(eye.z, box.minZ, box.maxZ)
         );
-        if (eye.distanceToSqr(contact) > reach * reach) return;
+        if (eye.distanceToSqr(contact) > reach * reach) return false;
         HitResult obstruction = mc.level.clip(new ClipContext(
                 eye, contact, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
-        if (obstruction.getType() != HitResult.Type.MISS
-                && obstruction.getLocation().distanceToSqr(eye) + 0.05 < contact.distanceToSqr(eye)) return;
-
-        int maceSlot = findCycleMaceSlot(player);
-        if (maceSlot < 0) {
-            restoreElytraIfNeeded();
-            return;
-        }
-        if (!attackMaceNow(player, target, elytraCycleKeepSprint, maceSlot)) return;
-        elytraCycleStage = CYCLE_WAIT_ELYTRA_RESTORE;
-        elytraRestoreAge = player.tickCount + (maceSlot < 9 || !restoreItem.get() ? 1 : 2);
+        return obstruction.getType() == HitResult.Type.MISS
+                || obstruction.getLocation().distanceToSqr(eye) + 0.05 >= contact.distanceToSqr(eye);
     }
 
     private void tickElytraCycle() {
@@ -869,12 +927,36 @@ public class AttributeSwap extends Module {
     private void restoreElytraIfNeeded() {
         if (!elytraCycleActive) return;
 
+        boolean alreadyRestoring = elytraCycleStage == CYCLE_WAIT_ELYTRA_RESTORE;
+        elytraCycleStage = CYCLE_WAIT_ELYTRA_RESTORE;
+        InventorySwap inventory = InventorySwap.INSTANCE;
+        if (cycleInventoryPending) {
+            if (alreadyRestoring) return;
+            inventory.cancelQueuedInventoryActions(this);
+            if (cycleInventoryPending) return;
+        }
+
         LocalPlayer player = mc.player;
         if (player == null || player.inventoryMenu == null) {
             clearElytraCycle();
             return;
         }
 
+        if (player != cyclePlayer) {
+            clearElytraCycle();
+            return;
+        }
+        inventory.leaseInventory(this, 2);
+        if (player.containerMenu != player.inventoryMenu) return;
+        if (cycleMaceFromSlot >= 0) {
+            if (!restoreItem.get()) {
+                cycleMaceFromSlot = -1;
+                cycleMaceToSlot = -1;
+            } else {
+                requestCycleMaceRestore(player);
+                return;
+            }
+        }
         boolean restored = false;
         if (player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
             restored = true;
@@ -891,13 +973,24 @@ public class AttributeSwap extends Module {
                 }
             }
             if (elytraSlot >= 0) {
-                restored = InventorySwap.INSTANCE.swapScreenSlots(
-                        InventorySwap.mapInventoryToScreenSlot(elytraSlot), CHEST_SCREEN_SLOT);
+                cycleInventoryPending = true;
+                boolean accepted = inventory.swapScreenSlots(
+                        InventorySwap.mapInventoryToScreenSlot(elytraSlot), CHEST_SCREEN_SLOT, this,
+                        () -> elytraCycleActive && elytraCycleStage == CYCLE_WAIT_ELYTRA_RESTORE,
+                        completed -> {
+                            cycleInventoryPending = false;
+                            if (completed && player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
+                                if (isEnabled()) queueRestoreGlide(player);
+                                clearElytraCycle();
+                            }
+                        });
+                if (!accepted) cycleInventoryPending = false;
+                return;
             }
         }
 
         if (restored) {
-            queueRestoreGlide(player);
+            if (isEnabled()) queueRestoreGlide(player);
             clearElytraCycle();
             return;
         }
@@ -908,8 +1001,50 @@ public class AttributeSwap extends Module {
         elytraRestoreAge = player.tickCount + 1;
     }
 
+    private void prepareCycleInventoryMace(LocalPlayer player, LivingEntity target, int maceSlot) {
+        if (cycleInventoryPending || cycleMaceFromSlot >= 0) return;
+        int stagingSlot = -1;
+        for (int slot = 0; slot < 9; slot++) {
+            if (slot == InventorySwap.INSTANCE.serverSelectedSlot()
+                    || slot == InventorySwap.INSTANCE.clientSelectedSlot()
+                    || slot == elytraReturnInventorySlot || InventorySlotLocks.blocks(slot, this)) continue;
+            if (stagingSlot < 0 || player.getInventory().getItem(slot).isEmpty()) stagingSlot = slot;
+            if (player.getInventory().getItem(slot).isEmpty()) break;
+        }
+        if (stagingSlot < 0) return;
+        int hotbarSlot = stagingSlot;
+        cycleInventoryPending = true;
+        boolean accepted = InventorySwap.INSTANCE.swapScreenSlots(
+                InventorySwap.mapInventoryToScreenSlot(maceSlot), InventorySwap.mapHotbarToScreenSlot(hotbarSlot), this,
+                () -> elytraCycleStage == CYCLE_WAIT_MACE_SYNC && isEnabled() && isValidTarget(target),
+                completed -> {
+                    cycleInventoryPending = false;
+                    if (completed) {
+                        cycleMaceFromSlot = maceSlot;
+                        cycleMaceToSlot = hotbarSlot;
+                    }
+                });
+        if (!accepted) cycleInventoryPending = false;
+    }
+
+    private void requestCycleMaceRestore(LocalPlayer player) {
+        cycleInventoryPending = true;
+        boolean accepted = InventorySwap.INSTANCE.swapScreenSlots(
+                InventorySwap.mapInventoryToScreenSlot(cycleMaceFromSlot),
+                InventorySwap.mapHotbarToScreenSlot(cycleMaceToSlot), this,
+                () -> elytraCycleActive && mc.player == player,
+                completed -> {
+                    cycleInventoryPending = false;
+                    if (completed) {
+                        cycleMaceFromSlot = -1;
+                        cycleMaceToSlot = -1;
+                    }
+                });
+        if (!accepted) cycleInventoryPending = false;
+    }
+
     private void queueRestoreGlide(LocalPlayer player) {
-        if (!autoGlideAfterRestore.get() && !elytraCycleFromTarget) return;
+        if (!autoGlideAfterRestore.get()) return;
         if (player == null) return;
         if (player.isFallFlying()) return;
         if (player.isPassenger()) return;
@@ -1004,46 +1139,71 @@ public class AttributeSwap extends Module {
     }
 
     private void clearElytraCycle() {
+        Events.BUS.unregister(cycleLifecycle);
+        InventorySwap.INSTANCE.releaseInventory(this);
+        InventorySwap.INSTANCE.releaseHotbar(this);
+        cycleInventoryPending = false;
+        cyclePlayer = null;
+        cycleAttackWindow.reset();
+        cycleReportedEye = null;
+        cycleMaceFromSlot = -1;
+        cycleMaceToSlot = -1;
         elytraCycleActive = false;
         elytraCycleTargetId = -1;
         elytraReturnInventorySlot = -1;
         elytraCycleExpireAge = -1;
         elytraCycleStage = CYCLE_NONE;
-        elytraMaceAttackAge = -1;
         elytraRestoreAge = -1;
         elytraCycleKeepSprint = false;
         elytraCycleFromTarget = false;
+        cyclePredictionTicks = 0;
     }
 
     public boolean isElytraCycleActive() {
-        return isEnabled() && elytraCycleActive;
+        return elytraCycleActive;
     }
 
     public int getElytraCycleTargetId() {
         return isElytraCycleActive() ? elytraCycleTargetId : -1;
     }
 
+    /** The successful mace attack is published before the asynchronous chest-slot restore finishes. */
+    public int getLastElytraCycleAttackAge(LocalPlayer player) {
+        return player != null && player == lastElytraCycleAttackPlayer ? lastElytraCycleAttackAge : -1;
+    }
+
+    public int getLastElytraCycleAttackTargetId(LocalPlayer player) {
+        return player != null && player == lastElytraCycleAttackPlayer ? lastElytraCycleAttackTargetId : -1;
+    }
+
     public boolean canPrepareElytraTargetDive(LocalPlayer player, LivingEntity target) {
-        return isEnabled()
-                && isAutoElytraCycleEnabled()
-                && player != null
-                && target != null
-                && isValidTarget(target)
-                && player.inventoryMenu != null
-                && !player.isUsingItem()
-                && findCycleMaceSlot(player) >= 0
-                && findElytraRemovalSlot(player) >= 0;
+        return preparationBlocker(player, target) == null;
+    }
+
+    private String preparationBlocker(LocalPlayer player, LivingEntity target) {
+        if (!isEnabled()) return "attribute_swap_disabled";
+        if (!isAutoElytraCycleEnabled()) return "auto_cycle_disabled";
+        if (player == null) return "no_player";
+        if (player.onGround()) return "grounded";
+        if (player.isInWater() || player.isInLava()) return "in_fluid";
+        if (target == null || !isValidTarget(target)) return "invalid_target";
+        if (player.inventoryMenu == null || player.containerMenu != player.inventoryMenu) return "container_open";
+        if (player.isUsingItem()) return "using_item";
+        if (findCycleMaceSlot(player) < 0) return "no_safe_mace_in_preset_scope";
+        if (findElytraRemovalSlot(player) < 0) return "no_chestplate_or_free_slot_in_preset_scope";
+        return null;
     }
 
     /** Called by ElytraTarget before contact, not by the attack callback. */
-    public boolean prepareElytraTargetDive(LocalPlayer player, LivingEntity target) {
+    public boolean prepareElytraTargetDive(LocalPlayer player, LivingEntity target, int leadTicks) {
         if (elytraCycleActive) return elytraCycleFromTarget && elytraCycleTargetId == target.getId();
         if (!canPrepareElytraTargetDive(player, target)) return false;
         if (!player.isFallFlying() || !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) return false;
-        if (player.getDeltaMovement().y >= -minDownVelocity.get()) return false;
-        if (player.getY() - target.getBoundingBox().maxY < TARGET_DIVE_MIN_VERTICAL_CLEARANCE) return false;
-        if (!isHorizontallyMovingIntoTarget(player, target)) return false;
-        if (!beginElytraCycle(player, target, true, TARGET_DIVE_TIMEOUT_TICKS)) return false;
+        int extraTicks = Math.max(0, leadTicks);
+        int forecastTicks = predictionTicks.get() + extraTicks;
+        boolean contact = hasPredictedSmashContact(player, target, forecastTicks);
+        if (!contact) return false;
+        if (!beginElytraCycle(player, target, true, TARGET_DIVE_TIMEOUT_TICKS + extraTicks, forecastTicks)) return false;
         return true;
     }
 
@@ -1348,11 +1508,11 @@ public class AttributeSwap extends Module {
         return damage * attackSpeed;
     }
 
-    private int findHotbarAxeSlot(LocalPlayer player) {
+    private int findAxeSlot(LocalPlayer player) {
         if (player == null) return -1;
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < InventorySwap.INSTANCE.combatSearchEnd(); i++) {
             ItemStack stack = player.getInventory().getItem(i);
-            if (isAxe(stack)) return i;
+            if (!InventorySlotLocks.blocks(i, this) && isAxe(stack)) return i;
         }
         return -1;
     }
@@ -1384,46 +1544,18 @@ public class AttributeSwap extends Module {
         return Math.abs(diff) < 90.0f;
     }
 
-    private boolean isVectorFallingDown(LocalPlayer player) {
-        Vec3 velocity = player.getDeltaMovement();
-        if (velocity.y > -minDownVelocity.get()) return false;
-
-        double predictedFall = predictUnglidedFallDistance(player, predictionTicks.get());
-        return predictedFall >= minFallDistance.get();
+    private boolean hasPredictedSmashContact(LocalPlayer player, LivingEntity target) {
+        return hasPredictedSmashContact(player, target, predictionTicks.get());
     }
 
-    private double predictUnglidedFallDistance(LocalPlayer player, int ticks) {
-        double fall = Math.max(0.0, player.fallDistance);
-        double yVelocity = player.getDeltaMovement().y;
-        int safeTicks = Math.max(1, ticks);
-
-        for (int i = 0; i < safeTicks; i++) {
-            if (yVelocity < 0.0) {
-                fall += -yVelocity;
-            }
-            yVelocity = (yVelocity - 0.08) * 0.9800000190734863;
-        }
-
-        return fall;
-    }
-
-    private boolean isHorizontallyMovingIntoTarget(LocalPlayer player, LivingEntity target) {
-        Vec3 relativePosition = target.position().subtract(player.position());
-        Vec3 relativeVelocity = player.getDeltaMovement().subtract(target.getDeltaMovement());
-        Vec3 horizontalVelocity = new Vec3(relativeVelocity.x, 0.0, relativeVelocity.z);
-        Vec3 horizontalToTarget = new Vec3(relativePosition.x, 0.0, relativePosition.z);
-        double speedSquared = horizontalVelocity.lengthSqr();
-        if (speedSquared < 1.0E-5) {
-            return horizontalToTarget.length() <= maxPredictedHorizontalDistance.get();
-        }
-        double speed = Math.sqrt(speedSquared);
-        if (horizontalVelocity.dot(horizontalToTarget) / Math.max(1.0E-4, horizontalToTarget.length())
-                < minApproachSpeed.get()) return false;
-
-        double closestTick = Mth.clamp(horizontalVelocity.dot(horizontalToTarget) / speedSquared,
-                0.0, predictionTicks.get());
-        return horizontalToTarget.subtract(horizontalVelocity.scale(closestTick)).length()
-                <= maxPredictedHorizontalDistance.get();
+    private boolean hasPredictedSmashContact(LocalPlayer player, LivingEntity target, int forecastTicks) {
+        KillAura aura = Modules.get(KillAura.class);
+        double reach = aura != null && aura.isEnabled() ? aura.getEffectiveRange(target) : 3.0;
+        return SmashTrajectory.canReach(player.position(), player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING),
+                player.getBbWidth() / 2.0, player.getDeltaMovement(), target.getBoundingBox(),
+                target.getDeltaMovement(), player.isFallFlying() ? 0 : player.fallDistance,
+                minFallDistance.get(), minDownVelocity.get(), minApproachSpeed.get(), forecastTicks,
+                maxPredictedHorizontalDistance.get(), reach, player.getGravity());
     }
 
     private double horizontalDistance(Vec3 a, Vec3 b) {
@@ -1433,14 +1565,14 @@ public class AttributeSwap extends Module {
     }
 
     private int findElytraRemovalSlot(LocalPlayer player) {
-        int selectedSlot = ((PlayerInventoryAccessor) player.getInventory()).combatant$getSelectedSlot();
+        if (player.inventoryMenu == null || !player.inventoryMenu.getSlot(CHEST_SCREEN_SLOT).mayPickup(player)) return -1;
         int bestChestSlot = -1;
         int bestChestScore = -1;
         int firstEmptySlot = -1;
 
-        for (int i = 0; i < 36; i++) {
-            if (i == selectedSlot) continue;
-
+        int end = InventorySwap.INSTANCE.combatSearchEnd();
+        for (int i = 0; i < end; i++) {
+            if (InventorySlotLocks.blocks(i, this)) continue;
             ItemStack stack = player.getInventory().getItem(i);
             if (stack.isEmpty()) {
                 if (firstEmptySlot == -1) firstEmptySlot = i;
@@ -1448,6 +1580,7 @@ public class AttributeSwap extends Module {
             }
 
             int score = getChestDefenseScore(stack);
+            if (score >= 0 && !player.isCreative() && getEnchantmentLevel(stack, Enchantments.BINDING_CURSE) > 0) continue;
             if (score > bestChestScore) {
                 bestChestScore = score;
                 bestChestSlot = i;
@@ -1459,7 +1592,7 @@ public class AttributeSwap extends Module {
     }
 
     private int getChestDefenseScore(ItemStack stack) {
-        if (!isChestplate(stack)) return 0;
+        if (!isChestplate(stack)) return -1;
 
         int base =
                 stack.is(Items.LEATHER_CHESTPLATE) ? 3 :
@@ -1480,12 +1613,12 @@ public class AttributeSwap extends Module {
 
     private int findCycleMaceSlot(LocalPlayer player) {
         if (player == null) return -1;
-        int selected = ((PlayerInventoryAccessor) player.getInventory()).combatant$getSelectedSlot();
-        if (player.getMainHandItem().is(Items.MACE)
-                && !isUnsafeWindBurstMace(player, player.getMainHandItem())) {
+        int selected = InventorySwap.INSTANCE.serverSelectedSlot();
+        if (player.getInventory().getItem(selected).is(Items.MACE)
+                && !isUnsafeWindBurstMace(player, player.getInventory().getItem(selected))) {
             return selected;
         }
-        int end = "INVENTORY".equalsIgnoreCase(searchMode.get()) ? 36 : 9;
+        int end = InventorySwap.INSTANCE.combatSearchEnd();
         for (int slot = 0; slot < end; slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (stack.is(Items.MACE) && !isUnsafeWindBurstMace(player, stack)) return slot;
@@ -1495,7 +1628,7 @@ public class AttributeSwap extends Module {
 
     private int findDesiredMaceSlot(LocalPlayer player, LivingEntity target) {
         int start = 0;
-        int end = "INVENTORY".equalsIgnoreCase(searchMode.get()) ? 36 : 9;
+        int end = InventorySwap.INSTANCE.combatSearchEnd();
         return findBestDamageMaceSlot(player, target, start, end);
     }
 
@@ -1958,4 +2091,25 @@ public class AttributeSwap extends Module {
                                       float protection,
                                       int resistanceReduction) {
     }
+    /** Attacks before movement use fall state from an already submitted position. */
+    static final class CycleAttackWindow {
+        private double reportedFall;
+
+        void reset() {
+            reportedFall = 0;
+        }
+
+        void notePosition(double fallDistance, boolean gliding, boolean grounded) {
+            reportedFall = gliding || grounded ? 0 : fallDistance;
+        }
+
+        boolean ready(double minimumFall) {
+            return reportedFall >= minimumFall;
+        }
+
+        void beforeMovement(double minimumFall, Runnable attack) {
+            if (ready(minimumFall)) attack.run();
+        }
+    }
+
 }

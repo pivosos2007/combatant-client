@@ -20,15 +20,11 @@ import net.minecraft.world.item.Items;
 import combatant.client.features.module.Modules;
 import combatant.client.mixininterface.IAttachedFireworkRocket;
 import combatant.client.features.module.modules.combat.KillAura;
+import combatant.client.features.module.modules.combat.AttributeSwap;
 
 /**
- * Shared firework-use path for elytra modules.
- * <p>
- * Firework use is routed through {@link InventorySwap#execute}: the rocket slot is selected before the use packet
- * and the slot restore waits for the start of the next client tick, so no held-slot change ever follows the use in
- * the same Grim packet window (PacketOrderE) or after the movement packet (Post). A use the window does not allow
- * right now returns {@code false}; the caller retries on a later tick. Internal selected-slot/swing packets are
- * marked as inventory controller activity and do not poison AttackPressing/KillAura cooldown timing.
+ * Shared firework-use path for elytra modules. InventorySwap owns selection and restoration; a deferred
+ * selection returns false without using the rocket. Active equipment cycles and held-slot leases take priority.
  */
 public final class FireworkUseController {
     public static final FireworkUseController INSTANCE = new FireworkUseController();
@@ -86,6 +82,10 @@ public final class FireworkUseController {
         if (player == null || manager == null || mc.level == null) return false;
         if (player.inventoryMenu == null) return false;
         if (player.isUsingItem()) return false;
+        AttributeSwap attributeSwap = Modules.get(AttributeSwap.class);
+        if (attributeSwap != null && attributeSwap.isElytraCycleActive()) return false;
+        InventorySwap inventory = InventorySwap.INSTANCE;
+        if (!inventory.itemUseAvailable()) return false;
         if (!canPassCooldown(cooldownTicks)) return false;
         BoostState state = getBoostState(player);
         // Never block an urgent rescue on the mere presence of an almost-spent rocket.
@@ -94,16 +94,14 @@ public final class FireworkUseController {
         }
 
         boolean offhandReady = player.getOffhandItem().is(Items.FIREWORK_ROCKET);
-        boolean mainHandReady = player.getMainHandItem().is(Items.FIREWORK_ROCKET);
-        // A rocket already held in either hand does not mutate inventory and must not be
-        // stalled by KillAura's attack preparation window.
+        boolean mainHandReady = player.getInventory().getItem(inventory.serverSelectedSlot()).is(Items.FIREWORK_ROCKET);
         if (syncCombat && !offhandReady && !mainHandReady && isKillAuraAttackWindowBusy()) return false;
 
         boolean used;
         if (offhandReady) {
-            used = useWithTemporaryRotation(player, yaw, pitch, InteractionHand.OFF_HAND);
+            used = useHeldRocket(player, yaw, pitch, InteractionHand.OFF_HAND);
         } else if (mainHandReady) {
-            used = useWithTemporaryRotation(player, yaw, pitch, InteractionHand.MAIN_HAND);
+            used = useHeldRocket(player, yaw, pitch, InteractionHand.MAIN_HAND);
         } else {
             used = useMainHandRocket(player, yaw, pitch, allowInventory, restore, silent);
         }
@@ -116,6 +114,12 @@ public final class FireworkUseController {
             sampledTick = Integer.MIN_VALUE;
         }
         return used;
+    }
+
+    private boolean useHeldRocket(LocalPlayer player, float yaw, float pitch, InteractionHand hand) {
+        boolean[] accepted = {false};
+        return InventorySwap.INSTANCE.withHeldItem(hand,
+                () -> accepted[0] = useWithTemporaryRotation(player, yaw, pitch, hand)) && accepted[0];
     }
 
     public boolean canPassCooldown(int cooldownTicks) {

@@ -5,6 +5,7 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+// TODO RECODE THIS SLOP
 const n = ui.num;
 const c = ui.str;
 const b = ui.bool;

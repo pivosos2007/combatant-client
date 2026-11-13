@@ -93,6 +93,7 @@ public final class TargetHud extends DraggableHudElement {
             .withThinFilm(470f, 0.11f).withReactiveCoating(0.62f)
             .withChromaticMotion(UiGlassOpticsSpec.ChromaticMotion.STATIC);
 
+    private static final float BASE_LAYOUT_SCALE = 3.15f;
     private static final float BASE_WIDTH = 112.0f;
     private static final float BASE_HEIGHT = 40.0f;
     private static final float FACE_SIZE = 24.0f;
@@ -189,7 +190,7 @@ public final class TargetHud extends DraggableHudElement {
     private final Minecraft mc = Minecraft.getInstance();
 
     private final NumberValue<Double> scale =
-            new NumberValue<>("target_scale", 3.28, 0.5, 4.0);
+            new NumberValue<>("target_scale", 1.0, 0.5, 2.0);
     private final NumberValue<Integer> holdMs =
             new NumberValue<>("target_hold_ms", 1000, 0, 5000);
     private final BooleanValue totemPopCounter = TotemPopCounter.enabledValue();
@@ -518,7 +519,7 @@ public final class TargetHud extends DraggableHudElement {
 
     @Override
     public void applyDefaultPosition(int screenW, int screenH) {
-        float hudScale = HudScale.scale(screenW, screenH) * scale.get().floatValue();
+        float hudScale = HudScale.scale(screenW, screenH) * BASE_LAYOUT_SCALE * scale.get().floatValue();
         this.x = screenW / 2f - (BASE_WIDTH * hudScale) * 0.5f;
         this.y = screenH / 2f + BASE_HEIGHT * hudScale;
     }
@@ -561,7 +562,7 @@ public final class TargetHud extends DraggableHudElement {
 
             updatePalette();
 
-            float hudScale = HudScale.scale(screenW, screenH) * scale.get().floatValue();
+            float hudScale = HudScale.scale(screenW, screenH) * BASE_LAYOUT_SCALE * scale.get().floatValue();
             float alphaFactor = AnimationUtility.easeOutCubic(visibilityAnimation);
             float hitPulseFactor = computeHitPulse(now);
             EffectLayout boundsEffects = buildEffectLayout(displayTarget, preview, textRenderer, hudScale);
