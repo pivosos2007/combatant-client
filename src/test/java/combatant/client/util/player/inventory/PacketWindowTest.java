@@ -22,6 +22,17 @@ class PacketWindowTest {
     }
 
     @Test
+    void slotChangeWaitsForPreviousMovementEvenAfterNewTickStarts() {
+        window.noteMovement(1_000_000_000L);
+        window.noteTickStart();
+        assertFalse(window.slotChangeAllowed(1_012_000_000L));
+        assertFalse(window.slotChangeAllowed(1_029_999_999L));
+        assertTrue(window.slotChangeAllowed(1_030_000_000L));
+        window.noteMovement(1_050_000_000L);
+        assertFalse(window.slotChangeAllowed(1_080_000_000L));
+    }
+
+    @Test
     void cleanWindowAtTickStartAllowsSlotChange() {
         window.noteTickStart();
         assertTrue(window.slotChangeAllowed());
@@ -53,14 +64,24 @@ class PacketWindowTest {
     void movementPacketClosesTheWindowButBlocksSlotChangesUntilNextTick() {
         window.noteTickStart();
         window.noteUseItem();
-        window.noteMovement(0);
+        window.noteMovement(1_000_000_000L);
         // Grim Post: nothing held-slot related after this tick's movement packet.
-        assertFalse(window.slotChangeAllowed());
+        assertFalse(window.slotChangeAllowed(1_050_000_000L));
         assertTrue(window.isPostMovement());
 
-        // The silent restore at the start of the next tick is in a fresh window.
+        // The next tick is a fresh action window, but the previous movement
+        // still imposes a transport-time guard on selected-slot changes.
         window.noteTickStart();
-        assertTrue(window.slotChangeAllowed());
+        assertFalse(window.slotChangeAllowed(1_012_000_000L));
+        assertTrue(window.slotChangeAllowed(1_030_000_000L));
+    }
+
+    @Test
+    void silentlyReplayedMovementAlsoClosesTheSlotWindow() {
+        window.noteTickStart();
+        window.noteReplayedMovement();
+        assertTrue(window.isPostMovement());
+        assertFalse(window.slotChangeAllowed());
     }
 
     @Test
@@ -71,7 +92,7 @@ class PacketWindowTest {
         assertTrue(window.slotChangeAllowed());
 
         window.noteTickStart();
-        window.noteMovement(0);
+        window.noteMovement();
         window.noteUseItem();
         window.noteTickEnd();
         assertFalse(window.slotChangeAllowed());
@@ -94,7 +115,7 @@ class PacketWindowTest {
         assertFalse(window.actionAllowed(InventoryActionKind.ENTITY_INTERACT, false));
         assertTrue(window.actionAllowed(InventoryActionKind.BLOCK_INTERACT, false));
 
-        window.noteMovement(0);
+        window.noteMovement();
         window.noteTickStart();
         window.noteAttack();
         assertFalse(window.actionAllowed(InventoryActionKind.BLOCK_INTERACT, false));
@@ -132,35 +153,4 @@ class PacketWindowTest {
         assertTrue(PacketWindow.isMoving(new net.minecraft.world.entity.player.Input(false, false, false, false, true, false, false)));
         assertFalse(PacketWindow.isMoving(new net.minecraft.world.entity.player.Input(false, false, false, false, false, true, false)));
     }
-    @Test
-    void catchUpTickCannotRestoreWithinFiveMillisecondsOfMovement() {
-        window.noteMovement(100_000_000L);
-        window.noteTickStart();
-        assertFalse(window.slotChangeAllowed(100_000_000L));
-        assertFalse(window.slotChangeAllowed(104_999_999L));
-        assertTrue(window.slotChangeAllowed(105_000_000L));
-    }
-
-    @Test
-    void elapsedTimeDoesNotOverridePostOrActionOrdering() {
-        window.noteMovement(100_000_000L);
-        assertFalse(window.slotChangeAllowed(150_000_000L));
-        window.noteTickStart();
-        window.noteUseItem();
-        assertFalse(window.slotChangeAllowed(150_000_000L));
-        window.noteTickEnd();
-        assertTrue(window.slotChangeAllowed(150_000_000L));
-    }
-
-    @Test
-    void tickWithoutMovementDoesNotEraseThePreviousTimestamp() {
-        window.noteMovement(100_000_000L);
-        window.noteTickStart();
-        window.noteTickEnd();
-        window.noteTickStart();
-        assertFalse(window.slotChangeAllowed(101_000_000L));
-        window.reset();
-        assertTrue(window.slotChangeAllowed(101_000_000L));
-    }
-
 }

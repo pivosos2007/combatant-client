@@ -46,8 +46,11 @@ public final class PacketWindow {
     /** True from this tick's movement packet until the next client tick starts (Grim Post). */
     private boolean movementSent;
     private long lastMovementNanos = Long.MIN_VALUE;
-    // Vulcan Type R arms on held-slot changes less than 5 ms after movement, across client tick boundaries.
-    private static final long SLOT_MOVEMENT_GAP_NANOS = 5_000_000L;
+    // Outbound send() is not the server's receive timestamp. A 12ms local guard
+    // still allowed Type R when movement and slot packets were flushed close together.
+    // Keep slot changes in the pre-movement half of the *next* client tick, well
+    // separated from the prior movement; this applies to every swap policy.
+    private static final long SLOT_MOVEMENT_GAP_NANOS = 30_000_000L;
     // Held-slot conflicts of the current window (PacketOrderE).
     private boolean attacked;
     private boolean rightClicked;
@@ -143,6 +146,11 @@ public final class PacketWindow {
         clearWindow();
         movementSent = true;
         lastMovementNanos = nowNanos;
+    }
+
+    /** Blink/FakeLag replays outgoing movement without dispatching PacketEvent.Send. */
+    public void noteReplayedMovement() {
+        noteMovement();
     }
 
     void noteTickEnd() {

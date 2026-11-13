@@ -8,12 +8,18 @@
 package combatant.client.util.target;
 
 import combatant.client.config.values.EnumValue;
+import combatant.client.config.values.BooleanMapValue;
+import combatant.client.config.common.impl.TargetFilters;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -68,27 +74,8 @@ public enum TargetingUtil {
 
         for (Entity e : entities) {
             LivingEntity living = (LivingEntity) e;
-            if (!isValidCombatTarget(living)) continue;
-            if (AntiBot.shouldIgnore(living)) continue;
-            if (settings.playersOnly() && !(living instanceof Player)) continue;
+            if (!matchesFilters(mc, living, settings.filters())) continue;
             if (settings.visibleOnly() && !mc.player.hasLineOfSight(living)) continue;
-
-            if (settings.ignoreEntities()) {
-                var id = BuiltInRegistries.ENTITY_TYPE.getKey(living.getType());
-                if (id != null && EntityFilters.get().isIgnoredEntity(id.toString())) {
-                    continue;
-                }
-            }
-
-            if (living instanceof Player p) {
-                CategoryType type = CategoryRules.determine(p.getGameProfile().name());
-                if (type == CategoryType.BEDWARS_SELF) continue;
-                if (settings.ignoreFriends() && type == CategoryType.FRIEND) continue;
-                if (settings.ignoreStaff() && type == CategoryType.STAFF) continue;
-                if (settings.ignoreEnemies() && (type == CategoryType.ENEMY || type == CategoryType.BEDWARS_ENEMY))
-                    continue;
-                if (settings.ignoreNaked() && isNaked(p)) continue;
-            }
 
             double distSq = distanceToEntityBoxSq(mc.player.getEyePosition(), living);
             if (distSq > range * range) continue;
@@ -104,6 +91,30 @@ public enum TargetingUtil {
 
         out.sort(buildComparator(settings.priority(), mc));
         return out;
+    }
+
+    public static boolean matchesFilters(Minecraft mc, LivingEntity living, BooleanMapValue filters) {
+        if (mc == null || mc.player == null || filters == null || living == mc.player
+                || !isValidCombatTarget(living) || AntiBot.shouldIgnore(living)) return false;
+        var id = BuiltInRegistries.ENTITY_TYPE.getKey(living.getType());
+        boolean marked = id != null && EntityFilters.get().isMarkedEntity(id.toString());
+        Player player = living instanceof Player p ? p : null;
+        return TargetFilters.accepts(filters::get, player != null,
+                player == null ? CategoryType.DEFAULT : CategoryRules.determine(player.getGameProfile().name()),
+                player != null && isNaked(player), disposition(living, mc.player), marked, living.isInvisible());
+    }
+
+    public static TargetFilters.Disposition disposition(LivingEntity entity, Player observer) {
+        if (entity.isAlliedTo(observer)) {
+            return TargetFilters.Disposition.FRIENDLY;
+        }
+        if (entity instanceof Mob mob && (mob.getTarget() == observer || mob.isAggressive())) {
+            return TargetFilters.Disposition.HOSTILE;
+        }
+        if (entity instanceof NeutralMob neutral && neutral.isAngry()) return TargetFilters.Disposition.HOSTILE;
+        if (entity instanceof TamableAnimal tame && tame.isTame()) return TargetFilters.Disposition.FRIENDLY;
+        if (entity instanceof NeutralMob) return TargetFilters.Disposition.NEUTRAL;
+        return entity instanceof Enemy ? TargetFilters.Disposition.HOSTILE : TargetFilters.Disposition.FRIENDLY;
     }
 
     public static boolean isValidCombatTarget(LivingEntity living) {
@@ -191,14 +202,32 @@ public enum TargetingUtil {
     public record TargetingSettings(
             double range,
             float fov,
-            boolean playersOnly,
-            boolean ignoreFriends,
-            boolean ignoreStaff,
-            boolean ignoreEnemies,
-            boolean ignoreNaked,
-            boolean ignoreEntities,
+            BooleanMapValue filters,
             boolean visibleOnly,
             TargetPriority priority
     ) {
+        public TargetingSettings(double range, float fov, BooleanMapValue filters, TargetPriority priority) {
+            this(range, fov, filters, filters.get(TargetFilters.VISIBLE_ONLY), priority);
+        }
+
+        public TargetingSettings(double range, float fov, boolean playersOnly, boolean ignoreFriends,
+                                 boolean ignoreStaff, boolean ignoreEnemies, boolean ignoreNaked,
+                                 boolean ignoreEntities, boolean visibleOnly, TargetPriority priority) {
+            this(range, fov, legacyFilters(playersOnly, ignoreFriends, ignoreStaff, ignoreEnemies,
+                    ignoreNaked, ignoreEntities), visibleOnly, priority);
+        }
+
+        private static BooleanMapValue legacyFilters(boolean playersOnly, boolean ignoreFriends,
+                                                    boolean ignoreStaff, boolean ignoreEnemies,
+                                                    boolean ignoreNaked, boolean ignoreEntities) {
+            BooleanMapValue filters = new BooleanMapValue("targets", new TargetFilters().defaults());
+            filters.set(TargetFilters.PLAYERS_ONLY, playersOnly);
+            filters.set(TargetFilters.IGNORE_FRIENDS, ignoreFriends);
+            filters.set(TargetFilters.IGNORE_STAFF, ignoreStaff);
+            filters.set(TargetFilters.IGNORE_ENEMIES, ignoreEnemies);
+            filters.set(TargetFilters.IGNORE_NAKED, ignoreNaked);
+            filters.set(TargetFilters.IGNORE_MARKED, ignoreEntities);
+            return filters;
+        }
     }
 }

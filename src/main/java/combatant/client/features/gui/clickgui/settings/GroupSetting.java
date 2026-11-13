@@ -87,6 +87,7 @@ public class GroupSetting extends Setting {
         float baseX, baseY, baseW;
         float lastLayoutW = Float.NaN;
         int layoutOptionCount = -1;
+        int layoutOptionsHash;
         float cachedHeight = 34f;
         float selectX, selectY, selectW, selectH;
         float popupScroll;

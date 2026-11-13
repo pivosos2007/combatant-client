@@ -497,10 +497,8 @@ public class KillAura extends Module {
     private final ShakeAimProcessor shakeAimProcessor = new ShakeAimProcessor(
             shakeAimYawAmplitude, shakeAimPitchAmplitude, shakeAimSpeed
     );
-    private final BooleanMapValue toggles = common(
-            group("killaura_toggles", "toggles", targetFilterDefaults()),
-            CommonSettingSchemas.TARGET_FILTERS.commonI18nKey()
-    );
+    private final BooleanMapValue toggles =
+            targetFilters("killaura_toggles", "toggles", targetFilterDefaults(), false);
     private final SpookyAngleSmooth spookySmooth = new SpookyAngleSmooth();
     private LivingEntity currentTarget;
     private Vec3 lastAimPoint;
@@ -516,7 +514,7 @@ public class KillAura extends Module {
         defaults.put(TargetFilters.IGNORE_STAFF, true);
         defaults.put(TargetFilters.IGNORE_ENEMIES, false);
         defaults.put(TargetFilters.IGNORE_NAKED, false);
-        defaults.put(TargetFilters.IGNORE_ENTITIES, true);
+        defaults.put(TargetFilters.IGNORE_MARKED, true);
         return defaults;
     }
 
@@ -762,19 +760,22 @@ public class KillAura extends Module {
 
     public List<LivingEntity> findElytraTargetCandidates(double range) {
         if (!isEnabled() || mc.player == null || mc.level == null) return List.of();
-        return TargetingUtil.findTargets(mc, targetingSettings(Math.max(1.0, range)));
+        return TargetingUtil.findTargets(mc, targetingSettings(Math.max(1.0, range), false));
+    }
+
+    public boolean canRetainElytraTarget(LivingEntity entity, double range) {
+        if (entity == null || !isEnabled() || mc.player == null || mc.level == null) return false;
+        return TargetingUtil.findTargets(mc, targetingSettings(Math.max(1.0, range), true)).contains(entity);
     }
 
     private TargetingSettings targetingSettings(double range) {
+        return targetingSettings(range, false);
+    }
+
+    private TargetingSettings targetingSettings(double range, boolean ignoreFov) {
         return new TargetingSettings(
-                range, fov.get(),
-                toggles.get(TargetFilters.PLAYERS_ONLY),
-                toggles.get(TargetFilters.IGNORE_FRIENDS),
-                toggles.get(TargetFilters.IGNORE_STAFF),
-                toggles.get(TargetFilters.IGNORE_ENEMIES),
-                toggles.get(TargetFilters.IGNORE_NAKED),
-                toggles.get(TargetFilters.IGNORE_ENTITIES),
-                false, priority.get()
+                range, ignoreFov ? 180f : fov.get(),
+                toggles, priority.get()
         );
     }
 

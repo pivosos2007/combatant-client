@@ -286,7 +286,7 @@ public class Hitbox extends Module {
 
         if (!ignoreGroups.get("entities")) return true;
         var id = BuiltInRegistries.ENTITY_TYPE.getKey(e.getType());
-        return id == null || !EntityFilters.get().isIgnoredEntity(id.toString());
+        return id == null || !EntityFilters.get().isMarkedEntity(id.toString());
     }
 
     /**

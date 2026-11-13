@@ -72,8 +72,8 @@ public final class HoleFill extends Module {
     private final NumberValue<Double> wallRange = numCommon(
             "holeFillWallRange", "wall_range", CommonSettingSchemas.COMBAT_WALL_RANGE, 3.0D, 0.0D, 6.0D);
     private final NumberValue<Double> enemyRange = num("holeFillEnemyRange", "enemy_range", 6.0D, 2.0D, 12.0D);
-    private final BooleanMapValue targetFilters = groupCommon(
-            "holeFillTargets", "targets", "target", targetDefaults());
+    private final BooleanMapValue targetFilters =
+            targetFilters("holeFillTargets", "targets", targetDefaults(), true);
     private final EnumValue<BlocksMode> blocksMode = enumSetting(
             "holeFillBlocksMode", "blocks_mode", BlocksMode.OBSIDIAN, BlocksMode.values());
     private final NumberValue<Integer> maxHoles = num("holeFillMaxHoles", "max_holes", 8, 1, 32);
@@ -188,13 +188,7 @@ public final class HoleFill extends Module {
         List<LivingEntity> targets = TargetingUtil.findTargets(mc, new TargetingUtil.TargetingSettings(
                 searchRange,
                 180.0F,
-                true,
-                targetFilters.get(TargetFilters.IGNORE_FRIENDS),
-                targetFilters.get(TargetFilters.IGNORE_STAFF),
-                targetFilters.get(TargetFilters.IGNORE_ENEMIES),
-                targetFilters.get(TargetFilters.IGNORE_NAKED),
-                true,
-                targetFilters.get(TargetFilters.VISIBLE_ONLY),
+                targetFilters,
                 TargetingUtil.TargetPriority.DISTANCE));
         List<Player> players = new ArrayList<>();
         for (LivingEntity target : targets) {
@@ -248,6 +242,7 @@ public final class HoleFill extends Module {
         defaults.put(TargetFilters.IGNORE_STAFF, true);
         defaults.put(TargetFilters.IGNORE_ENEMIES, false);
         defaults.put(TargetFilters.IGNORE_NAKED, false);
+        defaults.put(TargetFilters.IGNORE_MARKED, true);
         defaults.put(TargetFilters.VISIBLE_ONLY, false);
         return defaults;
     }

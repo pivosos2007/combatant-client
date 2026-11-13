@@ -45,7 +45,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
 
-@ModuleInfo(id = "targetesp", displayName = "TargetESP", aliases = {"target", "targetrender"}, category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
+@ModuleInfo(id = "targetesp", displayName = "TargetESP", aliases = {"targetrender"}, category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,
         description = "module.targetesp.description")
 public class TargetESP extends Module {
 

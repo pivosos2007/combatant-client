@@ -56,8 +56,8 @@ public final class AutoWeb extends Module {
     private final NumberValue<Double> wallRange = numCommon(
             "autoWebWallRange", "wall_range", CommonSettingSchemas.COMBAT_WALL_RANGE, 3.0D, 0.0D, 6.0D);
     private final NumberValue<Double> enemyRange = num("autoWebEnemyRange", "enemy_range", 5.0D, 2.0D, 10.0D);
-    private final BooleanMapValue targetFilters = groupCommon(
-            "autoWebTargets", "targets", "target", targetDefaults());
+    private final BooleanMapValue targetFilters =
+            targetFilters("autoWebTargets", "targets", targetDefaults(), true);
     private final NumberValue<Double> predictTicks = num("autoWebPredictTicks", "predict_ticks", 1.0D, 0.0D, 5.0D);
     private final BooleanValue placeAtHead = bool("autoWebPlaceAtHead", "place_at_head", true);
     private final BooleanValue autoDisable = bool("autoWebAutoDisable", "auto_disable", false);
@@ -206,12 +206,7 @@ public final class AutoWeb extends Module {
 
     private Player findTarget() {
         TargetingUtil.TargetingSettings settings = new TargetingUtil.TargetingSettings(
-                enemyRange.get(), 180.0F, true,
-                targetFilters.get(TargetFilters.IGNORE_FRIENDS),
-                targetFilters.get(TargetFilters.IGNORE_STAFF),
-                targetFilters.get(TargetFilters.IGNORE_ENEMIES),
-                targetFilters.get(TargetFilters.IGNORE_NAKED), true,
-                targetFilters.get(TargetFilters.VISIBLE_ONLY), TargetingUtil.TargetPriority.DISTANCE);
+                enemyRange.get(), 180.0F, targetFilters, TargetingUtil.TargetPriority.DISTANCE);
         List<LivingEntity> eligible = TargetingUtil.findTargets(mc, settings);
         LivingEntity shared = TargetManager.getTarget(false);
         if (shared instanceof Player player && eligible.contains(player)) return player;
@@ -240,6 +235,7 @@ public final class AutoWeb extends Module {
         defaults.put(TargetFilters.IGNORE_STAFF, true);
         defaults.put(TargetFilters.IGNORE_ENEMIES, false);
         defaults.put(TargetFilters.IGNORE_NAKED, false);
+        defaults.put(TargetFilters.IGNORE_MARKED, true);
         defaults.put(TargetFilters.VISIBLE_ONLY, false);
         return defaults;
     }

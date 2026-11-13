@@ -346,6 +346,7 @@ public final class ModulesMenuScreen {
 
         for (ModulesMenuPanel panel : panels) {
             if (!inside(mouseX, mouseY, panel.x, panel.y, panel.w, panel.h)) continue;
+            if (ClickGuiSearch.isActive()) ClickGuiSearch.unfocus();
             return panel.mousePressed(mouseX, mouseY, button);
         }
 

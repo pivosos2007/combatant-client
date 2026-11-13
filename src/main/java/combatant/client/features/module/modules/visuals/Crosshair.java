@@ -731,7 +731,7 @@ public class Crosshair extends Module {
 
     private boolean isFriendlyEntity(Entity entity) {
         var id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-        if (id != null && EntityFilters.get().isIgnoredEntity(id.toString())) {
+        if (id != null && EntityFilters.get().isMarkedEntity(id.toString())) {
             return true;
         }
         return entity.getType().getCategory() != MobCategory.MONSTER;

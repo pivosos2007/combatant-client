@@ -14,6 +14,8 @@ import combatant.client.events.impl.PacketEvent;
 import combatant.client.events.impl.SprintControlEvent;
 import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
+import combatant.client.util.network.BlinkManager;
+import combatant.client.util.logging.ElytraDiveTrace;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -72,6 +74,11 @@ public final class InventorySwap {
 
     /** Carried slot the server holds, from our own packets and the server's held-slot updates; -1 unknown. */
     private int lastServerSelectedSlot = -1;
+    /** Last HELD_ITEM_CHANGE actually emitted, not the slot from server corrections.
+     * Vulcan BadPackets G remembers only consecutive client slot packets.
+     */
+    private int lastOutgoingCarriedSlot = -1;
+    private int lastDuplicateSlotTraceTick = Integer.MIN_VALUE;
     /** Slot a silent use left the server on until the next tick start restores it; wins over leases and client slot. */
     private int silentSlot = -1;
     /** The server slot is off the desired slot because the restore was not allowed yet (sent at the next safe point). */
@@ -164,11 +171,34 @@ public final class InventorySwap {
         }
     }
 
+    @EventHandler(priority = 20000)
+    private void guardOutgoingCarriedSlot(PacketEvent.Send event) {
+        if (event.isCancelled() || !(event.getPacket() instanceof ServerboundSetCarriedItemPacket packet)) return;
+        // Vulcan BadPackets G compares the packet with the preceding *client packet*,
+        // not the current server-held slot. ClientboundSetHeldSlotPacket may change
+        // lastServerSelectedSlot while leaving Vulcan's previous packet unchanged.
+        boolean duplicate = packet.getSlot() == lastOutgoingCarriedSlot;
+        if (!duplicate && isHotbarSlot(packet.getSlot())
+                && packet.getSlot() != lastServerSelectedSlot && carriedSlotAllowed()) return;
+        event.cancel();
+        if (duplicate && mc.player != null
+                && (lastDuplicateSlotTraceTick < 0
+                    || mc.player.tickCount - lastDuplicateSlotTraceTick >= 10)) {
+            lastDuplicateSlotTraceTick = mc.player.tickCount;
+            ElytraDiveTrace.INSTANCE.event("InventorySwap suppressed repeated held slot=" + packet.getSlot()
+                    + " serverSlot=" + lastServerSelectedSlot);
+        }
+        if (isHotbarSlot(packet.getSlot()) && packet.getSlot() != lastServerSelectedSlot) {
+            restorePending = true;
+        }
+    }
+
     @EventHandler(priority = -20001)
     private void onCarriedSlotSend(PacketEvent.Send event) {
         if (event.isCancelled()) return;
         if (event.getPacket() instanceof ServerboundSetCarriedItemPacket packet) {
             lastServerSelectedSlot = packet.getSlot();
+            lastOutgoingCarriedSlot = packet.getSlot();
         } else if (event.getPacket() instanceof ServerboundContainerClickPacket) {
             sentWindowClicks++;
         }
@@ -185,6 +215,8 @@ public final class InventorySwap {
         } else if (packet instanceof ClientboundLoginPacket) {
             mc.execute(() -> {
                 lastServerSelectedSlot = -1;
+                lastOutgoingCarriedSlot = -1;
+                lastDuplicateSlotTraceTick = Integer.MIN_VALUE;
                 lastPolicyActionTick = Integer.MIN_VALUE;
                 silentSlot = -1;
                 restorePending = false;
@@ -334,7 +366,7 @@ public final class InventorySwap {
                 + " silentSlot=" + silentSlot + " restorePending=" + restorePending
                 + " inventoryLease=" + (activeInventoryLease() != null) + " hotbarLease=" + (activeLease() != null)
                 + " queued=" + queue.size() + " movementLock=" + movementLockTicks
-                + " policyReady=" + policyReady() + " slotAllowed=" + window.slotChangeAllowed()
+                + " policyReady=" + policyReady() + " slotAllowed=" + carriedSlotAllowed()
                 + " postMovement=" + window.isPostMovement() + " oneShot=" + oneShotDepth
                 + " container=" + (player == null || player.containerMenu == null ? -1 : player.containerMenu.containerId);
     }
@@ -505,7 +537,7 @@ public final class InventorySwap {
             restorePending = false;
             return true;
         }
-        if (!window.slotChangeAllowed()) return false;
+        if (!carriedSlotAllowed()) return false;
         silentSlot = -1;
         restorePending = false;
         return sendCarriedSlot(slot);
@@ -559,7 +591,7 @@ public final class InventorySwap {
         if (lease != null && lease.owner != inventoryActionOwner) return false;
 
         if (lastServerSelectedSlot != slot) {
-            if (activeLease() != null || isHotbarSlot(silentSlot) || !window.slotChangeAllowed()) return false;
+            if (activeLease() != null || isHotbarSlot(silentSlot) || !carriedSlotAllowed()) return false;
             if (!sendCarriedSlot(slot)) return false;
         }
         setClientSelectedSlot(slot);
@@ -588,7 +620,7 @@ public final class InventorySwap {
             restorePending = false;
             return;
         }
-        restorePending = !window.slotChangeAllowed() || !sendCarriedSlot(slot);
+        restorePending = !carriedSlotAllowed() || !sendCarriedSlot(slot);
     }
 
     private void setClientSelectedSlot(int slot) {
@@ -603,6 +635,9 @@ public final class InventorySwap {
         LocalPlayer player = mc.player;
         boolean changed = lastServerSelectedSlot != slot;
         if (changed) {
+            // A correction from the server cannot authorize sending the same
+            // client slot twice: BadPackets G flags that sequence unconditionally.
+            if (lastOutgoingCarriedSlot == slot) return false;
             mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
             if (lastServerSelectedSlot != slot) return false;
         }
@@ -619,6 +654,22 @@ public final class InventorySwap {
         if (mc.gameMode instanceof MultiPlayerGameModeAccessor accessor) {
             accessor.combatant$setLastSelectedSlot(slot);
         }
+    }
+
+    private boolean carriedSlotAllowed() {
+        return window.slotChangeAllowed() && !BlinkManager.INSTANCE.hasQueuedOutgoingMovement();
+    }
+
+    /** Called by the vanilla selected-slot sync before it can emit a held-item packet. */
+    public boolean vanillaSlotSyncAllowed() {
+        if (mc.player == null) return false;
+        // Do not let vanilla advance its cached slot when the corresponding
+        // packet would be suppressed as a repeated HELD_ITEM_CHANGE.
+        if (effectiveSelectedSlot() == lastOutgoingCarriedSlot
+                && lastServerSelectedSlot != lastOutgoingCarriedSlot) return false;
+        if (mc.gameMode instanceof MultiPlayerGameModeAccessor accessor
+                && accessor.combatant$getLastSelectedSlot() == effectiveSelectedSlot()) return true;
+        return carriedSlotAllowed();
     }
 
     /**
@@ -642,7 +693,7 @@ public final class InventorySwap {
             clientRestoreSlot = -1;
             return;
         }
-        if (!window.slotChangeAllowed()) return;
+        if (!carriedSlotAllowed()) return;
         if (!sendCarriedSlot(desired)) return;
         silentSlot = -1;
         restorePending = false;
@@ -1076,7 +1127,7 @@ public final class InventorySwap {
     private boolean runHotbarUse(int slot, Runnable action, boolean silent, boolean restore) {
         LocalPlayer player = mc.player;
         if (player == null || mc.getConnection() == null || !isHotbarSlot(slot)) return false;
-        if (lastServerSelectedSlot != slot && !window.slotChangeAllowed()) return false;
+        if (lastServerSelectedSlot != slot && !carriedSlotAllowed()) return false;
 
         int previousClientSlot = clientSelectedSlot();
         if (!sendCarriedSlot(slot)) return false;
@@ -1146,7 +1197,9 @@ public final class InventorySwap {
     public boolean attackSlotReady() {
         HotbarLease lease = activeLease();
         return (oneShotDepth > 0 || !isHotbarSlot(silentSlot)) && !restorePending
-                && (lease == null || lastServerSelectedSlot == lease.slot);
+                && (lease == null || lastServerSelectedSlot == lease.slot)
+                && (!isHotbarSlot(lastServerSelectedSlot)
+                    ? vanillaSlotSyncAllowed() : lastServerSelectedSlot == effectiveSelectedSlot());
     }
 
     /** Uses an already held item without allowing vanilla to synchronize an unrelated client selection. */
@@ -1154,7 +1207,7 @@ public final class InventorySwap {
         if (mc.player == null || hand == null || action == null || !itemUseAvailable()
                 || !window.actionAllowed(InventoryActionKind.USE_ITEM)) return false;
         int slot = serverSelectedSlot();
-        if (lastServerSelectedSlot != slot && !window.slotChangeAllowed()) return false;
+        if (lastServerSelectedSlot != slot && !carriedSlotAllowed()) return false;
         if (!sendCarriedSlot(slot)) return false;
         int previous = clientSelectedSlot();
         runGuarded(null, () -> {

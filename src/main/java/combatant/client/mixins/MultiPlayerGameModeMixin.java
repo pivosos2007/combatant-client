@@ -77,7 +77,7 @@ public class MultiPlayerGameModeMixin {
 
     @Inject(method = "ensureHasSentCarriedItem", at = @At("HEAD"), cancellable = true)
     private void combatant$skipCarriedItemSyncWithoutPlayer(CallbackInfo ci) {
-        if (Minecraft.getInstance().player == null) {
+        if (Minecraft.getInstance().player == null || !InventorySwap.INSTANCE.vanillaSlotSyncAllowed()) {
             ci.cancel();
         }
     }

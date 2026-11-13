@@ -388,6 +388,13 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
         return value;
     }
 
+    protected final BooleanMapValue targetFilters(String configName, String settingId,
+                                                   Map<String, Boolean> defaults, boolean fixedPlayersOnly) {
+        TargetFilterValue value = new TargetFilterValue(configName, defaults, fixedPlayersOnly);
+        declare(value, SettingDef.group(settingId, value).common("target"));
+        return value;
+    }
+
     protected final KeyBindValue bind(String configName, String def, BindMode mode) {
         return bind(configName, settingIdFromConfigName(configName), def, mode);
     }

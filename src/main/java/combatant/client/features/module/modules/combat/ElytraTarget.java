@@ -13,6 +13,7 @@ import combatant.client.features.module.Module;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -33,16 +34,21 @@ import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.player.ElytraRecastUtil;
 import combatant.client.util.player.ElytraEscapePlanner;
+import combatant.client.util.player.ElytraTargetReachability;
 import combatant.client.util.player.ElytraFlightPhysics;
 import combatant.client.util.player.ElytraFlightPhysics.FlightModel;
 import net.minecraft.world.effect.MobEffects;
 import combatant.client.util.player.inventory.FireworkUseController;
 import combatant.client.features.module.modules.movement.SuperFirework;
 import combatant.client.util.player.simulation.PlayerSimulationCache;
+import combatant.client.util.logging.ElytraDiveTrace;
 import combatant.client.util.target.TargetManager;
 import combatant.client.util.world.ExplosionDamageUtil;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Locale;
 
 @ModuleInfo(
         id = "elytratarget",
@@ -60,8 +66,13 @@ public final class ElytraTarget extends Module {
     private static final int FALL_FLYING_RESTART_DELAY_TICKS = 5;
     private static final int HIT_STATUS_READY_TICKS = 5;
     private static final int AUTO_TAKEOFF_COOLDOWN_TICKS = 12;
+    private static final int TAKEOFF_JUMP_RETRY_TICKS = 5;
+    private static final int TAKEOFF_PACKET_RETRY_TICKS = 5;
     private static final int MACE_JUMPER_TARGET_FORECAST_TICKS = 8;
+    private static final int MACE_RECOVERY_TIMEOUT_TICKS = 100;
+    private static final int ROUTE_RECHECK_TICKS = 5;
     private static final int MACE_JUMPER_MIN_CLIMB_TICKS = 4;
+    private static final int MACE_JUMPER_TURN_TICKS = 6;
     private static final double COLLISION_CLEARANCE_MARGIN = 1.25;
     private static final double GROUND_TARGET_STILL_SPEED = 0.08;
     private static final double ORBIT_MIN_RADIUS = 1.15;
@@ -312,16 +323,30 @@ public final class ElytraTarget extends Module {
     private boolean queuedAutoTakeoffJump;
     private int autoTakeoffGlideDelayTicks;
     private int autoTakeoffCooldownTicks;
+    private int lastAutoTakeoffJumpAge = Integer.MIN_VALUE;
+    private int firstAutoTakeoffGlideAge = -1;
+    private int lastAutoTakeoffGlidePacketAge = Integer.MIN_VALUE;
     private MaceJumperPhase maceJumperPhase = MaceJumperPhase.NONE;
     private int maceJumperTargetId = -1;
     private int maceJumperExpiryAge = -1;
     private int maceJumperNextClimbAge;
     private int maceJumperClimbAge;
+    private int maceJumperTurnAge = -1;
+    private float maceJumperTurnStartPitch;
+    private float maceJumperTurnStartYaw;
+    private float maceJumperTurnTargetYaw;
+    private double maceJumperClimbGoalY = Double.NaN;
+    private Vec3 maceJumperClimbHeading;
     private int maceJumperLastAttackAge = -1;
+    private int maceCycleLastEndAge = -1;
     private int maceJumperRepeatedAttacks;
     private int maceJumperCountedTargetId = -1;
     private Vec3 maceJumperTargetOrigin;
     private boolean maceJumperRepeatAllowed;
+    private boolean maceRecoveryPending;
+    private int maceRecoveryExpiryAge = -1;
+    private double maceRecoveryOriginY;
+    private final Map<Integer, ReachabilityState> reachableTargets = new HashMap<>();
 
     private static Vec3 horizontal(Vec3 vector) {
         return new Vec3(vector.x, 0.0, vector.z);
@@ -349,6 +374,7 @@ public final class ElytraTarget extends Module {
 
     @Override
     public void onDisable() {
+        if (ElytraDiveTrace.INSTANCE.active()) ElytraDiveTrace.INSTANCE.finish("module_disabled");
         RotationManager.INSTANCE.clear(this);
         ElytraRecastUtil.INSTANCE.reset(this);
         closeAttackWindow();
@@ -373,7 +399,12 @@ public final class ElytraTarget extends Module {
             AttributeSwap swap = Modules.get(AttributeSwap.class);
             int targetId = swap != null ? swap.getElytraCycleTargetId() : -1;
             var entity = targetId >= 0 ? mc.level.getEntity(targetId) : null;
+            LivingEntity oldTarget = target;
             target = entity instanceof LivingEntity living && isValidTarget(living) ? living : null;
+            if (ElytraDiveTrace.INSTANCE.active() && oldTarget != target) {
+                ElytraDiveTrace.INSTANCE.event("swapTarget old=" + (oldTarget == null ? -1 : oldTarget.getId())
+                        + " new=" + (target == null ? -1 : target.getId()));
+            }
             TargetManager.publish(this, target, TargetManager.Source.MODULE, 900);
             queuedFireworkUse = false;
             ElytraRecastUtil.INSTANCE.reset(this);
@@ -384,7 +415,13 @@ public final class ElytraTarget extends Module {
         boolean validSelf = isValidSelf(player);
         boolean validTarget = isValidTarget(combatTarget);
 
+        LivingEntity oldTarget = target;
         target = validSelf && validTarget ? combatTarget : null;
+        if (ElytraDiveTrace.INSTANCE.active() && oldTarget != target) {
+            ElytraDiveTrace.INSTANCE.event("targetChange old=" + (oldTarget == null ? -1 : oldTarget.getId())
+                    + " new=" + (target == null ? -1 : target.getId())
+                    + " selfValid=" + validSelf + " targetValid=" + validTarget);
+        }
         TargetManager.publish(this, target, TargetManager.Source.MODULE, 900);
         boolean emergencyAvoidQueued = this.emergencyAvoidQueued;
 
@@ -417,52 +454,67 @@ public final class ElytraTarget extends Module {
             return;
         }
 
-        if (hitStatusTicks < HIT_STATUS_READY_TICKS) {
-            hitStatusTicks++;
-        }
-        ElytraRecastUtil.INSTANCE.tick(this, player);
-        captureMaceCycleAttack(player);
-        tickMaceJumper(player);
+        boolean tracing = traceMaceTick(player);
+        try {
+            if (hitStatusTicks < HIT_STATUS_READY_TICKS) {
+                hitStatusTicks++;
+            }
+            ElytraRecastUtil.INSTANCE.tick(this, player);
+            captureMaceCycleAttack(player);
+            captureMaceCycleEnd(player);
+            tickMaceRecovery(player);
+            tickMaceJumper(player);
 
-        if (isAttributeSwapElytraCycleActive()) {
-            // AttributeSwap owns the equipment and the attack until the real smash.
-            queuedFireworkUse = false;
-            clearAutoTakeoffState();
-            ElytraRecastUtil.INSTANCE.reset(this);
-            return;
-        }
-
-        tickAutoTakeoff(player);
-
-        boolean emergencyAvoidQueued = this.emergencyAvoidQueued;
-
-        if (!isRunning()) {
-            queuedFireworkUse = false;
-            clearPursuitState();
-            if (!ElytraRecastUtil.INSTANCE.isActive(this)) {
+            if (isAttributeSwapElytraCycleActive()) {
+                // AttributeSwap owns the equipment and the attack until the real smash.
+                queuedFireworkUse = false;
+                clearAutoTakeoffState();
                 ElytraRecastUtil.INSTANCE.reset(this);
+                return;
             }
-            if (!emergencyAvoidQueued) {
-                RotationManager.INSTANCE.release(this, false);
+
+            tickAutoTakeoff(player);
+
+            boolean emergencyAvoidQueued = this.emergencyAvoidQueued;
+
+            if (!isRunning()) {
+                queuedFireworkUse = false;
+                clearPursuitState();
+                if (!ElytraRecastUtil.INSTANCE.isActive(this)) {
+                    ElytraRecastUtil.INSTANCE.reset(this);
+                }
+                if (!emergencyAvoidQueued) {
+                    RotationManager.INSTANCE.release(this, false);
+                }
+                return;
             }
-            return;
-        }
 
-        if (emergencyAvoidQueued) {
-            // Avoiding a wall must not trigger an extra rocket or lose the
-            // pursuit phase needed for the next risk comparison.
-            queuedFireworkUse = false;
-            pursuitRotationActive = false;
-            pendingRotation = null;
-            attackWindowActive = false;
-            return;
-        }
+            if (emergencyAvoidQueued) {
+                // Avoiding a wall must not trigger an extra rocket or lose the
+                // pursuit phase needed for the next risk comparison.
+                queuedFireworkUse = false;
+                pursuitRotationActive = false;
+                pendingRotation = null;
+                attackWindowActive = false;
+                return;
+            }
 
-        updatePursuitPhase(player, target);
-        if (maceJumperPhase != MaceJumperPhase.CLIMB && maceJumperPhase != MaceJumperPhase.RECOVER
-                && tryPrepareMaceDive(player)) return;
-        if (isPursuitEnabled() && shouldUseFirework(player)) {
-            queuedFireworkUse = true;
+            updatePursuitPhase(player, target);
+            if (!maceRecoveryPending && maceJumperPhase != MaceJumperPhase.CLIMB
+                    && maceJumperPhase != MaceJumperPhase.TURN
+                    && maceJumperPhase != MaceJumperPhase.RECOVER
+                    && tryPrepareMaceDive(player)) return;
+            if (isPursuitEnabled() && shouldUseFirework(player)) {
+                queuedFireworkUse = true;
+            }
+        } finally {
+            if (tracing) {
+                ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                        "end phase=%s pursuit=%s target=%d lock=%d y=%.3f vy=%.3f goalY=%.3f recovery=%s flying=%s readySwap=%s queueRocket=%s",
+                        maceJumperPhase, pursuitPhase, target == null ? -1 : target.getId(), maceJumperTargetId,
+                        player.getY(), player.getDeltaMovement().y, maceJumperClimbGoalY,
+                        maceRecoveryPending, player.isFallFlying(), isAttributeSwapElytraCycleActive(), queuedFireworkUse));
+            }
         }
     }
 
@@ -489,6 +541,11 @@ public final class ElytraTarget extends Module {
                 true,
                 needsEmergencyReboost(player)
         );
+        if (ElytraDiveTrace.INSTANCE.active()) {
+            ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                    "firework launched=%s phase=%s yaw=%.2f pitch=%.2f",
+                    launched, maceJumperPhase, fireworkRotation.yaw(), fireworkRotation.pitch()));
+        }
         if (launched) {
             event.setRotation(fireworkRotation.yaw(), fireworkRotation.pitch(), true);
         }
@@ -524,7 +581,14 @@ public final class ElytraTarget extends Module {
             resetBlockDodge();
             return;
         }
-        emergencyAvoidQueued = queueEmergencyAvoidanceRotation(player, event.getMovementRotation());
+        Rotation resolved = event.getMovementRotation();
+        if (ElytraDiveTrace.INSTANCE.active() && resolved != null) {
+            ElytraDiveTrace.INSTANCE.advanceTick(player.tickCount);
+            ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                    "resolvedRotation yaw=%.2f pitch=%.2f ownedByElytraTarget=%s",
+                    resolved.yaw(), resolved.pitch(), RotationManager.INSTANCE.ownsActiveRotation(this)));
+        }
+        emergencyAvoidQueued = queueEmergencyAvoidanceRotation(player, resolved);
         if (emergencyAvoidQueued) {
             pursuitRotationActive = false;
             pendingRotation = null;
@@ -547,9 +611,17 @@ public final class ElytraTarget extends Module {
         Rotation pursuitRotation = null;
         if (isRunning()) {
             updatePursuitPhase(player, target);
-            if (maceJumperPhase != MaceJumperPhase.CLIMB && maceJumperPhase != MaceJumperPhase.RECOVER)
+            if (!maceRecoveryPending && maceJumperPhase != MaceJumperPhase.CLIMB
+                    && maceJumperPhase != MaceJumperPhase.TURN
+                    && maceJumperPhase != MaceJumperPhase.RECOVER)
                 tryPrepareMaceDive(player);
             pursuitRotation = calculatePursuitRotation(player, target);
+            if (ElytraDiveTrace.INSTANCE.active() && pursuitRotation != null) {
+                ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                        "rotation phase=%s pursuit=%s yaw=%.2f pitch=%.2f owns=%s",
+                        maceJumperPhase, pursuitPhase, pursuitRotation.yaw(), pursuitRotation.pitch(),
+                        RotationManager.INSTANCE.ownsActiveRotation(this)));
+            }
         }
         if (isAttributeSwapElytraCycleActive()) {
             AttributeSwap swap = Modules.get(AttributeSwap.class);
@@ -629,8 +701,15 @@ public final class ElytraTarget extends Module {
     /** The mace swap, landing and relaunch must not compete with aura attacks or smart-crit jumps. */
     public boolean shouldSuspendKillAura() {
         if (!isEnabled() || mc.player == null || mc.level == null) return false;
+        AttributeSwap swap = Modules.get(AttributeSwap.class);
+        // A cycle may finish on the same tick as KillAura's rotation PRE event.
+        // Don't leave a one-tick ground-combat gap before captureMaceCycleEnd().
+        boolean justEndedCycle = swap != null && !mc.player.isFallFlying()
+                && swap.getLastElytraCycleEndAge(mc.player) == mc.player.tickCount;
         return isAttributeSwapElytraCycleActive()
+                || justEndedCycle
                 || maceJumperPhase != MaceJumperPhase.NONE
+                || maceRecoveryPending
                 || autoTakeoffPending && hasKillAuraGate();
     }
 
@@ -647,10 +726,14 @@ public final class ElytraTarget extends Module {
     public boolean isControllingFlight() {
         return isEnabled() && (isAttributeSwapElytraCycleActive()
                 || maceJumperPhase != MaceJumperPhase.NONE
+                || maceRecoveryPending
                 || emergencyAvoidQueued || (isRunning() && isPursuitEnabled()));
     }
 
     private void resetState() {
+        if (ElytraDiveTrace.INSTANCE.active()) {
+            ElytraDiveTrace.INSTANCE.finish("reset");
+        }
         ElytraRecastUtil.INSTANCE.reset(this);
         target = null;
         TargetManager.clear(this);
@@ -669,8 +752,16 @@ public final class ElytraTarget extends Module {
         queuedAutoTakeoffJump = false;
         autoTakeoffGlideDelayTicks = 0;
         autoTakeoffCooldownTicks = 0;
+        lastAutoTakeoffJumpAge = Integer.MIN_VALUE;
+        firstAutoTakeoffGlideAge = -1;
+        lastAutoTakeoffGlidePacketAge = Integer.MIN_VALUE;
         clearMaceJumper();
+        maceRecoveryPending = false;
+        maceRecoveryExpiryAge = -1;
+        maceRecoveryOriginY = 0.0;
+        reachableTargets.clear();
         maceJumperLastAttackAge = -1;
+        maceCycleLastEndAge = -1;
         maceJumperRepeatedAttacks = 0;
         maceJumperCountedTargetId = -1;
     }
@@ -683,9 +774,58 @@ public final class ElytraTarget extends Module {
         KillAura killAura = Modules.get(KillAura.class);
 
         List<LivingEntity> candidates = killAura.findElytraTargetCandidates(targetRange.get());
+        if (maceJumperPhase != MaceJumperPhase.NONE && mc.level != null) {
+            var lockedEntity = mc.level.getEntity(maceJumperTargetId);
+            if (lockedEntity instanceof LivingEntity locked
+                    && (candidates.contains(locked) && isTargetReachable(player, locked)
+                    || canRetainMaceJumperTarget(player, locked))) return locked;
+            if ((maceJumperPhase == MaceJumperPhase.CLIMB || maceJumperPhase == MaceJumperPhase.TURN
+                    || maceJumperPhase == MaceJumperPhase.DIVE)
+                    && lockedEntity instanceof LivingEntity locked && locked.isAlive() && !locked.isRemoved()) {
+                return null;
+            }
+        }
         LivingEntity auraTarget = killAura.getCurrentTarget();
-        if (candidates.contains(auraTarget)) return auraTarget;
-        return candidates.isEmpty() ? null : candidates.getFirst();
+        if (candidates.contains(auraTarget) && isTargetReachable(player, auraTarget)) return auraTarget;
+        if (candidates.contains(target) && isTargetReachable(player, target)) return target;
+        for (LivingEntity candidate : candidates) {
+            if (isTargetReachable(player, candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private ElytraTargetReachability.Route routeToTarget(LocalPlayer player, LivingEntity entity) {
+        if (player == null || entity == null || mc.level == null) return null;
+        int age = player.tickCount;
+        ReachabilityState cached = reachableTargets.get(entity.getId());
+        if (cached != null && age - cached.tick() >= 0 && age - cached.tick() < ROUTE_RECHECK_TICKS
+                && player.position().distanceToSqr(cached.playerPosition()) < 6.25
+                && entity.position().distanceToSqr(cached.targetPosition()) < 2.25) {
+            return cached.route();
+        }
+        ElytraTargetReachability.Route route = ElytraTargetReachability.findRoute(player, entity);
+        if (reachableTargets.size() > 64) reachableTargets.clear();
+        reachableTargets.put(entity.getId(), new ReachabilityState(player.position(), entity.position(), age, route));
+        return route;
+    }
+
+    private boolean isTargetReachable(LocalPlayer player, LivingEntity entity) {
+        return entity != null && !ElytraTargetReachability.isSubmerged(entity)
+                && routeToTarget(player, entity) != null;
+    }
+
+    private Vec3 routeWaypoint(LocalPlayer player, LivingEntity entity) {
+        ElytraTargetReachability.Route route = routeToTarget(player, entity);
+        if (route == null || route.waypoints().isEmpty()
+                || ElytraTargetReachability.hasDirectContact(player, entity)) return null;
+        Vec3 eye = player.getEyePosition();
+        // Skip previously reached route segments without steering back to their old origins.
+        for (int i = route.waypoints().size() - 1; i >= 0; i--) {
+            Vec3 waypoint = route.waypoints().get(i);
+            if (eye.distanceToSqr(waypoint) < 2.25) continue;
+            if (ElytraTargetReachability.hasClearSegment(player, eye, waypoint)) return waypoint;
+        }
+        return route.waypoints().getFirst();
     }
 
     private boolean hasKillAuraGate() {
@@ -706,8 +846,32 @@ public final class ElytraTarget extends Module {
 
     private boolean isValidTarget(LivingEntity entity) {
         if (entity == null || !entity.isAlive() || entity.isRemoved()) return false;
+        LocalPlayer player = mc.player;
+        if (player == null) return false;
+        if (maceJumperPhase != MaceJumperPhase.NONE && entity.getId() == maceJumperTargetId
+                && canRetainMaceJumperTarget(player, entity)) return true;
         KillAura aura = Modules.get(KillAura.class);
-        return aura != null && aura.findElytraTargetCandidates(targetRange.get()).contains(entity);
+        return aura != null && aura.findElytraTargetCandidates(targetRange.get()).contains(entity)
+                && isTargetReachable(player, entity);
+    }
+
+    private boolean canRetainMaceJumperTarget(LocalPlayer player, LivingEntity entity) {
+        if (player == null || entity == null || !entity.isAlive() || entity.isRemoved()
+                || ElytraTargetReachability.isSubmerged(entity)) return false;
+
+        // The acquisition range is spherical, but during a committed vertical
+        // maneuver the target must stay locked as long as it is still nearby in XZ.
+        double horizontalRange = Math.max(targetRange.get(), getAuraAttackBand(entity) * 2.0);
+        if (horizontalDistance(player.position(), entity.position()) > horizontalRange) return false;
+        double verticalGap = Math.max(0.0, Math.max(
+                entity.getBoundingBox().minY - player.getEyeY(),
+                player.getEyeY() - entity.getBoundingBox().maxY));
+        double retainedRange = Math.hypot(horizontalRange, verticalGap) + 2.0;
+        KillAura aura = Modules.get(KillAura.class);
+        if (aura == null || !aura.canRetainElytraTarget(entity, retainedRange)) return false;
+
+        // Re-check reachability before the dive, not during the ongoing climb.
+        return true;
     }
 
     private boolean isPursuitEnabled() {
@@ -737,8 +901,10 @@ public final class ElytraTarget extends Module {
             return;
         }
 
-        if (maceJumperPhase == MaceJumperPhase.RECOVER && player.isFallFlying()
-                || maceJumperPhase == MaceJumperPhase.CLIMB || maceJumperPhase == MaceJumperPhase.DIVE) {
+        if (maceRecoveryPending && player.isFallFlying()
+                || maceJumperPhase == MaceJumperPhase.RECOVER && player.isFallFlying()
+                || maceJumperPhase == MaceJumperPhase.CLIMB || maceJumperPhase == MaceJumperPhase.TURN
+                || maceJumperPhase == MaceJumperPhase.DIVE) {
             boolean dive = maceJumperPhase == MaceJumperPhase.DIVE;
             pursuitPhase = dive ? PursuitPhase.DIVE : PursuitPhase.CLIMB;
             preparingRotation = !dive;
@@ -804,26 +970,46 @@ public final class ElytraTarget extends Module {
 
         Vec3 point = calculatePursuitPoint(player, currentTarget);
         if (point == null) return null;
+        if (ElytraDiveTrace.INSTANCE.active()) {
+            ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                    "steerPoint phase=%s x=%.3f y=%.3f z=%.3f target=%d",
+                    maceJumperPhase, point.x, point.y, point.z, currentTarget.getId()));
+        }
 
-        return Rotation.lookingAt(point, getPursuitSteeringOrigin(player, true)).normalize();
+        Vec3 steeringOrigin = maceJumperPhase == MaceJumperPhase.CLIMB
+                || maceJumperPhase == MaceJumperPhase.TURN
+                || maceJumperPhase == MaceJumperPhase.RECOVER
+                ? player.getEyePosition() : getPursuitSteeringOrigin(player, true);
+        return Rotation.lookingAt(point, steeringOrigin).normalize();
     }
 
     private Vec3 calculatePursuitPoint(LocalPlayer player, LivingEntity currentTarget) {
         Vec3 targetCenter = predictPursuitTargetCenter(player, currentTarget);
+        if (maceJumperPhase == MaceJumperPhase.DIVE) {
+            return targetCenter.add(0.0, -currentTarget.getBoundingBox().getYsize() * 0.15, 0.0);
+        }
+        if (maceJumperPhase == MaceJumperPhase.TURN) {
+            return calculateMaceJumperTurnPoint(player);
+        }
         if (maceJumperPhase == MaceJumperPhase.CLIMB
                 || maceJumperPhase == MaceJumperPhase.RECOVER && player.isFallFlying()) {
+            ensureMaceJumperClimbGuidance(player, currentTarget);
+            return calculateMaceJumperClimbPoint(player, targetCenter);
+        }
+        if (maceRecoveryPending && player.isFallFlying()) {
             Vec3 current = player.position();
             Vec3 correction = horizontal(targetCenter.subtract(current));
             if (correction.lengthSqr() > 1.0E-4) {
                 correction = correction.normalize().scale(Math.min(0.65, correction.length() * 0.12));
             }
+            double climbHeight = isMaceJumperEnabled() ? maceJumperHeight.get()
+                    : Math.max(6.0, overtakeHeight.get());
             double top = Math.max(current.y + 5.0,
-                    currentTarget.getBoundingBox().maxY + maceJumperHeight.get());
+                    currentTarget.getBoundingBox().maxY + climbHeight);
             return new Vec3(current.x + correction.x, top, current.z + correction.z);
         }
-        if (maceJumperPhase == MaceJumperPhase.DIVE) {
-            return targetCenter.add(0.0, -currentTarget.getBoundingBox().getYsize() * 0.15, 0.0);
-        }
+        Vec3 waypoint = routeWaypoint(player, currentTarget);
+        if (waypoint != null) return waypoint;
         Vec3 playerPos = getPursuitSteeringOrigin(player, false);
         Vec3 horizontalToTarget = horizontal(targetCenter.subtract(playerPos));
         double horizontalDistance = horizontalToTarget.length();
@@ -847,6 +1033,69 @@ public final class ElytraTarget extends Module {
             case CHASE -> calculateDirectChasePoint(player, currentTarget, targetCenter, direction, horizontalDistance);
             case NONE -> null;
         };
+    }
+
+    private void ensureMaceJumperClimbGuidance(LocalPlayer player, LivingEntity currentTarget) {
+        if (Double.isFinite(maceJumperClimbGoalY) && maceJumperClimbHeading != null) return;
+        maceJumperClimbGoalY = Math.max(player.getY(),
+                currentTarget.getBoundingBox().maxY + maceJumperHeight.get());
+        Vec3 heading = horizontal(player.getDeltaMovement());
+        if (heading.lengthSqr() < 0.01) {
+            heading = horizontal(player.getViewVector(1.0f));
+        }
+        if (heading.lengthSqr() <= 1.0E-5) {
+            double yaw = Math.toRadians(player.getYRot());
+            heading = new Vec3(-Math.sin(yaw), 0.0, Math.cos(yaw));
+        }
+        maceJumperClimbHeading = heading.normalize();
+        ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                "jumperClimbAnchor goalY=%.3f headingX=%.3f headingZ=%.3f",
+                maceJumperClimbGoalY, maceJumperClimbHeading.x, maceJumperClimbHeading.z));
+    }
+
+    private Vec3 calculateMaceJumperClimbPoint(LocalPlayer player, Vec3 targetCenter) {
+        Vec3 origin = player.getEyePosition();
+        Vec3 towardTarget = horizontal(targetCenter.subtract(player.position()));
+        double distance = towardTarget.length();
+        Vec3 correction = distance > 1.0E-4
+                ? towardTarget.scale(Math.min(0.65, distance * 0.12) / distance) : Vec3.ZERO;
+        Vec3 heading = maceJumperClimbHeading != null
+                ? maceJumperClimbHeading : horizontal(player.getViewVector(1.0f)).normalize();
+        return origin.add(heading.scale(0.50)).add(correction).add(0.0, 6.0, 0.0);
+    }
+
+    private Vec3 calculateMaceJumperTurnPoint(LocalPlayer player) {
+        float progress = (float) Mth.clamp((player.tickCount - maceJumperTurnAge)
+                / (double) MACE_JUMPER_TURN_TICKS, 0.0, 1.0);
+        double pitch = maceJumperTurnStartPitch + (65.0 - maceJumperTurnStartPitch) * progress;
+        // Reblending horizontal direction every tick could switch its sign
+        // as the player overtook the target, causing an instant 150+ degree yaw.
+        float yaw = Mth.rotLerp(progress, maceJumperTurnStartYaw, maceJumperTurnTargetYaw);
+        double horizontalDistance = 4.0;
+        double radians = Math.toRadians(yaw);
+        return player.getEyePosition().add(
+                -Math.sin(radians) * horizontalDistance,
+                -Math.tan(Math.toRadians(pitch)) * horizontalDistance,
+                Math.cos(radians) * horizontalDistance);
+    }
+
+    private void beginMaceJumperTurn(LocalPlayer player, LivingEntity currentTarget, float initialPitch) {
+        Vec3 heading = maceJumperClimbHeading != null
+                ? maceJumperClimbHeading : horizontal(player.getViewVector(1.0f)).normalize();
+        if (heading.lengthSqr() <= 1.0E-5) heading = new Vec3(0.0, 0.0, 1.0);
+        maceJumperTurnStartYaw = (float) Math.toDegrees(Math.atan2(-heading.x, heading.z));
+        Vec3 toTarget = horizontal(currentTarget.getBoundingBox().getCenter().subtract(player.getEyePosition()));
+        maceJumperTurnTargetYaw = toTarget.lengthSqr() > 1.0E-4
+                ? (float) Math.toDegrees(Math.atan2(-toTarget.x, toTarget.z))
+                : maceJumperTurnStartYaw;
+        maceJumperTurnStartPitch = initialPitch;
+        maceJumperTurnAge = player.tickCount;
+        MaceJumperPhase previousPhase = maceJumperPhase;
+        maceJumperPhase = MaceJumperPhase.TURN;
+        maceRecoveryPending = false;
+        ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                "jumperTransition %s->TURN pitch=%.2f yaw=%.2f targetYaw=%.2f",
+                previousPhase, initialPitch, maceJumperTurnStartYaw, maceJumperTurnTargetYaw));
     }
 
     private Vec3 calculateDirectChasePoint(LocalPlayer player,
@@ -974,13 +1223,33 @@ public final class ElytraTarget extends Module {
     }
 
     private boolean tryPrepareMaceDive(LocalPlayer player) {
-        if (emergencyAvoidQueued || !canSetupMaceDive(player)) return false;
+        if (emergencyAvoidQueued || !canSetupMaceDive(player)
+                || target == null || !ElytraTargetReachability.hasDirectContact(player, target)) return false;
         AttributeSwap swap = Modules.get(AttributeSwap.class);
-        if (swap == null || !swap.prepareElytraTargetDive(player, target, preparationLeadTicks.get())) return false;
+        if (swap == null || !swap.prepareElytraTargetDive(player, target,
+                adaptivePreparationLeadTicks(player, target))) return false;
         queuedFireworkUse = false;
         clearAutoTakeoffState();
         ElytraRecastUtil.INSTANCE.reset(this);
         return true;
+    }
+
+    private int adaptivePreparationLeadTicks(LocalPlayer player, LivingEntity currentTarget) {
+        Vec3 toTarget = currentTarget.getBoundingBox().getCenter().subtract(player.getEyePosition());
+        if (toTarget.lengthSqr() < 1.0E-6) return preparationLeadTicks.get();
+        Vec3 direction = toTarget.normalize();
+        double approachSpeed = Math.max(0.0,
+                player.getDeltaMovement().subtract(currentTarget.getDeltaMovement()).dot(direction));
+        FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
+        if (Modules.enabled(SuperFirework.class) && (boost.active() || boost.awaitingSpawn())) {
+            Vec3 accelerated = predictSuperFireworkVelocity(player.getDeltaMovement(), direction);
+            approachSpeed = Math.max(approachSpeed,
+                    accelerated.subtract(currentTarget.getDeltaMovement()).dot(direction));
+        }
+        // The inventory swap consumes several movement ticks. At high closing speeds
+        // the same time budget represents a much larger distance to the target.
+        int speedLead = (int) Math.ceil(Math.max(0.0, approachSpeed - 0.65) * 2.5);
+        return Mth.clamp(preparationLeadTicks.get() + speedLead, 0, 36);
     }
 
     private boolean hasSuperFireworkSteering() {
@@ -1017,47 +1286,41 @@ public final class ElytraTarget extends Module {
         return predictSuperFireworkVelocity(player.getDeltaMovement(), direction).length();
     }
 
-    /**
-     * Estimate interception against the actual SuperFirework thrust model, not a fixed
-     * number of ticks ahead. The rocket sets velocity each tick while it burns; once
-     * its guaranteed fuse ends, the estimate falls back to current glide momentum.
-     */
+    /** Advances pursuit interception with the same flight/rocket model as collision forecasts. */
     private Vec3 predictPursuitTargetCenter(LocalPlayer player, LivingEntity currentTarget) {
         int maxTicks = Mth.clamp(pursuitPredictionTicks.get(), 0, 20);
-        if (!hasSuperFireworkSteering() || maxTicks == 0) {
-            return predictTargetCenter(currentTarget, maxTicks);
-        }
-
+        if (maxTicks == 0) return predictTargetCenter(currentTarget, 0);
         Vec3 origin = player.getEyePosition();
+        Vec3 velocity = player.getDeltaMovement();
         FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
-        double rocketSpeed = expectedSuperFireworkSpeed(player);
         int poweredTicks = boost.active() ? Math.max(0, boost.expectedTicks()) : 0;
-        if (poweredTicks == 0 && !boost.awaitingSpawn() && shouldUseFirework(player)) {
-            // Anticipate only boosts that ElytraTarget will actually request.
-            // Otherwise high-speed coasting would incorrectly be modeled as thrust.
+        if (boost.awaitingSpawn()) poweredTicks = Math.max(poweredTicks, 10);
+        if (poweredTicks == 0 && hasSuperFireworkSteering() && shouldUseFirework(player)) {
             poweredTicks = 10;
         }
-        if (boost.awaitingSpawn()) poweredTicks = 10;
-
-        Vec3 precedingTarget = predictTargetCenter(currentTarget, 0);
-        double precedingGap = precedingTarget.distanceTo(origin);
+        FlightModel physics = flightPhysics(player);
+        Vec3 lastTarget = predictTargetCenter(currentTarget, 0);
+        double attackBand = getAuraAttackBand(currentTarget);
         for (int tick = 1; tick <= maxTicks; tick++) {
-            Vec3 futureTarget = predictTargetCenter(currentTarget, tick);
-            Vec3 toFuture = futureTarget.subtract(origin);
-            double distance = toFuture.length();
-            Vec3 dir = distance > 1.0E-5 ? toFuture.scale(1.0 / distance) : Vec3.ZERO;
-            double momentum = Math.max(0.0, player.getDeltaMovement().dot(dir));
-            double flight = Math.min(tick, poweredTicks) * rocketSpeed
-                    + Math.max(0, tick - poweredTicks) * momentum * 0.85;
-            double gap = distance - flight;
-            if (gap <= 0.0) {
-                double portion = Mth.clamp(precedingGap / Math.max(1.0E-6, precedingGap - gap), 0.0, 1.0);
-                return precedingTarget.lerp(futureTarget, portion);
+            Vec3 nextTarget = predictTargetCenter(currentTarget, tick);
+            Vec3 delta = nextTarget.subtract(origin);
+            Rotation heading = delta.lengthSqr() > 1.0E-6
+                    ? Rotation.fromRotationVec(delta) : Rotation.fromRotationVec(player.getLookAngle());
+            Vec3 movement = physics.glide(velocity, heading);
+            Vec3 nextOrigin = origin.add(movement);
+            Vec3 relativeStart = origin.subtract(lastTarget);
+            Vec3 relativeMove = nextOrigin.subtract(origin).subtract(nextTarget.subtract(lastTarget));
+            double lengthSq = relativeMove.lengthSqr();
+            double fraction = lengthSq > 1.0E-6
+                    ? Mth.clamp(-relativeStart.dot(relativeMove) / lengthSq, 0.0, 1.0) : 0.0;
+            if (relativeStart.add(relativeMove.scale(fraction)).lengthSqr() <= attackBand * attackBand) {
+                return lastTarget.lerp(nextTarget, fraction);
             }
-            precedingTarget = futureTarget;
-            precedingGap = gap;
+            origin = nextOrigin;
+            velocity = physics.afterMove(movement, heading, tick, poweredTicks);
+            lastTarget = nextTarget;
         }
-        return precedingTarget;
+        return lastTarget;
     }
 
     /** One-tick motion lead anticipates overshooting before the next steering update. */
@@ -1087,16 +1350,54 @@ public final class ElytraTarget extends Module {
         return base.add(currentTarget.getDeltaMovement().scale(safeTicks));
     }
 
+    /** Captures flight and cycle state once per game tick while a target or recovery is active. */
+    private boolean traceMaceTick(LocalPlayer player) {
+        ElytraDiveTrace trace = ElytraDiveTrace.INSTANCE;
+        AttributeSwap swap = Modules.get(AttributeSwap.class);
+        boolean swapCycle = swap != null && swap.isElytraCycleActive();
+        if (target == null && maceJumperPhase == MaceJumperPhase.NONE && !maceRecoveryPending && !swapCycle) {
+            if (trace.active()) trace.finish("idle");
+            return false;
+        }
+        int activeId = maceJumperTargetId >= 0 ? maceJumperTargetId
+                : swapCycle ? swap.getElytraCycleTargetId()
+                : target == null ? -1 : target.getId();
+        trace.sample(player.tickCount, activeId, "ElytraTarget", String.format(Locale.ROOT,
+                "phase=%s pursuit=%s target=%d lock=%d recovery=%s flying=%s ground=%s chestElytra=%s"
+                        + " y=%.3f vy=%.3f vxz=%.3f goalY=%.3f climbAge=%d turnAge=%d"
+                        + " repeats=%d allowed=%s swapCycle=%s",
+                maceJumperPhase, pursuitPhase, target == null ? -1 : target.getId(), maceJumperTargetId,
+                maceRecoveryPending, player.isFallFlying(), player.onGround(),
+                player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA),
+                player.getY(), player.getDeltaMovement().y, player.getDeltaMovement().horizontalDistance(),
+                maceJumperClimbGoalY, maceJumperClimbAge, maceJumperTurnAge,
+                maceJumperRepeatedAttacks, maceJumperRepeatAllowed, swapCycle));
+        return true;
+    }
+
     private void captureMaceCycleAttack(LocalPlayer player) {
         AttributeSwap swap = Modules.get(AttributeSwap.class);
-        if (swap == null || !isMaceJumperEnabled() || player == null || !hasKillAuraGate()) return;
+        if (swap == null || player == null || !hasKillAuraGate()) return;
         int age = swap.getLastElytraCycleAttackAge(player);
         if (age < 0 || age <= maceJumperLastAttackAge || age > player.tickCount
                 || player.tickCount - age > 3) return;
         maceJumperLastAttackAge = age;
+        ElytraDiveTrace.INSTANCE.event("cycleAttack age=" + age);
         int targetId = swap.getLastElytraCycleAttackTargetId(player);
         if (targetId < 0) return;
 
+        // Recovery is independent of the victim and of the optional follow-up smash.
+        // After a killing blow, the new target must not hand control back to ground aura.
+        maceRecoveryPending = true;
+        maceRecoveryExpiryAge = player.tickCount + MACE_RECOVERY_TIMEOUT_TICKS;
+        maceRecoveryOriginY = player.getY();
+        autoTakeoffCooldownTicks = 0;
+        clearAutoTakeoffState();
+
+        if (!isMaceJumperEnabled()) {
+            clearMaceJumper();
+            return;
+        }
         if (targetId != maceJumperCountedTargetId) {
             maceJumperCountedTargetId = targetId;
             maceJumperRepeatedAttacks = 0;
@@ -1108,80 +1409,206 @@ public final class ElytraTarget extends Module {
         maceJumperExpiryAge = player.tickCount + maceJumperTimeout.get();
         maceJumperNextClimbAge = player.tickCount + maceJumperDelay.get();
         maceJumperTargetOrigin = null;
+        maceJumperClimbGoalY = Double.NaN;
+        maceJumperClimbHeading = null;
+        maceJumperTurnAge = -1;
         maceJumperRepeatAllowed = maceJumperMaxRepeats.get() == 0
                 || maceJumperRepeatedAttacks < maceJumperMaxRepeats.get();
-        clearAutoTakeoffState();
+        ElytraDiveTrace.INSTANCE.event("jumperStart target=" + targetId + " repeated="
+                + maceJumperRepeatedAttacks + " allowed=" + maceJumperRepeatAllowed
+                + " nextClimb=" + maceJumperNextClimbAge);
+    }
+
+    private void captureMaceCycleEnd(LocalPlayer player) {
+        AttributeSwap swap = Modules.get(AttributeSwap.class);
+        if (swap == null || player == null || !hasKillAuraGate()) return;
+        int age = swap.getLastElytraCycleEndAge(player);
+        if (age < 0 || age <= maceCycleLastEndAge || age > player.tickCount
+                || player.tickCount - age > 3) return;
+        maceCycleLastEndAge = age;
+        ElytraDiveTrace.INSTANCE.event("cycleEnd age=" + age + " flying=" + player.isFallFlying());
+        if (!player.isFallFlying()) {
+            maceRecoveryPending = true;
+            maceRecoveryExpiryAge = player.tickCount + MACE_RECOVERY_TIMEOUT_TICKS;
+            maceRecoveryOriginY = player.getY();
+            autoTakeoffCooldownTicks = 0;
+        }
+    }
+
+    private void tickMaceRecovery(LocalPlayer player) {
+        if (!maceRecoveryPending) return;
+        if (player == null || mc.level == null || player.tickCount >= maceRecoveryExpiryAge
+                || !hasKillAuraGate()) {
+            ElytraDiveTrace.INSTANCE.event("recoveryEnd reason=expired_or_unavailable");
+            maceRecoveryPending = false;
+            return;
+        }
+        if (isAttributeSwapElytraCycleActive()) return;
+        if (player.isFallFlying() && !player.onGround()
+                && player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
+            // Reaching gliding=true is only the first step. Hold ownership until
+            // there is enough altitude for another dive; otherwise the next aura
+            // target immediately turns the rocket back towards the ground.
+            double aboveLaunch = player.getY() - maceRecoveryOriginY;
+            LivingEntity nextTarget = target;
+            double aboveTarget = nextTarget != null
+                    ? player.getY() - nextTarget.getBoundingBox().maxY : aboveLaunch;
+            double heightGoal = isMaceJumperEnabled()
+                    ? maceJumperHeight.get() * 0.70 : Math.max(4.0, overtakeHeight.get() * 0.70);
+            if (maceJumperPhase != MaceJumperPhase.RECOVER
+                    && aboveLaunch >= 3.5 && aboveTarget >= heightGoal) {
+                ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                        "recoveryEnd reason=height_ready aboveLaunch=%.2f aboveTarget=%.2f goal=%.2f",
+                        aboveLaunch, aboveTarget, heightGoal));
+                maceRecoveryPending = false;
+            }
+        }
     }
 
     private void tickMaceJumper(LocalPlayer player) {
         if (maceJumperPhase == MaceJumperPhase.NONE) return;
         if (!isMaceJumperEnabled() || !hasKillAuraGate() || mc.level == null || player == null
                 || player.tickCount >= maceJumperExpiryAge) {
+            ElytraDiveTrace.INSTANCE.event("jumperCancel reason=disabled_gate_or_timeout phase=" + maceJumperPhase);
             clearMaceJumper();
             return;
         }
         var entity = mc.level.getEntity(maceJumperTargetId);
-        if (!(entity instanceof LivingEntity currentTarget) || !isValidTarget(currentTarget)) {
-            clearMaceJumper();
-            return;
+        LivingEntity currentTarget = entity instanceof LivingEntity living && isValidTarget(living) ? living : null;
+        if (currentTarget == null) {
+            ElytraDiveTrace.INSTANCE.event("jumperReacquire reason=target_missing old=" + maceJumperTargetId);
+            // The previous victim may die during the ascent. Keep the flight
+            // recovery owner, then reacquire a new target rather than handing
+            // the next ground contact to KillAura.
+            maceJumperPhase = MaceJumperPhase.RECOVER;
+            maceJumperTargetId = -1;
+            maceJumperTargetOrigin = null;
+            maceJumperClimbGoalY = Double.NaN;
+            maceJumperClimbHeading = null;
+            currentTarget = resolveCombatTarget(player);
+            if (currentTarget != null) {
+                maceJumperTargetId = currentTarget.getId();
+                maceJumperCountedTargetId = -1;
+                maceJumperRepeatedAttacks = 0;
+                maceJumperRepeatAllowed = true;
+                maceJumperNextClimbAge = Math.max(maceJumperNextClimbAge, player.tickCount);
+            } else {
+                // Reacquisition can take a few ticks; do not erase the
+                // recovery phase while we are still on the ground.
+                return;
+            }
         }
 
-        if (isAttributeSwapElytraCycleActive()) {
-            // The inventory cycle retains ownership until the chest slot is restored.
-            return;
-        }
+        if (isAttributeSwapElytraCycleActive()) return;
 
         if (maceJumperPhase == MaceJumperPhase.RECOVER) {
             if (!player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)
-                    || !player.isFallFlying()) return;
+                    || !player.isFallFlying()) {
+                ElytraDiveTrace.INSTANCE.event("jumperWait reason=flight_restoration chest="
+                        + player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)
+                        + " flying=" + player.isFallFlying() + " ground=" + player.onGround());
+                return;
+            }
+            ensureMaceJumperClimbGuidance(player, currentTarget);
             if (!maceJumperRepeatAllowed || !isMaceJumperTargetStable(currentTarget, null)) {
+                ElytraDiveTrace.INSTANCE.event("jumperCancel reason=repeat_limit_or_unstable phase=RECOVER");
                 clearMaceJumper();
                 return;
             }
-            if (player.tickCount < maceJumperNextClimbAge) return;
+            if (player.tickCount < maceJumperNextClimbAge) {
+                ElytraDiveTrace.INSTANCE.event("jumperWait reason=delay remaining="
+                        + (maceJumperNextClimbAge - player.tickCount));
+                return;
+            }
             AttributeSwap swap = Modules.get(AttributeSwap.class);
             if (swap == null || !swap.canPrepareElytraTargetDive(player, currentTarget)) {
-                clearMaceJumper();
+                ElytraDiveTrace.INSTANCE.event("jumperWait reason=swap_cannot_prepare");
+                // Lack of a predicted smash window is not a reason to abandon
+                // a fresh takeoff. Leave recovery to retry as equipment settles.
                 return;
             }
             maceJumperTargetOrigin = currentTarget.position();
             maceJumperClimbAge = player.tickCount;
+            maceJumperTurnAge = -1;
+            ensureMaceJumperClimbGuidance(player, currentTarget);
+            // If the player is already above the attack height and descending,
+            // do not force a second upward boost before committing the turn.
+            if (player.getY() >= currentTarget.getBoundingBox().maxY + maceJumperHeight.get()
+                    && player.getDeltaMovement().y <= 0.15) {
+                Rotation flightRotation = RotationManager.INSTANCE.getMovementRotation();
+                beginMaceJumperTurn(player, currentTarget,
+                        flightRotation != null ? flightRotation.pitch() : player.getXRot());
+                return;
+            }
             maceJumperPhase = MaceJumperPhase.CLIMB;
+            ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                    "jumperTransition RECOVER->CLIMB goalY=%.3f target=%d", maceJumperClimbGoalY,
+                    maceJumperTargetId));
             return;
         }
 
         if (!player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
+            ElytraDiveTrace.INSTANCE.event("jumperTransition " + maceJumperPhase + "->RECOVER reason=missing_elytra");
             maceJumperPhase = MaceJumperPhase.RECOVER;
+            maceJumperClimbGoalY = Double.NaN;
+            maceJumperClimbHeading = null;
             return;
         }
         if (!player.isFallFlying()) {
+            ElytraDiveTrace.INSTANCE.event("jumperTransition " + maceJumperPhase + "->RECOVER reason=not_flying");
             maceJumperPhase = MaceJumperPhase.RECOVER;
             maceJumperTargetOrigin = null;
+            maceJumperClimbGoalY = Double.NaN;
+            maceJumperClimbHeading = null;
+            maceRecoveryPending = true;
+            maceRecoveryExpiryAge = player.tickCount + MACE_RECOVERY_TIMEOUT_TICKS;
+            maceRecoveryOriginY = player.getY();
+            autoTakeoffCooldownTicks = 0;
             clearAutoTakeoffState();
             return;
         }
         if (!isMaceJumperTargetStable(currentTarget, maceJumperTargetOrigin)
                 || horizontalDistance(player.position(), currentTarget.position())
                 > Math.max(8.0, getAuraAttackBand(currentTarget) * 2.0)) {
+            ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                    "jumperCancel reason=target_unstable_or_distance distXZ=%.3f",
+                    horizontalDistance(player.position(), currentTarget.position())));
             clearMaceJumper();
             return;
         }
         if (maceJumperPhase == MaceJumperPhase.DIVE) {
             AttributeSwap swap = Modules.get(AttributeSwap.class);
             if (swap == null || !swap.canPrepareElytraTargetDive(player, currentTarget)) {
+                ElytraDiveTrace.INSTANCE.event("jumperCancel reason=swap_cannot_prepare phase=DIVE");
                 clearMaceJumper();
             }
             return;
         }
         if (maceJumperPhase == MaceJumperPhase.CLIMB) {
-            double aboveTarget = player.getY() - currentTarget.getBoundingBox().maxY;
-            boolean heightReached = aboveTarget >= maceJumperHeight.get();
-            boolean apexReached = aboveTarget >= maceJumperHeight.get() * 0.72
-                    && player.getDeltaMovement().y <= 0.08;
+            double risingSpeed = Math.max(0.0, player.getDeltaMovement().y);
+            double leadRise = Math.max(1.0, Math.min(maceJumperHeight.get() * 0.4, risingSpeed * 2.5));
+            boolean highEnough = player.getY() >= maceJumperClimbGoalY - leadRise
+                    && player.getY() - currentTarget.getBoundingBox().maxY
+                    >= Math.max(3.0, maceJumperHeight.get() * 0.6);
+            ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                    "jumperClimb y=%.3f goalY=%.3f rise=%.3f lead=%.3f highEnough=%s age=%d",
+                    player.getY(), maceJumperClimbGoalY, risingSpeed, leadRise, highEnough,
+                    player.tickCount - maceJumperClimbAge));
             if (player.tickCount - maceJumperClimbAge >= MACE_JUMPER_MIN_CLIMB_TICKS
-                    && (heightReached || apexReached)) {
-                maceJumperPhase = MaceJumperPhase.DIVE;
+                    && highEnough) {
+                Vec3 point = calculateMaceJumperClimbPoint(player, currentTarget.getBoundingBox().getCenter());
+                beginMaceJumperTurn(player, currentTarget,
+                        Rotation.lookingAt(point, player.getEyePosition()).pitch());
             }
+        } else if (maceJumperPhase == MaceJumperPhase.TURN
+                && player.tickCount - maceJumperTurnAge > MACE_JUMPER_TURN_TICKS) {
+            if (!ElytraTargetReachability.hasDirectContact(player, currentTarget)) {
+                ElytraDiveTrace.INSTANCE.event("jumperCancel reason=no_direct_contact_before_dive");
+                clearMaceJumper();
+                return;
+            }
+            maceJumperPhase = MaceJumperPhase.DIVE;
+            ElytraDiveTrace.INSTANCE.event("jumperTransition TURN->DIVE");
         }
     }
 
@@ -1206,13 +1633,25 @@ public final class ElytraTarget extends Module {
     }
 
     private void clearMaceJumper() {
+        if (maceJumperPhase != MaceJumperPhase.NONE) {
+            ElytraDiveTrace.INSTANCE.event("jumperCleared phase=" + maceJumperPhase
+                    + " target=" + maceJumperTargetId);
+        }
         maceJumperPhase = MaceJumperPhase.NONE;
         maceJumperTargetId = -1;
         maceJumperExpiryAge = -1;
         maceJumperNextClimbAge = 0;
         maceJumperClimbAge = 0;
+        maceJumperTurnAge = -1;
+        maceJumperTurnStartPitch = 0.0f;
+        maceJumperTurnStartYaw = 0.0f;
+        maceJumperTurnTargetYaw = 0.0f;
+        maceJumperClimbGoalY = Double.NaN;
+        maceJumperClimbHeading = null;
         maceJumperTargetOrigin = null;
         maceJumperRepeatAllowed = false;
+        maceJumperRepeatedAttacks = 0;
+        maceJumperCountedTargetId = -1;
     }
 
     private void tickAutoTakeoff(LocalPlayer player) {
@@ -1223,7 +1662,7 @@ public final class ElytraTarget extends Module {
             autoTakeoffGlideDelayTicks--;
         }
 
-        if (!isAutoTakeoffEnabled() && maceJumperPhase != MaceJumperPhase.RECOVER) {
+        if (!isAutoTakeoffEnabled() && !maceRecoveryPending && maceJumperPhase != MaceJumperPhase.RECOVER) {
             clearAutoTakeoffState();
             return;
         }
@@ -1241,14 +1680,16 @@ public final class ElytraTarget extends Module {
             return;
         }
 
-        if (!canAutoTakeoffSelf(player) || !hasAutoTakeoffTarget(player)) {
+        if (!canAutoTakeoffSelf(player) || !maceRecoveryPending && !hasAutoTakeoffTarget(player)) {
             clearAutoTakeoffState();
             return;
         }
 
         if (!autoTakeoffPending) {
-            if (autoTakeoffCooldownTicks > 0) return;
+            if (autoTakeoffCooldownTicks > 0 && !maceRecoveryPending) return;
             autoTakeoffPending = true;
+            ElytraDiveTrace.INSTANCE.event("takeoffStart tick=" + player.tickCount
+                    + " jumperPhase=" + maceJumperPhase + " recovery=" + maceRecoveryPending);
             if (canAutoTakeoffJumpNow(player)) {
                 queueAutoTakeoffJump();
                 autoTakeoffGlideDelayTicks = player.onGround() ? 1 : 0;
@@ -1256,18 +1697,38 @@ public final class ElytraTarget extends Module {
         }
 
         if (player.onGround() || player.isInWater() || player.isInLava()) {
-            queueAutoTakeoffJump();
-            if (autoTakeoffGlideDelayTicks <= 0) {
+            // A jump held true every tick has no new rising edge. Release it
+            // between takeoff attempts, including when a target changes.
+            if (lastAutoTakeoffJumpAge == Integer.MIN_VALUE
+                    || player.tickCount - lastAutoTakeoffJumpAge >= TAKEOFF_JUMP_RETRY_TICKS) {
+                queueAutoTakeoffJump();
                 autoTakeoffGlideDelayTicks = 1;
+                lastAutoTakeoffJumpAge = player.tickCount;
+                ElytraDiveTrace.INSTANCE.event("takeoffJump tick=" + player.tickCount);
             }
+            firstAutoTakeoffGlideAge = -1;
+            ElytraRecastUtil.INSTANCE.reset(this);
             return;
         }
 
         if (autoTakeoffGlideDelayTicks > 0) return;
         if (player.getDeltaMovement().y > 0.0 && player.fallDistance <= 0.0f) return;
-        // Legal start: release jump for a tick, then press it so vanilla itself sends START_FALL_FLYING
-        // (Grim ElytraB/C/F: fresh jump edge, no repeated starts, not on ground).
-        ElytraRecastUtil.INSTANCE.request(this, player, ElytraRecastUtil.Mode.GRIM, false, false, false, 0);
+        if (!ElytraRecastUtil.INSTANCE.isActive(this)) {
+            ElytraRecastUtil.INSTANCE.request(this, player, ElytraRecastUtil.Mode.GRIM, false, false, false, 0);
+        }
+        // Keep the recast's release/press edge, but retry vanilla's start
+        // command if another movement-input consumer swallowed that edge.
+        if (firstAutoTakeoffGlideAge < 0) firstAutoTakeoffGlideAge = player.tickCount;
+        else if (player.tickCount - firstAutoTakeoffGlideAge >= 3
+                && (lastAutoTakeoffGlidePacketAge == Integer.MIN_VALUE
+                    || player.tickCount - lastAutoTakeoffGlidePacketAge >= TAKEOFF_PACKET_RETRY_TICKS)
+                && ElytraRecastUtil.INSTANCE.canStartGliding(player, false)
+                && mc.getConnection() != null) {
+            mc.getConnection().send(new ServerboundPlayerCommandPacket(
+                    player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
+            lastAutoTakeoffGlidePacketAge = player.tickCount;
+            ElytraDiveTrace.INSTANCE.event("takeoffGlidePacket tick=" + player.tickCount);
+        }
     }
 
     private boolean canAutoTakeoffSelf(LocalPlayer player) {
@@ -1300,6 +1761,9 @@ public final class ElytraTarget extends Module {
         autoTakeoffPending = false;
         queuedAutoTakeoffJump = false;
         autoTakeoffGlideDelayTicks = 0;
+        firstAutoTakeoffGlideAge = -1;
+        lastAutoTakeoffJumpAge = Integer.MIN_VALUE;
+        lastAutoTakeoffGlidePacketAge = Integer.MIN_VALUE;
     }
 
     private boolean handleAutoTakeoffMovementInput(MovementInputEvent event) {
@@ -1345,19 +1809,31 @@ public final class ElytraTarget extends Module {
         if (player.isUsingItem() || !hasFireworkRocket(player)) return false;
         if (isAttributeSwapElytraCycleActive()) return false;
         // Rockets during a committed mace dive cancel the fall and ruin smash damage.
-        if (maceJumperPhase == MaceJumperPhase.RECOVER || maceJumperPhase == MaceJumperPhase.DIVE
+        if (maceJumperPhase == MaceJumperPhase.TURN || maceJumperPhase == MaceJumperPhase.DIVE
                 || pursuitPhase == PursuitPhase.DIVE && canSetupMaceDive(player)) return false;
 
         if (FireworkUseController.INSTANCE.isCooling(FIREWORK_MIN_REBOOST_TICKS)) return false;
         FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
+        if (ElytraDiveTrace.INSTANCE.active()) {
+            ElytraDiveTrace.INSTANCE.event("boostState active=" + boost.active()
+                    + " pending=" + boost.awaitingSpawn() + " guaranteed=" + boost.guaranteedTicks());
+        }
         if (boost.awaitingSpawn()) return false;
         // Never launch a new rocket solely because an avoidance route is active:
         // acceleration can make a nearby collision unavoidable.
         if (blockDodgeRotation != null) return false;
-        if (maceJumperPhase == MaceJumperPhase.CLIMB) {
-            double remainingRise = target == null ? 0.0
-                    : target.getBoundingBox().maxY + maceJumperHeight.get() - player.getY();
-            return remainingRise > 1.5
+        if (maceJumperPhase == MaceJumperPhase.CLIMB
+                || maceJumperPhase == MaceJumperPhase.RECOVER) {
+            double climbHeight = isMaceJumperEnabled() ? maceJumperHeight.get()
+                    : Math.max(6.0, overtakeHeight.get());
+            double goalY = (maceJumperPhase == MaceJumperPhase.CLIMB
+                    || maceJumperPhase == MaceJumperPhase.RECOVER)
+                    && Double.isFinite(maceJumperClimbGoalY)
+                    ? maceJumperClimbGoalY
+                    : target == null ? player.getY() : target.getBoundingBox().maxY + climbHeight;
+            double remainingRise = goalY - player.getY();
+            double coastRise = Math.max(0.0, player.getDeltaMovement().y) * 3.0;
+            return remainingRise > Math.max(1.5, coastRise + 0.75)
                     && (!boost.active() || boost.guaranteedTicks() <= FIREWORK_END_GUARD_TICKS);
         }
         Vec3 velocity = player.getDeltaMovement();
@@ -1627,6 +2103,7 @@ public final class ElytraTarget extends Module {
         NONE,
         RECOVER,
         CLIMB,
+        TURN,
         DIVE
     }
 
@@ -1636,6 +2113,10 @@ public final class ElytraTarget extends Module {
         CLIMB,
         OVERPASS,
         DIVE
+    }
+
+    private record ReachabilityState(Vec3 playerPosition, Vec3 targetPosition, int tick,
+                                     ElytraTargetReachability.Route route) {
     }
 
     private record CrystalThreat(EndCrystal crystal, Vec3 pos, float damage, double distance) {

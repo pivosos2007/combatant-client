@@ -34,6 +34,7 @@ import combatant.client.events.Events;
 import combatant.client.events.impl.BlinkPacketEvent;
 import combatant.client.events.impl.GameTickEvent;
 import combatant.client.events.impl.PacketEvent;
+import combatant.client.util.player.inventory.PacketWindow;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,6 +76,9 @@ public final class BlinkManager {
         Connection connection = connection();
         if (connection != null && connection.isConnected()) {
             connection.send(packet);
+            if (packet instanceof ServerboundMovePlayerPacket) {
+                PacketWindow.INSTANCE.noteReplayedMovement();
+            }
         }
     }
 
@@ -121,6 +125,9 @@ public final class BlinkManager {
                 || packet instanceof ServerboundChatPacket
                 || packet instanceof ServerboundChatCommandPacket
                 || packet instanceof ServerboundPongPacket
+                // Never buffer a selected-hotbar change behind movement. The
+                // InventorySwap guard defers it until queued movement is flushed.
+                || packet instanceof ServerboundSetCarriedItemPacket
                 || packet instanceof ServerboundKeepAlivePacket
                 || packet instanceof ServerboundAcceptTeleportationPacket
                 || packet instanceof ServerboundChunkBatchReceivedPacket
@@ -231,6 +238,15 @@ public final class BlinkManager {
 
     public void flush(TransferOrigin origin) {
         flush(snapshot -> snapshot.origin() == origin);
+    }
+
+    /** A held-slot change must not overtake movement packets delayed by Blink/FakeLag. */
+    public boolean hasQueuedOutgoingMovement() {
+        for (PacketSnapshot snapshot : packetQueue) {
+            if (snapshot.origin() == TransferOrigin.OUTGOING
+                    && snapshot.packet() instanceof ServerboundMovePlayerPacket) return true;
+        }
+        return false;
     }
 
     public void sendSilently(Packet<?> packet) {

@@ -135,11 +135,8 @@ public class AutoBow extends Module {
     private final NumberValue<Integer> chargedRandom = num("autobowChargedRandom", 0, 0, 10);
     private final NumberValue<Double> delayBetweenShots =
             num("autobowDelayBetweenShots", 0.0, 0.0, 5.0);
-    private final BooleanMapValue toggles = groupCommon(
-            "autobow_toggles",
-            "toggles",
-            CommonSettingSchemas.TARGET_FILTERS
-    );
+    private final BooleanMapValue toggles =
+            targetFilters("autobow_toggles", "toggles", CommonSettingSchemas.TARGET_FILTERS.defaults(), false);
 
     private Snapshot lastSnapshot = Snapshot.hidden();
     private long lastShotAtMs;
@@ -518,13 +515,7 @@ public class AutoBow extends Module {
         return new TargetingUtil.TargetingSettings(
                 range.get(),
                 180.0f,
-                toggles.get(TargetFilters.PLAYERS_ONLY),
-                toggles.get(TargetFilters.IGNORE_FRIENDS),
-                toggles.get(TargetFilters.IGNORE_STAFF),
-                toggles.get(TargetFilters.IGNORE_ENEMIES),
-                toggles.get(TargetFilters.IGNORE_NAKED),
-                toggles.get(TargetFilters.IGNORE_ENTITIES),
-                false,
+                toggles, false,
                 priority.get()
         );
     }

@@ -35,7 +35,7 @@ import combatant.client.util.text.ChatNameUtil;
 /**
  * Quick target classification under the crosshair:
  * - Players: friend/enemy/staff
- * - Non-players: toggle ignored entities (EntityFilters)
+ * - Non-players: toggle marked entity types (EntityFilters)
  */
 @ModuleInfo(id = "definetarget", displayName = "DefineTarget", aliases = {"clickfriend"}, category = ModuleCategory.MISC, subcategory = ModuleSubcategory.UTILITY,
         description = "module.definetarget.description")
@@ -46,7 +46,7 @@ public class DefineTarget extends Module {
     private static final String SETTING_BEDWARS_RELATIONS = "bedwars_relations";
     private static final String SETTING_BEDWARS_COLOR_MODE = "bedwars_color_mode";
     private static final String SETTING_BLOCK_DAMAGE_TO_BEDWARS = "block_damage_to_bedwars";
-    private static final String SETTING_IGNORED_ENTITIES = "ignored_entities";
+    private static final String SETTING_MARKED_ENTITIES = "ignored_entities";
     private static final String ACTION_TOGGLE_TARGET = "toggle_target";
     private final Minecraft mc = Minecraft.getInstance();
     private final BooleanValue bedwarsRelations = bool("defineTargetBedwarsRelations", SETTING_BEDWARS_RELATIONS, false);
@@ -110,7 +110,7 @@ public class DefineTarget extends Module {
                 boolean blockEntities = blockCategories.get("entities");
                 if (blockEntities) {
                     var id = BuiltInRegistries.ENTITY_TYPE.getKey(target.getType());
-                    if (id != null && EntityFilters.get().isIgnoredEntity(id.toString())) {
+                    if (id != null && EntityFilters.get().isMarkedEntity(id.toString())) {
                         notifyBlock(target);
                         return InteractionResult.FAIL;
                     }
@@ -127,7 +127,7 @@ public class DefineTarget extends Module {
     private void addRelationSettings() {
         EntityFilters filters = EntityFilters.get();
 
-        settings.add(new TextListSetting(SETTING_IGNORED_ENTITIES, filters.getIgnoredEntitiesValue(), TextListSetting.PickerMode.ENTITIES) {
+        settings.add(new TextListSetting(SETTING_MARKED_ENTITIES, filters.getMarkedEntitiesValue(), TextListSetting.PickerMode.ENTITIES) {
             @Override
             public void applyEditorText(String rawText) {
                 super.applyEditorText(rawText);
@@ -170,16 +170,15 @@ public class DefineTarget extends Module {
             return;
         }
 
-        // Non-player: always toggle ignore list in EntityFilters
         var id = BuiltInRegistries.ENTITY_TYPE.getKey(ent.getType());
         if (id == null) return;
         String key = id.toString().toLowerCase();
         EntityFilters filters = EntityFilters.get();
-        if (filters.isIgnoredEntity(key)) {
-            filters.removeIgnoredEntity(key);
+        if (filters.isMarkedEntity(key)) {
+            filters.removeMarkedEntity(key);
             notifyToggle("Entity", key, false);
         } else {
-            filters.addIgnoredEntity(key);
+            filters.addMarkedEntity(key);
             notifyToggle("Entity", key, true);
         }
         filters.save();

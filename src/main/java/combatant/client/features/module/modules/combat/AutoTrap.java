@@ -70,8 +70,8 @@ public final class AutoTrap extends Module {
     private final NumberValue<Double> wallRange = numCommon(
             "autoTrapWallRange", "wall_range", CommonSettingSchemas.COMBAT_WALL_RANGE, 3.0D, 0.0D, 6.0D);
     private final NumberValue<Double> enemyRange = num("autoTrapEnemyRange", "enemy_range", 5.0D, 2.0D, 10.0D);
-    private final BooleanMapValue targetFilters = groupCommon(
-            "autoTrapTargets", "targets", "target", targetDefaults());
+    private final BooleanMapValue targetFilters =
+            targetFilters("autoTrapTargets", "targets", targetDefaults(), true);
     private final EnumValue<TrapMode> mode = enumSetting("autoTrapMode", "mode", TrapMode.FULL, TrapMode.values());
     private final NumberValue<Double> predictTicks = num("autoTrapPredictTicks", "predict_ticks", 0.5D, 0.0D, 3.0D);
     private final BooleanValue autoDisable = bool("autoTrapAutoDisable", "auto_disable", false);
@@ -165,13 +165,7 @@ public final class AutoTrap extends Module {
         LivingEntity target = TargetingUtil.findBestTarget(mc, new TargetingUtil.TargetingSettings(
                 enemyRange.get(),
                 180.0F,
-                true,
-                targetFilters.get(TargetFilters.IGNORE_FRIENDS),
-                targetFilters.get(TargetFilters.IGNORE_STAFF),
-                targetFilters.get(TargetFilters.IGNORE_ENEMIES),
-                targetFilters.get(TargetFilters.IGNORE_NAKED),
-                true,
-                targetFilters.get(TargetFilters.VISIBLE_ONLY),
+                targetFilters,
                 TargetingUtil.TargetPriority.DISTANCE));
         return target instanceof Player player ? player : null;
     }
@@ -198,6 +192,7 @@ public final class AutoTrap extends Module {
         defaults.put(TargetFilters.IGNORE_STAFF, true);
         defaults.put(TargetFilters.IGNORE_ENEMIES, false);
         defaults.put(TargetFilters.IGNORE_NAKED, false);
+        defaults.put(TargetFilters.IGNORE_MARKED, true);
         defaults.put(TargetFilters.VISIBLE_ONLY, false);
         return defaults;
     }

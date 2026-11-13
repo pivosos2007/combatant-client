@@ -70,6 +70,9 @@ import combatant.client.util.combat.SmashTrajectory;
 import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.player.ResetAttackCooldown;
+import combatant.client.util.player.ElytraTargetReachability;
+import combatant.client.util.logging.ElytraDiveTrace;
+import combatant.client.util.network.BlinkManager;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySwapRequest;
 import combatant.client.util.player.inventory.InventorySwapVisibility;
@@ -252,9 +255,12 @@ public class AttributeSwap extends Module {
     private int cycleMaceToSlot = -1;
     private LocalPlayer cyclePlayer;
     private Vec3 cycleReportedEye;
+    private int cycleLostPredictionTicks;
     private int lastElytraCycleAttackAge = -1;
     private int lastElytraCycleAttackTargetId = -1;
     private LocalPlayer lastElytraCycleAttackPlayer;
+    private int lastElytraCycleEndAge = -1;
+    private LocalPlayer lastElytraCycleEndPlayer;
     private final CycleAttackWindow cycleAttackWindow = new CycleAttackWindow();
     private final Object cycleLifecycle = new Object() {
         @EventHandler(priority = Integer.MAX_VALUE - 2)
@@ -492,7 +498,7 @@ public class AttributeSwap extends Module {
     @EventHandler(priority = -2000)
     private void onSync(EventSync event) {
         if (!isEnabled()) return;
-        tickElytraCycleSync(event);
+        tickElytraCycleSync();
         tickRestoreGlideSync();
         if (elytraCycleActive) return;
         if (pendingTargetId == -1) return;
@@ -738,6 +744,11 @@ public class AttributeSwap extends Module {
     }
 
     private boolean tryStartElytraCycle(LocalPlayer player, LivingEntity target, boolean keepSprint) {
+        // The Aura/crosshair path must not start a second, unrelated dive while
+        // ElytraTarget owns the pursuit. The log showed fromTarget=false beginning
+        // with a different target mid-flight and forcing an early landing.
+        ElytraTarget flight = Modules.get(ElytraTarget.class);
+        if (flight != null && flight.isControllingFlight()) return false;
         if (!canPrepareElytraTargetDive(player, target) || elytraCycleActive) return false;
         if (!player.isFallFlying() || !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) return false;
         if (!hasPredictedSmashContact(player, target)) return false;
@@ -752,10 +763,14 @@ public class AttributeSwap extends Module {
         if (swapSlot < 0 || player.inventoryMenu == null || player.containerMenu != player.inventoryMenu
                 || !inventory.itemUseAvailable() || !inventory.leaseInventory(this, 2)) return false;
         elytraCycleActive = true;
+        ElytraDiveTrace.INSTANCE.sample(player.tickCount, target.getId(), "AttributeSwap",
+                "begin fromTarget=" + fromTarget + " forecastTicks=" + forecastTicks
+                        + " swapSlot=" + swapSlot + " expire=" + (player.tickCount + duration));
         pendingTargetId = -1;
         pendingKeepSprint = false;
         cycleAttackWindow.reset();
         cycleReportedEye = null;
+        cycleLostPredictionTicks = 0;
         elytraCycleFromTarget = fromTarget;
         cyclePredictionTicks = forecastTicks;
         elytraCycleTargetId = target.getId();
@@ -771,9 +786,12 @@ public class AttributeSwap extends Module {
                 CHEST_SCREEN_SLOT, this,
                 () -> elytraCycleStage == CYCLE_WAIT_CHEST_SWAP && isEnabled()
                         && isValidTarget(target) && player.tickCount < elytraCycleExpireAge
+                        && ElytraTargetReachability.isSafeMaceTarget(target)
                         && hasPredictedSmashContact(player, target, cyclePredictionTicks),
                 completed -> {
                     cycleInventoryPending = false;
+                    ElytraDiveTrace.INSTANCE.event("AttributeSwap chestSwapCompleted=" + completed
+                            + " chestElytra=" + player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA));
                     if (completed && !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)
                             && player.getInventory().getItem(swapSlot).is(Items.ELYTRA)) {
                         elytraCycleStage = CYCLE_WAIT_MACE_SYNC;
@@ -790,7 +808,7 @@ public class AttributeSwap extends Module {
         return true;
     }
 
-    private void tickElytraCycleSync(EventSync event) {
+    private void tickElytraCycleSync() {
         if (!elytraCycleActive || elytraCycleStage != CYCLE_WAIT_MACE_SYNC) return;
 
         LocalPlayer player = mc.player;
@@ -805,7 +823,8 @@ public class AttributeSwap extends Module {
         }
 
         Entity entity = mc.level.getEntity(elytraCycleTargetId);
-        if (!(entity instanceof LivingEntity target) || !isValidTarget(target) || target.getHealth() <= 0.0f) {
+        if (!(entity instanceof LivingEntity target) || !isValidTarget(target)
+                || !ElytraTargetReachability.isSafeMaceTarget(target) || target.getHealth() <= 0.0f) {
             restoreElytraIfNeeded();
             return;
         }
@@ -825,19 +844,68 @@ public class AttributeSwap extends Module {
             maceSlot = findCycleMaceSlot(player);
             if (maceSlot < 0 || maceSlot >= 9) return;
         }
+        if (ElytraDiveTrace.INSTANCE.active()) {
+            ElytraDiveTrace.INSTANCE.event(String.format(java.util.Locale.ROOT,
+                    "AttributeSwap waitMace fall=%.3f vy=%.3f smashReady=%s invPending=%s maceSlot=%d",
+                    player.fallDistance, player.getDeltaMovement().y,
+                    MaceItem.canSmashAttack(player), cycleInventoryPending, maceSlot));
+        }
         if (!MaceItem.canSmashAttack(player)) return;
         if (player.fallDistance < minFallDistance.get()) return;
         if (player.getDeltaMovement().y >= 0) return;
         if (player.isUsingItem()) return;
-        if (player.getAttackStrengthScale(0.5f) < 0.9f) return;
-        if (!isCycleContactReachable(player, target)) {
-            if (!hasPredictedSmashContact(player, target, cyclePredictionTicks)) restoreElytraIfNeeded();
+        if (player.getAttackStrengthScale(0.5f) < 0.9f) {
+            traceCycleGate(player, target, "attack_cooldown");
             return;
         }
-        if (!cycleAttackWindow.ready(minFallDistance.get())) return;
+        if (!isCycleContactReachable(player, target)) {
+            // A long-range trajectory prediction can fluctuate during the unglided
+            // descent. Give the actual contact window a chance to arrive before
+            // abandoning a safe target, but never continue after lateral escape.
+            SmashTrajectory.Prediction descent = predictSmashContact(player, target, cyclePredictionTicks);
+            if (descent == SmashTrajectory.Prediction.BLOCKED) {
+                // A leaf canopy or solid protrusion lies between the current
+                // position and the attack window. This is not prediction jitter.
+                traceCycleGate(player, target, "descent_obstructed");
+                restoreElytraIfNeeded();
+                return;
+            }
+            boolean predicted = descent == SmashTrajectory.Prediction.REACHABLE;
+            if (predicted) {
+                cycleLostPredictionTicks = 0;
+            } else {
+                cycleLostPredictionTicks++;
+                AABB box = target.getBoundingBox();
+                double gapX = Math.max(0.0, Math.max(box.minX - player.getX(), player.getX() - box.maxX));
+                double gapZ = Math.max(0.0, Math.max(box.minZ - player.getZ(), player.getZ() - box.maxZ));
+                boolean tooFarLaterally = Math.hypot(gapX, gapZ)
+                        > maxPredictedHorizontalDistance.get() + 1.0;
+                if (tooFarLaterally || cycleLostPredictionTicks >= 6) {
+                    traceCycleGate(player, target, tooFarLaterally ? "lateral_escape" : "prediction_lost");
+                    restoreElytraIfNeeded();
+                    return;
+                }
+            }
+            traceCycleGate(player, target, predicted ? "contact_not_yet" : "prediction_grace_" + cycleLostPredictionTicks);
+            return;
+        }
+        cycleLostPredictionTicks = 0;
         if (PacketWindow.INSTANCE.isPostMovement()) return;
-        if (cycleReportedEye == null) return;
-        if (!isCycleContactReachable(player, target, cycleReportedEye)) return;
+        boolean reportedReady = cycleReportedEye != null
+                && cycleAttackWindow.ready(minFallDistance.get())
+                && isCycleContactReachable(player, target, cycleReportedEye);
+        // The server must already have received a position from which the
+        // target is reachable before we change the held weapon. Selecting the
+        // mace in a tick where only the live position is in range resets its
+        // attack cooldown before the next (actually reachable) tick.
+        if (!reportedReady) {
+            traceCycleGate(player, target, "await_reported_position");
+            return;
+        }
+        if (BlinkManager.INSTANCE.hasQueuedOutgoingMovement()) {
+            traceCycleGate(player, target, "queued_movement");
+            return;
+        }
         if (target instanceof Player shieldTarget && isBlockingShieldTarget(target)
                 && tryBreakShield(shieldTarget, elytraCycleKeepSprint)) return;
         if (directInventory) {
@@ -847,13 +915,41 @@ public class AttributeSwap extends Module {
             return;
         }
         if (InventorySwap.INSTANCE.serverSelectedSlot() != maceSlot
-                && !PacketWindow.INSTANCE.slotChangeAllowed()) return;
+                && !PacketWindow.INSTANCE.slotChangeAllowed()) {
+            traceCycleGate(player, target, "slot_window");
+            return;
+        }
         if (restoreItem.get()) {
             if (!InventorySwap.INSTANCE.leaseHotbar(this, maceSlot, 2)) return;
         } else if (!InventorySwap.INSTANCE.selectHotbar(maceSlot, this)) return;
         int preparedSlot = maceSlot;
+        // Keep the slot change and the attack in the same pre-movement window.
+        // A deferred attack would run after movement, whereas a deferred slot
+        // selection would violate PacketWindow's ordering contract.
         cycleAttackWindow.beforeMovement(minFallDistance.get(),
                 () -> attackElytraCycleBeforeMovement(player, target, preparedSlot));
+    }
+
+    private void traceCycleGate(LocalPlayer player, LivingEntity target, String reason) {
+        if (!ElytraDiveTrace.INSTANCE.active()) return;
+        AABB box = target.getBoundingBox();
+        Vec3 eye = player.getEyePosition();
+        double liveGap = eye.distanceTo(new Vec3(
+                Mth.clamp(eye.x, box.minX, box.maxX),
+                Mth.clamp(eye.y, box.minY, box.maxY),
+                Mth.clamp(eye.z, box.minZ, box.maxZ)));
+        double reportedGap = Double.NaN;
+        if (cycleReportedEye != null) {
+            Vec3 reported = cycleReportedEye;
+            reportedGap = reported.distanceTo(new Vec3(
+                    Mth.clamp(reported.x, box.minX, box.maxX),
+                    Mth.clamp(reported.y, box.minY, box.maxY),
+                    Mth.clamp(reported.z, box.minZ, box.maxZ)));
+        }
+        ElytraDiveTrace.INSTANCE.event(String.format(java.util.Locale.ROOT,
+                "AttributeSwap attackGate=%s liveGap=%.2f reportedGap=%.2f serverSlot=%d fall=%.2f cooldown=%.2f",
+                reason, liveGap, reportedGap, InventorySwap.INSTANCE.serverSelectedSlot(),
+                player.fallDistance, player.getAttackStrengthScale(0.5f)));
     }
 
     private void attackElytraCycleBeforeMovement(LocalPlayer player, LivingEntity target, int maceSlot) {
@@ -863,17 +959,37 @@ public class AttributeSwap extends Module {
         if (player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)
                 || maceSlot < 9 && InventorySwap.INSTANCE.serverSelectedSlot() != maceSlot
                 || !player.getInventory().getItem(maceSlot).is(Items.MACE)
-                || isUnsafeWindBurstMace(player, player.getInventory().getItem(maceSlot))) return;
+                || isUnsafeWindBurstMace(player, player.getInventory().getItem(maceSlot))) {
+            traceCycleGate(player, target, "commit_item_not_ready");
+            return;
+        }
         if (player.isFallFlying() || !MaceItem.canSmashAttack(player)
                 || player.fallDistance < minFallDistance.get()
-                || player.getDeltaMovement().y >= 0.0) return;
-        if (player.isUsingItem() || player.getAttackStrengthScale(0.5f) < 0.9f) return;
+                || player.getDeltaMovement().y >= 0.0) {
+            traceCycleGate(player, target, "commit_fall_not_ready");
+            return;
+        }
+        if (player.isUsingItem() || player.getAttackStrengthScale(0.5f) < 0.9f) {
+            traceCycleGate(player, target, "commit_cooldown");
+            return;
+        }
         if (!isCycleContactReachable(player, target) || cycleReportedEye == null
-                || !isCycleContactReachable(player, target, cycleReportedEye)) return;
+                || !isCycleContactReachable(player, target, cycleReportedEye)) {
+            traceCycleGate(player, target, "commit_contact_lost");
+            return;
+        }
         if (maceSlot >= 9) {
-            if (!attackMaceNow(player, target, elytraCycleKeepSprint, maceSlot)) return;
-        } else if (!AttackUtil.attackCurrentItem(mc, target, elytraCycleKeepSprint)) return;
+            if (!attackMaceNow(player, target, elytraCycleKeepSprint, maceSlot)) {
+                traceCycleGate(player, target, "attack_not_sent");
+                return;
+            }
+        } else if (!AttackUtil.attackCurrentItem(mc, target, elytraCycleKeepSprint)) {
+            traceCycleGate(player, target, "attack_not_sent");
+            return;
+        }
         lastElytraCycleAttackAge = player.tickCount;
+        ElytraDiveTrace.INSTANCE.event("AttributeSwap smashSent tick=" + player.tickCount
+                + " target=" + target.getId() + " slot=" + maceSlot);
         lastElytraCycleAttackTargetId = target.getId();
         lastElytraCycleAttackPlayer = player;
         ResetAttackCooldown.resetAttackCooldown(player);
@@ -914,7 +1030,9 @@ public class AttributeSwap extends Module {
 
         Entity entity = mc.level.getEntity(elytraCycleTargetId);
         boolean expired = elytraCycleExpireAge >= 0 && player.tickCount >= elytraCycleExpireAge;
-        if (expired || !(entity instanceof LivingEntity living) || !isValidTarget(living)) {
+        if (expired || !(entity instanceof LivingEntity living) || !isValidTarget(living)
+                || !ElytraTargetReachability.isSafeMaceTarget(living)) {
+            ElytraDiveTrace.INSTANCE.event("AttributeSwap restore reason=expired_or_invalid_target expired=" + expired);
             restoreElytraIfNeeded();
             return;
         }
@@ -928,6 +1046,9 @@ public class AttributeSwap extends Module {
         if (!elytraCycleActive) return;
 
         boolean alreadyRestoring = elytraCycleStage == CYCLE_WAIT_ELYTRA_RESTORE;
+        if (!alreadyRestoring) {
+            ElytraDiveTrace.INSTANCE.event("AttributeSwap restoreStart previousStage=" + elytraCycleStage);
+        }
         elytraCycleStage = CYCLE_WAIT_ELYTRA_RESTORE;
         InventorySwap inventory = InventorySwap.INSTANCE;
         if (cycleInventoryPending) {
@@ -980,6 +1101,7 @@ public class AttributeSwap extends Module {
                         completed -> {
                             cycleInventoryPending = false;
                             if (completed && player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
+                                ElytraDiveTrace.INSTANCE.event("AttributeSwap elytraRestored tick=" + player.tickCount);
                                 if (isEnabled()) queueRestoreGlide(player);
                                 clearElytraCycle();
                             }
@@ -1139,6 +1261,14 @@ public class AttributeSwap extends Module {
     }
 
     private void clearElytraCycle() {
+        if (elytraCycleActive) {
+            ElytraDiveTrace.INSTANCE.event("AttributeSwap cycleCleared stage=" + elytraCycleStage
+                    + " target=" + elytraCycleTargetId + " invPending=" + cycleInventoryPending);
+        }
+        if (elytraCycleActive && cyclePlayer != null && mc.player == cyclePlayer) {
+            lastElytraCycleEndAge = cyclePlayer.tickCount;
+            lastElytraCycleEndPlayer = cyclePlayer;
+        }
         Events.BUS.unregister(cycleLifecycle);
         InventorySwap.INSTANCE.releaseInventory(this);
         InventorySwap.INSTANCE.releaseHotbar(this);
@@ -1146,6 +1276,7 @@ public class AttributeSwap extends Module {
         cyclePlayer = null;
         cycleAttackWindow.reset();
         cycleReportedEye = null;
+        cycleLostPredictionTicks = 0;
         cycleMaceFromSlot = -1;
         cycleMaceToSlot = -1;
         elytraCycleActive = false;
@@ -1176,6 +1307,10 @@ public class AttributeSwap extends Module {
         return player != null && player == lastElytraCycleAttackPlayer ? lastElytraCycleAttackTargetId : -1;
     }
 
+    public int getLastElytraCycleEndAge(LocalPlayer player) {
+        return player != null && player == lastElytraCycleEndPlayer ? lastElytraCycleEndAge : -1;
+    }
+
     public boolean canPrepareElytraTargetDive(LocalPlayer player, LivingEntity target) {
         return preparationBlocker(player, target) == null;
     }
@@ -1187,6 +1322,7 @@ public class AttributeSwap extends Module {
         if (player.onGround()) return "grounded";
         if (player.isInWater() || player.isInLava()) return "in_fluid";
         if (target == null || !isValidTarget(target)) return "invalid_target";
+        if (!ElytraTargetReachability.isSafeMaceTarget(target)) return "target_in_fluid";
         if (player.inventoryMenu == null || player.containerMenu != player.inventoryMenu) return "container_open";
         if (player.isUsingItem()) return "using_item";
         if (findCycleMaceSlot(player) < 0) return "no_safe_mace_in_preset_scope";
@@ -1201,8 +1337,15 @@ public class AttributeSwap extends Module {
         if (!player.isFallFlying() || !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) return false;
         int extraTicks = Math.max(0, leadTicks);
         int forecastTicks = predictionTicks.get() + extraTicks;
-        boolean contact = hasPredictedSmashContact(player, target, forecastTicks);
-        if (!contact) return false;
+        SmashTrajectory.Prediction prediction = predictSmashContact(player, target, forecastTicks);
+        if (prediction != SmashTrajectory.Prediction.REACHABLE) {
+            if (prediction == SmashTrajectory.Prediction.BLOCKED
+                    && ElytraDiveTrace.INSTANCE.active() && player.tickCount % 5 == 0) {
+                ElytraDiveTrace.INSTANCE.event("AttributeSwap prepRejected reason=blocked_descent target="
+                        + target.getId() + " forecastTicks=" + forecastTicks);
+            }
+            return false;
+        }
         if (!beginElytraCycle(player, target, true, TARGET_DIVE_TIMEOUT_TICKS + extraTicks, forecastTicks)) return false;
         return true;
     }
@@ -1210,7 +1353,8 @@ public class AttributeSwap extends Module {
     private boolean shouldBypassAuraCooldown(LocalPlayer player, LivingEntity target, int maceSlot) {
         if (!isEnabled()) return false;
         if (!isHeightMaceEnabled()) return false;
-        if (player == null || !isValidTarget(target)) return false;
+        if (player == null || !isValidTarget(target)
+                || !ElytraTargetReachability.isSafeMaceTarget(target)) return false;
         if (elytraCycleActive) return false;
         if (player.isUsingItem()) return false;
         if (maceSlot < 0 || maceSlot >= 9) return false;
@@ -1549,9 +1693,14 @@ public class AttributeSwap extends Module {
     }
 
     private boolean hasPredictedSmashContact(LocalPlayer player, LivingEntity target, int forecastTicks) {
+        return predictSmashContact(player, target, forecastTicks) == SmashTrajectory.Prediction.REACHABLE;
+    }
+
+    private SmashTrajectory.Prediction predictSmashContact(LocalPlayer player, LivingEntity target, int forecastTicks) {
+        if (!ElytraTargetReachability.isSafeMaceTarget(target)) return SmashTrajectory.Prediction.UNREACHABLE;
         KillAura aura = Modules.get(KillAura.class);
         double reach = aura != null && aura.isEnabled() ? aura.getEffectiveRange(target) : 3.0;
-        return SmashTrajectory.canReach(player.position(), player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING),
+        return SmashTrajectory.predict(player, player.position(), player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING),
                 player.getBbWidth() / 2.0, player.getDeltaMovement(), target.getBoundingBox(),
                 target.getDeltaMovement(), player.isFallFlying() ? 0 : player.fallDistance,
                 minFallDistance.get(), minDownVelocity.get(), minApproachSpeed.get(), forecastTicks,

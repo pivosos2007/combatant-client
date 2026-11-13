@@ -110,7 +110,8 @@ public final class AimAssist extends Module {
     private final EnumValue<TargetingUtil.TargetPriority> priority = enumCommon(
             "priority", CommonSettingSchemas.COMBAT_PRIORITY,
             TargetingUtil.TargetPriority.ANGLE, TargetingUtil.TargetPriority.values());
-    private final BooleanMapValue targets = groupCommon("targets", CommonSettingSchemas.TARGET_FILTERS);
+    private final BooleanMapValue targets =
+            targetFilters("targets", "targets", CommonSettingSchemas.TARGET_FILTERS.defaults(), false);
 
     private final LinearAngleSmooth linearSmooth = new LinearAngleSmooth(yawMin, yawMax, pitchMin, pitchMax);
     private final SigmoidAngleSmooth sigmoidSmooth = new SigmoidAngleSmooth(
@@ -342,10 +343,7 @@ public final class AimAssist extends Module {
 
     private LivingEntity selectTarget() {
         TargetingUtil.TargetingSettings settings = new TargetingUtil.TargetingSettings(
-                range.get(), fov.get(), targets.get(TargetFilters.PLAYERS_ONLY),
-                targets.get(TargetFilters.IGNORE_FRIENDS), targets.get(TargetFilters.IGNORE_STAFF),
-                targets.get(TargetFilters.IGNORE_ENEMIES), targets.get(TargetFilters.IGNORE_NAKED),
-                targets.get(TargetFilters.IGNORE_ENTITIES), targets.get(TargetFilters.VISIBLE_ONLY), priority.get());
+                range.get(), fov.get(), targets, priority.get());
         List<LivingEntity> candidates = TargetingUtil.findTargets(mc, settings);
         if (candidates.isEmpty()) return null;
         if (stickyTarget.get() && target != null && candidates.contains(target)) return target;

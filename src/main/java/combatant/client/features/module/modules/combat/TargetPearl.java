@@ -17,8 +17,8 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
-import combatant.client.features.relations.CategoryRules;
-import combatant.client.features.relations.CategoryType;
+import combatant.client.config.common.CommonSettingSchemas;
+import combatant.client.config.common.impl.TargetFilters;
 import combatant.client.util.aiming.RestrictedSingleUseAction;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
@@ -29,6 +29,7 @@ import combatant.client.util.projectile.ProjectileTarget;
 import combatant.client.util.projectile.SituationalProjectileAngleCalculator;
 import combatant.client.util.projectile.TrajectoryInfo;
 import combatant.client.util.target.TargetManager;
+import combatant.client.util.target.TargetingUtil;
 import combatant.client.util.player.inventory.InventoryActionKind;
 import combatant.client.util.player.inventory.InventorySearchScope;
 import combatant.client.util.player.inventory.InventorySwap;
@@ -71,6 +72,8 @@ public final class TargetPearl extends Module {
             enumSetting("targetPearlActivation", "activation", Activation.AUTO, Activation.values());
     private final EnumValue<TargetMode> targetMode =
             enumSetting("targetPearlTargetMode", "target_mode", TargetMode.CURRENT, TargetMode.values());
+    private final BooleanMapValue targetFilters = targetFilters(
+            "targetPearlTargets", "targets", CommonSettingSchemas.TARGET_FILTERS.defaults(), true);
     private final NumberValue<Float> triggerDistance =
             num("targetPearlTriggerDistance", "trigger_distance", 6.0f, 3.0f, 15.0f);
     private final NumberValue<Integer> cooldownTicks =
@@ -283,8 +286,8 @@ public final class TargetPearl extends Module {
     }
 
     private boolean isAllowedOwner(Player owner) {
-        CategoryType type = CategoryRules.determine(owner.getGameProfile().name());
-        return type != CategoryType.FRIEND && type != CategoryType.STAFF && type != CategoryType.BEDWARS_SELF;
+        return TargetingUtil.matchesFilters(mc, owner, targetFilters)
+                && (!targetFilters.get(TargetFilters.VISIBLE_ONLY) || mc.player.hasLineOfSight(owner));
     }
 
     private boolean isActivationReady() {

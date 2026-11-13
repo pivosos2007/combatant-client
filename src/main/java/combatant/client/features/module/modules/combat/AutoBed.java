@@ -11,7 +11,6 @@ import combatant.client.util.target.hud.TargetHudStatus;
 
 import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.config.common.CommonSettingSchemas;
-import combatant.client.config.common.impl.TargetFilters;
 import combatant.client.config.values.*;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.RotationUpdateEvent;
@@ -138,11 +137,8 @@ public class AutoBed extends Module {
             1.0f,
             15.0f
     );
-    private final BooleanMapValue targetToggles = groupCommon(
-            "autobedTargets",
-            "targets",
-            CommonSettingSchemas.TARGET_FILTERS
-    );
+    private final BooleanMapValue targetToggles =
+            targetFilters("autobedTargets", "targets", CommonSettingSchemas.TARGET_FILTERS.defaults(), false);
     private final EnumValue<TargetingUtil.TargetPriority> priority = enumCommon(
             "autobedPriority",
             "priority",
@@ -1049,13 +1045,7 @@ public class AutoBed extends Module {
         TargetingUtil.TargetingSettings settings = new TargetingUtil.TargetingSettings(
                 targetRange.get(),
                 180.0f,
-                targetToggles.get(TargetFilters.PLAYERS_ONLY),
-                targetToggles.get(TargetFilters.IGNORE_FRIENDS),
-                targetToggles.get(TargetFilters.IGNORE_STAFF),
-                targetToggles.get(TargetFilters.IGNORE_ENEMIES),
-                targetToggles.get(TargetFilters.IGNORE_NAKED),
-                targetToggles.get(TargetFilters.IGNORE_ENTITIES),
-                targetToggles.get(TargetFilters.VISIBLE_ONLY),
+                targetToggles,
                 priority.get()
         );
         return TargetingUtil.findBestTarget(mc, settings);

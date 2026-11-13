@@ -8,6 +8,7 @@
 package combatant.client.features.gui.clickgui.settings;
 
 import combatant.client.config.SettingDef;
+import combatant.client.config.common.impl.TargetFilters;
 import combatant.client.config.values.*;
 
 /**
@@ -68,6 +69,19 @@ public enum SettingFactory {
         if (defs == null || defs.isEmpty()) return java.util.List.of();
         java.util.List<Setting> out = new java.util.ArrayList<>();
         for (SettingDef def : defs) {
+            if (def.kind() == SettingDef.Kind.GROUP && def.value() instanceof TargetFilterValue filters) {
+                for (TargetFilters.Section section : TargetFilters.Section.values()) {
+                    String id = section == TargetFilters.Section.GENERAL ? def.getId() : def.getId() + "_" + section.name().toLowerCase(java.util.Locale.ROOT);
+                    GroupSetting group = new GroupSetting(id, filters).visibleOptionsWhen(
+                            key -> TargetFilters.optionVisible(section, key, filters::get, filters.fixedPlayersOnly()));
+                    group.setCommonI18nKeys(java.util.List.of(section.i18nKey, "target"));
+                    group.unavailableReason(def.unavailableReason());
+                    group.visibleWhen(() -> (def.visibility() == null || def.visibility().get())
+                            && TargetFilters.sectionVisible(section, filters::get, filters.fixedPlayersOnly()));
+                    out.add(group);
+                }
+                continue;
+            }
             Setting setting = fromDef(def);
             if (setting != null) out.add(setting);
         }

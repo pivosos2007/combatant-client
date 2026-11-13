@@ -135,7 +135,7 @@ public class HitSounds extends Module {
     private void playForEntity(Entity e) {
         if (entitiesOverrideIgnored.get()) {
             var id = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(e.getType());
-            if (id != null && EntityFilters.get().isIgnoredEntity(id.toString())) {
+            if (id != null && EntityFilters.get().isMarkedEntity(id.toString())) {
                 playSoundKey(entitiesIgnoredSound.get());
                 return;
             }

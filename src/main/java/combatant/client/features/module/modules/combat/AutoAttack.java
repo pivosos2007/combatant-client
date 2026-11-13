@@ -22,12 +22,10 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.EntityHitResult;
@@ -43,15 +41,13 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
-import combatant.client.features.relations.CategoryRules;
-import combatant.client.features.relations.CategoryType;
-import combatant.client.features.relations.EntityFilters;
 import combatant.client.util.click.AttackPressing;
 import combatant.client.util.click.ClickHumanizer;
 import combatant.client.util.click.ClickScheduler;
 import combatant.client.util.combat.CombatStrikeController;
 import combatant.client.util.item.FoodUtil;
 import combatant.client.util.combat.protocol.ProtocolUtil;
+import combatant.client.util.target.TargetingUtil;
 
 import java.util.LinkedHashMap;
 import combatant.client.util.combat.AttackUtil;
@@ -135,14 +131,8 @@ public class AutoAttack extends Module {
                     20
             ), () -> objective.get() != ObjectiveType.BLOCK && onItemUse.get() != UseMode.IGNORE);
     private final BooleanMapValue targetToggles =
-            visibleWhen(common(
-                    group(
-                            "autoattack_toggles",
-                            "targets",
-                            targetFilterDefaults()
-                    ),
-                    CommonSettingSchemas.TARGET_FILTERS.commonI18nKey()
-            ), () -> objective.get() == ObjectiveType.ENEMY);
+            visibleWhen(targetFilters("autoattack_toggles", "targets", targetFilterDefaults(), false),
+            () -> objective.get() == ObjectiveType.ENEMY);
     private final BooleanMapValue humanizeToggles =
             visibleWhen(group(
                     "autoattack_humanize_toggles",
@@ -235,7 +225,7 @@ public class AutoAttack extends Module {
         defaults.put(TargetFilters.IGNORE_FRIENDS, true);
         defaults.put(TargetFilters.IGNORE_STAFF, true);
         defaults.put(TargetFilters.IGNORE_ENEMIES, false);
-        defaults.put(TargetFilters.IGNORE_ENTITIES, true);
+        defaults.put(TargetFilters.IGNORE_MARKED, true);
         defaults.put(TargetFilters.VISIBLE_ONLY, false);
         return defaults;
     }
@@ -443,35 +433,9 @@ public class AutoAttack extends Module {
     }
 
     private boolean isValidTarget(Entity entity) {
-        if (!(entity instanceof LivingEntity living) || !living.isAlive()) return false;
-        if (mc.player == null) return false;
-        if (AntiBot.shouldIgnore(living)) return false;
-
-        if (targetToggles.get(TargetFilters.PLAYERS_ONLY) && !(living instanceof Player)) {
-            return false;
-        }
-
-        if (targetToggles.get(TargetFilters.VISIBLE_ONLY) && !mc.player.hasLineOfSight(living)) {
-            return false;
-        }
-
-        if (targetToggles.get(TargetFilters.IGNORE_ENTITIES)) {
-            var id = BuiltInRegistries.ENTITY_TYPE.getKey(living.getType());
-            if (id != null && EntityFilters.get().isIgnoredEntity(id.toString())) {
-                return false;
-            }
-        }
-
-        if (living instanceof Player p) {
-            CategoryType type = CategoryRules.determine(p.getGameProfile().name());
-            if (type == CategoryType.BEDWARS_SELF) return false;
-            if (targetToggles.get(TargetFilters.IGNORE_FRIENDS) && type == CategoryType.FRIEND) return false;
-            if (targetToggles.get(TargetFilters.IGNORE_STAFF) && type == CategoryType.STAFF) return false;
-            return !targetToggles.get(TargetFilters.IGNORE_ENEMIES)
-                    || (type != CategoryType.ENEMY && type != CategoryType.BEDWARS_ENEMY);
-        }
-
-        return true;
+        return entity instanceof LivingEntity living
+                && TargetingUtil.matchesFilters(mc, living, targetToggles)
+                && (!targetToggles.get(TargetFilters.VISIBLE_ONLY) || mc.player.hasLineOfSight(living));
     }
 
     private boolean isWeaponSelected(LocalPlayer player) {

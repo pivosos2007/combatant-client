@@ -6,7 +6,6 @@
 package combatant.client.features.module.modules.combat;
 
 import combatant.client.config.common.CommonSettingSchemas;
-import combatant.client.config.common.impl.TargetFilters;
 import combatant.client.config.values.BindMode;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.BooleanValue;
@@ -99,8 +98,8 @@ public final class InstaCart extends Module {
             "instaCartMovementCorrection", "movement_correction",
             CommonSettingSchemas.PLACEMENT_MOVEMENT_CORRECTION,
             MovementCorrection.SILENT, MovementCorrection.values());
-    private final BooleanMapValue targetToggles = groupCommon(
-            "instaCartTargets", "targets", CommonSettingSchemas.TARGET_FILTERS);
+    private final BooleanMapValue targetToggles =
+            targetFilters("instaCartTargets", "targets", CommonSettingSchemas.TARGET_FILTERS.defaults(), false);
     private final EnumValue<TargetingUtil.TargetPriority> priority = enumCommon(
             "instaCartPriority", "priority", CommonSettingSchemas.COMBAT_PRIORITY,
             TargetingUtil.TargetPriority.DISTANCE, TargetingUtil.TargetPriority.values());
@@ -477,10 +476,7 @@ public final class InstaCart extends Module {
     private TargetingUtil.TargetingSettings targetingSettings() {
         return new TargetingUtil.TargetingSettings(
                 targetRange.get(), 180.0f,
-                targetToggles.get(TargetFilters.PLAYERS_ONLY), targetToggles.get(TargetFilters.IGNORE_FRIENDS),
-                targetToggles.get(TargetFilters.IGNORE_STAFF), targetToggles.get(TargetFilters.IGNORE_ENEMIES),
-                targetToggles.get(TargetFilters.IGNORE_NAKED), targetToggles.get(TargetFilters.IGNORE_ENTITIES),
-                targetToggles.get(TargetFilters.VISIBLE_ONLY), priority.get());
+                targetToggles, priority.get());
     }
 
     private Set<BlockPos> exclusions(int targetId, int tick) {

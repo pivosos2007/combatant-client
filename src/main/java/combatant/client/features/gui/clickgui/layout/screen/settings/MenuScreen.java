@@ -295,7 +295,10 @@ public final class MenuScreen {
             return true;
         }
 
-        if (settingsPanel.mouseClicked(mx, my, button)) return true;
+        if (settingsPanel.mouseClicked(mx, my, button)) {
+            if (ClickGuiSearch.isActive()) ClickGuiSearch.unfocus();
+            return true;
+        }
         if (settingsPanel.blocksMenuInput()) {
             // An open HUD settings panel owns its controls, but the free canvas
             // outside the menu shell belongs to the draggable HUD editor.
@@ -460,12 +463,13 @@ public final class MenuScreen {
             return true;
         }
 
+        if (settingsPanel.charTyped(chr, modifiers)) return true;
+
         if (ClickGuiSearch.isActive()) {
             ClickGuiSearch.append(chr);
             return true;
         }
-
-        return settingsPanel.charTyped(chr, modifiers);
+        return false;
     }
 
     public boolean onFilesDrop(List<Path> paths) {

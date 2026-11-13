@@ -28,7 +28,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.config.common.CommonSettingSchemas;
-import combatant.client.config.common.impl.TargetFilters;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.events.impl.GameTickEvent;
@@ -181,11 +180,8 @@ public class AutoCrystal extends Module {
                     6.0f
             );
 
-    private final BooleanMapValue targetToggles = groupCommon(
-            "autocrystalTargets",
-            "targets",
-            CommonSettingSchemas.TARGET_FILTERS
-    );
+    private final BooleanMapValue targetToggles =
+            targetFilters("autocrystalTargets", "targets", CommonSettingSchemas.TARGET_FILTERS.defaults(), false);
     private final EnumValue<TargetingUtil.TargetPriority> priority =
             enumCommon(
                     "autocrystalPriority",
@@ -1442,13 +1438,7 @@ public class AutoCrystal extends Module {
         TargetingUtil.TargetingSettings settings = new TargetingUtil.TargetingSettings(
                 TARGET_SEARCH_RANGE,
                 180.0f,
-                targetToggles.get(TargetFilters.PLAYERS_ONLY),
-                targetToggles.get(TargetFilters.IGNORE_FRIENDS),
-                targetToggles.get(TargetFilters.IGNORE_STAFF),
-                targetToggles.get(TargetFilters.IGNORE_ENEMIES),
-                targetToggles.get(TargetFilters.IGNORE_NAKED),
-                targetToggles.get(TargetFilters.IGNORE_ENTITIES),
-                targetToggles.get(TargetFilters.VISIBLE_ONLY),
+                targetToggles,
                 priority.get()
         );
 

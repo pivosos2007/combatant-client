@@ -1,7 +1,6 @@
 /*
  * This file is part of the Combatant Client distribution.
  * Copyright (c) 2026 pivosos2007.
- *
  * Licensed under the GNU General Public License v3.0.
  */
 
@@ -19,14 +18,15 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Stores entity types excluded from hitbox and raycast targeting.
+ * Stores marked entity types; consumers decide whether to include or exclude them.
  * 
  */
 public final class EntityFilters implements ConfigObject, ConfigNameProvider {
 
     public static final EntityFilters INSTANCE = new EntityFilters();
 
-    private final ItemIdSetValue ignoredEntities = new ItemIdSetValue("ignored_entities");
+    // Persisted key is retained for existing profiles.
+    private final ItemIdSetValue markedEntities = new ItemIdSetValue("ignored_entities");
 
     private EntityFilters() {
         ConfigSerializer.load(this);
@@ -42,30 +42,30 @@ public final class EntityFilters implements ConfigObject, ConfigNameProvider {
         return "entityfilters";
     }
 
-    public boolean isIgnoredEntity(String id) {
-        return ignoredEntities.get().contains(normalize(id));
+    public boolean isMarkedEntity(String id) {
+        return markedEntities.get().contains(normalize(id));
     }
 
-    public Set<String> getIgnoredEntities() {
-        return ignoredEntities.get();
+    public Set<String> getMarkedEntities() {
+        return markedEntities.get();
     }
 
-    public void addIgnoredEntity(String id) {
+    public void addMarkedEntity(String id) {
         String norm = normalize(id);
-        ignoredEntities.get().add(norm);
-        DebugLog.info("[EntityFilters] add %s -> %s", norm, ignoredEntities.get());
+        markedEntities.get().add(norm);
+        DebugLog.info("[EntityFilters] add %s -> %s", norm, markedEntities.get());
         save();
     }
 
-    public void removeIgnoredEntity(String id) {
+    public void removeMarkedEntity(String id) {
         String norm = normalize(id);
-        ignoredEntities.get().remove(norm);
-        DebugLog.info("[EntityFilters] remove %s -> %s", norm, ignoredEntities.get());
+        markedEntities.get().remove(norm);
+        DebugLog.info("[EntityFilters] remove %s -> %s", norm, markedEntities.get());
         save();
     }
 
-    public ItemIdSetValue getIgnoredEntitiesValue() {
-        return ignoredEntities;
+    public ItemIdSetValue getMarkedEntitiesValue() {
+        return markedEntities;
     }
 
     public void save() {
@@ -89,7 +89,7 @@ public final class EntityFilters implements ConfigObject, ConfigNameProvider {
     @Override
     public List<ConfigValue<?>> getConfigValues() {
         List<ConfigValue<?>> list = new ArrayList<>();
-        list.add(ignoredEntities);
+        list.add(markedEntities);
         return list;
     }
 }

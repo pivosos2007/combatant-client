@@ -6,6 +6,10 @@
 package combatant.client.util.combat;
 
 import net.minecraft.util.Mth;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -13,11 +17,22 @@ import net.minecraft.world.phys.Vec3;
 public final class SmashTrajectory {
     private SmashTrajectory() {}
 
-    public static boolean canReach(Vec3 feet, double eyeHeight, double halfWidth, Vec3 velocity,
+    public enum Prediction { REACHABLE, BLOCKED, UNREACHABLE }
+
+    public static boolean canReach(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth, Vec3 velocity,
                                    AABB target, Vec3 targetVelocity, double initialFall, double minimumFall,
                                    double minimumDownSpeed, double minimumApproachSpeed, int ticks,
                                    double maximumHorizontalGap, double reach, double gravity) {
-        if (velocity.y > -minimumDownSpeed || feet.y <= target.maxY) return false;
+        return predict(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+                initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed,
+                ticks, maximumHorizontalGap, reach, gravity) == Prediction.REACHABLE;
+    }
+
+    public static Prediction predict(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth, Vec3 velocity,
+                                     AABB target, Vec3 targetVelocity, double initialFall, double minimumFall,
+                                     double minimumDownSpeed, double minimumApproachSpeed, int ticks,
+                                     double maximumHorizontalGap, double reach, double gravity) {
+        if (velocity.y > -minimumDownSpeed || feet.y <= target.maxY) return Prediction.UNREACHABLE;
         double dx = Mth.clamp(feet.x, target.minX, target.maxX) - feet.x;
         double dz = Mth.clamp(feet.z, target.minZ, target.maxZ) - feet.z;
         double gap = Math.sqrt(dx * dx + dz * dz);
@@ -25,13 +40,17 @@ public final class SmashTrajectory {
                 && feet.z + halfWidth >= target.minZ && feet.z - halfWidth <= target.maxZ;
         if (!overlapping && gap > 0.0
                 && ((velocity.x - targetVelocity.x) * dx + (velocity.z - targetVelocity.z) * dz) / gap
-                < minimumApproachSpeed) return false;
+                < minimumApproachSpeed) return Prediction.UNREACHABLE;
 
+        // Removing the elytra restores the standing collision volume. Ray visibility alone
+        // does not predict a fall onto leaves, fences, or a block overhanging the target.
+        if (player == null || !clearStandingVolume(player, feet, halfWidth, eyeHeight)) return Prediction.BLOCKED;
         Vec3 eye = feet.add(0, eyeHeight, 0);
         double fall = initialFall;
         for (int tick = 0; tick < ticks; tick++) {
             Vec3 next = eye.add(velocity);
             double drop = Math.max(0, -velocity.y);
+            double contactFraction = Double.NaN;
             if (fall + drop >= minimumFall && velocity.y < targetVelocity.y) {
                 double from = drop > 0 ? Mth.clamp((minimumFall - fall) / drop, 0, 1) : 0;
                 Vec3 relativeStart = eye.subtract(targetVelocity.scale(tick));
@@ -46,17 +65,91 @@ public final class SmashTrajectory {
                             <= distanceSquared(target, relativeStart.add(relativeStep.scale(b)))) high = b;
                     else low = a;
                 }
-                Vec3 contact = relativeStart.add(relativeStep.scale((low + high) / 2));
-                double x = contact.x - Mth.clamp(contact.x, target.minX, target.maxX);
-                double z = contact.z - Mth.clamp(contact.z, target.minZ, target.maxZ);
-                if (x * x + z * z <= maximumHorizontalGap * maximumHorizontalGap
-                        && distanceSquared(target, contact) <= reach * reach) return true;
+                double closestFraction = (low + high) / 2;
+                Vec3 closest = relativeStart.add(relativeStep.scale(closestFraction));
+                if (withinContact(target, closest, maximumHorizontalGap, reach)) {
+                    // Pick the first legal contact, not the closest point later
+                    // in the tick. A collision between those instants must not
+                    // discard an attack that was already possible.
+                    double entry = from;
+                    double end = closestFraction;
+                    if (!withinContact(target, relativeStart.add(relativeStep.scale(entry)),
+                            maximumHorizontalGap, reach)) {
+                        for (int iteration = 0; iteration < 19; iteration++) {
+                            double middle = (entry + end) * 0.5;
+                            if (withinContact(target, relativeStart.add(relativeStep.scale(middle)),
+                                    maximumHorizontalGap, reach)) end = middle;
+                            else entry = middle;
+                        }
+                        contactFraction = end;
+                    } else {
+                        contactFraction = entry;
+                    }
+                }
+            }
+            // Stop the sweep at the attack window. Collision after the hit is irrelevant;
+            // any block hit before that window invalidates the entire predicted dive.
+            double fraction = Double.isNaN(contactFraction) ? 1.0 : contactFraction;
+            if (!clearDescentSegment(player, feet, velocity, fraction, halfWidth, eyeHeight)) return Prediction.BLOCKED;
+            if (!Double.isNaN(contactFraction)) {
+                Vec3 impactEye = eye.add(velocity.scale(contactFraction));
+                AABB impactTarget = target.move(targetVelocity.scale(tick + contactFraction));
+                return hasClearAttackLine(player, impactEye, impactTarget, reach)
+                        ? Prediction.REACHABLE : Prediction.BLOCKED;
             }
             fall += drop;
+            feet = feet.add(velocity);
             eye = next;
             velocity = new Vec3(velocity.x * 0.91, (velocity.y - gravity) * 0.98, velocity.z * 0.91);
         }
+        return Prediction.UNREACHABLE;
+    }
+
+    private static boolean withinContact(AABB box, Vec3 point, double horizontalGap, double reach) {
+        double x = point.x - Mth.clamp(point.x, box.minX, box.maxX);
+        double z = point.z - Mth.clamp(point.z, box.minZ, box.maxZ);
+        return x * x + z * z <= horizontalGap * horizontalGap
+                && distanceSquared(box, point) <= reach * reach;
+    }
+
+    private static boolean hasClearAttackLine(LocalPlayer player, Vec3 eye, AABB target, double reach) {
+        Vec3 nearest = new Vec3(Mth.clamp(eye.x, target.minX, target.maxX),
+                Mth.clamp(eye.y, target.minY, target.maxY),
+                Mth.clamp(eye.z, target.minZ, target.maxZ));
+        Vec3 center = target.getCenter();
+        Vec3 upper = new Vec3(center.x, target.maxY - 0.12, center.z);
+        // The closest point may be hidden by a branch while the upper edge
+        // is exposed. Preserve either genuinely reachable line of attack.
+        for (Vec3 contact : new Vec3[]{nearest, upper, center}) {
+            if (eye.distanceToSqr(contact) > reach * reach) continue;
+            HitResult hit = player.level().clip(new ClipContext(eye, contact,
+                    ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+            if (hit.getType() == HitResult.Type.MISS
+                    || hit.getLocation().distanceToSqr(eye) + 0.02 >= contact.distanceToSqr(eye)) return true;
+        }
         return false;
+    }
+
+    private static boolean clearDescentSegment(LocalPlayer player, Vec3 start, Vec3 motion,
+                                               double fraction, double halfWidth, double eyeHeight) {
+        double length = motion.length() * fraction;
+        int steps = Math.max(1, (int) Math.ceil(length / 0.45));
+        for (int i = 1; i <= steps; i++) {
+            Vec3 feet = start.add(motion.scale(fraction * i / steps));
+            if (!clearStandingVolume(player, feet, halfWidth, eyeHeight)) return false;
+        }
+        return true;
+    }
+
+    private static boolean clearStandingVolume(LocalPlayer player, Vec3 feet,
+                                               double halfWidth, double eyeHeight) {
+        // This is only a block-collision query: living targets must not be
+        // interpreted as impassable terrain at the intended contact point.
+        double width = halfWidth + 0.035;
+        AABB volume = new AABB(feet.x - width, feet.y + 0.035, feet.z - width,
+                feet.x + width, feet.y + Math.max(1.65, eyeHeight + 0.15), feet.z + width);
+        if (!player.level().hasChunkAt(BlockPos.containing(feet))) return false;
+        return !player.level().getBlockCollisions(player, volume).iterator().hasNext();
     }
 
     private static double distanceSquared(AABB box, Vec3 point) {

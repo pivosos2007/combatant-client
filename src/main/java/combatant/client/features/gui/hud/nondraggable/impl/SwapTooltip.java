@@ -35,8 +35,6 @@ import java.util.List;
 @HudElementRegister(order = 25)
 public final class SwapTooltip extends AbstractHudElement {
 
-    public static final SwapTooltip INSTANCE = new SwapTooltip();
-
     private static final float PAD_X = 5.0f;
     private static final float PAD_Y = 3.8f;
     private static final float EXTRA_OFFSET_NO_BARS = 14.0f;
@@ -55,6 +53,8 @@ public final class SwapTooltip extends AbstractHudElement {
     private static int color;
     private static float targetAlpha;
     private static boolean hasBars;
+
+    public static final SwapTooltip INSTANCE = new SwapTooltip();
 
     private final HudGlassSettings glassSettings = new HudGlassSettings("swap_tooltip", UiGlassOpticsSpec.LIQUID, SWAP_GLASS_PRESET);
     private final NumberValue<Float> scale =

@@ -394,6 +394,12 @@ public enum ClickGuiRenderer {
         mouseY = (float) (fbY / uiScale);
     }
 
+    public static void focusSettingTextInput() {
+        if (!isGuiSessionActive() || MC == null || MC.getWindow() == null) return;
+        CombatantTextInputBridge.focus(TEXT_INPUT_TARGET,
+                Math.round(mouseX), Math.round(mouseY), Math.round(mouseX + 1f), Math.round(mouseY + 16f));
+    }
+
     //  API for MIXIN KEYBOARD
     public static boolean onCharTyped(char c) {
         if (!isGuiSessionActive()) return false;
@@ -699,8 +705,7 @@ public enum ClickGuiRenderer {
                 int vw = Math.max(1, Math.round(HudScale.virtualWidth(fbw, fbh)));
                 int vh = Math.max(1, Math.round(HudScale.virtualHeight(fbw, fbh)));
                 if (!CombatantTextInputBridge.hasOwner() || CombatantTextInputBridge.owns(TEXT_INPUT_TARGET)) {
-                    CombatantTextInputBridge.focus(TEXT_INPUT_TARGET,
-                            Math.round(mouseX), Math.round(mouseY), Math.round(mouseX + 1f), Math.round(mouseY + 16f));
+                    focusSettingTextInput();
                 }
                 fbWidth = vw;
                 fbHeight = vh;

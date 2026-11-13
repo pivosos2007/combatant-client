@@ -755,6 +755,7 @@ enum UnifiedSettingRenderer {
     private static void beginSliderEdit(SliderSetting<?> setting) {
         SliderSetting.UiState ui = setting.ui();
         ui.editing = true;
+        ClickGuiRenderer.focusSettingTextInput();
         ui.dragging = false;
         ui.editAnim = 0f;
         ui.exitText = "";
@@ -1347,7 +1348,12 @@ enum UnifiedSettingRenderer {
         GroupSetting.UiState ui = setting.ui();
         float width = ui.baseW > 0f ? ui.baseW : m(160f, 115f);
         int count = visibleGroupCount(setting);
-        if (Float.isFinite(ui.lastLayoutW) && Math.abs(ui.lastLayoutW - width) <= 0.5f && ui.layoutOptionCount == count)
+        int optionsHash = 1;
+        for (String id : setting.value().getAll().keySet()) {
+            if (setting.isOptionVisible(id)) optionsHash = 31 * optionsHash + id.hashCode();
+        }
+        if (Float.isFinite(ui.lastLayoutW) && Math.abs(ui.lastLayoutW - width) <= 0.5f
+                && ui.layoutOptionCount == count && ui.layoutOptionsHash == optionsHash)
             return;
         ui.optionLayouts.clear();
         TextRenderer font = UnifiedSettingsSkin.fontMedium();
@@ -1370,6 +1376,7 @@ enum UnifiedSettingRenderer {
         ui.cachedHeight = m(45f, 22f) + offsetY;
         ui.lastLayoutW = width;
         ui.layoutOptionCount = count;
+        ui.layoutOptionsHash = optionsHash;
         ui.hoverAnims.keySet().removeIf(key -> !alive.contains(key));
         ui.selectAnims.keySet().removeIf(key -> !alive.contains(key));
     }
