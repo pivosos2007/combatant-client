@@ -16,6 +16,8 @@ import combatant.client.util.resources.asset.AssetLoad;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import combatant.client.render.ViewObstructionFadeState;
+import combatant.client.render.ShaderEspRenderContext;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.world.entity.HumanoidArm;
 import combatant.client.features.playeranimator.render.PlayerRigCpuRenderer.ReplacementSkinCache;
@@ -302,7 +304,9 @@ public final class PlayerModels {
             // Both opaque and translucent surfaces are GPU-skinned. The latter are
             // flushed at the correct world transparency boundary, not via a second
             // per-frame CPU mesh emission into Vanilla's collector.
-            if (PlayerModelGpuRenderer.trySubmit(snapshot, matrices, originalType, light, overlay, tint, outlineColor)) {
+            int maskColor = ShaderEspRenderContext.isActive() && state instanceof EntityRenderState entityState
+                    ? entityState.outlineColor : outlineColor;
+            if (PlayerModelGpuRenderer.trySubmit(snapshot, matrices, originalType, light, overlay, tint, maskColor)) {
                 target.combatant$setReplacementSubmitted(true);
                 return true;
             }

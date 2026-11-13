@@ -13,8 +13,6 @@
 
 package combatant.client.util.player.simulation;
 
-import combatant.client.util.player.ElytraFlightPhysics;
-
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
@@ -36,6 +34,7 @@ import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.mixins.accessors.EntityInvoker;
+import combatant.client.util.player.ElytraFlightPhysics;
 import combatant.client.util.player.effect.StatusEffectAccess;
 
 import java.util.List;

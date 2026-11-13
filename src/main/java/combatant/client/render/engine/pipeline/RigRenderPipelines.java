@@ -80,6 +80,23 @@ public final class RigRenderPipelines {
             "player_rig_fast_translucent_hdr", shader("rig_player_lit_translucent.frag"), true, GpuFormat.RGBA16_FLOAT);
 
     @PipelineRegister
+    public static final RenderPipeline PLAYER_RIG_SHADER_ESP_MASK = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+            .withUniform("RigBones", UniformType.UNIFORM_BUFFER)
+            .withUniform("RigPlayerLighting", UniformType.UNIFORM_BUFFER)
+            .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/player_rig_shader_esp_mask"))
+            .withDomain(PipelineDomain.WORLD)
+            .withVertexFormat(CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM,
+                    com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
+            .withVertexShader(shader("rig_player_fast.vert"))
+            .withFragmentShader(shader("rig_player_shader_esp_mask.frag"))
+            .withSampler("u_Texture")
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
+            .withCull(false)
+            .withColorTarget(0, GpuFormat.RGBA8_UNORM, null, ColorTargetState.WRITE_ALL)
+            .build();
+
+    @PipelineRegister
     public static final RenderPipeline RIG_ENTITY_CUTOUT_HDR = rigEntityPipeline(
             "rig_entity_cutout_hdr", shader("rig_entity_cutout.frag"), false, true, false, GpuFormat.RGBA16_FLOAT);
     @PipelineRegister
@@ -103,7 +120,8 @@ public final class RigRenderPipelines {
         return pipeline == PLAYER_RIG_FAST_CUTOUT
                 || pipeline == PLAYER_RIG_FAST_TRANSLUCENT
                 || pipeline == PLAYER_RIG_FAST_CUTOUT_HDR
-                || pipeline == PLAYER_RIG_FAST_TRANSLUCENT_HDR;
+                || pipeline == PLAYER_RIG_FAST_TRANSLUCENT_HDR
+                || pipeline == PLAYER_RIG_SHADER_ESP_MASK;
     }
 
     /** Choose an exact attachment-compatible RHI pipeline; other formats are not silently coerced. */

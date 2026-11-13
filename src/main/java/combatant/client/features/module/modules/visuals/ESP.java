@@ -50,6 +50,7 @@ import combatant.client.features.relations.CategoryService;
 import combatant.client.features.relations.CategoryType;
 import combatant.client.mixins.accessors.EntityRenderManagerAccessor;
 import combatant.client.mixins.accessors.EntityRendererAccessor;
+import combatant.client.features.playermodel.PlayerModelGpuRenderer;
 import combatant.client.mixins.accessors.LevelRendererAccessor;
 import combatant.client.render.ShaderEspRenderContext;
 import combatant.client.render.compat.EntityCullingCompat;
@@ -995,11 +996,11 @@ public class ESP extends Module {
         modelView.pushMatrix();
         modelView.identity();
         Matrix4f capturedPosition = CombatantWorldMatrices.positionMatrix();
-        if (capturedPosition != null) {
-            modelView.mul(capturedPosition);
-        } else if (mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null) {
-            modelView.mul(new Matrix4f().rotation(mc.gameRenderer.mainCamera().rotation().conjugate(new Quaternionf())));
+        Matrix4f captureView = capturedPosition != null ? new Matrix4f(capturedPosition) : new Matrix4f();
+        if (capturedPosition == null && mc.gameRenderer != null && mc.gameRenderer.mainCamera() != null) {
+            captureView.rotation(mc.gameRenderer.mainCamera().rotation().conjugate(new Quaternionf()));
         }
+        modelView.mul(captureView);
 
         PoseStack matrices = new PoseStack();
         try (ShaderEspRenderContext.Scope ignored = ShaderEspRenderContext.enter()) {
@@ -1049,16 +1050,25 @@ public class ESP extends Module {
             }
 
             boolean standaloneDispatcher = dispatcher == shaderEspRenderDispatcher && shaderEspRenderBuffers != null;
-            accessor.combatant$invokeSubmitEntities(matrices, temp, shaderEspCommandQueue);
+            PlayerModelGpuRenderer.beginShaderEspMaskCapture(target);
             try {
-                if (!combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
-                        "combatant:shader-esp-mask", dispatcher, shaderEspCommandQueue,
-                        target.getColorTextureView(), target.getDepthTextureView(),
-                        combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.OUTLINE)) return false;
-            } finally {
-                if (standaloneDispatcher) {
-                    shaderEspRenderBuffers.endFrame();
+                accessor.combatant$invokeSubmitEntities(matrices, temp, shaderEspCommandQueue);
+                boolean vanillaMask;
+                try {
+                    vanillaMask = combatant.client.render.engine.renderer.FeatureTargetRenderer.render(
+                            "combatant:shader-esp-mask", dispatcher, shaderEspCommandQueue,
+                            target.getColorTextureView(), target.getDepthTextureView(),
+                            combatant.client.render.engine.renderer.FeatureTargetRenderer.Selection.OUTLINE);
+                } finally {
+                    if (standaloneDispatcher) {
+                        shaderEspRenderBuffers.endFrame();
+                    }
                 }
+                boolean playerModelMask = PlayerModelGpuRenderer.finishShaderEspMaskCapture(
+                        target, captureView, espProjection);
+                if (!vanillaMask && !playerModelMask) return false;
+            } finally {
+                PlayerModelGpuRenderer.abortShaderEspMaskCapture();
             }
         } finally {
             modelView.popMatrix();

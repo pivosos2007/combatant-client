@@ -70,7 +70,8 @@ public final class ElytraTarget extends Module {
     private static final double ORBIT_SIDE_SWITCH_DOT = 0.18;
     private static final int TARGET_FOCUS_HOLD_TICKS = 45;
     private static final double TARGET_FOCUS_RANGE_MULTIPLIER = 1.35;
-    // Minimum unboosted coasting speed in blocks per tick.
+    // Minimum coasting speed in blocks/tick with no managed SuperFirework boost.
+    // This is automatic behaviour, not a duplicate configurable firework speed.
     private static final double UNMANAGED_REBOOST_SPEED = 0.42;
     private final Minecraft mc = Minecraft.getInstance();
     private final BooleanValue swapBack =
@@ -263,7 +264,6 @@ public final class ElytraTarget extends Module {
     private int restartFallFlyingTicks;
     private int hitStatusTicks = HIT_STATUS_READY_TICKS;
     private boolean queuedFireworkUse;
-    private Rotation lastFireworkSteering;
     private int orbitSide = 1;
     private int focusedTargetId = -1;
     private int targetFocusTicks;
@@ -341,15 +341,16 @@ public final class ElytraTarget extends Module {
         if (!validSelf || !validTarget) {
             clearPursuitState();
             queuedFireworkUse = false;
-            if (!emergencyAvoidQueued && !isManagingFireworks()) {
-                releaseRotationState();
+            if (!emergencyAvoidQueued) {
+                RotationManager.INSTANCE.release(this, false);
             }
         } else {
             if (!emergencyAvoidQueued) tickRestartFallFlying(player);
         }
 
         if (emergencyAvoidQueued) {
-            // Retain the pursuit phase when an escape interrupts ordinary tracking.
+            // Do not reset pursuitPhase. The emergency planner must compare its
+            // heading with normal pursuit on the next tick.
             pursuitRotationActive = false;
             pendingRotation = null;
             attackWindowActive = false;
@@ -372,7 +373,7 @@ public final class ElytraTarget extends Module {
         ElytraRecastUtil.INSTANCE.tick(this, player);
 
         if (isAttributeSwapElytraCycleActive()) {
-            // AttributeSwap controls equipment and attack execution during the smash cycle.
+            // AttributeSwap owns the equipment and the attack until the real smash.
             queuedFireworkUse = false;
             clearAutoTakeoffState();
             ElytraRecastUtil.INSTANCE.reset(this);
@@ -389,14 +390,15 @@ public final class ElytraTarget extends Module {
             if (!ElytraRecastUtil.INSTANCE.isActive(this)) {
                 ElytraRecastUtil.INSTANCE.reset(this);
             }
-            if (!emergencyAvoidQueued && !isManagingFireworks()) {
-                releaseRotationState();
+            if (!emergencyAvoidQueued) {
+                RotationManager.INSTANCE.release(this, false);
             }
             return;
         }
 
         if (emergencyAvoidQueued) {
-            // An escape suppresses extra rocket launches without clearing the pursuit phase.
+            // Avoiding a wall must not trigger an extra rocket or lose the
+            // pursuit phase needed for the next risk comparison.
             queuedFireworkUse = false;
             pursuitRotationActive = false;
             pendingRotation = null;
@@ -411,7 +413,7 @@ public final class ElytraTarget extends Module {
                 return;
             }
         }
-        if (shouldUseFirework(player)) {
+        if (isPursuitEnabled() && shouldUseFirework(player)) {
             queuedFireworkUse = true;
         }
     }
@@ -460,7 +462,7 @@ public final class ElytraTarget extends Module {
     @EventHandler(priority = 1000)
     private void onRotationBegin(RotationUpdateEvent event) {
         if (event.getType() != RotationUpdateEvent.Type.PRE) return;
-        // Drop the preceding emergency request before resolving the normal heading.
+        // Keep the chosen escape, but resolve the ordinary flight heading afresh.
         RotationManager.INSTANCE.release(emergencyRotationProvider, false);
         emergencyAvoidQueued = false;
     }
@@ -518,13 +520,7 @@ public final class ElytraTarget extends Module {
 
         if (!isRunning()) {
             pursuitRotationActive = false;
-            // Attached rocket thrust depends on the server-side rotation; retain steering when a target is lost.
-            if (isManagingFireworks() && lastFireworkSteering != null) {
-                RotationManager.INSTANCE.setRotationTarget(new RotationTarget(
-                        lastFireworkSteering, null, List.of(), 2, 2.0f,
-                        true, MovementCorrection.SILENT, true, null
-                ), PURSUIT_ROTATION_PRIORITY, this);
-            }
+            RotationManager.INSTANCE.release(this, false);
             return;
         }
 
@@ -535,7 +531,6 @@ public final class ElytraTarget extends Module {
 
         pendingRotation = pursuitRotation;
         pursuitRotationActive = true;
-        lastFireworkSteering = pursuitRotation;
         RotationTarget plan = new RotationTarget(
                 pursuitRotation.normalize(),
                 target,
@@ -581,16 +576,13 @@ public final class ElytraTarget extends Module {
     }
 
     public boolean isManagingFireworks() {
-        if (isControllingFlight() || isRunning()) return true;
-        LocalPlayer player = mc.player;
-        if (!isEnabled() || player == null || lastFireworkSteering == null) return false;
-        FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
-        return boost.active() || boost.awaitingSpawn();
+        return isEnabled() && mc.player != null && mc.player.isFallFlying()
+                && (isRunning() && isPursuitEnabled() && RotationManager.INSTANCE.ownsActiveRotation(this)
+                || emergencyAvoidQueued && RotationManager.INSTANCE.ownsActiveRotation(emergencyRotationProvider));
     }
 
     public Rotation getFireworkSteeringRotation() {
-        if (!isEnabled() || mc.player == null || !isManagingFireworks()) return null;
-        return RotationManager.INSTANCE.getMovementRotation();
+        return isManagingFireworks() ? RotationManager.INSTANCE.getMovementRotation() : null;
     }
 
     public boolean isControllingFlight() {
@@ -611,7 +603,6 @@ public final class ElytraTarget extends Module {
         restartFallFlyingTicks = 0;
         hitStatusTicks = HIT_STATUS_READY_TICKS;
         queuedFireworkUse = false;
-        lastFireworkSteering = null;
         orbitSide = 1;
         focusedTargetId = -1;
         targetFocusTicks = 0;
@@ -718,7 +709,7 @@ public final class ElytraTarget extends Module {
         if (!focused && maxFov < 180.0f && angle > maxFov * 0.5f) return null;
 
         Reachability reachability = evaluateReachability(player, candidate, predictedCenter);
-        // Retain the tracked target across temporary occlusion so avoidance can continue.
+        // Losing the focused target at an obstacle would disable the flight controller before it can evade.
         if (reachability == null && focused && solidBlockDodge.get()) {
             reachability = new Reachability(predictedCenter, false);
         }
@@ -1074,7 +1065,10 @@ public final class ElytraTarget extends Module {
                 && Modules.enabled(SuperFirework.class);
     }
 
-    /** Uses the active SuperFirework acceleration profile for interception estimates. */
+    /**
+     * Only SuperFirework determines the acceleration profile (Grim or Custom).
+     * ElytraTarget supplies the pursuit/escape direction, never a second speed setting.
+     */
     private Vec3 predictSuperFireworkVelocity(Vec3 velocity, Vec3 direction) {
         SuperFirework firework = Modules.get(SuperFirework.class);
         if (firework == null || !firework.isEnabled() || direction.lengthSqr() < 1.0E-8) {
@@ -1088,8 +1082,8 @@ public final class ElytraTarget extends Module {
         Vec3 direction;
         if (blockDodgeRotation != null) {
             direction = blockDodgeRotation.directionVector();
-        } else if (lastFireworkSteering != null) {
-            direction = lastFireworkSteering.directionVector();
+        } else if (RotationManager.INSTANCE.ownsActiveRotation(this)) {
+            direction = RotationManager.INSTANCE.getMovementRotation().directionVector();
         } else if (target != null) {
             direction = target.getBoundingBox().getCenter().subtract(player.getEyePosition());
         } else {
@@ -1098,7 +1092,11 @@ public final class ElytraTarget extends Module {
         return predictSuperFireworkVelocity(player.getDeltaMovement(), direction).length();
     }
 
-    /** Estimates interception using expected rocket thrust followed by unboosted gliding. */
+    /**
+     * Estimate interception against the actual SuperFirework thrust model, not a fixed
+     * number of ticks ahead. The rocket sets velocity each tick while it burns; once
+     * its guaranteed fuse ends, the estimate falls back to current glide momentum.
+     */
     private Vec3 predictPursuitTargetCenter(LocalPlayer player, LivingEntity currentTarget) {
         int maxTicks = Mth.clamp(pursuitPredictionTicks.get(), 0, 20);
         if (!hasSuperFireworkSteering() || maxTicks == 0) {
@@ -1110,7 +1108,8 @@ public final class ElytraTarget extends Module {
         double rocketSpeed = expectedSuperFireworkSpeed(player);
         int poweredTicks = boost.active() ? Math.max(0, boost.expectedTicks()) : 0;
         if (poweredTicks == 0 && !boost.awaitingSpawn() && shouldUseFirework(player)) {
-            // Include projected thrust only when the controller can request another rocket.
+            // Anticipate only boosts that ElytraTarget will actually request.
+            // Otherwise high-speed coasting would incorrectly be modeled as thrust.
             poweredTicks = 10;
         }
         if (boost.awaitingSpawn()) poweredTicks = 10;
@@ -1136,10 +1135,12 @@ public final class ElytraTarget extends Module {
         return precedingTarget;
     }
 
+    /** One-tick motion lead anticipates overshooting before the next steering update. */
     private Vec3 getPursuitSteeringOrigin(LocalPlayer player, boolean eyes) {
         Vec3 origin = eyes ? player.getEyePosition() : player.position();
         if (!hasSuperFireworkSteering()) return origin;
         Vec3 movement = player.getDeltaMovement();
+        // Keep this bounded so knockback and server corrections cannot oversteer a rocket.
         double lead = Math.min(1.0, 1.25 / Math.max(0.25, movement.length()));
         return origin.add(movement.scale(lead));
     }
@@ -1211,7 +1212,8 @@ public final class ElytraTarget extends Module {
 
         if (autoTakeoffGlideDelayTicks > 0) return;
         if (player.getDeltaMovement().y > 0.0 && player.fallDistance <= 0.0f) return;
-        // Release jump before pressing it again to create a fresh fall-flying start edge.
+        // Legal start: release jump for a tick, then press it so vanilla itself sends START_FALL_FLYING
+        // (Grim ElytraB/C/F: fresh jump edge, no repeated starts, not on ground).
         ElytraRecastUtil.INSTANCE.request(this, player, ElytraRecastUtil.Mode.GRIM, false, false, false, 0);
     }
 
@@ -1289,13 +1291,14 @@ public final class ElytraTarget extends Module {
         if (player == null || !player.isFallFlying()) return false;
         if (player.isUsingItem() || !hasFireworkRocket(player)) return false;
         if (isAttributeSwapElytraCycleActive()) return false;
-        // Rocket thrust can interrupt the descent required for a mace smash.
+        // Rockets during a committed mace dive cancel the fall and ruin smash damage.
         if (pursuitPhase == PursuitPhase.DIVE && canSetupMaceDive(player)) return false;
 
         if (FireworkUseController.INSTANCE.isCooling(FIREWORK_MIN_REBOOST_TICKS)) return false;
         FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
         if (boost.awaitingSpawn()) return false;
-        // Do not launch a rocket solely to support an escape heading; additional thrust may increase impact risk.
+        // Never launch a new rocket solely because an avoidance route is active:
+        // acceleration can make a nearby collision unavoidable.
         if (blockDodgeRotation != null) return false;
         Vec3 velocity = player.getDeltaMovement();
         double speed = velocity.horizontalDistance();
@@ -1316,15 +1319,19 @@ public final class ElytraTarget extends Module {
         boolean speedNeedsBoost = speed < reboostSpeed
                 || (climbing || pursuitPhase == PursuitPhase.OVERPASS) && speed < reboostSpeed * 1.25;
 
-        // A rocket may expire on collision before its nominal fuse duration.
+        // A newly launched rocket may explode against an entity or nearby geometry.
+        // Recover without waiting for velocity to decay below the speed threshold.
         boolean interrupted = boost.recentlyEndedEarly() && (farFromTarget || climbNeedsBoost);
-        // Account for the shorter possible fuse without reboosting in the final attack band.
+        // The random fuse can be just ten ticks for Flight 0. Plan a replacement
+        // before losing thrust, but do not waste rockets in the final attack band.
         boolean endingSoon = boost.active() && boost.guaranteedTicks() <= FIREWORK_END_GUARD_TICKS
                 && (climbNeedsBoost || cruising && farFromTarget);
         boolean boostRequired = speedNeedsBoost || climbNeedsBoost || interrupted || endingSoon;
         if (!boostRequired) return false;
         if (boost.active() && boost.guaranteedTicks() > FIREWORK_END_GUARD_TICKS
                 && !needsEmergencyReboost(player)) return false;
+        // Rocket collision at point-blank range can end the boost on the next tick.
+        // Close-range attacks and mace dives take priority over burning another rocket.
         return distance >= 4.5 || climbNeedsBoost;
     }
 
@@ -1377,6 +1384,10 @@ public final class ElytraTarget extends Module {
                 null
         );
         RotationManager.INSTANCE.setRotationTarget(plan, CRYSTAL_FEAR_ROTATION_PRIORITY, emergencyRotationProvider);
+        if (RotationManager.INSTANCE.getActiveRotationTarget() != plan) {
+            RotationManager.INSTANCE.release(emergencyRotationProvider, false);
+            return false;
+        }
         return true;
     }
 
@@ -1505,11 +1516,16 @@ public final class ElytraTarget extends Module {
             resetBlockDodge();
             return false;
         }
-        blockDodgeRotation = escape.rotation();
-        RotationManager.INSTANCE.setRotationTarget(new RotationTarget(
-                blockDodgeRotation, null, List.of(), 2, 2.0f,
+        RotationTarget plan = new RotationTarget(
+                escape.rotation(), null, List.of(), 2, 2.0f,
                 false, MovementCorrection.SILENT, false, null
-        ), BLOCK_DODGE_ROTATION_PRIORITY, emergencyRotationProvider);
+        );
+        RotationManager.INSTANCE.setRotationTarget(plan, BLOCK_DODGE_ROTATION_PRIORITY, emergencyRotationProvider);
+        if (RotationManager.INSTANCE.getActiveRotationTarget() != plan) {
+            RotationManager.INSTANCE.release(emergencyRotationProvider, false);
+            return false;
+        }
+        blockDodgeRotation = escape.rotation();
         return true;
     }
 

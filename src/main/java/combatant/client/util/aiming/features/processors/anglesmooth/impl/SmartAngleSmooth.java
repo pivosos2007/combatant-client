@@ -16,7 +16,6 @@ package combatant.client.util.aiming.features.processors.anglesmooth.impl;
 import net.minecraft.util.Mth;
 import combatant.client.config.values.BooleanValue;
 import combatant.client.config.values.NumberValue;
-import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.processors.anglesmooth.AngleSmooth;

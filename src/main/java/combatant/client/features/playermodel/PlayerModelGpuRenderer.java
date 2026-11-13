@@ -15,6 +15,8 @@ import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
+import combatant.client.render.ShaderEspRenderContext;
+import combatant.client.util.logging.DebugLog;
 import combatant.client.render.engine.pipeline.RigRenderPipelines;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.rig.gpu.RigGpuMeshCache;
@@ -98,6 +100,8 @@ public final class PlayerModelGpuRenderer {
     // queue, or the replacement is absent from EntityDepthLayer's framebuffer.
     private static final List<Submission> ENTITY_DEPTH_PENDING = new ArrayList<>(2);
     private static RenderTarget entityDepthTarget;
+    private static final List<Submission> SHADER_ESP_PENDING = new ArrayList<>(2);
+    private static RenderTarget shaderEspMaskTarget;
     private static boolean opaqueDrawn;
     // A screen can be open while the LEVEL renderer still draws the world.
     // Only the actual LevelRenderer.render lifetime determines whether a
@@ -124,20 +128,22 @@ public final class PlayerModelGpuRenderer {
         // Dedicated preview scenes use their own GPU queue and perspective.
         Minecraft mc = Minecraft.getInstance();
         boolean depthCapture = entityDepthTarget != null;
-        boolean preview = !depthCapture && VisualPreviewRuntime.isRenderingSubject()
+        boolean shaderEspCapture = shaderEspMaskTarget != null && ShaderEspRenderContext.isActive();
+        boolean preview = !depthCapture && !shaderEspCapture && VisualPreviewRuntime.isRenderingSubject()
                 && mc.level != null && mc.player != null && mc.gameMode != null;
-        if (!collectingWorld && !preview && !depthCapture) return reject("non-render-context");
+        if (!collectingWorld && !preview && !depthCapture && !shaderEspCapture) return reject("non-render-context");
         // EntityDepthLayer always owns a private vanilla/RHI attachment, including
         // when the visible scene is rendered by Iris.
-        boolean iris = !preview && !depthCapture && IrisRuntime.isShaderpackRendererActive();
+        boolean iris = !preview && !depthCapture && !shaderEspCapture && IrisRuntime.isShaderpackRendererActive();
         // The deferred pass runs outside the vanilla entity collector. Without a
         // current camera view/projection its MeshData could inherit the last UI or
         // previous-world transform. Never accept a replacement before these exist.
-        if (!preview && !iris && !depthCapture && !CombatantWorldMatrices.isValid()) return reject("world-matrices-unavailable");
-        if (type.isOutline() || outlineColor != 0) return reject("outline");
+        if (!preview && !iris && !depthCapture && !shaderEspCapture && !CombatantWorldMatrices.isValid())
+            return reject("world-matrices-unavailable");
+        if (!shaderEspCapture && (type.isOutline() || outlineColor != 0)) return reject("outline");
         // The auxiliary silhouette must go through the vanilla depth collector, not
         // this deferred visible-color pass.
-        if (SeeInvisiblesVisualDepth.isCapturing()) return reject("visual-depth-capture");
+        if (!shaderEspCapture && SeeInvisiblesVisualDepth.isCapturing()) return reject("visual-depth-capture");
         // Vanilla PlayerModel ALWAYS uses entityTranslucent (even for a fully opaque
         // visible player). Rejecting hasBlending() here silently disabled the GPU path
         // for the normal case. Our compiled replacement surfaces own their alpha policy.
@@ -156,13 +162,17 @@ public final class PlayerModelGpuRenderer {
                 // pass attachment list and the pipeline's declared color targets.
                 // Validate BEFORE accepting a replacement into the deferred queue:
                 // on a mismatch the vanilla player renderer handles this frame.
-                var worldColor = (depthCapture ? entityDepthTarget
+                var worldColor = (shaderEspCapture ? shaderEspMaskTarget
+                        : depthCapture ? entityDepthTarget
                         : mc.gameRenderer.mainRenderTarget()).getColorTextureView();
                 if (worldColor == null) return reject("missing-world-color-view");
                 var worldFormat = worldColor.texture().getFormat();
                 for (var surface : snapshot.asset().surfaces()) {
-                    RenderPipeline pipeline = RigRenderPipelines.playerPipeline(
-                            !depthCapture && surface.translucent() && !snapshot.faded(), worldFormat);
+                    RenderPipeline pipeline = shaderEspCapture
+                            ? (worldFormat == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM
+                                ? RigRenderPipelines.PLAYER_RIG_SHADER_ESP_MASK : null)
+                            : RigRenderPipelines.playerPipeline(
+                                    !depthCapture && surface.translucent() && !snapshot.faded(), worldFormat);
                     if (pipeline == null) return reject("unsupported-world-color-format:" + worldFormat);
                     var targets = pipeline.getColorTargetStates();
                     if (targets.size() != 1 || targets.get(0) == null
@@ -175,12 +185,21 @@ public final class PlayerModelGpuRenderer {
                     RigGpuMeshCache.global().acquire(rhi, surface.mesh());
                 }
             }
-            (depthCapture ? ENTITY_DEPTH_PENDING : preview ? PREVIEW_PENDING : PENDING).add(
-                    new Submission(snapshot, new Matrix4f(matrices.last().pose()), light, overlay, tint));
+            (shaderEspCapture ? SHADER_ESP_PENDING
+                    : depthCapture ? ENTITY_DEPTH_PENDING : preview ? PREVIEW_PENDING : PENDING).add(
+                    new Submission(snapshot, new Matrix4f(matrices.last().pose()), light, overlay,
+                            shaderEspCapture ? outlineColor : tint));
             lastReject = "none";
             return true;
         } catch (RuntimeException | LinkageError failure) {
-            disable(failure);
+            if (!shaderEspCapture) {
+                disable(failure);
+            } else {
+                DebugLog.warnOnChange("shader-esp.player-model.mask.preflight",
+                        failure.getClass().getName() + ":" + failure.getMessage(),
+                        "[ShaderESP] PlayerModel mask preflight failed: %s: %s",
+                        failure.getClass().getSimpleName(), failure.getMessage());
+            }
             return reject("gpu-exception:" + failure.getClass().getSimpleName());
         }
     }
@@ -194,6 +213,7 @@ public final class PlayerModelGpuRenderer {
         PENDING.clear();
         ENTITY_DEPTH_PENDING.clear();
         entityDepthTarget = null;
+        abortShaderEspMaskCapture();
         opaqueDrawn = false;
         collectingWorld = true;
     }
@@ -222,6 +242,26 @@ public final class PlayerModelGpuRenderer {
     public static void abortEntityDepthCapture() {
         entityDepthTarget = null;
         ENTITY_DEPTH_PENDING.clear();
+    }
+
+    public static void beginShaderEspMaskCapture(RenderTarget target) {
+        SHADER_ESP_PENDING.clear();
+        shaderEspMaskTarget = target;
+    }
+
+    public static boolean finishShaderEspMaskCapture(RenderTarget target,
+                                                     Matrix4f view, Matrix4f projection) {
+        shaderEspMaskTarget = null;
+        try {
+            return drawShaderEspMask(SHADER_ESP_PENDING, target, view, projection);
+        } finally {
+            SHADER_ESP_PENDING.clear();
+        }
+    }
+
+    public static void abortShaderEspMaskCapture() {
+        shaderEspMaskTarget = null;
+        SHADER_ESP_PENDING.clear();
     }
 
     /** Clear a preview at the start of its isolated subject frame. */
@@ -420,6 +460,54 @@ public final class PlayerModelGpuRenderer {
         }
     }
 
+    private static boolean drawShaderEspMask(List<Submission> draws, RenderTarget target,
+                                             Matrix4f view, Matrix4f projection) {
+        if (draws.isEmpty() || target == null || target.getColorTextureView() == null
+                || target.getDepthTextureView() == null || view == null || projection == null) return false;
+        try {
+            var rhi = CombatantRenderSystem.rhi();
+            var pipeline = RigRenderPipelines.PLAYER_RIG_SHADER_ESP_MASK;
+            var commands = new ArrayList<RhiDrawCommand>();
+            for (Submission draw : draws) {
+                AbstractTexture texture = Minecraft.getInstance().getTextureManager()
+                        .getTexture(draw.snapshot().asset().texture());
+                if (texture == null || texture.getTextureView() == null || texture.getSampler() == null)
+                    throw new IllegalStateException("Player model texture lost GPU residency");
+                GpuBufferSlice bones = draw.bones();
+                GpuBufferSlice maskColor = PlayerRigLightingUniforms.upload(draw.light(), 1.0f, 0.0f, draw.tint);
+                Matrix4f modelView = new Matrix4f(view).mul(draw.matrix());
+                for (var surface : draw.surfaces()) {
+                    var mesh = RigGpuMeshCache.global().acquire(rhi, surface.mesh());
+                    commands.add(RhiDrawCommand.builder("PlayerModel Shader ESP mask")
+                            .pipeline(pipeline)
+                            .colorAttachment(target.getColorTextureView())
+                            .depthAttachment(target.getDepthTextureView())
+                            .mesh(mesh.handle())
+                            .transform(modelView)
+                            .uniform(RigBonesUniforms.BLOCK_NAME, bones)
+                            .uniform(PlayerRigLightingUniforms.BLOCK_NAME, maskColor)
+                            .sampler("u_Texture", texture.getTextureView(), texture.getSampler())
+                            .build());
+                }
+            }
+            if (commands.isEmpty()) return false;
+            Matrix4f previousProjection = MeshRenderer.projection();
+            try {
+                MeshRenderer.setProjection(projection);
+                rhi.drawMeshes(commands);
+            } finally {
+                MeshRenderer.setProjection(previousProjection);
+            }
+            return true;
+        } catch (RuntimeException | LinkageError failure) {
+            DebugLog.warnOnChange("shader-esp.player-model.mask.draw",
+                    failure.getClass().getName() + ":" + failure.getMessage(),
+                    "[ShaderESP] PlayerModel mask draw failed: %s: %s",
+                    failure.getClass().getSimpleName(), failure.getMessage());
+            return false;
+        }
+    }
+
     /** Called by Iris inside its real G-buffer/forward boundaries, before shaderpack composite. */
     public static void renderIris(boolean translucent) {
         if (PENDING.isEmpty() || IrisRuntime.isRenderingShadowPass()) return;
@@ -440,6 +528,7 @@ public final class PlayerModelGpuRenderer {
         previewHandMaskCapture = null;
         handMaskCapture = null;
         abortEntityDepthCapture();
+        abortShaderEspMaskCapture();
         opaqueDrawn = false;
         collectingWorld = false;
         retryAfterNanos = 0;
