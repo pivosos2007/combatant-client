@@ -380,7 +380,6 @@ public final class ProjectilePuncher extends Module {
     private boolean rotationReleased = true;
 
     private static Map<String, Boolean> projectileDefaults() {
-        // Wind charges start off: knocking one away is only wanted by players who fight with them.
         Map<String, Boolean> defaults = new LinkedHashMap<>();
         defaults.put(PROJECTILE_FIREBALL, true);
         defaults.put(PROJECTILE_SHULKER_BULLET, true);

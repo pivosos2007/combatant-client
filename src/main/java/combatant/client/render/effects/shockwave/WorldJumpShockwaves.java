@@ -116,10 +116,10 @@ public final class WorldJumpShockwaves implements PostProcessPass {
         List<Request> requests = drain();
         if (requests.isEmpty()) return false;
 
-        GpuTextureView depth = execution.context().preTranslucentDepth();
+        GpuTextureView depth = execution.context().mainDepth();
         boolean depthUsable = depthSampleable(depth, execution.context().width(), execution.context().height());
         if (!depthUsable) {
-            depth = execution.context().mainDepth();
+            depth = execution.context().preTranslucentDepth();
             depthUsable = depthSampleable(depth, execution.context().width(), execution.context().height());
         }
 

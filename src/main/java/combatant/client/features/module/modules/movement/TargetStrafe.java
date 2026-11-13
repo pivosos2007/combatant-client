@@ -99,15 +99,11 @@ public final class TargetStrafe extends Module {
         }
         boolean jump = autoJump.get() && navigator.needsJump(player);
         boolean trapped = navigator.isTrapped();
-        // Preserve the old dynamic hopping on clear ground. On a climb, jump
-        // first and allow the horizontal traversal once the player is airborne.
         boolean hop = autoJump.get() && player.onGround() && !trapped;
         if ((jump || hop) && player.onGround()) player.jumpFromGround();
 
         double velocity = speed.get();
         Vec3 horizontal = direction.scale(velocity);
-        // The local probe already validates this speed before selecting a
-        // direction. Do not slow or stop a valid orbit based on an A* state.
         player.setDeltaMovement(horizontal.x, player.getDeltaMovement().y, horizontal.z);
         float yaw = (float) Math.toDegrees(Math.atan2(horizontal.z, horizontal.x)) - 90.0f;
         float angleDiff = Mth.wrapDegrees(yaw - resolveControlYaw());
@@ -133,27 +129,22 @@ public final class TargetStrafe extends Module {
                 type == PointType.CENTER, autoJump.get(), 0.42);
         Vec3 direction = navigator.direction(player);
         if (direction == null) {
-            // Event starts with actual player keys. Do not overwrite them while
-            // the route is pending, unsafe or impossible.
             return;
         }
         float controlYaw = resolveControlYaw();
         int keys = MovementKeys.keysToward(controlYaw, direction.x, direction.z);
         boolean jump = autoJump.get() && player.onGround() && navigator.needsJump(player);
         boolean trapped = navigator.isTrapped();
-        // WASD discretization cuts corners on diagonals. Prefer a safe single
-        // axis to refusing all movement when the diagonal is unsafe.
+        // Diagonal WASD discretization can enter an unsafe cell; test a single-axis alternative.
         int safeKeys = chooseSafeKeys(player, controlYaw, keys, direction);
         if (safeKeys == 0) {
             if (jump) event.setJump(true);
             return;
         }
         keys = safeKeys;
-        // Hop on clear ground as before, but not while escaping webs/lava.
         KillAura aura = Modules.get(KillAura.class);
         boolean smartCritControlsJump = aura != null && aura.controlsGrimStrafeJump(target);
-        // Obstacle jumps remain available. Only the unconditional Grim hop
-        // yields to the Smart crit planner; Matrix is unchanged.
+        // Only Grim clear-ground hopping yields to Smart critical timing; obstacle jumps remain enabled.
         boolean hop = autoJump.get() && player.onGround() && !trapped && !smartCritControlsJump;
         event.setForward((keys & MovementKeys.FORWARD) != 0);
         event.setBackward((keys & MovementKeys.BACKWARD) != 0);
@@ -168,7 +159,6 @@ public final class TargetStrafe extends Module {
         if (intended == 0) return 0;
         Vec3 motion = motionFromKeys(yaw, intended);
         if (navigator.safeMotion(player, motion.scale(0.36))) return intended;
-        // Only check two axis alternatives, not all eight directions each tick.
         int longitudinal = intended & (MovementKeys.FORWARD | MovementKeys.BACKWARD);
         int lateral = intended & (MovementKeys.LEFT | MovementKeys.RIGHT);
         int chosen = 0;
@@ -231,7 +221,7 @@ public final class TargetStrafe extends Module {
         return angleDiff > -67.5f && angleDiff < 67.5f;
     }
 
-    /** Physical keyboard input always takes precedence over automated input. */
+    /** Manual keyboard input takes precedence over path-generated movement. */
     private boolean isManualControlRequested() {
         return mc.options != null && (mc.options.keyUp.isDown()
                 || mc.options.keyDown.isDown() || mc.options.keyLeft.isDown()

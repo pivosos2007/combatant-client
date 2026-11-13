@@ -217,7 +217,6 @@ public class KillAura extends Module {
                     AngleSmoothMode.SMART,
                     AngleSmoothMode.values()
             ), this::usesRotationSettings);
-    // Linear smoothing
     private final NumberValue<Float> linearHorMin =
             visibleWhen(numCommon(
                     "linearHorizontalMin",
@@ -257,7 +256,6 @@ public class KillAura extends Module {
     private final LinearAngleSmooth linearSmooth = new LinearAngleSmooth(
             linearHorMin, linearHorMax, linearVertMin, linearVertMax
     );
-    // Sigmoid smoothing
     private final NumberValue<Float> sigmoidHorMin =
             visibleWhen(numCommon(
                     "sigmoidHorizontalMin",
@@ -316,7 +314,6 @@ public class KillAura extends Module {
             sigmoidHorMin, sigmoidHorMax, sigmoidVertMin, sigmoidVertMax,
             sigmoidSteepness, sigmoidMidpoint
     );
-    // Smart smoothing
     private final NumberValue<Float> smartYawMin =
             visibleWhen(numCommon(
                     "smartYawMin",
@@ -437,7 +434,6 @@ public class KillAura extends Module {
             ), this::usesRotationSettings);
     private final ClickScheduler clicker = new ClickScheduler(cpsMin.get(), cpsMax.get());
     private final PointTracker pointTracker = new PointTracker();
-    // Optional aim processors
     private final BooleanValue lazyAimEnabled =
             visibleWhen(boolCommon(
                     "lazyAimEnabled",
@@ -614,11 +610,7 @@ public class KillAura extends Module {
         }
     }
 
-    /**
-     * A Smart critical jump must be requested in the actual input phase.
-     * This is deliberately after TargetStrafe's Grim input handler, so its
-     * pathing input can be used by the player movement predictor.
-     */
+    /** Runs after TargetStrafe updates movement input so critical-jump prediction uses the resulting flags. */
     @EventHandler(priority = -5)
     private void onSmartCritMovement(MovementInputEvent event) {
         if (!usesSmartCriticalTiming() || mc.player == null || mc.level == null) return;
@@ -628,12 +620,10 @@ public class KillAura extends Module {
         Criticals criticals = Modules.get(Criticals.class);
         if (!canPlanNaturalCrit(criticals, target)) return;
 
-        // Read Grim's final strafe direction rather than the original keys.
         PlayerSimulationCache.refreshLocalMovementPrediction(event);
         CombatAttackPlanner.Plan plan = getSmartAttackPlan(target, criticals);
 
-        // Legit sprint resets take a tick to prepare. Start them before the
-        // predicted critical rather than discarding the actual attack window.
+        // Start a LEGIT sprint reset before the predicted critical attack tick.
         if (plan.critical() && plan.attackTick() >= 1 && plan.attackTick() <= 2
                 && CombatStrikeController.INSTANCE.resolveSprintResetMode(resolveStrikeResetMode())
                     == CombatStrikeController.SprintResetMode.LEGIT) {
@@ -657,7 +647,7 @@ public class KillAura extends Module {
                 && criticalsSelection.get() == Criticals.SelectionMode.SMART;
     }
 
-    /** Used by TargetStrafe Grim to suppress its unconditional clear-ground hop. */
+    /** Suppresses the optional Grim clear-ground hop while Smart critical timing controls jumps. */
     public boolean controlsGrimStrafeJump(LivingEntity target) {
         if (!isEnabled() || target == null || target != currentTarget || mc.player == null) return false;
         if (isLegacyAttackProtocol() || criticalsSelection.get() != Criticals.SelectionMode.SMART) return false;
@@ -730,8 +720,8 @@ public class KillAura extends Module {
     }
 
     /**
-     * @param requireCrit when false, a pending Criticals wait does not count as "not attacking";
-     *                    used by SNAP so the rotation is held while only the crit check fails.
+     * Indicates whether attack readiness should keep the current aim request active.
+     * @param requireCrit when {@code false}, a pending critical wait alone does not release SNAP rotation.
      */
     private boolean willAttackInTicks(LivingEntity target, int ticks, boolean requireCrit) {
         if (!isEnabled() || mc.player == null) return false;
@@ -744,8 +734,6 @@ public class KillAura extends Module {
         if (criticalsSelection.get() == Criticals.SelectionMode.SMART
                 && canPlanNaturalCrit(criticals, candidate)) {
             CombatAttackPlanner.Plan plan = getSmartAttackPlan(candidate, criticals);
-            // SNAP must begin rotating before the selected tick, not at the
-            // first non-critical cooldown tick.
             return plan.hasAttackWithin(safeTicks + (requireCrit ? 0 : 1));
         }
 
@@ -1324,5 +1312,4 @@ public class KillAura extends Module {
         NOT_VISIBLE
     }
 
-    // attack handled by AttackUtil
 }

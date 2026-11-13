@@ -14,11 +14,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-/**
- * Chooses a real attack tick instead of treating the first cooled-down tick
- * as an unconditional attack. Future criticals are only considered when the
- * simulated player is descending and the weapon/target can be hit then.
- */
+/** Selects attack ticks using charge readiness, predicted critical descent and target reach. */
 public final class CombatAttackPlanner {
     public static final CombatAttackPlanner INSTANCE = new CombatAttackPlanner();
     private static final int AIRBORNE_LOOKAHEAD = 4;
@@ -42,10 +38,7 @@ public final class CombatAttackPlanner {
         }
     }
 
-    /**
-     * A jump is a multi-tick action. Keep its selected critical window until
-     * landing or a short deadline, even if one noisy movement snapshot fails.
-     */
+    /** Retains a predicted jump-critical window until landing or two ticks after its expected attack tick. */
     public void commitJump(LocalPlayer player, LivingEntity target, int predictedAttackTick) {
         if (player == null || target == null || predictedAttackTick <= 0) return;
         committedPlayer = player;
@@ -76,10 +69,7 @@ public final class CombatAttackPlanner {
         return !player.onGround();
     }
 
-    /**
-     * Called from both movement input and attack execution. The plan is not
-     * cached across those phases: the final attack gate rechecks actual state.
-     */
+    /** Returns a candidate attack tick. Attack execution rechecks the current strike conditions. */
     public Plan plan(LocalPlayer player, LivingEntity target, double reach,
                      boolean naturalCritAllowed, boolean ignoreSprint,
                      double forcedJumpMotion) {
@@ -92,7 +82,6 @@ public final class CombatAttackPlanner {
         AttackPressing.StrikeReadiness now = pressing.getStrikeReadiness(player, target, lookahead);
         boolean readyNow = pressing.canHitTarget(target, lookahead)
                 && (now.canStrike() || AttributeSwap.shouldBypassAuraCooldownFor(player, target));
-        // Never postpone a mace smash or a verified non-critical finisher.
         if (readyNow && (now == AttackPressing.StrikeReadiness.SMASH
                 || now == AttackPressing.StrikeReadiness.FINISHER)) {
             return new Plan(0, false, false);
@@ -128,11 +117,7 @@ public final class CombatAttackPlanner {
         return new Plan(readyNow ? 0 : nextNormalTick(player, target), false, false);
     }
 
-    /**
-     * Player.attack() checks charge with 0.5f partial tick and requires > 0.9
-     * before granting the critical multiplier. The generic 1-tick lookahead
-     * may allow a non-critical attack, but never justifies a promised critical.
-     */
+    /** Requires attack strength above {@code 0.9} at {@code ticks + 0.5} for predicted criticals. */
     private static boolean readyForCriticalAt(LocalPlayer player, LivingEntity target, int ticks) {
         return AttackPressing.INSTANCE.canHitTarget(target, ticks)
                 && player.getAttackStrengthScale(ticks + 0.5f) > 0.9f;
@@ -161,8 +146,6 @@ public final class CombatAttackPlanner {
     private static boolean inPredictedReach(LocalPlayer player, LivingEntity target,
                                             PlayerSimulationCache.SimulatedPlayerSnapshot snapshot,
                                             double reach, int tick) {
-        // Do not hold an immediately available hit for a critical that is
-        // predicted outside melee range. Extrapolation is deliberately short.
         Vec3 eyes = snapshot.pos().add(0.0, player.getEyeHeight(), 0.0);
         Vec3 targetMotion = target.getDeltaMovement();
         AABB box = target.getBoundingBox().move(targetMotion.scale(Math.min(tick, 3)));

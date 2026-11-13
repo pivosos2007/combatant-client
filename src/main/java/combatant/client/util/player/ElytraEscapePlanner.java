@@ -15,7 +15,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.function.UnaryOperator;
 
-/** Evaluates reachable flight paths through collision shapes from the player's current momentum. */
+/** Forecasts gliding trajectories from current velocity, flight heading and collision constraints. */
 public final class ElytraEscapePlanner {
     private static final int MAX_HORIZON = 60;
     private static final float[] YAWS = {0, -10, 10, -20, 20, -45, 45, -75, 75, -110, 110, -145, 145, 180};
@@ -54,14 +54,14 @@ public final class ElytraEscapePlanner {
         };
     }
 
-    /** Includes the time to shed dangerous forward momentum and travel the requested clearance. */
+    /** Horizon includes time to reduce forward momentum plus the requested clearance. */
     public static int horizon(Vec3 velocity, Rotation heading, double clearance, int minimum, FlightModel physics) {
         Vec3 forward = new Vec3(velocity.x, 0, velocity.z).normalize();
         Rotation reverse = forward.lengthSqr() > 0.0
                 ? Rotation.fromRotationVec(forward.scale(-1)) : heading;
         int recovery = 1;
         Vec3 braking = velocity;
-        // A rocket can expire or hit the obstacle, so recovery must also be possible while coasting.
+        // Estimate recovery using unboosted gliding because active rocket thrust can terminate during the forecast.
         for (; recovery < MAX_HORIZON; recovery++) {
             braking = physics.glide(braking, reverse);
             if (braking.dot(forward) <= 0.3) break;

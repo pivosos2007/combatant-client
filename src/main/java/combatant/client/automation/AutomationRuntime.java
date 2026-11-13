@@ -131,7 +131,7 @@ public final class AutomationRuntime {
         scheduler.tick(++tick);
     }
 
-    /** Runs first: the event still carries the keys the player is physically holding. */
+    /** The input event still contains physical keys before lease application. */
     @EventHandler(priority = 100_000)
     public void onPlayerMovementInput(MovementInputEvent event) {
         if (event.isForward() || event.isBackward() || event.isLeft() || event.isRight()) {
@@ -141,7 +141,7 @@ public final class AutomationRuntime {
         if (event.isSneak()) coordinator.revokeForManualInput(ActionResource.SNEAK);
     }
 
-    /** Applies leased keys before ordinary modules, so safety filters such as SafeWalk still see them. */
+    /** Leased keys are applied before modules that inspect movement input. */
     @EventHandler(priority = 1000)
     public void onApplyMovementInput(MovementInputEvent event) {
         MovementIntent intent = scheduler.movement();

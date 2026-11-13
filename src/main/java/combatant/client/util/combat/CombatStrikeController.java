@@ -19,17 +19,14 @@ import combatant.client.util.click.ClickScheduler;
 
 import java.util.function.BooleanSupplier;
 
-/**
- * Shared combat strike orchestration layer.
- * Keeps sprint reset, pressing gate and attack execution out of KillAura itself.
- */
+/** Coordinates attack readiness, sprint resets and strike execution for combat modules. */
 public final class CombatStrikeController {
 
     public static final CombatStrikeController INSTANCE = new CombatStrikeController();
 
     private LocalPlayer lastAttacker;
     private int lastModernAttackAge = -1;
-    // Avoid repeatedly sending undercharged finishers before server feedback.
+    // Minimum ticks before retrying a finisher after target-health feedback changes.
     private static final int FINISHER_RETRY_TICKS = 4;
     private LocalPlayer lastFinisherAttacker;
     private LivingEntity lastFinisherTarget;
@@ -70,8 +67,7 @@ public final class CombatStrikeController {
             return false;
         }
 
-        // A rejected critical window must never send sprint-reset packets or
-        // arm Legit's temporary sprint block.
+        // Check critical readiness before modifying the sprint state.
         if (criticalGate != null && !criticalGate.getAsBoolean()) {
             return false;
         }
@@ -107,7 +103,7 @@ public final class CombatStrikeController {
         }
         if (legacyProtocol) return StrikeDecision.NORMAL;
 
-        // One modern attack per tick, regardless of which module requested it.
+        // Modern-protocol strikes are limited to one attack per player tick across modules.
         if (lastAttacker == player && lastModernAttackAge == player.tickCount) {
             return StrikeDecision.NONE;
         }
@@ -127,8 +123,7 @@ public final class CombatStrikeController {
             return StrikeDecision.NORMAL;
         }
 
-        // A predicted kill is a single deliberate attempt, not permission to
-        // spam one attack packet every tick while the server processes it.
+        // Retry a finisher only after target health changes and the minimum interval elapses.
         if (lastFinisherAttacker == player && lastFinisherTarget == target && lastFinisherAttackAge >= 0) {
             float health = target.getHealth() + target.getAbsorptionAmount();
             if (Math.abs(health - lastFinisherTargetHealth) < 0.01f
@@ -203,8 +198,7 @@ public final class CombatStrikeController {
             case DEFAULT, NONE -> {
             }
             case LEGIT -> {
-                // Legit reset: no forced instant sprint restore.
-                // Sprint comes back naturally from input/autosprint after short block window.
+                // LEGIT sprint restoration is handled through normal input after the temporary block expires.
             }
             case PACKET -> {
                 if (mc.getConnection() != null) {

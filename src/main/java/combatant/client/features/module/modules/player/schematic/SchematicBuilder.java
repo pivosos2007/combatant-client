@@ -73,11 +73,8 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Places the missing blocks of the selected schematic layer from where the player stands, bottom-up.
- *
- * <p>With rotations on, a click only goes out once both the rotation the server already has and the one this
- * tick's movement packet will carry look at the planned face: vanilla resolves facing from the former and
- * Grim checks the click against the latter.</p>
+ * Places missing schematic blocks in layer order. Facing-sensitive placements are checked against both
+ * the previously submitted and upcoming movement rotations.
  */
 @ModuleInfo(
         id = "schematicbuilder",
@@ -93,26 +90,26 @@ public final class SchematicBuilder extends Module {
     private static final int RETRY_AFTER_TICKS = 40;
     private static final int TERRAFORM_TIMEOUT_TICKS = 400;
     private static final int RECENT_PLACE_TICKS = 10;
-    /** A stair or slab clicked before the rotation settled lands in the wrong half; this is how long to wait for it. */
+    /** Maximum ticks to wait for precise alignment of stairs and slabs. */
     private static final int EXACT_WAIT_TICKS = 4;
     private static final int MAX_PLAN_ATTEMPTS = 12;
     private static final int MAX_SCAFFOLD_CHAIN = 6;
     private static final int RESTOCK_CLICK_WAIT_TICKS = 6;
-    /** Ticks the climb gate may hold with an idle walker before the layer is built from below. */
+    /** Maximum ticks the climb gate can delay a layer while movement is idle. */
     private static final int CLIMB_GATE_TICKS = 40;
     private static final int MAX_CANDIDATES = 96;
     private static final int SHORTFALL_INTERVAL = 20;
     private static final int MISSING_NOTIFY_INTERVAL = 200;
-    /** How long a piston or observer that only comes out facing wrong from here waits for the walker to find a better spot. */
+    /** Maximum ticks to seek an exact facing for orientation-sensitive blocks. */
     private static final int APPROXIMATE_PATIENCE_TICKS = 400;
-    /** Times a cell that would fire on placement is put back before it goes in anyway (with a warning). */
+    /** Maximum placement deferrals for blocks that would activate a circuit. */
     private static final int HAZARD_DEFER_LIMIT = 3;
-    /** Nothing placed for this long and nothing left to walk to: the next band opens early. */
+    /** Idle ticks before advancing the working layer when no path remains. */
     private static final int GATE_STALL_TICKS = 300;
-    /** No placement for this long while our own pillar and helper blocks stand: clear them, they may hide faces. */
+    /** Idle ticks before clearing obstructing temporary blocks. */
     private static final int HELPER_STALL_TICKS = 400;
     private static final int GATE_CHECK_INTERVAL = 20;
-    /** At most one use per tick reaches the server; a gap lets the client see the new delay or note first. */
+    /** Minimum client ticks between consecutive block interactions. */
     private static final int ADJUST_CLICK_DELAY = 2;
     private static final int ADJUST_SLACK_CLICKS = 4;
     private static final int ATTENTION_PRUNE_INTERVAL = 20;
@@ -197,19 +194,21 @@ public final class SchematicBuilder extends Module {
         return chestIndex;
     }
 
-    /** Facing-sensitive targets with only an approximate click from here: when that was first seen. */
+    /** First tick when the placement of an orientation-sensitive block became approximate. */
     private final Map<Long, Integer> approximateSince = new HashMap<>();
-    /** The look direction such a target needs; the walker only counts it from spots that give it. */
+    /** Requested facing for an orientation-sensitive placement. */
     private final Map<Long, Direction> lookWanted = new HashMap<>();
-    /** Of those, the ones where only the yaw counts (repeaters, comparators, floor levers). */
+    /** Positions that require matching yaw but not pitch. */
     private final Set<Long> yawOnly = new HashSet<>();
     private final Map<Long, Integer> hazardDefers = new HashMap<>();
     private final Map<Long, Integer> adjustClicks = new HashMap<>();
     private final long[] gateScratch = new long[1];
     private int lastPlaceTick;
-    /** Clearing helpers before the build is done because placement stalled behind them. */
     private boolean midBuildClear;
-    /** {@link #placed} when helpers were last cleared mid-build: no second clear without progress in between. */
+    /**
+     * The most recent placed-block count at temporary-block cleanup; avoids repeated cleanup without
+     * progress.
+     */
     private int clearedAtPlaced = -1;
     private int adjusted;
     private int[] footprint;
@@ -236,7 +235,7 @@ public final class SchematicBuilder extends Module {
     private float lastHealth = -1.0f;
     private ClientLevel lastLevel;
     private Status status = Status.IDLE;
-    /** Far enough in the past that {@code ticks - NEVER} neither overflows nor lands under an interval. */
+    /** A sentinel far enough from current ticks for interval subtraction without overflow. */
     private static final int NEVER = Integer.MIN_VALUE / 2;
     private int lastShortfallTick = NEVER;
     private int lastMissingNotifyTick = NEVER;
@@ -246,7 +245,7 @@ public final class SchematicBuilder extends Module {
     @Override
     public void onEnable() {
         reset();
-        // Config load can enable the module before any world exists; only warn a player who can act on it.
+        // Configuration can enable this module without an active world; defer the warning until a player exists.
         if (mc.player != null && !state.isPlaced()) {
             Notifier.warning(I18n.get("module.schematicbuilder.notify.no_placement"));
         }
@@ -305,12 +304,11 @@ public final class SchematicBuilder extends Module {
         return approximatePlaced;
     }
 
-    /** Clicks spent on placed blocks to set a delay, mode, note or lever. */
     public int adjustedCount() {
         return adjusted;
     }
 
-    /** Walk statistics for diagnostics: routes planned, route cells, blocks walked, pillar blocks, helpers broken, aborts. */
+    /** Aggregated movement and build statistics used for diagnostics. */
     public String moverSummary() {
         return String.format(java.util.Locale.ROOT,
                 "routes=%d routeCells=%d walked=%.1f pillar=%d pillarJumps=%d helpersRemoved=%d aborts=%d rotWait=%d exactWait=%d "
@@ -332,7 +330,6 @@ public final class SchematicBuilder extends Module {
     private int nextDelay() {
         int value = delay.get();
         if (!cautiousPacing()) return value;
-        // A fixed cadence is the easiest pattern to spot; jitter keeps it at roughly a human pace.
         return Math.max(value, CAUTIOUS_MIN_DELAY) + ThreadLocalRandom.current().nextInt(CAUTIOUS_MAX_JITTER + 1);
     }
 
@@ -374,16 +371,11 @@ public final class SchematicBuilder extends Module {
         }
     }
 
-    /**
-     * Power waits until every lower cell is in. When some never come (no material, nowhere to stand) and nothing
-     * was placed for a while with nothing left to walk to, the next band opens anyway and the cells that held it
-     * shut are listed in the menu.
-     */
+    /** Advance a blocked layer after prolonged inactivity when its remaining cells cannot be reached. */
     private void checkGateStall(LocalPlayer player) {
         SchematicDiff diff = state.currentDiff();
         if (diff == null || !safety.gated(diff) || ticks - lastPlaceTick < GATE_STALL_TICKS) return;
-        // Walking or climbing towards the missing cells is progress; standing with nothing to do is not. Cells
-        // still worth walking to hold the gate four times as long (a pillar can take a few tries).
+        // Movement toward pending cells extends the inactivity threshold for advancing the layer.
         if (pending != null || autoWalk.get() && mover.mode() != BuildMover.Mode.IDLE) return;
         if (ticks - lastPlaceTick < GATE_STALL_TICKS * 4 && walkTargets(player, gateScratch) > 0) return;
         int band = safety.openBand(diff);
@@ -402,7 +394,6 @@ public final class SchematicBuilder extends Module {
         }
     }
 
-    /** Entries whose cell has since come out right are dropped. */
     private void pruneAttention() {
         if (state.attentionCount() == 0 || mc.level == null) return;
         for (SchematicAttention.Entry entry : state.attention()) {
@@ -440,7 +431,7 @@ public final class SchematicBuilder extends Module {
         LocalPlayer player = mc.player;
         if (!isEnabled() || player == null) return;
         if (autoWalk.get()) mover.applyInput(event, player);
-        // Grim MultiActions / Vulcan BadPackets I: no sprint while a container is open or being opened.
+        // Suppress sprint while opening or using a container.
         if (player.containerMenu != player.inventoryMenu || openChestPending || restockChest != null) {
             event.setSprint(false);
             if (player.isSprinting()) player.setSprinting(false);
@@ -450,9 +441,7 @@ public final class SchematicBuilder extends Module {
             event.setSneak(sneakPacing.apply(false, ticks));
             return;
         }
-        // Placing against a lever, repeater, hopper or door goes out sneaking so it does not toggle or open;
-        // clicking a block to set its delay or note must not, or vanilla places the held block instead.
-        // The sneak is held and spaced by SneakPacing so START_SNEAKING packets never come closer than 2 ticks.
+        // Sneak when placing against interactive supports; release sneak before state-changing clicks.
         if (work != null && work.kind == Kind.PLACE && work.plan.sneak()) {
             event.setSneak(sneakPacing.apply(true, ticks));
         } else if (work != null && work.kind == Kind.ADJUST || sneakPacing.holding()) {
@@ -485,9 +474,7 @@ public final class SchematicBuilder extends Module {
             }
             pending = null;
         }
-        // Planning during the cooldown lets the rotation travel to the next block while the delay runs out.
-        // Mid pillar jump the support click owns the click and the rotation: a build block planned now would turn
-        // the view away from the block under the feet and the jump would land without its support.
+        // A pillar support placement retains rotation ownership during the jump.
         if (pending == null && !(autoWalk.get() && mover.midPillarJump())) {
             pending = chooseAdjustment(player);
             if (pending == null && terraform.get() && terraform(player)) {
@@ -505,8 +492,7 @@ public final class SchematicBuilder extends Module {
             pendingAge = 0;
         }
         if (pending == null && autoWalk.get() && mover.midPillarJump()) status = Status.OUT_OF_REACH;
-        // Nothing in reach and nothing to walk to because the stock for the remaining cells is gone: that is a
-        // shortfall too, or the walker idles and the chest restock below never starts.
+        // Treat missing inventory stock as a restock condition when there are no reachable candidates.
         if (pending == null && status == Status.OUT_OF_REACH && restock.get() && !state.missingMaterials().isEmpty()
                 && walkTargets(player, gateScratch) == 0) {
             status = Status.MISSING_MATERIALS;
@@ -534,7 +520,6 @@ public final class SchematicBuilder extends Module {
         }
     }
 
-    /** Nothing to click from here: let the mover walk, climb or clear up, and report what it is doing. */
     private Pending move(LocalPlayer player) {
         if (status == Status.DONE) {
             if (removeHelpers.get() && mover.hasHelpers() && mover.tickClear(player, effectiveRange())) {
@@ -555,8 +540,7 @@ public final class SchematicBuilder extends Module {
             return null;
         }
         if (midBuildClear || helperStall()) {
-            // Pillars and helper blocks stay until the end, and from the spots left they can hide every face
-            // still to place. Take them down with the end-of-build clean-up, then go on building.
+            // Clear temporary blocks when they obstruct all remaining placement faces.
             midBuildClear = true;
             if (mover.tickClear(player, effectiveRange())) {
                 status = Status.CLEARING;
@@ -632,7 +616,7 @@ public final class SchematicBuilder extends Module {
 
     private boolean tryPlace(LocalPlayer player, Pending work) {
         BuildPlanner.Plan plan = work.plan;
-        // The sneak goes out with this tick's input packet; the crouched eyes are what the plan aimed from.
+        // Placement prediction uses crouched eye height when sneak is sent with movement input.
         if (player.isUsingItem() || player.containerMenu != player.inventoryMenu) return false;
         if (plan.sneak() && !(player.isShiftKeyDown() && player.isCrouching())) {
             rotationWaitTicks++;
@@ -650,8 +634,7 @@ public final class SchematicBuilder extends Module {
                 return false;
             }
             facingRotation = server;
-            // The server picks the block's facing from the rotation it already has; that only has to look at
-            // the face too when the facing matters. A stone block comes out the same whatever the old rotation.
+            // Check the previously submitted rotation for blocks whose placement state depends on facing.
             if (!BuildPlanner.matches(BuildPlanner.trace(player, server, reach), plan)
                     && !facingIndependent(player, work, plan, hit, server, current)) {
                 rotationWaitTicks++;
@@ -677,9 +660,7 @@ public final class SchematicBuilder extends Module {
         if (predicted == null || predicted.getBlock() != work.expected.getBlock()) return false;
         if (work.kind == Kind.HELPER || work.kind == Kind.SCAFFOLD) return placeHelper(player, work, hit);
         boolean exact = BuildPlanner.exact(predicted, work.expected);
-        // The ray reaches the planned face before the rotation settles on the planned point; clicking then puts
-        // a stair or slab in the wrong half. Wait for the exact click, but not past half the plan timeout. A
-        // piston or observer facing the wrong way is worse than a late one: it waits for the plan timeout.
+        // Facing-sensitive blocks wait longer for rotation alignment than stairs and slabs.
         boolean lookSensitive = RedstoneRules.lookDecides(work.expected);
         if (exact && lookSensitive && facingRotation != null) {
             exact = robustFacing(player, stack, plan, hit, facingRotation, work.expected);
@@ -716,11 +697,7 @@ public final class SchematicBuilder extends Module {
         return true;
     }
 
-    /**
-     * The click with the client's own prediction made under the rotation the server will use. Predicting under
-     * the camera's look put a piston or observer down facing the camera way until the server's correction came
-     * back, and a correction lost to the prediction's block-change sequence left it that way for good.
-     */
+    /** Predict the placed state using the rotation selected for the outgoing movement packet. */
     private InteractionResult useWithRotation(LocalPlayer player, BlockHitResult hit, Rotation rotation) {
         if (rotation == null) return mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
         float yaw = player.getYRot();
@@ -736,9 +713,8 @@ public final class SchematicBuilder extends Module {
     }
 
     /**
-     * Which of the two rotations the server reads the facing from depends on packet order, and a look close to
-     * the diagonal flips axis on the smallest rounding: a piston or observer only goes out once both rotations,
-     * and both nudged a couple of degrees, give the wanted facing.
+     * For orientation-sensitive blocks, compare both server-known and outgoing rotations near axis
+     * boundaries.
      */
     private boolean robustFacing(LocalPlayer player, ItemStack stack, BuildPlanner.Plan plan, BlockHitResult hit,
                                  Rotation server, BlockState expected) {
@@ -769,7 +745,7 @@ public final class SchematicBuilder extends Module {
         return withServer != null && withServer == withCurrent;
     }
 
-    /** A support block under the feet mid-jump: no exactness rules, but it is remembered for clean-up. */
+    /** A mid-jump support block is tracked for cleanup without the normal facing constraints. */
     private boolean placeHelper(LocalPlayer player, Pending work, BlockHitResult hit) {
         BuildPlanner.Plan plan = work.plan;
         if (!selectSlot(work.hotbarSlot)) return false;
@@ -783,7 +759,7 @@ public final class SchematicBuilder extends Module {
         return true;
     }
 
-    /** Puts the work's slot in hand; {@code false} while the Grim window does not allow the slot change yet. */
+    /** Returns {@code false} while inventory slot changes are blocked by the movement gate. */
     private boolean selectSlot(int hotbarSlot) {
         if (silentSwap.get()) {
             return InventorySwap.INSTANCE.leaseHotbar(this, hotbarSlot, 2);
@@ -798,7 +774,6 @@ public final class SchematicBuilder extends Module {
             return StateAdjustments.clicksNeeded(current, work.expected) > 0
                     && player.getEyePosition().distanceToSqr(work.plan.hit()) <= reach * reach;
         }
-        // A support click only makes sense while the feet are above the cell it fills.
         if (work.kind == Kind.HELPER && player.getY() < work.plan.target().getY() + 1.0) return false;
         BlockState current = mc.level.getBlockState(work.plan.target());
         if (!current.canBeReplaced()) return false;
@@ -840,12 +815,10 @@ public final class SchematicBuilder extends Module {
             Item item = SchematicMaterials.itemFor(expected);
             int hotbar = hotbarSlotFor(player, item);
             BlockPos target = diff.worldPos(cell, scratch).immutable();
-            // A cell with nothing to click against anywhere around it is not a plan attempt: it waits for a
-            // neighbour, and must not crowd the cells that can be placed out of the attempt budget.
+            // Exclude unsupported floating cells from the placement-attempt budget.
             if (!BuildPlanner.hasSupport(mc.level, target)) continue;
             attempts++;
-            // Plan before restocking: swapping in the item for a cell that cannot be clicked from here makes the
-            // next candidate swap its own item back over it, every tick, and nothing gets placed.
+            // Choose a reachable placement before changing inventory slots to prevent repeated restock swaps.
             ItemStack stack = hotbar >= 0 ? player.getInventory().getItem(hotbar) : new ItemStack(item);
             BuildPlanner.Plan plan = BuildPlanner.plan(player, mc.level, target, expected, stack, reach, aim);
             if (plan == null || !acceptPlan(diff, plan, expected)) continue;
@@ -862,9 +835,8 @@ public final class SchematicBuilder extends Module {
     }
 
     /**
-     * No missing cell could be planned: when floating cells (nothing to click against) are the reason, a helper
-     * block goes into a free schematic-air cell beside the lowest one, so it can be placed on a later tick. The
-     * helper is tracked like a pillar block and broken again once the build is done.
+     * When no floating cell has support, place a temporary support in schematic air and track it for
+     * cleanup.
      */
     private Pending scaffold(LocalPlayer player, SchematicDiff diff, int count) {
         status = Status.OUT_OF_REACH;
@@ -899,7 +871,7 @@ public final class SchematicBuilder extends Module {
         return null;
     }
 
-    /** Whether the schematic holds nothing at {@code pos}: air inside the footprint, or outside it entirely. */
+    /** Treats positions outside the schematic footprint as empty, as well as explicit schematic air. */
     private boolean schematicAir(BlockPos pos) {
         Schematic schematic = state.schematic();
         SchematicPlacement placement = state.placement();
@@ -911,8 +883,8 @@ public final class SchematicBuilder extends Module {
     }
 
     /**
-     * Whether a plan found for a candidate goes out now. An approximate piston or observer first gives the walker
-     * a while to find a spot with the right look; a cell that would fire waits a few times for the circuit.
+     * Defers orientation-sensitive placements while a better facing is reachable and delays circuit
+     * activation.
      */
     private boolean acceptPlan(SchematicDiff diff, BuildPlanner.Plan plan, BlockState expected) {
         BlockPos target = plan.target();
@@ -926,7 +898,6 @@ public final class SchematicBuilder extends Module {
                 if (look == null) yawOnly.add(key);
                 return false;
             }
-            // Out of patience: the walker stops looking for a better spot and the approximate click goes out.
             lookWanted.remove(key);
             yawOnly.remove(key);
             if (approximate.get() == ApproximateMode.SKIP) {
@@ -948,9 +919,8 @@ public final class SchematicBuilder extends Module {
     }
 
     /**
-     * Clicks on placed blocks that need a delay, mode, note, lever position or door set. Comes before new
-     * placements so the click lands while the player still stands next to the block; a lever is only switched on
-     * once nothing else is open, since that powers the build.
+     * Apply pending state changes before placing new blocks; defer circuit activation until other cells
+     * are complete.
      */
     private Pending chooseAdjustment(LocalPlayer player) {
         SchematicDiff diff = state.diff(mc.level);
@@ -997,7 +967,6 @@ public final class SchematicBuilder extends Module {
         return new Pending(plan, expected, null, -1, Kind.ADJUST);
     }
 
-    /** One use on the placed block; the world is read again before the next one. */
     private void tryAdjust(LocalPlayer player, Pending work) {
         BuildPlanner.Plan plan = work.plan;
         if (player.isUsingItem() || player.containerMenu != player.inventoryMenu) return;
@@ -1031,18 +1000,14 @@ public final class SchematicBuilder extends Module {
         pending = null;
     }
 
-    /**
-     * The selected layer, advanced past layers whose open cells all wait (for power to open or for a block above)
-     * when enabled. -1 once the whole build is done.
-     */
+    /** Returns the current build layer, or {@code -1} after all layers are complete. */
     private int workingLayer(SchematicDiff diff, int openBand) {
         int layer = state.layer();
         int top = state.layerCount() - 1;
-        // A wrong block of the layer counts as done for the diff, but once terraforming mines it the cell is open
-        // again: moving up first would strand it below the working layer.
+        // Do not advance past a layer whose incorrect blocks may still be removed by terraforming.
         while (safety.layerSettled(mc.level, diff, layer, openBand) && !(terraform.get() && terraformRemaining())) {
             if (layer >= top) {
-                // Power and cells hanging on higher layers were left behind on the way up; come back for them.
+                // Revisit deferred powered and suspended cells from earlier layers.
                 if (BuildSafety.backlogOpen(diff, top + 1)) return top;
                 status = Status.DONE;
                 if (completedLayerNotified != Integer.MAX_VALUE) {
@@ -1066,10 +1031,7 @@ public final class SchematicBuilder extends Module {
         return layer;
     }
 
-    /**
-     * Climbing before a layer protects the step onto it from being walled off by the layer's own blocks; a layer
-     * left with only torches, dust or levers to place walls nothing off and is built from where the player is.
-     */
+    /** Climb before closing off movement with a new layer of solid blocks. */
     private static boolean hasOpenSupport(SchematicDiff diff, int y) {
         for (int cell = diff.layerStart(y), end = diff.layerEnd(y); cell < end; cell++) {
             if (BuildSafety.open(diff.status(cell)) && diff.order().order(cell) < RedstoneRules.ATTACHED) return true;
@@ -1077,7 +1039,6 @@ public final class SchematicBuilder extends Module {
         return false;
     }
 
-    /** Whether every open cell is one the builder already gave up on (listed in the menu). */
     private boolean nothingElseToPlace(SchematicDiff diff) {
         if (diff.openTotal() == 0) return true;
         for (int cell = 0, count = diff.cellCount(); cell < count; cell++) {
@@ -1086,7 +1047,6 @@ public final class SchematicBuilder extends Module {
         return true;
     }
 
-    /** Blocks still waiting for a delay, mode, note or lever click when the build is done were out of reach. */
     private void flagUnadjusted(SchematicDiff diff) {
         for (int cell = 0, count = diff.cellCount(); cell < count; cell++) {
             if (diff.status(cell) != SchematicDiff.WRONG) continue;
@@ -1117,12 +1077,11 @@ public final class SchematicBuilder extends Module {
         Vec3 eyes = player.getEyePosition();
         Rotation facing = RotationManager.INSTANCE.getCurrentRotation();
         if (facing == null) facing = new Rotation(player.getYRot(), player.getXRot());
-        // Cell centres up to half a block diagonal beyond reach can still expose a reachable face.
+        // A reachable face may lie within half a block diagonal beyond a cell centre.
         double reach = effectiveRange() + 0.87;
         double reachSq = reach * reach;
         int count = 0;
-        // Layers below the working one only hold cells left behind on purpose: power and blocks hanging on a
-        // higher layer.
+        // Lower layers retain deferred powered and suspended placements.
         for (int y = 0; y <= high; y++) {
             if (y < low && BuildSafety.openCount(diff, y) == 0) continue;
             for (int cell = diff.layerStart(y), end = diff.layerEnd(y); cell < end; cell++) {
@@ -1181,17 +1140,17 @@ public final class SchematicBuilder extends Module {
         return -1;
     }
 
-    /** Swaps a stack from the main inventory into the restock slot; placement resumes on a later tick. */
+    /** Restock by moving a stack from the main inventory; placement continues on a subsequent tick. */
     private boolean restockFromInventory(LocalPlayer player, Item item) {
         if (player.containerMenu != player.inventoryMenu) return false;
-        // A click queued by an earlier tick is still waiting for the movement lock to take hold.
+        // Wait for a previously requested movement lock before issuing the queued click.
         if (ticks < restockClickUntil) return true;
         Inventory inventory = player.getInventory();
         for (int i = 9; i < Inventory.INVENTORY_SIZE; i++) {
             if (inventory.getItem(i).getItem() != item) continue;
             int hotbar = restockSlot.get() - 1;
             int screenSlot = InventorySwap.mapInventoryToScreenSlot(i);
-            // Grim MultiActionsC: the click only goes out on a tick with all movement input and sprint released.
+            // Container clicks require released movement input and sprint.
             boolean queued = InventorySwap.INSTANCE.command(this, InventoryActionKind.INVENTORY_CLICK,
                     () -> InventorySwap.INSTANCE.clickSwap(screenSlot, hotbar));
             if (!queued) return false;
@@ -1247,8 +1206,8 @@ public final class SchematicBuilder extends Module {
     }
 
     /**
-     * Whether the world block at {@code pos} is in the way of the schematic block {@code expected} (null for an air
-     * cell) and terraforming may mine it: a different block, never a fluid, bedrock or the support under the feet.
+     * Identifies terraformable mismatches, excluding liquids, bedrock, and the block supporting the
+     * player.
      */
     private boolean minable(BlockPos pos, BlockState expected) {
         if (mc.level == null || mc.player == null || !mc.level.hasChunkAt(pos)) return false;
@@ -1260,7 +1219,6 @@ public final class SchematicBuilder extends Module {
         return true;
     }
 
-    /** Whether any wrong block of the working layers is left for terraforming to mine. */
     private boolean terraformRemaining() {
         SchematicDiff diff = state.currentDiff();
         if (diff == null || mc.level == null) return false;
@@ -1277,8 +1235,9 @@ public final class SchematicBuilder extends Module {
     }
 
     /**
-     * Mines a reachable block that stands where the schematic wants something else (and, with {@code terraform_air},
-     * anything in a schematic air cell). Returns whether a block is being mined this tick.
+     * Mines reachable blocks that differ from the schematic, including air cells when terraforming air is
+     * enabled.
+     * @return whether a block is being mined on the current tick.
      */
     private boolean terraform(LocalPlayer player) {
         SchematicDiff diff = state.diff(mc.level);
@@ -1325,7 +1284,7 @@ public final class SchematicBuilder extends Module {
                 }
             }
         }
-        // Top first so gravity blocks and the ground under later targets stay put; nearest first within a level.
+        // Mine upper blocks first to avoid disturbing supports and gravity-affected blocks.
         found.sort((a, b) -> a.getY() != b.getY() ? Integer.compare(b.getY(), a.getY())
                 : Double.compare(Vec3.atCenterOf(a).distanceToSqr(eyes), Vec3.atCenterOf(b).distanceToSqr(eyes)));
         for (BlockPos pos : found) {
@@ -1348,10 +1307,7 @@ public final class SchematicBuilder extends Module {
         return cell >= 0 && minable(pos, diff.expectedState(cell));
     }
 
-    /**
-     * Missing cells of the working layers that the inventory has material for, as packed world positions; the
-     * walker plans where to stand from these.
-     */
+    /** Returns missing, stocked cells of active layers as packed world positions. */
     private int walkTargets(LocalPlayer player, long[] out) {
         if (status == Status.RESTOCKING && restockChest != null && out.length > 0) {
             out[0] = WalkTerrain.pack(restockChest.getX(), restockChest.getY(), restockChest.getZ());
@@ -1416,7 +1372,7 @@ public final class SchematicBuilder extends Module {
             restockChestTicks = 0;
         }
         status = Status.RESTOCKING;
-        // A face of the chest the eyes really see, aimed at a point the ray lands on: never a fixed top face.
+        // Aim at a chest face that the player-eye ray can reach.
         BuildPlanner.Plan click = BuildPlanner.planClick(player, mc.level, target,
                 Math.min(effectiveRange(), player.blockInteractionRange()));
         restockPlan = click;
@@ -1427,7 +1383,6 @@ public final class SchematicBuilder extends Module {
                 requestRotation(click.rotation());
             }
             restockChestTicks++;
-            // Only once the camera's own ray lands on the planned face of the chest.
             if (!effectiveRotate() || chestRayOnFace(player, click)) openChestPending = true;
             if (restockChestTicks > 25) {
                 chestIndex.markCooldown(mc.level, target, ticks + ChestIndex.retryCooldownTicks());
@@ -1455,7 +1410,7 @@ public final class SchematicBuilder extends Module {
         RotationManager.INSTANCE.release(this);
         containerOpenTicks++;
         if (containerClickCooldown > 0) containerClickCooldown--;
-        // Grim/Vulcan inventory checks: the first click waits out the open, later clicks keep the delay.
+        // Delay the first inventory click after opening; subsequent clicks use the configured interval.
         if (!ContainerPacing.ready(containerOpenTicks, containerClickCooldown)) return;
         AbstractContainerMenu menu = player.containerMenu;
         int containerSlots = menu.slots.size() - 36;
@@ -1488,9 +1443,8 @@ public final class SchematicBuilder extends Module {
     }
 
     /**
-     * Vulcan BadPackets K: consecutive {@code START_SNEAKING} packets closer than ~90 ms flag. A sneak is held
-     * for at least {@link #MIN_HOLD_TICKS} ticks and a new one starts at least {@link #MIN_START_GAP_TICKS}
-     * ticks after the previous start.
+     * Enforces minimum sneak hold and restart intervals of {@link #MIN_HOLD_TICKS} and {@link
+     * #MIN_START_GAP_TICKS}.
      */
     static final class SneakPacing {
         static final int MIN_HOLD_TICKS = 2;
@@ -1498,7 +1452,6 @@ public final class SchematicBuilder extends Module {
         private int startTick = Integer.MIN_VALUE / 2;
         private boolean sneaking;
 
-        /** The sneak state to send for {@code tick} when the builder {@code wants} to sneak. */
         boolean apply(boolean wants, int tick) {
             if (sneaking) {
                 if (!wants && tick - startTick >= MIN_HOLD_TICKS) sneaking = false;
@@ -1519,7 +1472,7 @@ public final class SchematicBuilder extends Module {
         }
     }
 
-    /** Container click cadence: the first click waits out the open, later clicks keep the configured delay. */
+    /** The first click waits for the inventory to open; subsequent clicks observe the configured cooldown. */
     static final class ContainerPacing {
         static final int OPEN_WAIT_TICKS = 2;
         static final int CAUTIOUS_MIN_SPACING = 2;
@@ -1527,7 +1480,10 @@ public final class SchematicBuilder extends Module {
         private ContainerPacing() {
         }
 
-        /** {@code openTicks}: ticks since the menu was seen (1 on the first); {@code cooldown}: ticks left to wait. */
+        /**
+         * {@code openTicks} starts at one when the menu appears; {@code cooldown} is the remaining wait
+         * in ticks.
+         */
         static boolean ready(int openTicks, int cooldown) {
             return openTicks > OPEN_WAIT_TICKS && cooldown <= 0;
         }
@@ -1611,7 +1567,6 @@ public final class SchematicBuilder extends Module {
             if (player == null || player.containerMenu != player.inventoryMenu || ticks < restockClickUntil) return false;
             int hotbar = restockSlot.get() - 1;
             int screenSlot = InventorySwap.mapInventoryToScreenSlot(inventorySlot);
-            // Same Grim-safe click as restocking: it only goes out on a tick with movement input released.
             boolean queued = InventorySwap.INSTANCE.command(SchematicBuilder.this, InventoryActionKind.INVENTORY_CLICK,
                     () -> InventorySwap.INSTANCE.clickSwap(screenSlot, hotbar));
             if (queued) restockClickUntil = ticks + RESTOCK_CLICK_WAIT_TICKS;
@@ -1627,7 +1582,7 @@ public final class SchematicBuilder extends Module {
             double dx = WalkTerrain.unpackX(target) + 0.5 - eyeX;
             double dy = WalkTerrain.unpackY(target) + 0.5 - eyeY;
             double dz = WalkTerrain.unpackZ(target) + 0.5 - eyeZ;
-            // Only the yaw decides a repeater: the height of the eyes does not matter.
+            // Only yaw determines repeater orientation.
             return dominantLook(dx, yawOnly.contains(key) ? 0.0 : dy, dz, look);
         }
 
@@ -1642,10 +1597,7 @@ public final class SchematicBuilder extends Module {
         }
     }
 
-    /**
-     * Whether the look from the eyes to a cell runs along {@code look} clearly enough that clicks across the
-     * cell's faces (up to half a block off its centre) keep that nearest axis.
-     */
+    /** Tests whether the eye-to-cell direction has a stable dominant axis despite small aim offsets. */
     static boolean dominantLook(double dx, double dy, double dz, Direction look) {
         double along = dx * look.getStepX() + dy * look.getStepY() + dz * look.getStepZ();
         if (along <= 0.0) return false;
@@ -1659,13 +1611,9 @@ public final class SchematicBuilder extends Module {
     }
 
     private enum Kind {
-        /** Places a schematic block. */
         PLACE,
-        /** Places a support block under the feet mid pillar jump. */
         HELPER,
-        /** Places a temporary helper block next to a floating cell so it gains something to click against. */
         SCAFFOLD,
-        /** Uses a placed block to step its delay, mode, note or position. */
         ADJUST
     }
 

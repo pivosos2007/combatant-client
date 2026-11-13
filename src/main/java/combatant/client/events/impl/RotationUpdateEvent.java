@@ -12,11 +12,9 @@ import combatant.client.util.aiming.data.Rotation;
 import lombok.Getter;
 
 /**
- * Marks the boundaries of a rotation-manager update: {@link Type#PRE} before
- * pending requests are resolved and {@link Type#POST} afterwards.
- * {@link Type#RESOLVED} exposes the tentative movement heading before
- * the final rotation request is selected in the same update.
- * A null phase passed to the constructor is treated as {@code PRE}.
+ * Rotation-update phases: {@link Type#PRE} accepts normal requests; {@link Type#RESOLVED} exposes a
+ * provisional movement direction for emergency requests; {@link Type#POST} follows request resolution.
+ * The manager publishes the movement direction with {@link Type#RESOLVED}. A null phase is treated as {@code PRE}.
  */
 @Getter
 public final class RotationUpdateEvent extends Event {

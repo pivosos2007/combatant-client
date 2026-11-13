@@ -139,9 +139,8 @@ public final class RotationManager {
     }
 
     /**
-     * True only after this provider's rotation was processed by the manager and is
-     * still the highest-priority active request. Used by synchronous block interactions
-     * instead of inferring readiness from the existence of a rotation callback.
+     * Returns whether this provider owns the current resolved rotation and the highest-priority active
+     * request.
      */
     public boolean ownsActiveRotation(Object provider) {
         return provider != null
@@ -232,7 +231,6 @@ public final class RotationManager {
             float yawDiff = RotationUtil.angleDifference(playerRotation.yaw(), currentRotation.yaw());
             float newYaw = currentRotation.yaw() + yawDiff * speed;
             float newPitch = Mth.clamp(Mth.lerp(speed, currentRotation.pitch(), playerRotation.pitch()), -90.0f, 90.0f);
-            // normalize() quantizes relative to the last sent server rotation (== currentRotation once emitted).
             setCurrentRotation(new Rotation(newYaw, newPitch, false).normalize(), currentRotationProvider);
             return null;
         }
@@ -330,10 +328,7 @@ public final class RotationManager {
         smoothReturnTicks = 0;
     }
 
-    /**
-     * Stops accepting new rotations from provider, but keeps current/previous state
-     * so update() can return camera smoothly instead of snapping instantly.
-     */
+    /** Releases provider ownership while retaining rotation state for smooth return to camera. */
     public void release(Object provider) {
         release(provider, true);
     }

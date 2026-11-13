@@ -67,11 +67,7 @@ public final class PlayerSimulationCache {
         return cached;
     }
 
-    /**
-     * Refresh input after movement handlers (notably TargetStrafe Grim) have
-     * chosen the actual movement flags. The ordinary event cache may have
-     * been populated before those handlers ran.
-     */
+    /** Refreshes the simulation input after movement handlers modify the selected movement flags. */
     public static void refreshLocalMovementPrediction(MovementInputEvent event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null || event == null) return;
@@ -81,7 +77,7 @@ public final class PlayerSimulationCache {
         INSTANCE.localForcedJumpCache = null;
     }
 
-    /** Simulates an intentional jump using the same movement input as normal prediction. */
+    /** Uses the pending movement input while predicting a forced jump. */
     public static SimulatedPlayerCache getSimulationForLocalPlayerWithForcedJump(double jumpMotion) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null) return null;

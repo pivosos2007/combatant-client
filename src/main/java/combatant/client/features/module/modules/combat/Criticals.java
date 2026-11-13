@@ -240,8 +240,7 @@ public final class Criticals extends Module {
         Entity target = getTargetInRange(range);
         KillAura aura = Modules.get(KillAura.class);
         if (aura != null && aura.usesSmartCriticalTiming() && aura.getCurrentTarget() != null) {
-            // KillAura's planner owns the jump decision for Smart. Still track
-            // the resulting input for NoGround and the vanilla jump hook.
+            // Smart KillAura controls jump selection; Criticals still records the resulting jump input.
             if (event.isJump()) lastJumpInputAge = player.tickCount;
             return;
         }
@@ -354,10 +353,7 @@ public final class Criticals extends Module {
         return isCriticalHitInternal(target, ignoreEnabledState);
     }
 
-    /**
-     * Evaluates an attack using a temporary KillAura selection override.
-     * The configured Criticals selection is not changed.
-     */
+    /** Evaluates an attack with an optional selection override without changing the configured selection. */
     public boolean shouldAttackForKillAura(ClickScheduler clicker,
                                            Entity target,
                                            SelectionMode selectionOverride,
@@ -377,8 +373,7 @@ public final class Criticals extends Module {
             if (selection == SelectionMode.ALWAYS) return isNaturalCriticalReady(ignoreSprint);
             if (selection == SelectionMode.SMART) {
                 if (player.onGround()) {
-                    // A queued jump must complete before the attack. Timer/NoGround
-                    // explicitly initiate their own real jump as part of preparation.
+                    // A pending jump does not satisfy a ground-level critical attempt.
                     if (getMode() != Mode.JUMP || hasJumpIntent(player) || shouldForceJumpCrit(target)) {
                         return false;
                     }
@@ -399,27 +394,24 @@ public final class Criticals extends Module {
         };
     }
 
-    /** Whether the selected Criticals mode can produce natural falling criticals. */
     public boolean usesNaturalKillAuraCrit() {
         return !isEnabled() || usesNaturalCriticalState();
     }
 
-    /** Reuses the existing environmental restrictions even when Criticals is disabled. */
     public boolean canPredictNaturalCrit(Entity target) {
         return target != null && allowsCriticalHit(true)
                 && (!isEnabled() || canUseKillAuraJumpCriticalState(target));
     }
 
-    /** Match the jump-motion override actually installed by PlayerJumpEvent. */
+    /** Returns the jump velocity selected by Criticals, or {@code NaN} when no override applies. */
     public double getPlannedJumpMotion() {
         LocalPlayer player = currentPlayer();
         if (!isEnabled() || getMode() != Mode.JUMP || player == null) return Double.NaN;
-        // The regular jump hook only overrides the unmodified 0.42 motion.
+        // The jump override applies only when jump-boost power is zero.
         if (Math.abs(player.getJumpBoostPower()) > 1.0E-4) return Double.NaN;
         return jumpHeight.get();
     }
 
-    /** Preserve the configured jump height when the Aura planner requests a jump. */
     public void notifyKillAuraJump() {
         if (!isEnabled()) return;
         LocalPlayer player = currentPlayer();
@@ -454,13 +446,10 @@ public final class Criticals extends Module {
         } else if (getMode() == Mode.VULCAN_297
                 && canPerformVulcan297Critical(player)) {
             if (!canDoCriticalHit(true, true)) return;
-            // The server does not grant criticals while sprinting. Reset the
-            // server sprint state before the movement/attack packet sequence.
+            // Clear the server sprint state before submitting the critical packet sequence.
             if (SprintController.INSTANCE.isServerSprinting(player)) {
                 AttackUtil.sendStopSprinting(mc, player);
             }
-            // Real descending movement with a selected effect needs no extra
-            // out-of-order position packets. The standard path uses the original pair.
             if (!isVulcan297ExemptActive(player) || player.onGround()) {
                 performVulcan297Critical(mc, player);
             }
@@ -477,9 +466,7 @@ public final class Criticals extends Module {
 
         if (getMode() == Mode.NO_GROUND && event.getPacket() instanceof ServerboundMovePlayerPacket move) {
             LocalPlayer player = currentPlayer();
-            // Never spoof permanent airborne state while standing still: it
-            // desynchronizes fall distance and trips GroundSpoof. On landing,
-            // allow a genuine grounded packet to resynchronize the server.
+            // Keep grounded movement packets intact when no jump has been requested.
             if (player != null && (!player.onGround() || lastJumpInputAge == player.tickCount)) {
                 ((ServerboundMovePlayerPacketAccessor) move).combatant$setOnGround(false);
             }
@@ -620,7 +607,7 @@ public final class Criticals extends Module {
         return target;
     }
 
-    /** One line-of-sight raycast per target per tick; every event in the tick shares the result. */
+    /** Caches one target line-of-sight check per client tick. */
     private boolean hasCachedLineOfSight(LocalPlayer player, Entity target) {
         if (player.tickCount != lineOfSightAge || target.getId() != lineOfSightTargetId) {
             lineOfSightAge = player.tickCount;
@@ -741,9 +728,6 @@ public final class Criticals extends Module {
             }
             case DOWN -> sendCriticalPacket(player, -1.0E-9, false);
             case GRIM -> {
-                // GrimAC 2.3.74 monitors packet rates per client tick (TickTimer/Timer) and full physics
-                // simulation. Do not inject extra out-of-order movement packets before attacks; airborne crits
-                // are naturally critical while falling.
             }
             case BLOCKSMC -> {
                 if (player.tickCount % 4 == 0) {
@@ -794,8 +778,6 @@ public final class Criticals extends Module {
     private boolean canPerformVulcan297Critical(LocalPlayer player) {
         if (player == null || vulcan297JumpRecoveryTicks > 0) return false;
         if (isVulcan297ExemptActive(player)) {
-            // Slow Falling/Levitation are explicit exemptions for some movement
-            // checks, not for Criticals A/B. Only use real falling movement.
             if (player.onGround()) return vulcan297LandingRecoveryTicks <= 0;
             return player.fallDistance > 0.0f && player.getDeltaMovement().y < 0.0;
         }
