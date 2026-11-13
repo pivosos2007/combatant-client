@@ -16,9 +16,7 @@ package combatant.client.util.player.simulation;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
-import combatant.client.events.Events;
 import combatant.client.events.impl.MovementInputEvent;
-import combatant.client.events.impl.PlayerSafeWalkEvent;
 
 final class SimulatedInput {
     private static final double MAX_WALKING_SPEED = 0.121;
@@ -31,7 +29,6 @@ final class SimulatedInput {
     final boolean sneak;
     final boolean sprint;
     boolean ignoreClippingAtLedge;
-    boolean forceSafeWalk;
 
     float movementForward;
     float movementSideways;
@@ -57,11 +54,17 @@ final class SimulatedInput {
                     clientPlayer.input.keyPresses.shift(),
                     clientPlayer.input.keyPresses.sprint()
             );
-            input.forceSafeWalk = shouldForceSafeWalk();
             return input;
         }
 
         return guessInput(player);
+    }
+
+    SimulatedInput withJump(boolean shouldJump) {
+        SimulatedInput copy = new SimulatedInput(forward, backward, left, right,
+                shouldJump, sneak, sprint);
+        copy.ignoreClippingAtLedge = ignoreClippingAtLedge;
+        return copy;
     }
 
     static SimulatedInput fromMovementEvent(Player player, MovementInputEvent event) {
@@ -74,7 +77,6 @@ final class SimulatedInput {
                 event.isSneak(),
                 event.isSprint()
         );
-        input.forceSafeWalk = shouldForceSafeWalk();
         input.ignoreClippingAtLedge = false;
         return input;
     }
@@ -105,16 +107,6 @@ final class SimulatedInput {
             input.update();
         }
         return input;
-    }
-
-    private static boolean shouldForceSafeWalk() {
-        if (!Events.BUS.hasListeners(PlayerSafeWalkEvent.class)) {
-            return false;
-        }
-
-        PlayerSafeWalkEvent event = new PlayerSafeWalkEvent();
-        Events.BUS.post(event);
-        return event.isSafeWalk();
     }
 
     void update() {

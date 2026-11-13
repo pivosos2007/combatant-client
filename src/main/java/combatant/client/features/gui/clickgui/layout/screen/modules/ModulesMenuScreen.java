@@ -302,6 +302,8 @@ public final class ModulesMenuScreen {
             }
         }
 
+        renderSearchGlass(1.0f);
+
         for (ModulesMenuPanel panel : panels) {
             float alpha = panelAlpha(panel);
             if (alpha <= 0.001f) continue;
@@ -329,6 +331,7 @@ public final class ModulesMenuScreen {
                 renderPanelGlass(panel, alpha);
             }
         }
+        renderSearchGlass(passAlpha);
     }
 
     public boolean mousePressed(float mouseX, float mouseY, int button) {
@@ -1464,6 +1467,21 @@ public final class ModulesMenuScreen {
 
         renderScrollbar(panel, panel.settingsSmoothScroll, panel.maxSettingsScroll, clipY, clipH, alpha, mouseX, mouseY);
         } finally { if (pageClip) ScissorFunction.pop(); }
+    }
+
+    private void renderSearchGlass(float alphaFactor) {
+        if (searchAnim <= 0.001f) return;
+
+        float alpha = easeOutCubic(screenAnim) * searchAnim * alphaFactor;
+        if (alpha <= 0.001f) return;
+
+        float radius = 6.0f * scale;
+        LayoutRender2D.roundedSoftShadow(
+                searchX, searchY, searchW, searchH, radius,
+                12.0f * scale, 0.018f,
+                withAlpha(ModulesMenuStyle.shadow(), alpha)
+        );
+        drawLiquidGlass(searchX, searchY, searchW, searchH, radius, alpha, ModulesMenuStyle.glass());
     }
 
     private void renderSearch(float mouseX, float mouseY) {

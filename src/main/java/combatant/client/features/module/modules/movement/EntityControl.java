@@ -216,39 +216,46 @@ public final class EntityControl extends Module {
     }
 
     @GaugeConnect(id = "entity_speed", labelKey = "hud.gauges.entitycontrol.entity_speed",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample entitySpeedGauge() {
-        return bufferSample(boatEntitySpeedBuffer, activeBoat());
+        return bufferSample(boatEntitySpeedBuffer, activeBoat(), true);
     }
 
     @GaugeConnect(id = "boat_fly_horizontal", labelKey = "hud.gauges.entitycontrol.boat_horizontal",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample boatHorizontalGauge() {
-        return bufferSample(boatHorizontalBuffer, activeBoat());
+        return bufferSample(boatHorizontalBuffer, activeBoat(), true);
     }
 
     @GaugeConnect(id = "boat_fly_ascent", labelKey = "hud.gauges.entitycontrol.boat_ascent",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample boatAscentGauge() {
-        return bufferSample(boatVerticalBuffer, activeBoat());
+        return bufferSample(boatVerticalBuffer, activeBoat(), false);
     }
 
     @GaugeConnect(id = "boat_fly_hover", labelKey = "hud.gauges.entitycontrol.boat_hover",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample boatHoverGauge() {
-        return bufferSample(boatHoverBuffer, activeBoat());
+        return bufferSample(boatHoverBuffer, activeBoat(), false);
     }
 
     @GaugeConnect(id = "mount_speed", labelKey = "hud.gauges.entitycontrol.mount_speed",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample mountSpeedGauge() {
-        return bufferSample(mountSpeedBuffer, activeMount());
+        return bufferSample(mountSpeedBuffer, activeMount(), true);
     }
 
-    private GaugeRegistry.Sample bufferSample(double used, boolean visible) {
+    private static boolean canSpendBoatBurst(double used) {
+        return GaugeRegistry.canConsume(used, VULCAN_BOAT_BURST_BUDGET, 1.0D);
+    }
+
+    private GaugeRegistry.Sample bufferSample(double used, boolean visible, boolean fullBurstCost) {
         float available = (float) (1.0D - Mth.clamp(used / VULCAN_BOAT_BUFFER_LIMIT, 0.0D, 1.0D));
-        return new GaugeRegistry.Sample(available, used + 1.0D <= VULCAN_BOAT_BURST_BUDGET,
-                visible, GaugeRegistry.Flow.DRAIN, "");
+        double cost = fullBurstCost ? 1.0D : 0.0D;
+        float threshold = GaugeRegistry.consumptionThreshold(
+                VULCAN_BOAT_BUFFER_LIMIT, VULCAN_BOAT_BURST_BUDGET, cost);
+        boolean ready = fullBurstCost ? canSpendBoatBurst(used) : used < VULCAN_BOAT_BURST_BUDGET;
+        return new GaugeRegistry.Sample(available, ready, visible, GaugeRegistry.Flow.DRAIN, "", threshold);
     }
 
     private boolean activeBoat() {
@@ -399,8 +406,8 @@ public final class EntityControl extends Module {
                         boolean burst = requested && (terrain != BoatTerrain.AIR
                                 || Modules.enabled(EntityFlight.class))
                                 && boatCorrectionTicks == 0
-                                && boatEntitySpeedBuffer + 1.0D <= VULCAN_BOAT_BURST_BUDGET
-                                && boatHorizontalBuffer + 1.0D <= VULCAN_BOAT_BURST_BUDGET
+                                && canSpendBoatBurst(boatEntitySpeedBuffer)
+                                && canSpendBoatBurst(boatHorizontalBuffer)
                                 && boatVerticalBuffer < VULCAN_BOAT_BURST_BUDGET
                                 && boatHoverBuffer < VULCAN_BOAT_BURST_BUDGET;
                         if (burst) {
@@ -463,7 +470,7 @@ public final class EntityControl extends Module {
                     if (mountCorrectionTicks > 0) mountCorrectionTicks--;
                 }
                 mountBurst = input && boostRequested() && mountCorrectionTicks == 0
-                        && mountSpeedBuffer + 1.0D <= VULCAN_BOAT_BURST_BUDGET;
+                        && canSpendBoatBurst(mountSpeedBuffer);
             }
             if (airControl.get() && !vehicle.onGround() && input) {
                 Vec3 steer = VehicleMotion.horizontal(mc, player, Math.hypot(x, z));

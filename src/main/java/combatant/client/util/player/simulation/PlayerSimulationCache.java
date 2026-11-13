@@ -29,6 +29,9 @@ public final class PlayerSimulationCache {
     private final Map<Player, SimulatedPlayerCache> otherPlayerCache = new WeakHashMap<>();
     private final Map<Player, RemotePlayerObservation> remoteObservations = new WeakHashMap<>();
     private SimulatedPlayerCache localPlayerCache;
+    private SimulatedPlayerCache localForcedJumpCache;
+    private double localForcedJumpMotion = Double.NaN;
+    private SimulatedInput localInput;
 
     private PlayerSimulationCache() {
     }
@@ -64,10 +67,41 @@ public final class PlayerSimulationCache {
         return cached;
     }
 
+    /**
+     * Refresh input after movement handlers (notably TargetStrafe Grim) have
+     * chosen the actual movement flags. The ordinary event cache may have
+     * been populated before those handlers ran.
+     */
+    public static void refreshLocalMovementPrediction(MovementInputEvent event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.player == null || event == null) return;
+        INSTANCE.localInput = SimulatedInput.fromMovementEvent(mc.player, event);
+        INSTANCE.localPlayerCache = new SimulatedPlayerCache(
+                new LocalPlayerSimulation(mc.player, INSTANCE.localInput));
+        INSTANCE.localForcedJumpCache = null;
+    }
+
+    /** Simulates an intentional jump using the same movement input as normal prediction. */
+    public static SimulatedPlayerCache getSimulationForLocalPlayerWithForcedJump(double jumpMotion) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.player == null) return null;
+        if (INSTANCE.localForcedJumpCache == null
+                || Double.compare(INSTANCE.localForcedJumpMotion, jumpMotion) != 0) {
+            SimulatedInput input = INSTANCE.localInput != null
+                    ? INSTANCE.localInput : SimulatedInput.fromPlayer(mc.player);
+            INSTANCE.localForcedJumpCache = new SimulatedPlayerCache(
+                    new LocalPlayerSimulation(mc.player, input.withJump(true), jumpMotion));
+            INSTANCE.localForcedJumpMotion = jumpMotion;
+        }
+        return INSTANCE.localForcedJumpCache;
+    }
+
     @EventHandler
     private void onGameTick(GameTickEvent event) {
         otherPlayerCache.clear();
         localPlayerCache = null;
+        localForcedJumpCache = null;
+        localInput = null;
         pruneRemoteObservations();
     }
 
@@ -76,15 +110,15 @@ public final class PlayerSimulationCache {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.player == null) {
             localPlayerCache = null;
+            localForcedJumpCache = null;
+            localInput = null;
             return;
         }
 
+        localInput = SimulatedInput.fromMovementEvent(mc.player, event);
+        localForcedJumpCache = null;
         localPlayerCache = new SimulatedPlayerCache(
-                new LocalPlayerSimulation(
-                        mc.player,
-                        SimulatedInput.fromMovementEvent(mc.player, event)
-                )
-        );
+                new LocalPlayerSimulation(mc.player, localInput));
     }
 
     private void pruneRemoteObservations() {

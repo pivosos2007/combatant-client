@@ -119,6 +119,7 @@ public final class AutomationRuntime {
             scheduler.runDeferred(ExecutionPhase.AFTER_ROTATION);
             return;
         }
+        if (event.getType() != RotationUpdateEvent.Type.PRE) return;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
         if (player != lastPlayer) {

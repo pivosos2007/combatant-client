@@ -19,6 +19,7 @@ import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.pipeline.UniformType;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
+import combatant.client.render.engine.hdr.HdrPipelineVariants;
 import net.minecraft.resources.Identifier;
 
 public final class PostProcessRenderPipelines {
@@ -136,6 +137,7 @@ public final class PostProcessRenderPipelines {
             .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
             .withVertexShader(shader("fullscreen.vert"))
             .withFragmentShader(shader("jump_shockwave.frag"))
+            .withShaderDefine(HdrPipelineVariants.MANAGED_COLOR)
             .withSampler("u_Texture")
             .withSampler("u_Depth")
             .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)
@@ -152,6 +154,7 @@ public final class PostProcessRenderPipelines {
             .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
             .withVertexShader(shader("fullscreen.vert"))
             .withFragmentShader(shader("jump_shockwave.frag"))
+            .withShaderDefine(HdrPipelineVariants.MANAGED_COLOR)
             .withSampler("u_Texture")
             .withSampler("u_Depth")
             .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)
@@ -200,6 +203,7 @@ public final class PostProcessRenderPipelines {
             .withVertexFormat(CombatantVertexFormats.POS2, com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
             .withVertexShader(shader("fullscreen.vert"))
             .withFragmentShader(shader("orbit_gravity.frag"))
+            .withShaderDefine(HdrPipelineVariants.MANAGED_COLOR)
             .withSampler("u_Texture")
             .withSampler("u_Depth")
             .withUniform("JumpShockwave", UniformType.UNIFORM_BUFFER)

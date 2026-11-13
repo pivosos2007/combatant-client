@@ -48,6 +48,7 @@ import combatant.client.features.module.ModuleManager;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.movement.Timer;
 import combatant.client.features.module.modules.movement.EntityControl;
+import combatant.client.features.module.modules.player.LiquidInteract;
 import combatant.client.mixins.accessors.KeyMappingAccessor;
 import combatant.client.util.block.interaction.BlockInteractionPipeline;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -149,6 +150,16 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
             combatant$useClickCount = consumed ? count : 0;
             return consumed;
         }
+        // Vanilla consumes attack clicks without calling startAttack() while an item is
+        // being used. Route those exact clicks to SpearAssist before they are discarded.
+        if (key == mc.options.keyAttack && mc.player != null && mc.player.isUsingItem()) {
+            boolean consumed = original.call(key);
+            if (consumed) {
+                SpearAssist spearAssist = Modules.get(SpearAssist.class);
+                if (spearAssist != null) spearAssist.handleAttackClickDuringItemUse();
+            }
+            return consumed;
+        }
         if (key == mc.options.keySwapOffhand
                 && InventorySlotLocks.isLocked(InventorySlotLocks.OFFHAND)) {
             original.call(key); // drain the pressed key, but do not send the vanilla swap packet
@@ -187,6 +198,11 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
         LocalPlayer player = client.player;
         if (player == null) return;
 
+        if (breaking && client.options.keyAttack.isDown()) {
+            LiquidInteract liquidInteract = Modules.get(LiquidInteract.class);
+            if (liquidInteract != null) liquidInteract.restoreVanillaAttackTarget();
+        }
+
         // Preserve vanilla block breaking while the hitbox feature is active.
         Hitbox hitbox = Modules.get(Hitbox.class);
         if (hitbox != null && hitbox.isEnabled()) {
@@ -214,6 +230,8 @@ public class MinecraftMixin implements MinecraftGameConfigHolder {
 
     @Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)
     private void onDoAttack(CallbackInfoReturnable<Boolean> cir) {
+        LiquidInteract liquidInteract = Modules.get(LiquidInteract.class);
+        if (liquidInteract != null) liquidInteract.restoreVanillaAttackTarget();
         if (!Events.BUS.hasListeners(ManualAttackEvent.class)) return;
         ManualAttackEvent decision = Events.BUS.post(new ManualAttackEvent());
         if (decision.isResolved()) cir.setReturnValue(decision.isReturnValue());

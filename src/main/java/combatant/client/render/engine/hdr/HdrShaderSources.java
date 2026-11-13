@@ -26,7 +26,7 @@ public final class HdrShaderSources {
         while (fog.find()) {
             String input = fog.group(2);
             String conversion = "\n#ifndef OIT_ACCUMULATE\n"
-                    + input + ".rgb = combatantLegacyToSceneLinear(" + input + ".rgb);\n"
+                    + convertColor(input)
                     + "fogColor.rgb = combatantLegacyToSceneLinear(fogColor.rgb);\n#else\n"
                     + "fogColor.rgb = combatantLegacyToSceneLinear(fogColor.rgb / max(" + input
                     + ".a, 1e-8)) * " + input + ".a;\n#endif\n";
@@ -43,11 +43,18 @@ public final class HdrShaderSources {
             result = result.replaceFirst("void\\s+main\\s*\\(\\s*\\)", "void combatantLegacyMain()");
             result += "\nvoid main() {\n combatantLegacyMain();\n"
                     + "#if !defined(OIT_ALPHA_ONLY) && !defined(OIT_ACCUMULATE)\n"
-                    + name + ".rgb = combatantLegacyToSceneLinear(" + name + ".rgb);\n#endif\n}\n";
+                    + convertColor(name) + "#endif\n}\n";
         }
         int insert = result.indexOf('\n') + 1;
         var extensions = Pattern.compile("(?m)^#extension[^\\n]*\\n").matcher(result);
         while (extensions.find()) insert = Math.max(insert, extensions.end());
         return result.substring(0, insert) + colorFunctions + "\n" + result.substring(insert);
+    }
+
+    private static String convertColor(String name) {
+        return "#ifdef " + HdrPipelineVariants.PREMULTIPLIED_COLOR + "\n"
+                + name + ".rgb = combatantLegacyToSceneLinear(" + name + ".rgb / max(" + name
+                + ".a, 1e-8)) * " + name + ".a;\n#else\n"
+                + name + ".rgb = combatantLegacyToSceneLinear(" + name + ".rgb);\n#endif\n";
     }
 }

@@ -34,12 +34,6 @@ import combatant.client.features.module.ModuleSubcategory;
 @ModuleInfo(id = "viewmodel", displayName = "ViewModel", category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.COSMETIC,
         description = "module.viewmodel.description")
 public class ViewModel extends Module {
-    @Override
-    protected void loadSettings(java.util.List<combatant.client.features.gui.clickgui.settings.Setting> settings) {
-        WorldRequiredVisualPreview.restrictSettings(settings, getKeyBindSetting());
-    }
-
-
     private static final String SETTING_MODE = "mode";
     private static final String MODE_BASIC = "Basic";
     private static final String MODE_HMI = "HMI";

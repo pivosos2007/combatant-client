@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec4 v_Params;  // xy = rect size, z = radius, w = shadow blur
@@ -21,6 +23,7 @@ float roundedBoxSDF(vec2 p, vec2 halfSize, float radius) {
 }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     vec2 rectSize = max(v_Params.xy, vec2(0.0001));
     float radius = clamp(v_Params.z, 0.0, min(rectSize.x, rectSize.y) * 0.5);
     float blur = max(v_Params.w, 0.0);
@@ -48,5 +51,5 @@ void main() {
     }
 
     if (alpha <= 0.001) discard;
-    fragColor = vec4(v_Color.rgb, v_Color.a * alpha);
+    fragColor = vec4(material.rgb, material.a * alpha);
 }

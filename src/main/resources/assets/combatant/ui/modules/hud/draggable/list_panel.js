@@ -211,9 +211,10 @@ class HudListPanelLayout extends HudPanelLayout {
       class: abs(trackX, trackY, Math.max(.01, trackW * level), trackH),
       radius: 1.5, fill: colorFill,
     }));
-    if (threshold > 0 && threshold < 1) decorations.push(ui.shape({
+    if (prop(row, "meterThresholdVisible", false)) decorations.push(ui.shape({
       key: `row:${key}:meter:threshold`, shape: "rect",
-      class: abs(trackX + trackW * threshold - .35, trackY - 1, .7, trackH + 2),
+      class: abs(trackX + Math.max(.35, Math.min(trackW - .35, trackW * threshold)) - .35,
+        trackY - 1, .7, trackH + 2),
       fill: rightColor,
     }));
     const rowTextH = n(this.p.rowTextHeight, 8);

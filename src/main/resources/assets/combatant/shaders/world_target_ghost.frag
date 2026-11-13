@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec4 v_Params;
@@ -19,6 +21,7 @@ layout(location = 0) out vec4 color;
 const float TAU = 6.283185307179586;
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     float u = clamp(v_TexCoord.x, 0.0, 1.0);
     float v = v_TexCoord.y;
     float time = v_Params.x;
@@ -32,7 +35,7 @@ void main() {
     float focus = max(0.0, 1.0 - abs(waveA - waveB) * 0.83);
     float caustic = pow(focus, 6.0) * (0.7 + 0.3 * sin(lane * 1.2 - time));
     caustic = clamp(caustic, 0.0, 1.0);
-    float alpha = v_Color.a * envelope * edge * caustic * clamp(v_Params.w, 0.0, 1.5);
+    float alpha = material.a * envelope * edge * caustic * clamp(v_Params.w, 0.0, 1.5);
     if (alpha < 0.002) discard;
-    color = vec4(v_Color.rgb * (0.7 + 0.3 * caustic), alpha);
+    color = vec4(material.rgb * (0.7 + 0.3 * caustic), alpha);
 }

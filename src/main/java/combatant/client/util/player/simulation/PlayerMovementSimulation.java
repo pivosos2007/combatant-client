@@ -13,6 +13,8 @@
 
 package combatant.client.util.player.simulation;
 
+import combatant.client.util.player.ElytraFlightPhysics;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
@@ -43,6 +45,7 @@ abstract class PlayerMovementSimulation {
 
     private final Player player;
     private final SimulatedInput input;
+    private final double forcedJumpMotion;
     private final float yaw;
     private final float pitch;
     private final boolean sprinting;
@@ -63,6 +66,11 @@ abstract class PlayerMovementSimulation {
     private int jumpingCooldown;
 
     PlayerMovementSimulation(Player player, SimulatedInput input) {
+        this(player, input, Double.NaN);
+    }
+
+    PlayerMovementSimulation(Player player, SimulatedInput input, double forcedJumpMotion) {
+        this.forcedJumpMotion = forcedJumpMotion;
         this.player = player;
         this.pos = player.position();
         this.velocity = this.pos.subtract(player.xo, player.yo, player.zo);
@@ -126,8 +134,9 @@ abstract class PlayerMovementSimulation {
     }
 
     private void jump() {
-        double jumpVelocity = player.getAttributeValue(Attributes.JUMP_STRENGTH) * getJumpVelocityMultiplier()
-                + player.getJumpBoostPower();
+        double jumpVelocity = Double.isFinite(forcedJumpMotion) ? forcedJumpMotion
+                : player.getAttributeValue(Attributes.JUMP_STRENGTH) * getJumpVelocityMultiplier()
+                        + player.getJumpBoostPower();
         if (jumpVelocity <= 1.0E-5) {
             return;
         }
@@ -265,33 +274,7 @@ abstract class PlayerMovementSimulation {
     }
 
     private Vec3 calcGlidingVelocity(Vec3 oldVelocity) {
-        Vec3 rotation = getRotationVector();
-        float pitchRadians = pitch * Mth.DEG_TO_RAD;
-        double horizontalLook = Math.sqrt(rotation.x * rotation.x + rotation.z * rotation.z);
-        double horizontalVelocity = oldVelocity.horizontalDistance();
-        double gravity = getEffectiveGravity();
-        double lift = Mth.square(Math.cos(pitchRadians));
-
-        oldVelocity = oldVelocity.add(0.0, gravity * (-1.0 + lift * 0.75), 0.0);
-        if (oldVelocity.y < 0.0 && horizontalLook > 0.0) {
-            double dive = oldVelocity.y * -0.1 * lift;
-            oldVelocity = oldVelocity.add(rotation.x * dive / horizontalLook, dive, rotation.z * dive / horizontalLook);
-        }
-
-        if (pitchRadians < 0.0f && horizontalLook > 0.0) {
-            double climb = horizontalVelocity * -Mth.sin(pitchRadians) * 0.04;
-            oldVelocity = oldVelocity.add(-rotation.x * climb / horizontalLook, climb * 3.2, -rotation.z * climb / horizontalLook);
-        }
-
-        if (horizontalLook > 0.0) {
-            oldVelocity = oldVelocity.add(
-                    (rotation.x / horizontalLook * horizontalVelocity - oldVelocity.x) * 0.1,
-                    0.0,
-                    (rotation.z / horizontalLook * horizontalVelocity - oldVelocity.z) * 0.1
-            );
-        }
-
-        return oldVelocity.multiply(0.99f, 0.98f, 0.99f);
+        return ElytraFlightPhysics.glide(oldVelocity, getRotationVector(), pitch, getEffectiveGravity());
     }
 
     private void travelInWater(Vec3 movementInput, double gravity, boolean falling, double y) {
@@ -423,7 +406,7 @@ abstract class PlayerMovementSimulation {
     }
 
     private boolean shouldClipAtLedge() {
-        return !input.ignoreClippingAtLedge && (input.sneak || input.forceSafeWalk);
+        return !input.ignoreClippingAtLedge && input.sneak;
     }
 
     private boolean shouldConsiderLedgeClipping() {

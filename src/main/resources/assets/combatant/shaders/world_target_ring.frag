@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec4 v_Params;
@@ -31,6 +33,7 @@ float pulseAt(float u, float phase, float width) {
 }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     float u = fract(v_TexCoord.x);
     float tube = fract(v_TexCoord.y) * TAU;
     float time = v_Params.x;
@@ -63,10 +66,10 @@ void main() {
     float layerFade = layer < 0.5 ? 1.0 : 0.42;
     float body = (0.24 + tubeCore * 0.58 + tubeGlow * 0.34) * bodyGate;
     float electric = pulse * (0.56 + tubeGlow * 0.44) + fracture * (0.28 + fresnel * 0.46);
-    float alpha = (body + electric) * v_Color.a * intensity * layerFade;
+    float alpha = (body + electric) * material.a * intensity * layerFade;
     if (alpha <= 0.002) discard;
 
-    vec3 base = max(v_Color.rgb, vec3(0.001));
+    vec3 base = max(material.rgb, combatantMaterialColor(vec3(0.001)));
     vec3 hot = mix(base, vec3(1.0), 0.68);
     vec3 shifted = mix(base, base.gbr, 0.14);
     vec3 outColor = base * (0.48 + tubeCore * 0.68 + fresnel * 0.30);
@@ -74,7 +77,9 @@ void main() {
     outColor += shifted * fracture * 0.42;
     outColor += mix(base, hot, 0.22) * gates * 0.12;
     outColor *= intensity * layerFade;
+#ifndef COMBATANT_SCENE_LINEAR_COLOR
     outColor = outColor / (1.0 + outColor * 0.16);
+#endif
 
     color = vec4(outColor, sat(alpha));
 }

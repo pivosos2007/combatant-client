@@ -37,7 +37,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
-import combatant.client.events.impl.PlayerSafeWalkEvent;
 import combatant.client.events.impl.PlayerEffectMoveEvent;
 import combatant.client.events.impl.PlayerEffectVelocityEvent;
 import combatant.client.features.module.Modules;
@@ -69,19 +68,6 @@ public abstract class PlayerEntityMixin implements IPlayerAttackCooldown {
         Vec3 adjusted = event.getVelocity();
         if (adjusted != null && Double.isFinite(adjusted.x) && Double.isFinite(adjusted.y)
                 && Double.isFinite(adjusted.z) && !adjusted.equals(movement)) self.setDeltaMovement(adjusted);
-    }
-
-    @Inject(method = "isStayingOnGroundSurface", at = @At("RETURN"), cancellable = true)
-    private void combatant$safeWalk(CallbackInfoReturnable<Boolean> cir) {
-        if (cir.getReturnValue()) return;
-        if ((Object) this != Minecraft.getInstance().player) return;
-        if (!Events.BUS.hasListeners(PlayerSafeWalkEvent.class)) return;
-
-        PlayerSafeWalkEvent event = new PlayerSafeWalkEvent();
-        Events.BUS.post(event);
-        if (event.isSafeWalk()) {
-            cir.setReturnValue(true);
-        }
     }
 
     @Inject(method = "isMobilityRestricted", at = @At("HEAD"), cancellable = true)

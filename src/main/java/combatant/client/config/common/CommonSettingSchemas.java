@@ -155,7 +155,6 @@ public enum CommonSettingSchemas {
     // Elytra target / fireworks
     public static final CommonSettingSchema ELYTRA_HITBOX_EXPAND = key("elytra.hitbox_expand");
     public static final CommonSettingSchema ELYTRA_EXPAND_WHEN_READY = key("elytra.expand_when_ready");
-    public static final CommonSettingSchema ELYTRA_FIREWORK_SPEED = key("elytra.firework_speed", "firework_speed");
     public static final CommonSettingSchema ELYTRA_TARGET_MUST_FLY = key("elytra.target_must_fly");
     public static final CommonSettingSchema ELYTRA_PREPARE_ROTATIONS = key("elytra.prepare_rotations", "prepare_rotations");
     public static final CommonSettingSchema ELYTRA_VELOCITY_TUNE = key("elytra.velocity_tune");

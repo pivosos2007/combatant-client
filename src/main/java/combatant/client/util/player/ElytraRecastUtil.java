@@ -28,7 +28,6 @@ public final class ElytraRecastUtil {
 
     private static final int NORMAL_COOLDOWN_TICKS = 5;
     private static final int GRIM_COOLDOWN_TICKS = 3;
-    private static final double VANILLA_JUMP_HEADROOM = 0.42;
 
     private final Minecraft client = Minecraft.getInstance();
     private final Map<Object, RecastState> states = new IdentityHashMap<>();
@@ -189,10 +188,15 @@ public final class ElytraRecastUtil {
     }
 
     private boolean canAttempt(LocalPlayer player, RecastState state) {
+        return player != null && canStartGliding(player, state.allowBroken)
+                && (!state.requireJumpHeld || client.options.keyJump.isDown());
+    }
+
+    /** Shared eligibility for event-driven recast and the bounded vanilla packet fallback. */
+    public boolean canStartGliding(LocalPlayer player, boolean allowBroken) {
         if (player == null || client.options == null) return false;
         if (player.isFallFlying() || player.onGround()) return false;
         if (player.getDeltaMovement().y > -0.01 && player.fallDistance <= 0.0f) return false;
-        if (state.requireJumpHeld && !client.options.keyJump.isDown()) return false;
         if (player.getAbilities().flying) return false;
         if (player.isPassenger()) return false;
         if (player.onClimbable()) return false;
@@ -201,21 +205,19 @@ public final class ElytraRecastUtil {
         if (!hasVanillaGlideStartSpace(player)) return false;
 
         ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
-        return chest.is(Items.ELYTRA) && (isElytraUsable(chest) || state.allowBroken);
+        return chest.is(Items.ELYTRA) && (isElytraUsable(chest) || allowBroken);
     }
 
     private boolean hasVanillaGlideStartSpace(LocalPlayer player) {
         if (player == null || player.level() == null) return false;
 
-        AABB glidingBox = player.getLocalBoundsForPose(Pose.FALL_FLYING).deflate(1.0E-7);
-        if (!player.level().noCollision(player, glidingBox)) {
-            return false;
-        }
-
-        AABB jumpHeadroomBox = player.getBoundingBox()
-                .expandTowards(0.0, VANILLA_JUMP_HEADROOM, 0.0)
-                .deflate(1.0E-7);
-        return player.level().noCollision(player, jumpHeadroomBox);
+        // getLocalBoundsForPose is centered at the local origin, not at the
+        // player's world position. Collision-testing it directly looks at (0,0,0).
+        AABB glidingBox = player.getLocalBoundsForPose(Pose.FALL_FLYING)
+                .move(player.position()).deflate(1.0E-7);
+        // Once airborne and falling, requiring extra *jump* headroom can reject
+        // perfectly valid glide starts in corridors or beneath a low ceiling.
+        return player.level().noCollision(player, glidingBox);
     }
 
     private boolean isJumpInputActive(LocalPlayer player) {

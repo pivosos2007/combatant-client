@@ -12,20 +12,14 @@ import combatant.client.features.module.*;
 import combatant.client.features.module.Module;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.Direction;
-import net.minecraft.core.Holder;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.item.enchantment.EnchantmentHelper;
-import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
@@ -40,7 +34,12 @@ import combatant.client.util.aiming.RotationTarget;
 import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.player.ElytraRecastUtil;
+import combatant.client.util.player.ElytraEscapePlanner;
+import combatant.client.util.player.ElytraFlightPhysics;
+import combatant.client.util.player.ElytraFlightPhysics.FlightModel;
+import net.minecraft.world.effect.MobEffects;
 import combatant.client.util.player.inventory.FireworkUseController;
+import combatant.client.features.module.modules.movement.SuperFirework;
 import combatant.client.util.player.simulation.PlayerSimulationCache;
 import combatant.client.util.target.TargetManager;
 import combatant.client.util.world.ExplosionDamageUtil;
@@ -58,35 +57,23 @@ public final class ElytraTarget extends Module {
     private static final int CRYSTAL_FEAR_ROTATION_PRIORITY = 130;
     private static final int BLOCK_DODGE_ROTATION_PRIORITY = 140;
     private static final int FIREWORK_SYNC_PRIORITY = -1000;
-    private static final int FIREWORK_SPEED_FACTOR = 72;
+    private static final int FIREWORK_MIN_REBOOST_TICKS = 4;
+    private static final int FIREWORK_END_GUARD_TICKS = 3;
     private static final int FALL_FLYING_RESTART_DELAY_TICKS = 5;
     private static final int HIT_STATUS_READY_TICKS = 5;
     private static final int AUTO_TAKEOFF_COOLDOWN_TICKS = 12;
-    private static final double SIDE_RAYCAST_DISTANCE = 14.0;
-    private static final double BLOCK_DODGE_SWEEP_MARGIN = 0.08;
     private static final double COLLISION_CLEARANCE_MARGIN = 1.25;
     private static final double GROUND_TARGET_STILL_SPEED = 0.08;
     private static final double ORBIT_MIN_RADIUS = 1.15;
     private static final double ORBIT_MAX_RADIUS = 3.35;
     private static final double ORBIT_ATTACK_RANGE_MARGIN = 0.22;
-    private static final double CRYSTAL_FEAR_SWEEP_MARGIN = 0.35;
-    private static final double CRYSTAL_FEAR_SAFE_DISTANCE = 7.25;
     private static final double ORBIT_SIDE_SWITCH_DOT = 0.18;
     private static final int TARGET_FOCUS_HOLD_TICKS = 45;
     private static final double TARGET_FOCUS_RANGE_MULTIPLIER = 1.35;
-    private static final double[] BLOCK_DODGE_CANDIDATE_ANGLES = {
-            -65.0, 65.0, -105.0, 105.0, -35.0, 35.0, 180.0
-    };
+    // Minimum coasting speed in blocks/tick with no managed SuperFirework boost.
+    // This is automatic behaviour, not a duplicate configurable firework speed.
+    private static final double UNMANAGED_REBOOST_SPEED = 0.42;
     private final Minecraft mc = Minecraft.getInstance();
-    private final NumberValue<Integer> speedThreshold =
-            numCommon(
-                    "elytratargetSpeedThreshold",
-                    "firework_speed",
-                    CommonSettingSchemas.ELYTRA_FIREWORK_SPEED,
-                    30,
-                    0,
-                    100
-            );
     private final BooleanValue swapBack =
             boolCommon(
                     "elytratargetSwapBack",
@@ -209,31 +196,23 @@ public final class ElytraTarget extends Module {
             bool(
                     "elytratargetSolidBlockDodge",
                     "solid_block_dodge",
-                    false
+                    true
             );
     private final NumberValue<Integer> blockDodgePredictionTicks =
             visibleWhen(num(
                     "elytratargetBlockDodgePredictionTicks",
                     "block_dodge_prediction_ticks",
-                    10,
+                    12,
                     3,
                     30
             ), solidBlockDodge::get);
-    private final NumberValue<Float> blockDodgeMinDamage =
+    private final NumberValue<Float> blockDodgeClearance =
             visibleWhen(num(
-                    "elytratargetBlockDodgeMinDamage",
-                    "block_dodge_min_damage",
+                    "elytratargetBlockDodgeClearance",
+                    "block_dodge_clearance",
                     5.0f,
-                    1.0f,
-                    20.0f
-            ), solidBlockDodge::get);
-    private final NumberValue<Float> blockDodgeHealthBuffer =
-            visibleWhen(num(
-                    "elytratargetBlockDodgeHealthBuffer",
-                    "block_dodge_health_buffer",
-                    8.0f,
-                    0.0f,
-                    20.0f
+                    2.0f,
+                    12.0f
             ), solidBlockDodge::get);
     private final BooleanValue crystalFear =
             bool(
@@ -276,7 +255,8 @@ public final class ElytraTarget extends Module {
     private LivingEntity target;
     private boolean preparingRotation;
     private Rotation pendingRotation;
-    private Direction lastDirection;
+    private Rotation blockDodgeRotation;
+    private final Object emergencyRotationProvider = new Object();
     private boolean attackWindowActive;
     private PursuitPhase pursuitPhase = PursuitPhase.NONE;
     private boolean pursuitRotationActive;
@@ -284,6 +264,7 @@ public final class ElytraTarget extends Module {
     private int restartFallFlyingTicks;
     private int hitStatusTicks = HIT_STATUS_READY_TICKS;
     private boolean queuedFireworkUse;
+    private Rotation lastFireworkSteering;
     private int orbitSide = 1;
     private int focusedTargetId = -1;
     private int targetFocusTicks;
@@ -308,17 +289,6 @@ public final class ElytraTarget extends Module {
                 vector.x * cos - vector.z * sin,
                 0.0,
                 vector.x * sin + vector.z * cos
-        );
-    }
-
-    private static AABB union(AABB a, AABB b) {
-        return new AABB(
-                Math.min(a.minX, b.minX),
-                Math.min(a.minY, b.minY),
-                Math.min(a.minZ, b.minZ),
-                Math.max(a.maxX, b.maxX),
-                Math.max(a.maxY, b.maxY),
-                Math.max(a.maxZ, b.maxZ)
         );
     }
 
@@ -350,13 +320,13 @@ public final class ElytraTarget extends Module {
 
         LocalPlayer player = mc.player;
         if (isAttributeSwapElytraCycleActive()) {
-            target = null;
-            TargetManager.clear(this);
-            clearPursuitState();
-            clearAutoTakeoffState();
+            AttributeSwap swap = Modules.get(AttributeSwap.class);
+            int targetId = swap != null ? swap.getElytraCycleTargetId() : -1;
+            var entity = targetId >= 0 ? mc.level.getEntity(targetId) : null;
+            target = entity instanceof LivingEntity living && isValidTarget(living) ? living : null;
+            TargetManager.publish(this, target, TargetManager.Source.MODULE, 900);
             queuedFireworkUse = false;
             ElytraRecastUtil.INSTANCE.reset(this);
-            releaseRotationState();
             return;
         }
 
@@ -367,22 +337,24 @@ public final class ElytraTarget extends Module {
         target = validSelf && validTarget ? combatTarget : null;
         updateTargetFocus(target);
         TargetManager.publish(this, target, TargetManager.Source.MODULE, 900);
-        // Evaluated this tick in onRotationUpdate (PRE), right before the rotation is consumed.
         boolean emergencyAvoidQueued = this.emergencyAvoidQueued;
 
         if (!validSelf || !validTarget) {
             clearPursuitState();
             queuedFireworkUse = false;
-            if (!emergencyAvoidQueued) {
+            if (!emergencyAvoidQueued && !isManagingFireworks()) {
                 releaseRotationState();
             }
         } else {
-            updatePursuitPhase(player, target);
-            tickRestartFallFlying(player);
+            if (!emergencyAvoidQueued) tickRestartFallFlying(player);
         }
 
         if (emergencyAvoidQueued) {
-            clearPursuitState();
+            // Do not reset pursuitPhase. The emergency planner must compare its
+            // heading with normal pursuit on the next tick.
+            pursuitRotationActive = false;
+            pendingRotation = null;
+            attackWindowActive = false;
             queuedFireworkUse = false;
         }
     }
@@ -402,17 +374,16 @@ public final class ElytraTarget extends Module {
         ElytraRecastUtil.INSTANCE.tick(this, player);
 
         if (isAttributeSwapElytraCycleActive()) {
+            // AttributeSwap owns the equipment and the attack until the real smash.
             queuedFireworkUse = false;
-            clearPursuitState();
             clearAutoTakeoffState();
             ElytraRecastUtil.INSTANCE.reset(this);
-            releaseRotationState();
             return;
         }
 
         tickAutoTakeoff(player);
 
-        boolean emergencyAvoidQueued = queueEmergencyAvoidanceRotation(player);
+        boolean emergencyAvoidQueued = this.emergencyAvoidQueued;
 
         if (!isRunning()) {
             queuedFireworkUse = false;
@@ -420,19 +391,29 @@ public final class ElytraTarget extends Module {
             if (!ElytraRecastUtil.INSTANCE.isActive(this)) {
                 ElytraRecastUtil.INSTANCE.reset(this);
             }
-            if (!emergencyAvoidQueued) {
+            if (!emergencyAvoidQueued && !isManagingFireworks()) {
                 releaseRotationState();
             }
             return;
         }
 
         if (emergencyAvoidQueued) {
+            // Avoiding a wall must not trigger an extra rocket or lose the
+            // pursuit phase needed for the next risk comparison.
             queuedFireworkUse = false;
-            clearPursuitState();
+            pursuitRotationActive = false;
+            pendingRotation = null;
+            attackWindowActive = false;
             return;
         }
 
-        updatePursuitPhase(player, target);
+        if (pursuitPhase == PursuitPhase.DIVE && canSetupMaceDive(player)) {
+            AttributeSwap swap = Modules.get(AttributeSwap.class);
+            if (swap != null && swap.prepareElytraTargetDive(player, target)) {
+                queuedFireworkUse = false;
+                return;
+            }
+        }
         if (shouldUseFirework(player)) {
             queuedFireworkUse = true;
         }
@@ -447,15 +428,23 @@ public final class ElytraTarget extends Module {
         if (player == null || !isRunning()) return;
         if (!shouldUseFirework(player)) return;
 
-        FireworkUseController.INSTANCE.use(
-                event.getYaw(),
-                event.getPitch(),
+        Rotation fireworkRotation = getFireworkSteeringRotation();
+        if (fireworkRotation == null) return;
+        if (!isBoostPathSafe(player, fireworkRotation)) return;
+
+        boolean launched = FireworkUseController.INSTANCE.use(
+                fireworkRotation.yaw(),
+                fireworkRotation.pitch(),
                 true,
                 swapBack.get(),
                 silentSwap.get(),
-                speedThreshold.get(),
-                true
+                FIREWORK_MIN_REBOOST_TICKS,
+                true,
+                needsEmergencyReboost(player)
         );
+        if (launched) {
+            event.setRotation(fireworkRotation.yaw(), fireworkRotation.pitch(), true);
+        }
     }
 
     @EventHandler(priority = FIREWORK_SYNC_PRIORITY - 20)
@@ -471,28 +460,79 @@ public final class ElytraTarget extends Module {
         ElytraRecastUtil.INSTANCE.handleSync(this, event);
     }
 
+    @EventHandler(priority = 1000)
+    private void onRotationBegin(RotationUpdateEvent event) {
+        if (event.getType() != RotationUpdateEvent.Type.PRE) return;
+        // Keep the chosen escape, but resolve the ordinary flight heading afresh.
+        RotationManager.INSTANCE.release(emergencyRotationProvider, false);
+        emergencyAvoidQueued = false;
+    }
+
+    @EventHandler
+    private void onRotationSafety(RotationUpdateEvent event) {
+        if (event.getType() != RotationUpdateEvent.Type.RESOLVED) return;
+        if (!isEnabled()) return;
+        LocalPlayer player = mc.player;
+        if (player == null || mc.level == null) {
+            resetBlockDodge();
+            return;
+        }
+        emergencyAvoidQueued = queueEmergencyAvoidanceRotation(player, event.getMovementRotation());
+        if (emergencyAvoidQueued) {
+            pursuitRotationActive = false;
+            pendingRotation = null;
+            attackWindowActive = false;
+            queuedFireworkUse = false;
+        }
+    }
+
     @EventHandler(priority = 0)
     private void onRotationUpdate(RotationUpdateEvent event) {
         if (!isEnabled() || event.getType() != RotationUpdateEvent.Type.PRE) return;
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) {
             clearPursuitState();
+            resetBlockDodge();
+            emergencyAvoidQueued = false;
             return;
         }
 
-        emergencyAvoidQueued = queueEmergencyAvoidanceRotation(player);
-        if (emergencyAvoidQueued) {
-            pursuitRotationActive = false;
+        Rotation pursuitRotation = null;
+        if (isRunning()) {
+            updatePursuitPhase(player, target);
+            pursuitRotation = calculatePursuitRotation(player, target);
+        }
+        if (isAttributeSwapElytraCycleActive()) {
+            AttributeSwap swap = Modules.get(AttributeSwap.class);
+            var cycleEntity = swap != null ? mc.level.getEntity(swap.getElytraCycleTargetId()) : null;
+            if (cycleEntity instanceof LivingEntity maceTarget && isValidTarget(maceTarget)) {
+                Rotation aim = Rotation.lookingAt(maceTarget.getBoundingBox().getCenter(), player.getEyePosition()).normalize();
+                pendingRotation = aim;
+                pursuitRotationActive = true;
+                RotationManager.INSTANCE.setRotationTarget(new RotationTarget(
+                        aim, maceTarget, List.of(), 2, 2.0f, true, MovementCorrection.SILENT, true, null
+                ), PURSUIT_ROTATION_PRIORITY, this);
+            } else {
+                pursuitRotationActive = false;
+                releaseRotationState();
+            }
             return;
         }
 
         if (!isRunning()) {
             pursuitRotationActive = false;
+            // The vanilla server uses the last submitted yaw/pitch to accelerate
+            // an attached rocket. Holding only the client-side heading would still
+            // let the server pull the rocket towards the camera on target dropouts.
+            if (isManagingFireworks() && lastFireworkSteering != null) {
+                RotationManager.INSTANCE.setRotationTarget(new RotationTarget(
+                        lastFireworkSteering, null, List.of(), 2, 2.0f,
+                        true, MovementCorrection.SILENT, true, null
+                ), PURSUIT_ROTATION_PRIORITY, this);
+            }
             return;
         }
 
-        updatePursuitPhase(player, target);
-        Rotation pursuitRotation = calculatePursuitRotation(player, target);
         if (pursuitRotation == null) {
             pursuitRotationActive = false;
             return;
@@ -500,6 +540,7 @@ public final class ElytraTarget extends Module {
 
         pendingRotation = pursuitRotation;
         pursuitRotationActive = true;
+        lastFireworkSteering = pursuitRotation;
         RotationTarget plan = new RotationTarget(
                 pursuitRotation.normalize(),
                 target,
@@ -535,7 +576,7 @@ public final class ElytraTarget extends Module {
         return isEnabled()
                 && mc.player != null
                 && mc.player.isFallFlying()
-                && target != null
+                && isValidTarget(target)
                 && hasKillAuraGate()
                 && !isAttributeSwapElytraCycleActive();
     }
@@ -545,7 +586,21 @@ public final class ElytraTarget extends Module {
     }
 
     public boolean isManagingFireworks() {
-        return isRunning();
+        if (isControllingFlight() || isRunning()) return true;
+        LocalPlayer player = mc.player;
+        if (!isEnabled() || player == null || lastFireworkSteering == null) return false;
+        FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
+        return boost.active() || boost.awaitingSpawn();
+    }
+
+    /** Uses the rotation already selected for this movement cycle, including competing providers. */
+    public Rotation getFireworkSteeringRotation() {
+        if (!isEnabled() || mc.player == null || !isManagingFireworks()) return null;
+        return RotationManager.INSTANCE.getMovementRotation();
+    }
+
+    public boolean isControllingFlight() {
+        return isEnabled() && (emergencyAvoidQueued || (isRunning() && isPursuitEnabled()));
     }
 
     private void resetState() {
@@ -554,7 +609,7 @@ public final class ElytraTarget extends Module {
         TargetManager.clear(this);
         preparingRotation = false;
         pendingRotation = null;
-        lastDirection = null;
+        resetBlockDodge();
         attackWindowActive = false;
         pursuitPhase = PursuitPhase.NONE;
         pursuitRotationActive = false;
@@ -562,6 +617,7 @@ public final class ElytraTarget extends Module {
         restartFallFlyingTicks = 0;
         hitStatusTicks = HIT_STATUS_READY_TICKS;
         queuedFireworkUse = false;
+        lastFireworkSteering = null;
         orbitSide = 1;
         focusedTargetId = -1;
         targetFocusTicks = 0;
@@ -668,6 +724,10 @@ public final class ElytraTarget extends Module {
         if (!focused && maxFov < 180.0f && angle > maxFov * 0.5f) return null;
 
         Reachability reachability = evaluateReachability(player, candidate, predictedCenter);
+        // Losing the focused target at an obstacle would disable the flight controller before it can evade.
+        if (reachability == null && focused && solidBlockDodge.get()) {
+            reachability = new Reachability(predictedCenter, false);
+        }
         if (reachability == null) return null;
 
         double score = distanceSq
@@ -773,8 +833,8 @@ public final class ElytraTarget extends Module {
             return;
         }
 
-        Vec3 targetPoint = predictTargetCenter(currentTarget, pursuitPredictionTicks.get());
-        Vec3 playerPos = player.position();
+        Vec3 targetPoint = predictPursuitTargetCenter(player, currentTarget);
+        Vec3 playerPos = getPursuitSteeringOrigin(player, false);
         double horizontalDistance = horizontalDistance(playerPos, targetPoint);
         double heightAboveTarget = playerPos.y - targetPoint.y;
         double horizontalSpeed = player.getDeltaMovement().horizontalDistance();
@@ -783,10 +843,12 @@ public final class ElytraTarget extends Module {
 
         boolean highEnough = heightAboveTarget >= wantedHeight * 0.55;
         boolean closeEnough = horizontalDistance <= diveDistance;
-        boolean fastEnough = horizontalSpeed >= attackSetupSpeed.get() || player.fallDistance >= 1.4f;
         boolean descending = player.getDeltaMovement().y <= -0.03 || player.fallDistance >= 1.2f;
 
-        if (highEnough && closeEnough && (fastEnough || descending)) {
+        boolean diveSpeedReady = horizontalSpeed >= attackSetupSpeed.get()
+                || horizontalDistance <= diveDistance * 0.55
+                || player.fallDistance >= 1.4f;
+        if (highEnough && closeEnough && descending && diveSpeedReady) {
             pursuitPhase = PursuitPhase.DIVE;
             preparingRotation = false;
             attackWindowActive = true;
@@ -822,17 +884,12 @@ public final class ElytraTarget extends Module {
         Vec3 point = calculatePursuitPoint(player, currentTarget);
         if (point == null) return null;
 
-        point = adjustPursuitPointForCrystalFear(player, point);
-        if (solidBlockDodge.get()) {
-            point = adjustPursuitPointForCollision(player, point);
-        }
-
-        return Rotation.lookingAt(point, player.getEyePosition()).normalize();
+        return Rotation.lookingAt(point, getPursuitSteeringOrigin(player, true)).normalize();
     }
 
     private Vec3 calculatePursuitPoint(LocalPlayer player, LivingEntity currentTarget) {
-        Vec3 targetCenter = predictTargetCenter(currentTarget, pursuitPredictionTicks.get());
-        Vec3 playerPos = player.position();
+        Vec3 targetCenter = predictPursuitTargetCenter(player, currentTarget);
+        Vec3 playerPos = getPursuitSteeringOrigin(player, false);
         Vec3 horizontalToTarget = horizontal(targetCenter.subtract(playerPos));
         double horizontalDistance = horizontalToTarget.length();
         Vec3 direction = horizontalDistance > 1.0E-4
@@ -966,55 +1023,6 @@ public final class ElytraTarget extends Module {
         return Math.max(1.4, getAuraAttackRange(currentTarget) + targetRadius - 0.18);
     }
 
-    private Vec3 adjustPursuitPointForCrystalFear(LocalPlayer player, Vec3 point) {
-        if (player == null || point == null || !crystalFear.get()) return point;
-        CrystalThreat threat = findCrystalThreat(player, point);
-        if (threat == null) return point;
-
-        Vec3 away = horizontal(point.subtract(threat.pos()));
-        if (away.lengthSqr() < 1.0E-5) {
-            away = horizontal(player.getEyePosition().subtract(threat.pos()));
-        }
-        if (away.lengthSqr() < 1.0E-5) {
-            away = horizontal(player.getDeltaMovement());
-        }
-        if (away.lengthSqr() < 1.0E-5) {
-            away = horizontal(player.getViewVector(1.0f));
-        }
-        if (away.lengthSqr() < 1.0E-5) {
-            return point.add(0.0, 3.0, 0.0);
-        }
-
-        Vec3 safeDirection = away.normalize();
-        double lift = threat.damage() >= player.getHealth() + player.getAbsorptionAmount() * 0.5f ? 4.0 : 2.25;
-        return point
-                .add(safeDirection.scale(Math.max(2.0, CRYSTAL_FEAR_SAFE_DISTANCE - threat.distance())))
-                .add(0.0, lift, 0.0);
-    }
-
-    private Vec3 adjustPursuitPointForCollision(LocalPlayer player, Vec3 point) {
-        if (mc.level == null) return point;
-        if (isRayPathClear(player, point)) return point;
-
-        double[] lifts = {2.0, 4.0, 7.0, 10.0};
-        for (double lift : lifts) {
-            Vec3 lifted = point.add(0.0, lift, 0.0);
-            if (isRayPathClear(player, lifted)) {
-                return lifted;
-            }
-        }
-
-        Rotation side = findFreeSideRotation(player);
-        Vec3 sideDirection = side.directionVector();
-        return player.getEyePosition()
-                .add(sideDirection.scale(SIDE_RAYCAST_DISTANCE))
-                .add(0.0, Math.max(2.0, overtakeHeight.get() * 0.5), 0.0);
-    }
-
-    private boolean isRayPathClear(LocalPlayer player, Vec3 point) {
-        return isApproachCorridorClear(player, point);
-    }
-
     private boolean isApproachCorridorClear(LocalPlayer player, Vec3 point) {
         if (player == null || mc.level == null || point == null) return false;
 
@@ -1061,15 +1069,95 @@ public final class ElytraTarget extends Module {
     }
 
     private boolean canSetupMaceDive(LocalPlayer player) {
-        AttributeSwap attributeSwap = Modules.get(AttributeSwap.class);
-        if (attributeSwap == null || !attributeSwap.isEnabled()) return false;
-        if (player == null || player.isUsingItem()) return false;
-        for (int i = 0; i < 36; i++) {
-            if (player.getInventory().getItem(i).is(Items.MACE)) {
-                return true;
-            }
+        AttributeSwap swap = Modules.get(AttributeSwap.class);
+        return swap != null && swap.canPrepareElytraTargetDive(player, target);
+    }
+
+    private boolean hasSuperFireworkSteering() {
+        LocalPlayer player = mc.player;
+        return isEnabled() && player != null && player.isFallFlying()
+                && isPursuitEnabled() && !isAttributeSwapElytraCycleActive()
+                && Modules.enabled(SuperFirework.class);
+    }
+
+    /**
+     * Only SuperFirework determines the acceleration profile (Grim or Custom).
+     * ElytraTarget supplies the pursuit/escape direction, never a second speed setting.
+     */
+    private Vec3 predictSuperFireworkVelocity(Vec3 velocity, Vec3 direction) {
+        SuperFirework firework = Modules.get(SuperFirework.class);
+        if (firework == null || !firework.isEnabled() || direction.lengthSqr() < 1.0E-8) {
+            return velocity;
         }
-        return player.getMainHandItem().is(Items.MACE) || player.getOffhandItem().is(Items.MACE);
+        return firework.estimateBoostVelocity(velocity, Rotation.fromRotationVec(direction));
+    }
+
+    private double expectedSuperFireworkSpeed(LocalPlayer player) {
+        if (player == null || !Modules.enabled(SuperFirework.class)) return 0.0;
+        Vec3 direction;
+        if (blockDodgeRotation != null) {
+            direction = blockDodgeRotation.directionVector();
+        } else if (lastFireworkSteering != null) {
+            direction = lastFireworkSteering.directionVector();
+        } else if (target != null) {
+            direction = target.getBoundingBox().getCenter().subtract(player.getEyePosition());
+        } else {
+            direction = player.getDeltaMovement();
+        }
+        return predictSuperFireworkVelocity(player.getDeltaMovement(), direction).length();
+    }
+
+    /**
+     * Estimate interception against the actual SuperFirework thrust model, not a fixed
+     * number of ticks ahead. The rocket sets velocity each tick while it burns; once
+     * its guaranteed fuse ends, the estimate falls back to current glide momentum.
+     */
+    private Vec3 predictPursuitTargetCenter(LocalPlayer player, LivingEntity currentTarget) {
+        int maxTicks = Mth.clamp(pursuitPredictionTicks.get(), 0, 20);
+        if (!hasSuperFireworkSteering() || maxTicks == 0) {
+            return predictTargetCenter(currentTarget, maxTicks);
+        }
+
+        Vec3 origin = player.getEyePosition();
+        FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
+        double rocketSpeed = expectedSuperFireworkSpeed(player);
+        int poweredTicks = boost.active() ? Math.max(0, boost.expectedTicks()) : 0;
+        if (poweredTicks == 0 && !boost.awaitingSpawn() && shouldUseFirework(player)) {
+            // Anticipate only boosts that ElytraTarget will actually request.
+            // Otherwise high-speed coasting would incorrectly be modeled as thrust.
+            poweredTicks = 10;
+        }
+        if (boost.awaitingSpawn()) poweredTicks = 10;
+
+        Vec3 precedingTarget = predictTargetCenter(currentTarget, 0);
+        double precedingGap = precedingTarget.distanceTo(origin);
+        for (int tick = 1; tick <= maxTicks; tick++) {
+            Vec3 futureTarget = predictTargetCenter(currentTarget, tick);
+            Vec3 toFuture = futureTarget.subtract(origin);
+            double distance = toFuture.length();
+            Vec3 dir = distance > 1.0E-5 ? toFuture.scale(1.0 / distance) : Vec3.ZERO;
+            double momentum = Math.max(0.0, player.getDeltaMovement().dot(dir));
+            double flight = Math.min(tick, poweredTicks) * rocketSpeed
+                    + Math.max(0, tick - poweredTicks) * momentum * 0.85;
+            double gap = distance - flight;
+            if (gap <= 0.0) {
+                double portion = Mth.clamp(precedingGap / Math.max(1.0E-6, precedingGap - gap), 0.0, 1.0);
+                return precedingTarget.lerp(futureTarget, portion);
+            }
+            precedingTarget = futureTarget;
+            precedingGap = gap;
+        }
+        return precedingTarget;
+    }
+
+    /** One-tick motion lead anticipates overshooting before the next steering update. */
+    private Vec3 getPursuitSteeringOrigin(LocalPlayer player, boolean eyes) {
+        Vec3 origin = eyes ? player.getEyePosition() : player.position();
+        if (!hasSuperFireworkSteering()) return origin;
+        Vec3 movement = player.getDeltaMovement();
+        // Keep this bounded so knockback and server corrections cannot oversteer a rocket.
+        double lead = Math.min(1.0, 1.25 / Math.max(0.25, movement.length()));
+        return origin.add(movement.scale(lead));
     }
 
     private Vec3 predictTargetCenter(LivingEntity currentTarget, int ticks) {
@@ -1216,19 +1304,63 @@ public final class ElytraTarget extends Module {
 
     private boolean shouldUseFirework(LocalPlayer player) {
         if (player == null || !player.isFallFlying()) return false;
-        if (player.isUsingItem()) return false;
-        if (!hasFireworkRocket(player)) return false;
-        int threshold = speedThreshold.get();
-        if (threshold <= 0) return false;
-        if (FireworkUseController.INSTANCE.isCooling(threshold)) return false;
+        if (player.isUsingItem() || !hasFireworkRocket(player)) return false;
+        if (isAttributeSwapElytraCycleActive()) return false;
+        // Rockets during a committed mace dive cancel the fall and ruin smash damage.
+        if (pursuitPhase == PursuitPhase.DIVE && canSetupMaceDive(player)) return false;
 
-        double currentSpeed = player.getDeltaMovement().horizontalDistance() * FIREWORK_SPEED_FACTOR;
-        if (currentSpeed < threshold) return true;
+        if (FireworkUseController.INSTANCE.isCooling(FIREWORK_MIN_REBOOST_TICKS)) return false;
+        FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
+        if (boost.awaitingSpawn()) return false;
+        // Never launch a new rocket solely because an avoidance route is active:
+        // acceleration can make a nearby collision unavoidable.
+        if (blockDodgeRotation != null) return false;
+        Vec3 velocity = player.getDeltaMovement();
+        double speed = velocity.horizontalDistance();
+        double targetSpeed = Modules.enabled(SuperFirework.class)
+                ? expectedSuperFireworkSpeed(player)
+                : UNMANAGED_REBOOST_SPEED / 0.60;
+        double reboostSpeed = Math.max(UNMANAGED_REBOOST_SPEED, targetSpeed * 0.60);
+        double distance = target == null ? 0.0 : player.position().distanceTo(target.position());
+        boolean climbing = pursuitPhase == PursuitPhase.CLIMB;
+        boolean cruising = pursuitPhase == PursuitPhase.OVERPASS || pursuitPhase == PursuitPhase.CHASE;
+        boolean farFromTarget = distance > Math.max(9.0, idealChaseDistance.get() * 1.6);
 
-        if (pursuitPhase == PursuitPhase.CLIMB || pursuitPhase == PursuitPhase.OVERPASS) {
-            return currentSpeed < threshold * 1.25;
-        }
-        return false;
+        double remainingRise = climbing && target != null
+                ? target.getBoundingBox().maxY + overtakeHeight.get() - player.getY()
+                : 0.0;
+        double verticalBudget = Math.max(0.0, velocity.y) * 6.0;
+        boolean climbNeedsBoost = climbing && remainingRise > verticalBudget + 1.0;
+        boolean speedNeedsBoost = speed < reboostSpeed
+                || (climbing || pursuitPhase == PursuitPhase.OVERPASS) && speed < reboostSpeed * 1.25;
+
+        // A newly launched rocket may explode against an entity or nearby geometry.
+        // Recover without waiting for velocity to decay below the speed threshold.
+        boolean interrupted = boost.recentlyEndedEarly() && (farFromTarget || climbNeedsBoost);
+        // The random fuse can be just ten ticks for Flight 0. Plan a replacement
+        // before losing thrust, but do not waste rockets in the final attack band.
+        boolean endingSoon = boost.active() && boost.guaranteedTicks() <= FIREWORK_END_GUARD_TICKS
+                && (climbNeedsBoost || cruising && farFromTarget);
+        boolean boostRequired = speedNeedsBoost || climbNeedsBoost || interrupted || endingSoon;
+        if (!boostRequired) return false;
+        if (boost.active() && boost.guaranteedTicks() > FIREWORK_END_GUARD_TICKS
+                && !needsEmergencyReboost(player)) return false;
+        // Rocket collision at point-blank range can end the boost on the next tick.
+        // Close-range attacks and mace dives take priority over burning another rocket.
+        return distance >= 4.5 || climbNeedsBoost;
+    }
+
+    private boolean needsEmergencyReboost(LocalPlayer player) {
+        if (player == null || !player.isFallFlying() || target == null) return false;
+        double speed = player.getDeltaMovement().horizontalDistance();
+        double expected = Modules.enabled(SuperFirework.class)
+                ? expectedSuperFireworkSpeed(player)
+                : UNMANAGED_REBOOST_SPEED / 0.60;
+        if (speed < Math.max(0.20, expected * 0.27)
+                && player.getDeltaMovement().y < -0.08) return true;
+        return pursuitPhase == PursuitPhase.CLIMB
+                && player.getY() < target.getBoundingBox().maxY + overtakeHeight.get() * 0.65
+                && player.getDeltaMovement().y < -0.10;
     }
 
     private boolean hasFireworkRocket(LocalPlayer player) {
@@ -1240,50 +1372,8 @@ public final class ElytraTarget extends Module {
         return false;
     }
 
-    private Rotation findFreeSideRotation(LocalPlayer player) {
-        if (player == null || mc.level == null) {
-            return new Rotation(0.0f, -88.0f);
-        }
-
-        Vec3 eye = player.getEyePosition();
-        for (Direction direction : Direction.values()) {
-            if (direction == lastDirection) continue;
-
-            Vec3 offset = Vec3.atLowerCornerOf(direction.getUnitVec3i()).scale(SIDE_RAYCAST_DISTANCE);
-            Vec3 lowEnd = eye.add(offset);
-            Vec3 highStart = eye.add(0.0, player.getBoundingBox().getYsize(), 0.0);
-            Vec3 highEnd = highStart.add(offset);
-
-            HitResult lowRay = mc.level.clip(new ClipContext(
-                    eye,
-                    lowEnd,
-                    ClipContext.Block.COLLIDER,
-                    ClipContext.Fluid.NONE,
-                    player
-            ));
-            HitResult highRay = mc.level.clip(new ClipContext(
-                    highStart,
-                    highEnd,
-                    ClipContext.Block.COLLIDER,
-                    ClipContext.Fluid.NONE,
-                    player
-            ));
-
-            if (lowRay.getType() == HitResult.Type.MISS && highRay.getType() == HitResult.Type.MISS) {
-                lastDirection = direction;
-                return Rotation.lookingAt(lowEnd, eye).normalize();
-            }
-        }
-
-        Rotation server = RotationManager.INSTANCE.getServerRotation();
-        float yaw = server != null ? server.yaw() : player.getYRot();
-        return new Rotation(yaw, -88.0f).normalize();
-    }
-
-    private boolean queueEmergencyAvoidanceRotation(LocalPlayer player) {
-        if (queueBlockDodgeRotation(player)) {
-            return true;
-        }
+    private boolean queueEmergencyAvoidanceRotation(LocalPlayer player, Rotation pursuit) {
+        if (queueBlockDodgeRotation(player, pursuit)) return true;
         return queueCrystalFearRotation(player);
     }
 
@@ -1308,7 +1398,7 @@ public final class ElytraTarget extends Module {
                 false,
                 null
         );
-        RotationManager.INSTANCE.setRotationTarget(plan, CRYSTAL_FEAR_ROTATION_PRIORITY, this);
+        RotationManager.INSTANCE.setRotationTarget(plan, CRYSTAL_FEAR_ROTATION_PRIORITY, emergencyRotationProvider);
         return true;
     }
 
@@ -1366,9 +1456,12 @@ public final class ElytraTarget extends Module {
         Vec3 predicted = player.getEyePosition();
         Vec3 velocity = player.getDeltaMovement();
         int ticks = Mth.clamp(crystalFearPredictionTicks.get(), 0, 12);
+        Rotation heading = RotationManager.INSTANCE.getMovementRotation();
+        FlightModel physics = flightPhysics(player);
         for (int i = 0; i < ticks; i++) {
+            velocity = physics.glide(velocity, heading);
             predicted = predicted.add(velocity);
-            velocity = approximateNextElytraVelocity(velocity);
+            velocity = physics.afterMove(velocity, heading, i + 1, physics.possibleBoostTicks());
         }
         return predicted;
     }
@@ -1382,242 +1475,98 @@ public final class ElytraTarget extends Module {
     }
 
     private Rotation findCrystalFearRotation(LocalPlayer player, CrystalThreat threat) {
-        Vec3 velocity = player.getDeltaMovement();
         Vec3 away = horizontal(player.getEyePosition().subtract(threat.pos()));
-        if (away.lengthSqr() < 1.0E-5) {
-            away = horizontal(velocity);
-        }
-        if (away.lengthSqr() < 1.0E-5) {
-            away = horizontal(player.getViewVector(1.0f));
-        }
-        if (away.lengthSqr() < 1.0E-5) {
-            return findFreeSideRotation(player);
-        }
-
-        Vec3 baseDirection = away.normalize();
-        double horizontalSpeed = Math.max(0.24, horizontal(velocity).length());
-        Vec3 bestDirection = null;
-        double bestScore = Double.NEGATIVE_INFINITY;
-        double[] candidateAngles = {0.0, -35.0, 35.0, -70.0, 70.0, -115.0, 115.0, 180.0};
-
-        for (double angle : candidateAngles) {
-            Vec3 candidateDirection = rotateHorizontal(baseDirection, angle).normalize();
-            Vec3 candidateVelocity = new Vec3(
-                    candidateDirection.x * horizontalSpeed,
-                    Math.max(velocity.y, 0.02),
-                    candidateDirection.z * horizontalSpeed
-            );
-            double score = scoreCrystalFearDirection(player, threat, candidateVelocity, angle);
-            if (score > bestScore) {
-                bestScore = score;
-                bestDirection = candidateDirection;
-            }
-        }
-
-        if (bestDirection == null) {
-            return findFreeSideRotation(player);
-        }
-
-        Vec3 eye = player.getEyePosition();
-        double lift = threat.damage() >= player.getHealth() + player.getAbsorptionAmount() * 0.5f ? 4.5 : 2.8;
-        Rotation rotation = Rotation.lookingAt(
-                eye.add(bestDirection.scale(20.0)).add(0.0, lift, 0.0),
-                eye
-        ).normalize();
-        float pitch = Mth.clamp(rotation.pitch(), -48.0f, -4.0f);
-        return new Rotation(rotation.yaw(), pitch).normalize();
-    }
-
-    private double scoreCrystalFearDirection(LocalPlayer player, CrystalThreat threat, Vec3 initialVelocity, double angle) {
-        AABB baseBox = player.getBoundingBox();
-        Vec3 offset = Vec3.ZERO;
-        Vec3 velocity = initialVelocity;
-        double minDistanceSq = Double.POSITIVE_INFINITY;
-        int ticks = Math.max(3, Mth.clamp(crystalFearPredictionTicks.get() + 3, 3, 14));
-
-        for (int tick = 1; tick <= ticks; tick++) {
-            Vec3 previousOffset = offset;
-            offset = offset.add(velocity);
-            Vec3 center = baseBox.move(offset).getCenter();
-            minDistanceSq = Math.min(minDistanceSq, center.distanceToSqr(threat.pos()));
-
-            AABB previousBox = baseBox.move(previousOffset);
-            AABB nextBox = baseBox.move(offset);
-            AABB swept = union(previousBox, nextBox).inflate(CRYSTAL_FEAR_SWEEP_MARGIN);
-            if (solidBlockDodge.get() && hasSolidCollision(player, swept)) {
-                return -10_000.0 - Math.abs(angle);
-            }
-
-            velocity = approximateNextElytraVelocity(velocity);
-        }
-
-        double minDistance = Math.sqrt(minDistanceSq);
-        double safeBonus = minDistance >= CRYSTAL_FEAR_SAFE_DISTANCE ? 120.0 : minDistance * 12.0;
-        return safeBonus - Math.abs(angle) * 0.35;
-    }
-
-    private boolean queueBlockDodgeRotation(LocalPlayer player) {
-        if (!solidBlockDodge.get()) return false;
-        if (!isValidBlockDodgeSelf(player)) return false;
-
+        if (away.lengthSqr() < 1.0E-5) away = horizontal(player.getDeltaMovement());
+        if (away.lengthSqr() < 1.0E-5) away = horizontal(player.getLookAngle());
+        Rotation preferred = Rotation.fromRotationVec(away);
+        FlightModel physics = flightPhysics(player);
         Vec3 velocity = player.getDeltaMovement();
-        if (velocity.horizontalDistance() < 0.18) return false;
+        int horizon = ElytraEscapePlanner.horizon(velocity, preferred, blockDodgeClearance.get(),
+                crystalFearPredictionTicks.get(), physics);
+        var world = ElytraEscapePlanner.world(player);
+        Rotation best = null;
+        double bestDistance = player.getBoundingBox().getCenter().distanceToSqr(threat.pos());
+        double bestNearest = -1.0;
+        for (float yaw : new float[]{0, -35, 35, -70, 70, -115, 115, 180}) {
+            for (float pitch : new float[]{0, -30, 30, -60}) {
+                Rotation candidate = new Rotation(preferred.yaw() + yaw, pitch).normalize();
+                var outcome = ElytraEscapePlanner.forecast(world, player.getBoundingBox(), velocity,
+                        candidate, horizon, physics, threat.pos());
+                if (!outcome.safe() || outcome.blockedSteering()) continue;
+                double distance = outcome.endPosition().distanceToSqr(threat.pos());
+                if (outcome.nearestDistanceSquared() > bestNearest
+                        || (outcome.nearestDistanceSquared() == bestNearest && distance > bestDistance)) {
+                    bestDistance = distance;
+                    bestNearest = outcome.nearestDistanceSquared();
+                    best = candidate;
+                }
+            }
+        }
+        return best;
+    }
 
-        PredictedBlockImpact impact = predictBlockImpact(player, velocity, blockDodgePredictionTicks.get());
-        if (impact == null) return false;
-
-        double damage = estimateBlockImpactDamage(player, impact.velocity());
-        if (!isDangerousBlockImpact(player, damage)) return false;
-
-        Rotation dodgeRotation = findBlockDodgeRotation(player, impact);
-        if (dodgeRotation == null) return false;
-
-        RotationTarget plan = new RotationTarget(
-                dodgeRotation.normalize(),
-                null,
-                List.of(),
-                2,
-                2.0f,
-                true,
-                MovementCorrection.SILENT,
-                false,
-                null
-        );
-        RotationManager.INSTANCE.setRotationTarget(plan, BLOCK_DODGE_ROTATION_PRIORITY, this);
+    private boolean queueBlockDodgeRotation(LocalPlayer player, Rotation intendedRotation) {
+        if (!solidBlockDodge.get() || !isValidBlockDodgeSelf(player)) {
+            resetBlockDodge();
+            return false;
+        }
+        Vec3 velocity = player.getDeltaMovement();
+        FlightModel physics = flightPhysics(player);
+        int horizon = ElytraEscapePlanner.horizon(velocity, intendedRotation, blockDodgeClearance.get(),
+                blockDodgePredictionTicks.get(), physics);
+        var world = ElytraEscapePlanner.world(player);
+        AABB bounds = player.getBoundingBox();
+        var intended = ElytraEscapePlanner.forecast(world, bounds, velocity, intendedRotation, horizon, physics);
+        if (intended.safe()) {
+            resetBlockDodge();
+            return false;
+        }
+        var escape = ElytraEscapePlanner.findSaferEscape(world, bounds, velocity, intendedRotation,
+                blockDodgeRotation, horizon, physics, intended, Rotation::normalize);
+        if (escape == null) {
+            resetBlockDodge();
+            return false;
+        }
+        blockDodgeRotation = escape.rotation();
+        RotationManager.INSTANCE.setRotationTarget(new RotationTarget(
+                blockDodgeRotation, null, List.of(), 2, 2.0f,
+                false, MovementCorrection.SILENT, false, null
+        ), BLOCK_DODGE_ROTATION_PRIORITY, emergencyRotationProvider);
         return true;
     }
 
+    private FlightModel flightPhysics(LocalPlayer player) {
+        FireworkUseController.BoostState boost = FireworkUseController.INSTANCE.getBoostState(player);
+        SuperFirework firework = Modules.get(SuperFirework.class);
+        double gravity = player.isNoGravity() ? 0.0 : player.getAttributeValue(Attributes.GRAVITY);
+        return new FlightModel(gravity, player.hasEffect(MobEffects.SLOW_FALLING),
+                boost.active() ? boost.guaranteedTicks() : 0,
+                boost.awaitingSpawn() ? Integer.MAX_VALUE : boost.active() ? Math.max(1, boost.expectedTicks()) : 0,
+                firework != null && firework.isEnabled()
+                        ? firework::estimateBoostVelocity : ElytraFlightPhysics::rocket);
+    }
+
+    private boolean isBoostPathSafe(LocalPlayer player, Rotation heading) {
+        if (!solidBlockDodge.get()) return true;
+        FlightModel current = flightPhysics(player);
+        FlightModel powered = new FlightModel(current.gravity(), current.slowFalling(), 0,
+                Integer.MAX_VALUE, current.boost());
+        Vec3 velocity = current.boost().apply(player.getDeltaMovement(), heading);
+        int horizon = ElytraEscapePlanner.horizon(velocity, heading, blockDodgeClearance.get(),
+                blockDodgePredictionTicks.get(), powered);
+        return ElytraEscapePlanner.forecast(ElytraEscapePlanner.world(player), player.getBoundingBox(),
+                velocity, heading, horizon, powered).safe();
+    }
+
+    private void resetBlockDodge() {
+        RotationManager.INSTANCE.release(emergencyRotationProvider, false);
+        blockDodgeRotation = null;
+    }
+
     private boolean isValidBlockDodgeSelf(LocalPlayer player) {
-        return player != null
-                && mc.level != null
-                && player.isFallFlying()
-                && !player.onGround()
-                && !player.isPassenger()
+        return player != null && mc.level != null && player.isFallFlying()
+                && !player.onGround() && !player.isPassenger()
                 && player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA);
-    }
-
-    private PredictedBlockImpact predictBlockImpact(LocalPlayer player, Vec3 initialVelocity, int ticks) {
-        if (player == null || mc.level == null) return null;
-
-        AABB baseBox = player.getBoundingBox();
-        Vec3 offset = Vec3.ZERO;
-        Vec3 velocity = initialVelocity;
-        int safeTicks = Math.max(1, ticks);
-
-        for (int tick = 1; tick <= safeTicks; tick++) {
-            Vec3 previousOffset = offset;
-            offset = offset.add(velocity);
-
-            AABB previousBox = baseBox.move(previousOffset);
-            AABB nextBox = baseBox.move(offset);
-            AABB swept = union(previousBox, nextBox).inflate(BLOCK_DODGE_SWEEP_MARGIN);
-            if (hasSolidCollision(player, swept)) {
-                return new PredictedBlockImpact(tick, velocity);
-            }
-
-            velocity = approximateNextElytraVelocity(velocity);
-        }
-
-        return null;
-    }
-
-    private Vec3 approximateNextElytraVelocity(Vec3 velocity) {
-        return new Vec3(
-                velocity.x * 0.99,
-                velocity.y * 0.98,
-                velocity.z * 0.99
-        );
-    }
-
-    private boolean hasSolidCollision(LocalPlayer player, AABB box) {
-        for (var shape : mc.level.getBlockCollisions(player, box)) {
-            if (!shape.isEmpty()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private Rotation findBlockDodgeRotation(LocalPlayer player, PredictedBlockImpact impact) {
-        Vec3 velocity = player.getDeltaMovement();
-        Vec3 horizontal = new Vec3(velocity.x, 0.0, velocity.z);
-        if (horizontal.lengthSqr() < 1.0E-5) {
-            Rotation movement = RotationManager.INSTANCE.getMovementRotation();
-            Vec3 direction = movement != null ? movement.directionVector() : player.getViewVector(1.0f);
-            horizontal = new Vec3(direction.x, 0.0, direction.z);
-        }
-        if (horizontal.lengthSqr() < 1.0E-5) {
-            return findFreeSideRotation(player);
-        }
-
-        Vec3 baseDirection = horizontal.normalize();
-        double horizontalSpeed = Math.max(0.18, horizontal.length());
-        Vec3 bestDirection = null;
-        double bestScore = Double.NEGATIVE_INFINITY;
-
-        for (double angle : BLOCK_DODGE_CANDIDATE_ANGLES) {
-            Vec3 candidateDirection = rotateHorizontal(baseDirection, angle).normalize();
-            Vec3 candidateVelocity = new Vec3(
-                    candidateDirection.x * horizontalSpeed,
-                    velocity.y,
-                    candidateDirection.z * horizontalSpeed
-            );
-            PredictedBlockImpact candidateImpact = predictBlockImpact(player, candidateVelocity, blockDodgePredictionTicks.get());
-            double score = candidateImpact == null
-                    ? 10_000.0 - Math.abs(angle)
-                    : candidateImpact.ticks() * 100.0 - Math.abs(angle);
-            if (score > bestScore) {
-                bestScore = score;
-                bestDirection = candidateDirection;
-            }
-        }
-
-        if (bestDirection == null) {
-            return findFreeSideRotation(player);
-        }
-
-        Vec3 eye = player.getEyePosition();
-        double lift = impact.ticks() <= 3 || velocity.y < -0.04 ? 4.0 : 2.0;
-        Rotation rotation = Rotation.lookingAt(
-                eye.add(bestDirection.scale(20.0)).add(0.0, lift, 0.0),
-                eye
-        ).normalize();
-        float maxPitch = impact.ticks() <= 3 || velocity.y < -0.04 ? -28.0f : -10.0f;
-        float pitch = Mth.clamp(Math.min(rotation.pitch(), maxPitch), -55.0f, 5.0f);
-        return new Rotation(rotation.yaw(), pitch).normalize();
-    }
-
-    private double estimateBlockImpactDamage(LocalPlayer player, Vec3 impactVelocity) {
-        double raw = Math.max(0.0, impactVelocity.horizontalDistance() * 10.0 - 3.0);
-        if (raw <= 0.0) return 0.0;
-
-        int featherLevel = getFeatherFallingLevel(player);
-        double reduction = Math.min(20.0, featherLevel * 3.0) / 25.0;
-        return raw * (1.0 - reduction);
-    }
-
-    private boolean isDangerousBlockImpact(LocalPlayer player, double damage) {
-        if (damage < blockDodgeMinDamage.get()) return false;
-
-        float health = player.getHealth() + player.getAbsorptionAmount();
-        double healthThreat = Math.max(blockDodgeMinDamage.get(), health * 0.32);
-        return damage >= healthThreat || health - damage <= blockDodgeHealthBuffer.get();
-    }
-
-    private int getFeatherFallingLevel(LocalPlayer player) {
-        if (player == null || mc.level == null) return 0;
-        ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
-        Holder<Enchantment> feather = getFeatherFallingEnchant();
-        return feather == null || boots == null || boots.isEmpty()
-                ? 0
-                : EnchantmentHelper.getItemEnchantmentLevel(feather, boots);
-    }
-
-    private Holder<Enchantment> getFeatherFallingEnchant() {
-        if (mc.level == null) return null;
-        var registry = mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
-        Enchantment enchantment = registry.getValue(Enchantments.FEATHER_FALLING);
-        return enchantment != null ? registry.wrapAsHolder(enchantment) : null;
     }
 
     private enum PursuitPhase {
@@ -1637,6 +1586,4 @@ public final class ElytraTarget extends Module {
     private record CrystalThreat(EndCrystal crystal, Vec3 pos, float damage, double distance) {
     }
 
-    private record PredictedBlockImpact(int ticks, Vec3 velocity) {
-    }
 }

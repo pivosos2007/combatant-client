@@ -13,9 +13,53 @@ import combatant.client.render.engine.text.BuiltinFontCatalog;
 import combatant.client.render.engine.text.TextRenderer;
 import combatant.client.render.helpers.SystemCursor;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
+
 enum SettingRendererBridge {
     ;
     private static final String ICON_WARN = "L";
+
+    private static final Map<Setting, UnavailableMarquee> UNAVAILABLE_MARQUEES =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    private static final class UnavailableMarquee {
+        String reason;
+        float width;
+        long entered;
+        boolean hovered;
+    }
+
+    private static void drawUnavailableReason(Setting setting, String reason, TextRenderer font,
+                                              float x, float y, float size, float maxWidth,
+                                              int color, boolean hovered) {
+        float available = Math.max(1.0f, maxWidth);
+        if (LayoutRender2D.textWidth(font, reason, size) <= available + 0.5f) {
+            UNAVAILABLE_MARQUEES.remove(setting);
+            LayoutRender2D.drawText(font, reason, x, y, size, color, false);
+            return;
+        }
+        if (!hovered) {
+            UNAVAILABLE_MARQUEES.remove(setting);
+            LayoutRender2D.drawMarqueeText(font, reason, x, y, size, available, color,
+                    -1f, 29f * UnifiedSettingsSkin.scale(),
+                    18f * UnifiedSettingsSkin.scale(), 12f * UnifiedSettingsSkin.scale());
+            return;
+        }
+        UnavailableMarquee state = UNAVAILABLE_MARQUEES.computeIfAbsent(setting, ignored -> new UnavailableMarquee());
+        long now = System.nanoTime();
+        if (!state.hovered || !reason.equals(state.reason) || Math.abs(state.width - available) > 0.5f) {
+            state.entered = now;
+            state.reason = reason;
+            state.width = available;
+            state.hovered = true;
+        }
+        LayoutRender2D.drawMarqueeText(font, reason, x, y, size, available, color,
+                Math.max(0f, (now - state.entered) * 1e-9f),
+                29f * UnifiedSettingsSkin.scale(),
+                18f * UnifiedSettingsSkin.scale(), 12f * UnifiedSettingsSkin.scale());
+    }
 
     static void render(BooleanSetting setting, float x, float y, float w, float mx, float my) {
         SettingsImplementations.active().render(setting, x, y, w, mx, my);
@@ -220,7 +264,10 @@ enum SettingRendererBridge {
 
     private static void renderUnavailable(Setting setting, float x, float y, float w, float mx, float my) {
         String reason = setting.getUnavailableReason();
-        if (reason.isEmpty()) return;
+        if (reason.isEmpty()) {
+            UNAVAILABLE_MARQUEES.remove(setting);
+            return;
+        }
 
         float scale = UnifiedSettingsSkin.scale();
         float h = Math.max(1.0f, setting.getHeight());
@@ -245,15 +292,14 @@ enum SettingRendererBridge {
             float rightPad = UnifiedSettingsSkin.modernMetric(7.0f, 7.0f);
             float iconW = LayoutRender2D.textWidth(iconFont, ICON_WARN, iconSize);
             float reasonMax = Math.max(24.0f, Math.min(w * 0.42f, w - iconW - rightPad * 3.0f));
-            String fitted = UnifiedSettingsSkin.fit(textFont, reason, textSize, reasonMax);
-            float tw = LayoutRender2D.textWidth(textFont, fitted, textSize);
+            float reasonWidth = Math.min(reasonMax, LayoutRender2D.textWidth(textFont, reason, textSize));
             float ty = y + (h - LayoutRender2D.textHeight(textFont, textSize)) * 0.5f;
-            float tx = x + w - rightPad - tw;
+            float tx = x + w - rightPad - reasonWidth;
             float iy = y + (h - LayoutRender2D.textHeight(iconFont, iconSize)) * 0.5f;
             float ix = tx - iconW - UnifiedSettingsSkin.modernMetric(4.0f, 4.0f);
             int color = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_MUTED, hovered ? 245 : 205);
             LayoutRender2D.drawText(iconFont, ICON_WARN, ix, iy, iconSize, color, false);
-            LayoutRender2D.drawText(textFont, fitted, tx, ty, textSize, color, false);
+            drawUnavailableReason(setting, reason, textFont, tx, ty, textSize, reasonWidth, color, hovered);
             return;
         }
 
@@ -289,9 +335,8 @@ enum SettingRendererBridge {
 
         float textX = pillX + UnifiedSettingsSkin.metric(22.0f, 11.0f);
         float textMax = Math.max(1.0f, pillX + pillW - textX - UnifiedSettingsSkin.metric(5.0f, 3.0f));
-        String fitted = UnifiedSettingsSkin.fit(textFont, reason, textSize, textMax);
         float textY = pillY + (pillH - LayoutRender2D.textHeight(textFont, textSize)) * 0.5f - UnifiedSettingsSkin.metric(0.2f, 0.1f);
         int textColor = UnifiedSettingsSkin.withAlpha(UnifiedSettingsSkin.TEXT_PRIMARY, hovered ? 245 : 215);
-        LayoutRender2D.drawText(textFont, fitted, textX, textY, textSize, textColor, false);
+        drawUnavailableReason(setting, reason, textFont, textX, textY, textSize, textMax, textColor, hovered);
     }
 }

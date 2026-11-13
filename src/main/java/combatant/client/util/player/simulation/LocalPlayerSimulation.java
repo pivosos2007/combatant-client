@@ -14,4 +14,8 @@ final class LocalPlayerSimulation extends PlayerMovementSimulation {
     LocalPlayerSimulation(Player player, SimulatedInput input) {
         super(player, input);
     }
+
+    LocalPlayerSimulation(Player player, SimulatedInput input, double jumpMotion) {
+        super(player, input, jumpMotion);
+    }
 }

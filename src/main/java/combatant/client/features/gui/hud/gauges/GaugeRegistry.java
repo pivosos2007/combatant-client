@@ -40,15 +40,38 @@ public final class GaugeRegistry {
         public float target() { return readiness == Readiness.CONTINUOUS ? 0f : threshold; }
     }
 
-    /** A module supplies visibility and readiness; neither is inferred by the HUD. */
-    public record Sample(float fill, boolean ready, boolean visible, Flow flow, String detail) {
+    /**
+     * A provider owns the resource and the decision to consume it. A finite threshold
+     * overrides @GaugeConnect.threshold for this sample, so variable costs and limits
+     * can be displayed from the very same calculation used by the consuming module.
+     * NaN means 'use the annotation default'. All values are fractions of the bar.
+     */
+    public record Sample(float fill, boolean ready, boolean visible, Flow flow, String detail,
+                         float threshold) {
         public Sample {
             fill = clamp(fill);
             detail = detail == null ? "" : detail;
+            threshold = Float.isFinite(threshold) ? clamp(threshold) : Float.NaN;
+        }
+        public Sample(float fill, boolean ready, boolean visible, Flow flow, String detail) {
+            this(fill, ready, visible, flow, detail, Float.NaN);
         }
         public Sample(float fill, boolean ready, boolean visible) {
-            this(fill, ready, visible, null, "");
+            this(fill, ready, visible, null, "", Float.NaN);
         }
+    }
+
+    /** Minimum remaining fraction before another fixed-cost use can be attempted. */
+    public static float consumptionThreshold(double capacity, double usableLimit, double cost) {
+        if (!Double.isFinite(capacity) || !Double.isFinite(usableLimit) || !Double.isFinite(cost)
+                || capacity <= 0.0D || cost < 0.0D) return 1f;
+        return clamp((float) ((capacity - usableLimit + cost) / capacity));
+    }
+
+    /** Actual resource budget gate; caller also checks its non-resource prerequisites. */
+    public static boolean canConsume(double used, double usableLimit, double cost) {
+        return Double.isFinite(used) && Double.isFinite(usableLimit) && Double.isFinite(cost)
+                && cost >= 0.0D && used + cost <= usableLimit;
     }
 
     private record Connection(GaugeConnect meta, MethodHandle getter) {}
@@ -98,8 +121,9 @@ public final class GaugeRegistry {
                 remove(owner, meta.id());
                 continue;
             }
+            float threshold = Float.isFinite(sample.threshold()) ? sample.threshold() : meta.threshold();
             Gauge gauge = new Gauge(meta.id(), I18n.get(meta.labelKey()), sample.fill(),
-                    meta.readiness(), meta.threshold(), sample.ready(),
+                    meta.readiness(), threshold, sample.ready(),
                     sample.flow() != null ? sample.flow() : meta.flow(), sample.detail(), meta.kind());
             publishSample(owner, gauge, sample.visible(), meta.hideAfterMillis());
         }

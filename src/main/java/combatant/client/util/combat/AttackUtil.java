@@ -132,11 +132,7 @@ public enum AttackUtil {
             return false;
         }
 
-        boolean attacked = performAttack(mc, player, target, keepSprint);
-        if (attacked) {
-            AttributeSwap.afterNormalAttackIfActive(target, keepSprint);
-        }
-        return attacked;
+        return performAttack(mc, player, target, keepSprint);
     }
 
     public static boolean attack(Minecraft mc,

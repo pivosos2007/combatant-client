@@ -14,6 +14,8 @@
  * See THIRD_PARTY_NOTICES.md for details.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
@@ -32,6 +34,7 @@ layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     vec2 uvDx = dFdx(v_TexCoord);
     vec2 uvDy = dFdy(v_TexCoord);
     vec2 atlasSize = vec2(textureSize(u_Texture, 0));
@@ -52,7 +55,7 @@ void main() {
                         + textureGrad(u_Texture, v_TexCoord + subpixelX + subpixelY, uvDx, uvDy).r) * 0.25;
         coverage = mix(coverage, resolved, resolveWeight);
     }
-    float alpha = coverage * v_Color.a;
+    float alpha = coverage * material.a;
 #ifdef COMBATANT_ANALYTIC_CLIP
     vec2 logicalScale = max(uScreen.zw, vec2(1.0)) / max(uScreen.xy, vec2(1.0));
     alpha *= combatantClipCoverage(
@@ -60,5 +63,5 @@ void main() {
     );
     if (alpha <= 0.001) discard;
 #endif
-    color = vec4(v_Color.rgb, alpha);
+    color = vec4(material.rgb, alpha);
 }

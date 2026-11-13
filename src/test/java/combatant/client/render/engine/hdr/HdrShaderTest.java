@@ -75,6 +75,7 @@ final class HdrShaderTest {
                             "#define USE_FOG\n" + oitDefines);
                 }
                 compileItemPermutations(compiler, options, functions);
+                compileWorldMaterials(compiler, options, functions);
                 for (String name : List.of("scene_present.frag", "dream_sky_present.frag",
                         "dream_cloud_composite.frag", "dream_cloud_composite_hdr.frag", "reimagined_skybox.frag")) {
                     compile(compiler, options, name, expand("assets/combatant/shaders/" + name, new HashSet<>()), "");
@@ -88,6 +89,50 @@ final class HdrShaderTest {
         } finally {
             shaderc_compile_options_release(options);
             shaderc_compiler_release(compiler);
+        }
+    }
+
+    private static void compileWorldMaterials(long compiler, long options, String functions) throws Exception {
+        String pipelines = Files.readString(Path.of(
+                "src/main/java/combatant/client/render/engine/pipeline/WorldRenderPipelines.java"));
+        var fragments = Pattern.compile("\\.withFragmentShader\\(shader\\(\"([^\"]+)\"\\)\\)(.*?)\\.build\\(\\)",
+                Pattern.DOTALL).matcher(pipelines);
+        var permutations = new HashSet<String>();
+        int count = 0;
+        while (fragments.find()) {
+            String name = fragments.group(1);
+            String state = fragments.group(2);
+            String defines = "";
+            String source = expand("assets/combatant/shaders/" + name, new HashSet<>());
+            if (state.contains("HdrPipelineVariants.MANAGED_COLOR")) {
+                defines += "#define " + HdrPipelineVariants.LINEAR_COLOR + "\n";
+                if (state.contains("BlendFunction.TRANSLUCENT") || state.contains("withBlend(BlendFunctions.ALPHA)")) {
+                    defines += "#define " + HdrPipelineVariants.DISPLAY_OPACITY + "\n";
+                }
+            } else if (!state.contains("HdrPipelineVariants.DATA_OUTPUT")) {
+                source = HdrShaderSources.linearize(source, functions);
+                defines += "#define " + HdrPipelineVariants.LEGACY_COLOR + "\n";
+            }
+            if (state.contains("TRANSLUCENT_PREMULTIPLIED_ALPHA")) {
+                defines += "#define " + HdrPipelineVariants.PREMULTIPLIED_COLOR + "\n";
+            }
+            if (!permutations.add(name + defines)) continue;
+            compile(compiler, options, name + " HDR", source, defines);
+            compile(compiler, options, name + " SDR", expand("assets/combatant/shaders/" + name, new HashSet<>()), "");
+            count++;
+        }
+        assertTrue(count >= 20, "world material matrix must include managed and numeric outputs");
+        compile(compiler, options, "legacy premultiplied texture",
+                HdrShaderSources.linearize(expand("assets/combatant/shaders/pos_tex_color.frag", new HashSet<>()), functions),
+                "#define " + HdrPipelineVariants.LEGACY_COLOR + "\n#define " + HdrPipelineVariants.PREMULTIPLIED_COLOR + "\n");
+        for (String name : List.of("asset_compat.frag", "rig_trail_classic.frag", "rig_entity_cutout.frag",
+                "rig_entity_translucent.frag", "rig_player_lit_cutout.frag", "rig_player_lit_translucent.frag",
+                "jump_shockwave.frag", "blast_shockwave.frag", "orbit_gravity.frag", "world_mask_distortion.frag")) {
+            String source = expand("assets/combatant/shaders/" + name, new HashSet<>());
+            compile(compiler, options, name, source,
+                    "#define COMBATANT_RIG_SCENE_LINEAR\n#define " + HdrPipelineVariants.LINEAR_COLOR + "\n"
+                            + (name.equals("rig_trail_classic.frag") ? "#define " + HdrPipelineVariants.DISPLAY_OPACITY + "\n" : ""));
+            compile(compiler, options, name + " SDR", source, "");
         }
     }
 

@@ -23,7 +23,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.HitResult;
 
 /**
- * Swallows left clicks that would hit nothing while a sword or axe is held, so a missed swing never
+ * Swallows left clicks that would hit nothing while a melee weapon is held, so a missed swing never
  * costs the attack cooldown. Blocks and entities under the crosshair are untouched. With <i>fake swing</i>
  * the swallowed click still swings the arm on this client only: no packet goes out and the cooldown is kept.
  */
@@ -48,7 +48,10 @@ public final class AntiMiss extends Module {
     public static boolean blocksManualAttack() {
         AntiMiss module = Modules.get(AntiMiss.class);
         if (module == null || !module.isEnabled() || !module.shouldBlock()) return false;
-        if (module.fakeSwing.get()) module.swingLocally();
+        // Unlike an ordinary swing, a spear miss must not disturb an active kinetic hold.
+        if (module.fakeSwing.get() && !SpearAssist.isSpear(module.mc.player.getMainHandItem())) {
+            module.swingLocally();
+        }
         return true;
     }
 
@@ -57,7 +60,7 @@ public final class AntiMiss extends Module {
         if (player == null || mc.level == null || mc.hitResult == null) return false;
         if (mc.hitResult.getType() != HitResult.Type.MISS) return false;
         ItemStack held = player.getMainHandItem();
-        return held.is(ItemTags.SWORDS) || held.is(ItemTags.AXES);
+        return held.is(ItemTags.SWORDS) || held.is(ItemTags.AXES) || SpearAssist.isSpear(held);
     }
 
     /**

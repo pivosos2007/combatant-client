@@ -20,19 +20,34 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import combatant.client.events.Events;
+import combatant.client.mixininterface.IAttachedFireworkRocket;
 import combatant.client.events.impl.FireworkEvent;
 import combatant.client.util.aiming.RotationManager;
+import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.combat.ElytraTarget;
 import combatant.client.util.aiming.data.Rotation;
 
 @Mixin(FireworkRocketEntity.class)
-public abstract class FireworkRocketEntityMixin {
+public abstract class FireworkRocketEntityMixin implements IAttachedFireworkRocket {
 
     @Shadow
     @Nullable
     private LivingEntity attachedToEntity;
 
+    @Override
+    public boolean combatant$isAttachedTo(LivingEntity entity) {
+        return attachedToEntity == entity;
+    }
+
     @Unique
     private static Rotation resolveMoveRotation(LocalPlayer player) {
+        ElytraTarget target = Modules.get(ElytraTarget.class);
+        if (target != null && target.isManagingFireworks()) {
+            Rotation steering = target.getFireworkSteeringRotation();
+            if (steering != null) return steering;
+            // Never fall back to the camera for a rocket owned by ElytraTarget.
+            return RotationManager.INSTANCE.getServerRotation();
+        }
         return RotationManager.INSTANCE.getMovementRotation();
     }
 

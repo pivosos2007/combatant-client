@@ -9,12 +9,15 @@
  */
 
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 
 layout(location = 0) out vec4 fragColor;
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     vec2 p = v_TexCoord * 2.0 - 1.0;
     float d2 = dot(p, p);
     if (d2 >= 1.0) discard;
@@ -27,8 +30,8 @@ void main() {
     float edge = 1.0 - smoothstep(0.78, 1.0, d);
 
     float shape = (core + halo + flare) * edge;
-    vec3 rgb = mix(v_Color.rgb, vec3(1.0), core * 0.55);
-    float alpha = clamp(shape, 0.0, 1.0) * v_Color.a;
+    vec3 rgb = mix(material.rgb, vec3(1.0), core * 0.55);
+    float alpha = clamp(shape, 0.0, 1.0) * material.a;
     if (alpha <= 0.002) discard;
     fragColor = vec4(rgb, alpha);
 }

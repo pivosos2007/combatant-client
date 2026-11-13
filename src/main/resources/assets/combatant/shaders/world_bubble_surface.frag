@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 2) in vec4 v_Color;
 layout(location = 7) in vec3 v_ViewNormal;
 layout(location = 6) in vec3 v_ViewPosition;
@@ -17,6 +19,7 @@ layout(location = 9) in float v_Membrane;
 layout(location = 0) out vec4 fragColor;
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     vec3 normal = normalize(v_ViewNormal);
     vec3 viewDir = normalize(-v_ViewPosition);
     vec3 lightDir = normalize(vec3(-0.34, 0.78, 0.52));
@@ -33,16 +36,16 @@ void main() {
             + v_AgePhase.y * 1.73
             + v_Membrane * 28.0;
     float film = 0.5 + 0.5 * sin(filmPhase);
-    vec3 filmCold = vec3(0.62, 0.88, 1.00);
-    vec3 filmWarm = vec3(1.00, 0.70, 0.92);
+    vec3 filmCold = combatantMaterialColor(vec3(0.62, 0.88, 1.00));
+    vec3 filmWarm = combatantMaterialColor(vec3(1.00, 0.70, 0.92));
     vec3 filmColor = mix(filmCold, filmWarm, film);
 
-    vec3 base = v_Color.rgb;
+    vec3 base = material.rgb;
     vec3 surface = mix(base, filmColor, 0.10 + fresnel * 0.20);
     surface = mix(surface, vec3(1.0), specular * 0.78);
     surface *= 0.82 + diffuse * 0.22;
 
-    float alpha = v_Color.a * (0.055 + fresnel * 0.58 + specular * 0.46);
+    float alpha = material.a * (0.055 + fresnel * 0.58 + specular * 0.46);
     alpha *= 0.94 + film * fresnel * 0.12;
     alpha = clamp(alpha, 0.0, 0.86);
 

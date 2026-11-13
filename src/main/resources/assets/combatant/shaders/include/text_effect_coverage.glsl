@@ -4,6 +4,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 // Shared UI/world glyph coverage and effect composition. Glyph bounds prevent
 // neighbouring atlas cells from bleeding into padded outline/shadow quads.
 float textEffectMedian(vec3 rgb) {
@@ -79,9 +81,11 @@ vec4 textEffectColor(vec2 uv, vec4 bounds, vec4 baseColor, vec4 effect,
             effectCover = max(0.0, around * 0.25 - face) * effect.z;
         }
     }
-    float frontAlpha = face * baseColor.a;
-    float backAlpha = effectCover * baseColor.a * (1.0 - face);
+    vec4 front = combatantMaterial(baseColor);
+    vec4 back = combatantMaterial(vec4(effectRgb, baseColor.a));
+    float frontAlpha = face * front.a;
+    float backAlpha = effectCover * back.a * (1.0 - face);
     float alpha = clamp(frontAlpha + backAlpha, 0.0, 1.0);
-    vec3 premultiplied = baseColor.rgb * frontAlpha + effectRgb * backAlpha;
+    vec3 premultiplied = front.rgb * frontAlpha + back.rgb * backAlpha;
     return vec4(premultiplied / max(alpha, 1e-7), alpha);
 }

@@ -37,7 +37,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -56,7 +55,6 @@ import combatant.client.events.impl.PlayerStepEvent;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.PvpCooldowns;
 import combatant.client.features.module.modules.combat.TPSSync;
-import combatant.client.features.module.modules.movement.ElytraFly;
 import combatant.client.features.module.modules.movement.NoStun;
 import combatant.client.features.module.modules.movement.Timer;
 import combatant.client.features.module.modules.visuals.NoRender;
@@ -259,26 +257,6 @@ public abstract class LivingEntityMixin {
 
         if (WorldTweaks.isServerRaining(world)) {
             cir.setReturnValue(1.0F);
-        }
-    }
-
-    @Inject(method = "aiStep", at = @At("HEAD"))
-    private void preventCrash(CallbackInfo ci) {
-        LivingEntity self = (LivingEntity) (Object) this;
-
-        if (!(self instanceof Player p)) return;
-        ElytraFly elytraFly = Modules.get(ElytraFly.class);
-        if (elytraFly == null || !elytraFly.isEnabled()) return;
-        if (!elytraFly.noCrash.get()) return;
-        if (!p.isFallFlying()) return;
-
-        Vec3 vel = p.getDeltaMovement();
-
-        if (vel.horizontalDistance() < 1) return;
-        AABB next = p.getBoundingBox().move(vel);
-
-        if (!p.level().noCollision(next)) {
-            p.setDeltaMovement(0, 0, 0);
         }
     }
 

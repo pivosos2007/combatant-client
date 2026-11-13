@@ -9,9 +9,14 @@ package combatant.client.render.engine.hdr;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.pipeline.CompiledRenderPipeline;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.vertex.VertexFormat;
 import com.mojang.renderpearl.frontend.FrontendRenderPipeline;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.ShaderDefines;
+import net.minecraft.resources.Identifier;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -107,6 +112,76 @@ final class HdrPipelineVariantsTest {
         assertSame(base, HdrPipelineVariants.variantFor(base, List.of(GpuFormat.RGBA8_UNORM), false));
         assertSame(base, HdrPipelineVariants.variantFor(base, List.of(SceneColor.FORMAT), false));
         assertSame(base, HdrPipelineVariants.variantFor(base, List.of(), true));
+    }
+
+    @Test
+    void worldMaterialsDistinguishPremultipliedLinearManagedAndNumericOutput() {
+        var premultiplied = worldPipeline(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA);
+        var premultipliedHdr = HdrPipelineVariants.variantFor(premultiplied, List.of(SceneColor.FORMAT), true);
+        assertTrue(premultipliedHdr.getShaderDefines().flags().contains(HdrPipelineVariants.PREMULTIPLIED_COLOR));
+        assertTrue(premultipliedHdr.getShaderDefines().flags().contains(HdrPipelineVariants.LEGACY_COLOR));
+        assertDrawContract(premultiplied, premultipliedHdr);
+
+        var straight = HdrPipelineVariants.variantFor(worldPipeline(BlendFunction.TRANSLUCENT),
+                List.of(SceneColor.FORMAT), true);
+        assertFalse(straight.getShaderDefines().flags().contains(HdrPipelineVariants.PREMULTIPLIED_COLOR));
+        for (String contract : List.of(HdrPipelineVariants.MANAGED_COLOR,
+                HdrPipelineVariants.LINEAR_COLOR, HdrPipelineVariants.DATA_OUTPUT)) {
+            var source = worldPipeline(BlendFunction.TRANSLUCENT, contract);
+            var hdr = HdrPipelineVariants.variantFor(source, List.of(SceneColor.FORMAT), true);
+            assertEquals(SceneColor.FORMAT, hdr.getColorTargetStates().getFirst().format());
+            assertFalse(hdr.getShaderDefines().flags().contains(HdrPipelineVariants.LEGACY_COLOR));
+            assertEquals(!contract.equals(HdrPipelineVariants.DATA_OUTPUT),
+                    hdr.getShaderDefines().flags().contains(HdrPipelineVariants.LINEAR_COLOR));
+            assertEquals(contract.equals(HdrPipelineVariants.MANAGED_COLOR),
+                    hdr.getShaderDefines().flags().contains(HdrPipelineVariants.DISPLAY_OPACITY));
+            assertDrawContract(source, hdr);
+            assertSame(source, HdrPipelineVariants.variantFor(source, List.of(GpuFormat.RGBA8_UNORM), false));
+            assertSame(source, HdrPipelineVariants.variantFor(source, List.of(SceneColor.FORMAT), false));
+        }
+        var managedPremultiplied = HdrPipelineVariants.variantFor(worldPipeline(
+                BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA, HdrPipelineVariants.MANAGED_COLOR),
+                List.of(SceneColor.FORMAT), true);
+        assertTrue(managedPremultiplied.getShaderDefines().flags().contains(HdrPipelineVariants.PREMULTIPLIED_COLOR));
+        assertTrue(managedPremultiplied.getShaderDefines().flags().contains(HdrPipelineVariants.DISPLAY_OPACITY));
+        var additive = HdrPipelineVariants.variantFor(worldPipeline(BlendFunction.ADDITIVE,
+                HdrPipelineVariants.MANAGED_COLOR), List.of(SceneColor.FORMAT), true);
+        assertFalse(additive.getShaderDefines().flags().contains(HdrPipelineVariants.DISPLAY_OPACITY));
+    }
+
+    private static RenderPipeline worldPipeline(BlendFunction blend, String... flags) {
+        return worldPipeline(GpuFormat.RGBA8_UNORM, blend, flags);
+    }
+
+    private static RenderPipeline worldPipeline(GpuFormat format, BlendFunction blend, String... flags) {
+        var source = RenderPipelines.ITEM_CUTOUT;
+        var defines = ShaderDefines.builder();
+        for (String flag : flags) defines.define(flag);
+        return new RenderPipeline(Identifier.fromNamespaceAndPath("combatant", "pipeline/world_contract_test"),
+                source.getShaders(), defines.build(), source.getBindGroupLayouts(),
+                new ColorTargetState[]{new ColorTargetState(java.util.Optional.ofNullable(blend),
+                        format, ColorTargetState.WRITE_ALL)},
+                source.getDepthStencilState(), source.getPolygonMode(), source.isCull(),
+                source.getVertexFormatBindings().toArray(VertexFormat[]::new),
+                source.getPrimitiveTopology(), source.pushConstantSize(), source.getSortKey()) { };
+    }
+
+    @Test
+    void fullscreenActivatesMaterialConversionEvenWhenFormatAlreadyMatches() {
+        for (GpuFormat format : List.of(GpuFormat.RGBA8_UNORM, SceneColor.FORMAT)) {
+            var base = worldPipeline(format, null, HdrPipelineVariants.MANAGED_COLOR);
+            var hdr = HdrFullscreenPipelines.variantFor(base);
+            assertNotSame(base, hdr);
+            assertDrawContract(base, hdr);
+            assertEquals(SceneColor.FORMAT, hdr.getColorTargetStates().getFirst().format());
+            assertTrue(hdr.getShaderDefines().flags().contains(HdrPipelineVariants.LINEAR_COLOR));
+            assertFalse(hdr.getShaderDefines().flags().contains(HdrPipelineVariants.LEGACY_COLOR));
+            assertSame(hdr, HdrFullscreenPipelines.variantFor(hdr));
+            assertSame(hdr, HdrFullscreenPipelines.variantFor(base));
+            assertSame(hdr, HdrPipelineVariants.variantFor(hdr, List.of(SceneColor.FORMAT), true));
+        }
+        var nativeHdr = worldPipeline(SceneColor.FORMAT, null, HdrPipelineVariants.LINEAR_COLOR);
+        assertSame(nativeHdr, HdrFullscreenPipelines.variantFor(nativeHdr));
     }
 
     @Test

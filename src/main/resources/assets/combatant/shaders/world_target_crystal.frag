@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec4 v_Params;
@@ -20,6 +22,7 @@ const float TAU = 6.283185307179586;
 float sat(float x) { return clamp(x, 0.0, 1.0); }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     vec3 normal = normalize(v_ViewNormal);
     vec3 viewDir = normalize(-v_ViewPosition);
     float ndv = sat(abs(dot(normal, viewDir)));
@@ -49,9 +52,9 @@ void main() {
     float internalB = 0.5 + 0.5 * sin(uv.x * -4.0 + uv.y * 9.0 - facetPhase * 0.7 + time * 0.53);
     float internalBand = smoothstep(0.66, 0.94, internalA * 0.58 + internalB * 0.42);
 
-    vec3 base = max(v_Color.rgb, vec3(0.001));
+    vec3 base = max(material.rgb, combatantMaterialColor(vec3(0.001)));
     vec3 body = mix(base * 0.42, base * 0.88, faceLight * 0.72 + facetTone * 0.28);
-    vec3 cold = mix(base, vec3(0.55, 0.78, 1.0), 0.34);
+    vec3 cold = mix(base, combatantMaterialColor(vec3(0.55, 0.78, 1.0)), 0.34);
     vec3 hot = mix(base, vec3(1.0), 0.74);
 
     vec3 spectral = vec3(
@@ -59,7 +62,7 @@ void main() {
         0.5 + 0.5 * sin(facetPhase + fresnel * 1.7 + 2.0943951),
         0.5 + 0.5 * sin(facetPhase + fresnel * 1.7 + 4.1887902)
     );
-    spectral = mix(cold, spectral, 0.18 + fresnel * 0.22);
+    spectral = mix(cold, combatantMaterialColor(spectral), 0.18 + fresnel * 0.22);
 
     // The existing crystal has restrained edge reflectance; Fresnel explicitly amplifies it.
     float rim = smoothstep(0.15, 0.96, fresnel);
@@ -76,14 +79,16 @@ void main() {
         float edgeDistance = min(uv.y, min(2.0 * uv.x - uv.y, 2.0 - 2.0 * uv.x - uv.y));
         float edge = 1.0 - smoothstep(0.018, 0.14, edgeDistance);
         float emission = edge * 0.65 + rim * 0.58 + internalBand * 0.29 + spine * 0.2;
-        vec3 emissionTint = mix(base, vec3(0.94, 0.98, 1.0), 0.5);
+        vec3 emissionTint = mix(base, combatantMaterialColor(vec3(0.94, 0.98, 1.0)), 0.5);
         outColor += emissionTint * emission * emitStrength * 1.32;
     }
 
-    outColor = mix(outColor, vec3(1.0, 0.075, 0.055) * (0.48 + outColor * 0.52), hit * 0.52);
+    outColor = mix(outColor, combatantMaterialColor(vec3(1.0, 0.075, 0.055)) * (0.48 + outColor * 0.52), hit * 0.52);
+#ifndef COMBATANT_SCENE_LINEAR_COLOR
     outColor = outColor / (1.0 + outColor * 0.08);
+#endif
 
-    float alpha = v_Color.a * (
+    float alpha = material.a * (
         0.36 + ndv * 0.12 + fresnel * (0.34 + rimStrength * 0.16)
         + internalFacet * 0.10 + internalBand * 0.055
         + emitStrength * (0.05 + rim * 0.08)

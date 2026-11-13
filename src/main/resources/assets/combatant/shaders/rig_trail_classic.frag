@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec3 v_Normal;
@@ -17,6 +19,7 @@ layout(location = 0) out vec4 color;
 float sat(float x) { return clamp(x, 0.0, 1.0); }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     float u = sat(v_TexCoord.x);
     float side = abs(v_TexCoord.y * 2.0 - 1.0);
 
@@ -28,10 +31,10 @@ void main() {
     float edgeCore = smoothstep(0.90, 0.985, side);
     float fill = 1.0 - smoothstep(0.92, 1.0, side);
 
-    float alpha = v_Color.a * path * (fill * 0.58 + edge * 0.24 + edgeCore * 0.38);
+    float alpha = material.a * path * (fill * 0.58 + edge * 0.24 + edgeCore * 0.38);
     if (alpha <= 0.003) discard;
 
-    vec3 base = max(v_Color.rgb, vec3(0.001));
+    vec3 base = max(material.rgb, combatantMaterialColor(vec3(0.001)));
     vec3 stroke = mix(base, vec3(1.0), 0.28);
     vec3 outColor = base * (0.76 + fill * 0.10);
     outColor = mix(outColor, stroke, edge * 0.32 + edgeCore * 0.42);

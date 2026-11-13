@@ -20,8 +20,11 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.features.module.Modules;
+import combatant.client.features.module.modules.combat.ElytraTarget;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.data.Rotation;
+import combatant.client.util.player.ElytraFlightPhysics;
 
 @ModuleInfo(
         id = "superfirework",
@@ -47,49 +50,63 @@ public class SuperFirework extends Module {
         return RotationManager.INSTANCE.getMovementRotation();
     }
 
+    /**
+     * Transform the velocity in exactly the same way for independent flight and
+     * ElytraTarget steering. All speed/mode settings belong to SuperFirework.
+     */
+    private Vec3 applyMode(Vec3 velocity, float yaw, float pitch, Vec3 movementDirection) {
+        int quadrant = yaw > 0.0f ? 45 : -45;
+        double acceleration = Math.abs((yaw + quadrant) % 90.0 - quadrant) / 45.0;
+        double rotationBoost = 1.0 + 0.3 * acceleration * acceleration;
+        boolean accelerateY = Math.abs(pitch) > 60.0f;
+
+        if (mode.get() == FireworkMode.GRIM) {
+            return new Vec3(
+                    velocity.x * rotationBoost,
+                    accelerateY ? velocity.y * rotationBoost : velocity.y,
+                    velocity.z * rotationBoost
+            );
+        }
+
+        double customSpeed = speed.get() / 20.0;
+        return new Vec3(
+                movementDirection.x * customSpeed * rotationBoost,
+                movementDirection.y * customSpeed * (accelerateY ? rotationBoost : 1.0),
+                movementDirection.z * customSpeed * rotationBoost
+        );
+    }
+
+    /**
+     * Vanilla 26.3 attached rocket update: 0.5 * inputVelocity + 0.85 * look.
+     * Used by ElytraTarget only to predict the result of *this module's* settings.
+     */
+    public Vec3 estimateBoostVelocity(Vec3 currentVelocity, Rotation steering) {
+        Vec3 direction = steering.directionVector();
+        Vec3 substitute = applyMode(currentVelocity, steering.yaw(), steering.pitch(), direction);
+        return ElytraFlightPhysics.rocket(substitute, steering);
+    }
+
     @EventHandler
     public void onFirework(FireworkEvent event) {
         LocalPlayer player = Minecraft.getInstance().player;
-        if (player == null) {
+        if (player == null) return;
+
+        ElytraTarget elytraTarget = Modules.get(ElytraTarget.class);
+        if (elytraTarget != null && elytraTarget.isManagingFireworks()) {
+            Rotation pursuit = elytraTarget.getFireworkSteeringRotation();
+            if (pursuit != null) {
+                // Steering is managed by ElytraTarget, mode and speed remain ours.
+                event.setVector(applyMode(event.getVector(), pursuit.yaw(), pursuit.pitch(),
+                        pursuit.directionVector()));
+            }
+            // Never substitute camera rotation when pursuit direction is unavailable.
             return;
         }
 
         Rotation rotation = resolveRotation(player);
-        Rotation moveRotation = resolveMoveRotation(player);
-        float yaw = rotation.yaw();
-        float movePitch = moveRotation.pitch();
-
-        if (mode.get() == FireworkMode.GRIM) {
-            int ff = yaw > 0.0f ? 45 : -45;
-            double acceleration = Math.abs((yaw + ff) % 90.0 - ff) / 45.0;
-            double boost = 1.0 + (0.3 * acceleration * acceleration);
-            boolean yAcceleration = Math.abs(movePitch) > 60.0f;
-
-            Vec3 vector = event.getVector();
-            event.setVector(new Vec3(
-                    vector.x * boost,
-                    yAcceleration ? vector.y * boost : vector.y,
-                    vector.z * boost
-            ));
-            return;
-        }
-
-        if (mode.get() == FireworkMode.CUSTOM) {
-            int ff = yaw > 0.0f ? 45 : -45;
-            double acceleration = Math.abs((yaw + ff) % 90.0 - ff) / 45.0;
-            double rotationBoost = 1.0 + (0.3 * acceleration * acceleration);
-            boolean yAcceleration = Math.abs(movePitch) > 60.0f;
-
-            Vec3 direction = moveRotation.directionVector();
-            float customSpeed = speed.get() / 20.0f;
-            double finalSpeed = customSpeed * rotationBoost;
-
-            event.setVector(new Vec3(
-                    direction.x * finalSpeed,
-                    yAcceleration ? direction.y * finalSpeed : direction.y * customSpeed,
-                    direction.z * finalSpeed
-            ));
-        }
+        Rotation movement = resolveMoveRotation(player);
+        event.setVector(applyMode(event.getVector(), rotation.yaw(), movement.pitch(),
+                movement.directionVector()));
     }
 
     private boolean isCustomMode() {

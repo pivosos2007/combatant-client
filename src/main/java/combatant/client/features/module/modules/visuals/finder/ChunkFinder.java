@@ -41,7 +41,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
         displayName = "ChunkFinder",
         aliases = {
                 "SusChunkFinder", "GrowthFinder", "OPChunkFinder",
-                "OGChunkFinder", "BaseFinder", "OldChunkFinder",
+                "OGChunkFinder", "OldChunkFinder",
                 "PrimeChunkFinder", "DeepslateFinder", "LightChangeFinder",
                 "SpawnerFinder", "SpawnerESP", "SpawnerNotifier", "SpawnerNametags"},
         category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.ESP,

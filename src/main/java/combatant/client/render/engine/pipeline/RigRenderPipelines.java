@@ -19,6 +19,7 @@ import com.mojang.renderpearl.api.pipeline.BlendFunction;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.pipeline.UniformType;
 import combatant.client.render.engine.rhi.pipeline.PipelineDomain;
+import combatant.client.render.engine.hdr.HdrPipelineVariants;
 import combatant.client.render.engine.vertex.CombatantVertexFormats;
 import net.minecraft.resources.Identifier;
 
@@ -205,6 +206,7 @@ public final class RigRenderPipelines {
                         com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(shader(instanced ? "asset_compat_instanced.vert" : "asset_compat.vert"))
                 .withFragmentShader(shader("asset_compat.frag"))
+                .withShaderDefine(HdrPipelineVariants.LINEAR_COLOR)
                 .withSampler("u_BaseColor")
                 .withSampler("u_MetallicRoughness")
                 .withSampler("u_Normal")
@@ -228,6 +230,7 @@ public final class RigRenderPipelines {
                         com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(shader("asset_compat.vert"))
                 .withFragmentShader(shader("asset_compat.frag"))
+                .withShaderDefine(HdrPipelineVariants.LINEAR_COLOR)
                 .withSampler("u_BaseColor")
                 .withSampler("u_MetallicRoughness")
                 .withSampler("u_Normal")
@@ -286,6 +289,7 @@ public final class RigRenderPipelines {
                         com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(shader("rig_textured.vert"))
                 .withFragmentShader(fragmentShader)
+                .withShaderDefine(HdrPipelineVariants.MANAGED_COLOR)
                 .withDepthTestFunction(depthTest ? DepthTestFunction.GEQUAL_DEPTH_TEST : DepthTestFunction.NO_DEPTH_TEST)
                 .withDepthWrite(false)
                 .withBlend(blend)

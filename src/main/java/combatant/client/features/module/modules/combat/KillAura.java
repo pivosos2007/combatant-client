@@ -22,6 +22,7 @@ import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.config.common.impl.TargetFilters;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.RotationUpdateEvent;
+import combatant.client.events.impl.MovementInputEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -48,6 +49,7 @@ import combatant.client.util.aiming.preference.RotationPreference;
 import combatant.client.util.aiming.raytrace.RotationRaytrace;
 import combatant.client.util.click.AttackPressing;
 import combatant.client.util.click.ClickScheduler;
+import combatant.client.util.player.simulation.PlayerSimulationCache;
 import combatant.client.util.combat.protocol.ProtocolUtil;
 import combatant.client.util.raycast.RaycastUtil;
 import combatant.client.util.target.TargetManager;
@@ -529,6 +531,7 @@ public class KillAura extends Module {
     @Override
     public void onEnable() {
         clicker.reset();
+        CombatAttackPlanner.INSTANCE.clearCommitment();
         currentTarget = null;
         lastRotation = null;
         lastRotationTick = -1;
@@ -537,6 +540,7 @@ public class KillAura extends Module {
 
     @Override
     public void onDisable() {
+        CombatAttackPlanner.INSTANCE.clearCommitment();
         currentTarget = null;
         TargetManager.clear(this, "prediction");
         TargetManager.clear(this);
@@ -606,7 +610,59 @@ public class KillAura extends Module {
                 clearTargetRuntime();
             }
             case POST -> tryAttackPost();
+            case RESOLVED -> { }
         }
+    }
+
+    /**
+     * A Smart critical jump must be requested in the actual input phase.
+     * This is deliberately after TargetStrafe's Grim input handler, so its
+     * pathing input can be used by the player movement predictor.
+     */
+    @EventHandler(priority = -5)
+    private void onSmartCritMovement(MovementInputEvent event) {
+        if (!usesSmartCriticalTiming() || mc.player == null || mc.level == null) return;
+
+        LivingEntity target = currentTarget;
+        if (target == null || !isInRange(target)) return;
+        Criticals criticals = Modules.get(Criticals.class);
+        if (!canPlanNaturalCrit(criticals, target)) return;
+
+        // Read Grim's final strafe direction rather than the original keys.
+        PlayerSimulationCache.refreshLocalMovementPrediction(event);
+        CombatAttackPlanner.Plan plan = getSmartAttackPlan(target, criticals);
+
+        // Legit sprint resets take a tick to prepare. Start them before the
+        // predicted critical rather than discarding the actual attack window.
+        if (plan.critical() && plan.attackTick() >= 1 && plan.attackTick() <= 2
+                && CombatStrikeController.INSTANCE.resolveSprintResetMode(resolveStrikeResetMode())
+                    == CombatStrikeController.SprintResetMode.LEGIT) {
+            if (!SprintController.INSTANCE.prepareLegitAttack(mc, mc.player, 2)) {
+                event.setSprint(false);
+                PlayerSimulationCache.refreshLocalMovementPrediction(event);
+            }
+        }
+
+        if (!mc.player.onGround() || event.isJump() || !plan.startJump()) return;
+        CombatAttackPlanner.INSTANCE.commitJump(mc.player, target, plan.attackTick());
+        event.setJump(true);
+        PlayerSimulationCache.refreshLocalMovementPrediction(event);
+        if (criticals != null && criticals.isEnabled()) {
+            criticals.notifyKillAuraJump();
+        }
+    }
+
+    public boolean usesSmartCriticalTiming() {
+        return isEnabled() && !isLegacyAttackProtocol()
+                && criticalsSelection.get() == Criticals.SelectionMode.SMART;
+    }
+
+    /** Used by TargetStrafe Grim to suppress its unconditional clear-ground hop. */
+    public boolean controlsGrimStrafeJump(LivingEntity target) {
+        if (!isEnabled() || target == null || target != currentTarget || mc.player == null) return false;
+        if (isLegacyAttackProtocol() || criticalsSelection.get() != Criticals.SelectionMode.SMART) return false;
+        Criticals criticals = Modules.get(Criticals.class);
+        return canPlanNaturalCrit(criticals, target);
     }
 
     @Override
@@ -678,22 +734,23 @@ public class KillAura extends Module {
      *                    used by SNAP so the rotation is held while only the crit check fails.
      */
     private boolean willAttackInTicks(LivingEntity target, int ticks, boolean requireCrit) {
-        if (!isEnabled() || mc.player == null) {
-            return false;
-        }
-
+        if (!isEnabled() || mc.player == null) return false;
         int safeTicks = Math.max(0, ticks);
-        if (isLegacyAttackProtocol()) {
-            return clicker.willClickAt(safeTicks);
-        }
+        if (isLegacyAttackProtocol()) return clicker.willClickAt(safeTicks);
 
         LivingEntity candidate = target != null ? target : currentTarget;
-        boolean cooldownReady = AttackPressing.INSTANCE.willCooldownComplete(mc.player, candidate, false, safeTicks);
-        if (!cooldownReady) {
-            return false;
+        if (candidate == null) return false;
+        Criticals criticals = Modules.get(Criticals.class);
+        if (criticalsSelection.get() == Criticals.SelectionMode.SMART
+                && canPlanNaturalCrit(criticals, candidate)) {
+            CombatAttackPlanner.Plan plan = getSmartAttackPlan(candidate, criticals);
+            // SNAP must begin rotating before the selected tick, not at the
+            // first non-critical cooldown tick.
+            return plan.hasAttackWithin(safeTicks + (requireCrit ? 0 : 1));
         }
 
-        return !requireCrit || safeTicks != 0 || criticalHitAllowed(candidate);
+        boolean cooldownReady = AttackPressing.INSTANCE.willCooldownComplete(mc.player, candidate, false, safeTicks);
+        return cooldownReady && (!requireCrit || safeTicks != 0 || criticalHitAllowed(candidate));
     }
 
     public boolean willAttackInTicks(int ticks) {
@@ -736,6 +793,7 @@ public class KillAura extends Module {
     }
 
     private void clearTargetImmediate() {
+        CombatAttackPlanner.INSTANCE.clearCommitment();
         currentTarget = null;
         TargetManager.clear(this, "prediction");
         TargetManager.clear(this);
@@ -746,6 +804,7 @@ public class KillAura extends Module {
     }
 
     private void clearTargetRuntime() {
+        CombatAttackPlanner.INSTANCE.clearCommitment();
         currentTarget = null;
         TargetManager.clear(this, "prediction");
         TargetManager.clear(this);
@@ -819,6 +878,7 @@ public class KillAura extends Module {
     }
 
     private void setActiveTarget(LivingEntity target) {
+        if (currentTarget != target) CombatAttackPlanner.INSTANCE.clearCommitment();
         currentTarget = target;
         TargetManager.clear(this, "prediction");
         TargetManager.publish(this, target, TargetManager.Source.MODULE, 650);
@@ -1151,22 +1211,39 @@ public class KillAura extends Module {
     }
 
     private boolean criticalHitAllowed(LivingEntity target) {
-        if (target == null || mc.player == null) return true;
-        if (isLegacyAttackProtocol()) return true;
-        if (mc.player.isFallFlying()) return true;
+        if (target == null || mc.player == null || isLegacyAttackProtocol() || mc.player.isFallFlying()) {
+            return true;
+        }
 
         Criticals criticals = Modules.get(Criticals.class);
+        if (criticalsSelection.get() == Criticals.SelectionMode.SMART
+                && canPlanNaturalCrit(criticals, target)) {
+            return getSmartAttackPlan(target, criticals).attackNow();
+        }
         if (criticals == null || !criticals.isEnabled()) return true;
         ClickScheduler gateClicker = isLegacyAttackProtocol() ? clicker : null;
-        CombatStrikeController.SprintResetMode resolvedSprintReset =
+        return criticals.shouldAttackForKillAura(gateClicker, target, criticalsSelection.get(),
+                ignoresSprintForCrit());
+    }
+
+    private boolean ignoresSprintForCrit() {
+        CombatStrikeController.SprintResetMode mode =
                 CombatStrikeController.INSTANCE.resolveSprintResetMode(resolveStrikeResetMode());
-        boolean ignoreLocalSprintAfterReset = resolvedSprintReset != CombatStrikeController.SprintResetMode.NONE;
-        return criticals.shouldAttackForKillAura(
-                gateClicker,
-                target,
-                criticalsSelection.get(),
-                ignoreLocalSprintAfterReset
-        );
+        return mode != CombatStrikeController.SprintResetMode.NONE;
+    }
+
+    private boolean canPlanNaturalCrit(Criticals criticals, LivingEntity target) {
+        if (target == null || mc.player == null || mc.player.isFallFlying()) return false;
+        if (criticals != null && criticals.isEnabled() && !criticals.usesNaturalKillAuraCrit()) return false;
+        if (criticals != null) return criticals.canPredictNaturalCrit(target);
+        return false;
+    }
+
+    private CombatAttackPlanner.Plan getSmartAttackPlan(LivingEntity target, Criticals criticals) {
+        double jumpMotion = criticals != null ? criticals.getPlannedJumpMotion() : Double.NaN;
+        return CombatAttackPlanner.INSTANCE.plan(mc.player, target,
+                getEffectiveAttackRange(target), canPlanNaturalCrit(criticals, target),
+                ignoresSprintForCrit(), jumpMotion);
     }
 
     private int calculateTicks(Rotation rotation) {

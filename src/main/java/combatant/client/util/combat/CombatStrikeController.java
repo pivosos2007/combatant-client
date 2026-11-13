@@ -70,15 +70,17 @@ public final class CombatStrikeController {
             return false;
         }
 
+        // A rejected critical window must never send sprint-reset packets or
+        // arm Legit's temporary sprint block.
+        if (criticalGate != null && !criticalGate.getAsBoolean()) {
+            return false;
+        }
+
         SprintResetMode resolvedMode = resolveSprintResetMode(sprintMode);
         boolean shouldReset = allowSprintReset
                 && resolvedMode != SprintResetMode.NONE
                 && shouldResetSprintForAttack(mc);
         if (shouldReset && !prepareSprintForAttack(mc, target, resolvedMode)) {
-            return false;
-        }
-
-        if (criticalGate != null && !criticalGate.getAsBoolean()) {
             return false;
         }
 

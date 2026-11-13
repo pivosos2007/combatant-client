@@ -12,6 +12,8 @@ import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import combatant.client.events.impl.MovementInputEvent;
+import combatant.client.util.aiming.RotationManager;
+import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.render.helpers.TickDelta;
 
 public enum EagleUtil {
@@ -92,7 +94,16 @@ public enum EagleUtil {
             return Vec3.ZERO;
         }
 
-        double rad = Math.toRadians(player.getYRot());
+        // RotationManager applies movement velocity using its rotation for BOTH
+        // STRICT and SILENT correction. The input has already been corrected by
+        // Scaffold where appropriate, so checking an edge using camera yaw tests
+        // the wrong direction whenever the server-facing yaw differs.
+        var activeTarget = RotationManager.INSTANCE.getActiveRotationTarget();
+        float inputYaw = activeTarget != null
+                && activeTarget.movementCorrection != MovementCorrection.OFF
+                ? RotationManager.INSTANCE.getMovementRotation().yaw()
+                : player.getYRot();
+        double rad = Math.toRadians(inputYaw);
         double sin = Math.sin(rad);
         double cos = Math.cos(rad);
         double x = sideways * cos - forward * sin;

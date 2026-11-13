@@ -38,14 +38,24 @@ public final class HdrFullscreenPipelines {
             return pipeline;
         }
 
-        ColorTargetState original = pipeline.getColorTargetStates().getFirst();
-        if (original == null || original.format() != GpuFormat.RGBA8_UNORM) return pipeline;
-
-        synchronized (HDR_VARIANTS) {
-            RenderPipeline variant = HDR_VARIANTS.computeIfAbsent(pipeline, HdrFullscreenPipelines::createHdrVariant);
+        RenderPipeline variant = variantFor(pipeline);
+        if (variant != pipeline) {
             RenderPipelineRegistry registry = RenderPipelineRegistry.global();
             if (registry.get(variant) == null) registry.registerNative(variant);
-            return variant;
+        }
+        return variant;
+    }
+
+    static RenderPipeline variantFor(RenderPipeline pipeline) {
+        if (pipeline instanceof Variant || pipeline.getColorTargetStates().size() != 1) return pipeline;
+        ColorTargetState original = pipeline.getColorTargetStates().getFirst();
+        if (original == null || original.format() != GpuFormat.RGBA8_UNORM
+                && original.format() != SceneColor.FORMAT) return pipeline;
+        boolean managed = pipeline.getShaderDefines().flags().contains(HdrPipelineVariants.MANAGED_COLOR)
+                && !pipeline.getShaderDefines().flags().contains(HdrPipelineVariants.LINEAR_COLOR);
+        if (original.format() == SceneColor.FORMAT && !managed) return pipeline;
+        synchronized (HDR_VARIANTS) {
+            return HDR_VARIANTS.computeIfAbsent(pipeline, HdrFullscreenPipelines::createHdrVariant);
         }
     }
 
@@ -56,7 +66,9 @@ public final class HdrFullscreenPipelines {
     private static final class Variant extends RenderPipeline {
         private Variant(RenderPipeline pipeline) {
             super(pipeline.getLocation().withSuffix("__fullscreen_hdr"),
-                    pipeline.getShaders(), pipeline.getShaderDefines(), pipeline.getBindGroupLayouts(),
+                    pipeline.getShaders(), HdrPipelineVariants.variantDefines(pipeline, false,
+                            pipeline.getShaderDefines().flags().contains(HdrPipelineVariants.MANAGED_COLOR)),
+                    pipeline.getBindGroupLayouts(),
                     new ColorTargetState[]{new ColorTargetState(pipeline.getColorTargetStates().getFirst().blendFunction(),
                             SceneColor.FORMAT, pipeline.getColorTargetStates().getFirst().writeMask())},
                     pipeline.getDepthStencilState(), pipeline.getPolygonMode(), pipeline.isCull(),

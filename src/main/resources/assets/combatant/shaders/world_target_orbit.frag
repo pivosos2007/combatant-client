@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec4 v_Params;
@@ -23,6 +25,7 @@ float sat(float x) {
 }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     float u = fract(v_TexCoord.x);
     float radial = clamp(v_TexCoord.y, 0.0, 1.0);
     float time = v_Params.x;
@@ -37,9 +40,9 @@ void main() {
     if (track > 2.5) {
         float edge = pow(1.0 - sat(facing), 2.1);
         float breathe = 0.5 + 0.5 * sin(time * 0.36 + u * TAU);
-        vec3 horizon = vec3(0.0025, 0.0045, 0.0080);
-        horizon += vec3(0.018, 0.026, 0.050) * edge * (0.58 + breathe * 0.16);
-        float horizonAlpha = v_Color.a * (0.72 - edge * 0.20 + breathe * 0.025);
+        vec3 horizon = combatantMaterialColor(vec3(0.0025, 0.0045, 0.0080));
+        horizon += combatantMaterialColor(vec3(0.018, 0.026, 0.050)) * edge * (0.58 + breathe * 0.16);
+        float horizonAlpha = material.a * (0.72 - edge * 0.20 + breathe * 0.025);
         color = vec4(horizon, sat(horizonAlpha));
         return;
     }
@@ -60,12 +63,12 @@ void main() {
     float echo = track > 1.5 ? 1.0 : 0.0;
     float alpha = mix(mainAlpha, 0.52 + innerHot * 0.26, photon);
     alpha = mix(alpha, (0.12 + innerHot * 0.14 + filament * 0.06) * (0.56 + grazing * 0.34), echo);
-    alpha *= v_Color.a;
+    alpha *= material.a;
     if (alpha <= 0.002) discard;
 
-    vec3 base = max(v_Color.rgb, vec3(0.001));
-    vec3 warm = mix(base, vec3(1.0, 0.72, 0.34), 0.20 + innerHot * 0.16);
-    vec3 cool = mix(base, vec3(0.34, 0.58, 1.0), 0.14 + (1.0 - innerHot) * 0.06);
+    vec3 base = max(material.rgb, combatantMaterialColor(vec3(0.001)));
+    vec3 warm = mix(base, combatantMaterialColor(vec3(1.0, 0.72, 0.34)), 0.20 + innerHot * 0.16);
+    vec3 cool = mix(base, combatantMaterialColor(vec3(0.34, 0.58, 1.0)), 0.14 + (1.0 - innerHot) * 0.06);
     vec3 whiteHot = mix(base, vec3(1.0), 0.70);
 
     vec3 diskColor = mix(cool, warm, doppler);
@@ -74,10 +77,12 @@ void main() {
     diskColor *= 0.52 + innerHot * 0.74 + body * 0.18;
 
     vec3 photonColor = mix(base, vec3(1.0), 0.84) * (1.02 + filament * 0.10);
-    vec3 echoColor = mix(base, vec3(0.78, 0.88, 1.0), 0.24) * (0.46 + innerHot * 0.18);
+    vec3 echoColor = mix(base, combatantMaterialColor(vec3(0.78, 0.88, 1.0)), 0.24) * (0.46 + innerHot * 0.18);
     vec3 outColor = mix(diskColor, photonColor, photon);
     outColor = mix(outColor, echoColor, echo);
+#ifndef COMBATANT_SCENE_LINEAR_COLOR
     outColor = outColor / (1.0 + outColor * 0.10);
+#endif
 
     color = vec4(outColor, sat(alpha));
 }

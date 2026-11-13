@@ -416,7 +416,7 @@ public final class SchematicBuilder extends Module {
         if (!isEnabled()) return;
         if (event.getType() == RotationUpdateEvent.Type.PRE) {
             pre();
-        } else {
+        } else if (event.getType() == RotationUpdateEvent.Type.POST) {
             post();
         }
     }

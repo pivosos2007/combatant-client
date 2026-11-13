@@ -194,6 +194,8 @@ public final class Gauges extends DraggableHudElement {
             row.put("rightMode", isMessage ? "text" : "gauge");
             row.put("meterFill", level);
             row.put("meterThreshold", gauge.target());
+            row.put("meterThresholdVisible", gauge.readiness() == GaugeRegistry.Readiness.THRESHOLD
+                    && gauge.target() > 0f);
             row.put("meterColor", ScriptedListHudPanel.hex(gaugeColor));
             row.put("meterTrack", ScriptedListHudPanel.hex(track));
             row.put("meterStyle", style.get());

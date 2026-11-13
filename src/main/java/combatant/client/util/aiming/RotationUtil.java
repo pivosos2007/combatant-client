@@ -84,6 +84,10 @@ public enum RotationUtil {
         return Vec3.directionFromRotation(pitch, yaw);
     }
 
+    /**
+     * The yaw equivalent to {@code currentYaw} closest to the previously sent {@code targetYaw}.
+     * Vanilla-facing aim is unchanged; packet deltas never jump by a wrapped full turn.
+     */
     public static float withFixedYaw(float currentYaw, float targetYaw) {
         return targetYaw + angleDifference(currentYaw, targetYaw);
     }

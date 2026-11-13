@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
@@ -42,6 +44,7 @@ float glyphCoverage(vec2 uv, float screenPxRange, vec2 uvDx, vec2 uvDy) {
 }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     vec2 atlasSize = max(u_Msdf.yz, vec2(1.0));
     vec2 unitRange = vec2(max(u_Msdf.x, 0.0001)) / atlasSize;
     vec2 uvDx = dFdx(v_TexCoord);
@@ -71,7 +74,7 @@ void main() {
     alpha *= combatantClipCoverage(
         combatantClipDistance(combatantLogicalFragCoord()), logicalScale
     );
-    if (v_Color.a * alpha <= 0.001) discard;
+    if (material.a * alpha <= 0.001) discard;
 #endif
-    color = vec4(v_Color.rgb, v_Color.a * alpha);
+    color = vec4(material.rgb, material.a * alpha);
 }

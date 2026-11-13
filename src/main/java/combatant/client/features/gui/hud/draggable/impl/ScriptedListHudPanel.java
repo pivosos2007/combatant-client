@@ -537,8 +537,7 @@ final class ScriptedListHudPanel {
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightMode")));
                 if ("gauge".equals(string(row.get("rightMode")))) {
                     h = CachedUiScriptRuntime.mix(h, string(row.get("meterStyle")));
-                    float threshold = floatValue(row.get("meterThreshold"));
-                    h = CachedUiScriptRuntime.mix(h, threshold > 0f && threshold < 1f);
+                    h = CachedUiScriptRuntime.mix(h, Boolean.TRUE.equals(row.get("meterThresholdVisible")));
                 }
                 h = CachedUiScriptRuntime.mix(h, string(row.get("rightText")).length());
                 h = CachedUiScriptRuntime.mix(h, Math.round(logical(floatValue(row.get("rightTextWidth"))) * 100.0f));
@@ -586,6 +585,9 @@ final class ScriptedListHudPanel {
                 putPatch(patches, rowPrefix + ":divider", "fill", string(row.get("dividerColor")));
                 if ("gauge".equals(string(row.get("rightMode")))) {
                     putPatch(patches, rowPrefix + ":meter:fill", "fill", string(row.get("meterColor")));
+                    if (Boolean.TRUE.equals(row.get("meterThresholdVisible"))) {
+                        putPatch(patches, rowPrefix + ":meter:threshold", "fill", string(row.get("rightColor")));
+                    }
                     for (int segment = 0; segment < 10; segment++) {
                         float value = floatValue(row.get("meterFill"));
                         putPatch(patches, rowPrefix + ":meter:segment:" + segment, "fill",
@@ -673,7 +675,9 @@ final class ScriptedListHudPanel {
                     UiBounds t = track.bounds();
                     UiBounds b = target.bounds();
                     float threshold = Math.max(0f, Math.min(1f, floatValue(row.get("meterThreshold"))));
-                    target.setBounds(new UiBounds(t.x() + t.width() * threshold - b.width() * .5f,
+                    float offset = Math.max(b.width() * .5f,
+                            Math.min(t.width() - b.width() * .5f, t.width() * threshold));
+                    target.setBounds(new UiBounds(t.x() + offset - b.width() * .5f,
                             b.y(), b.width(), b.height()));
                 }
             }

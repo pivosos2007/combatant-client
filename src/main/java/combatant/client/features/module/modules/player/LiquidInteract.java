@@ -14,10 +14,12 @@ import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
+import combatant.client.render.helpers.TickDelta;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -45,7 +47,7 @@ public final class LiquidInteract extends Module {
     @EventHandler(priority = -1000)
     private void onCrosshairTargetUpdate(CrosshairTargetUpdateEvent event) {
         if (!isEnabled() || mc.level == null || mc.player == null
-                || !hasBlockInHand(mc.player)) return;
+                || !hasBlockInHand(mc.player) || mc.options.keyAttack.isDown()) return;
 
         HitResult current = event.getHitResult();
         if (current instanceof EntityHitResult || event.getTargetedEntity() != null) return;
@@ -66,6 +68,24 @@ public final class LiquidInteract extends Module {
 
         event.setHitResult(fluidHit);
         event.setTargetedEntity(null);
+    }
+
+    /**
+     * An attack can be processed before the next crosshair update (e.g. immediately after
+     * switching items or pressing attack). Do not let a placement-only fluid hit become a
+     * START_DIGGING packet for water or lava. Preserve real block targets, including kelp.
+     */
+    public void restoreVanillaAttackTarget() {
+        if (!isEnabled() || mc.level == null || mc.player == null
+                || !(mc.hitResult instanceof BlockHitResult target)
+                || target.getType() != HitResult.Type.BLOCK) return;
+
+        BlockState state = mc.level.getBlockState(target.getBlockPos());
+        if (state.getFluidState().isEmpty()
+                || !state.getShape(mc.level, target.getBlockPos()).isEmpty()) return;
+
+        mc.hitResult = mc.player.pick(mc.player.blockInteractionRange(), TickDelta.tickProgress(false), false);
+        mc.crosshairPickEntity = null;
     }
 
     private static boolean hasBlockInHand(LocalPlayer player) {

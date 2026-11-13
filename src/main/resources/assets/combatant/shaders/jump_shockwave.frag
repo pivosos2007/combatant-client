@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 uniform sampler2D u_Texture;
 uniform sampler2D u_Depth;
 
@@ -167,7 +169,7 @@ void main() {
     }
 
     vec3 refracted = texture(u_Texture, safeUv).rgb;
-    vec3 glow = u_RingColor.rgb * (glowProfile * u_RingColor.a);
+    vec3 glow = combatantMaterialColor(u_RingColor.rgb) * (glowProfile * u_RingColor.a);
     color = vec4(mix(base, refracted, refractionMask * visibility)
             + glow * visibility, sceneColor.a);
 }

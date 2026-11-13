@@ -215,14 +215,14 @@ public class NoStun extends Module {
     }
 
     @GaugeConnect(id = "web", labelKey = "hud.gauges.nostun.web",
-            readiness = GaugeRegistry.Readiness.THRESHOLD,
-            threshold = (float) (VULCAN_297_WEB_FULL_COST / VULCAN_297_WEB_BUFFER_MAX),
-            hideAfterMillis = 1000)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1000)
     private GaugeRegistry.Sample webGauge() {
         if (!functions.get(FN_ENV_BLOCKS) || !envBlocks.get(ENV_WEB)) return null;
         float available = (float) (1.0 - vulcan297WebBudget / VULCAN_297_WEB_BUFFER_MAX);
         return new GaugeRegistry.Sample(available, canUseVulcan297WebBurst(),
-                vulcan297WebBudget > .001f, GaugeRegistry.Flow.FILL, "");
+                vulcan297WebBudget > .001f, GaugeRegistry.Flow.FILL, "",
+                GaugeRegistry.consumptionThreshold(VULCAN_297_WEB_BUFFER_MAX,
+                        VULCAN_297_WEB_BUFFER_MAX, VULCAN_297_WEB_FULL_COST));
     }
 
     @GaugeConnect(id = "slowness", labelKey = "hud.gauges.nostun.slowness",
@@ -556,7 +556,7 @@ public class NoStun extends Module {
     }
 
     private boolean canUseVulcan297WebBurst() {
-        return vulcan297WebBudget + VULCAN_297_WEB_FULL_COST <= VULCAN_297_WEB_BUFFER_MAX;
+        return GaugeRegistry.canConsume(vulcan297WebBudget, VULCAN_297_WEB_BUFFER_MAX, VULCAN_297_WEB_FULL_COST);
     }
 
     private boolean shouldUseFullVulcan297WebBypass() {

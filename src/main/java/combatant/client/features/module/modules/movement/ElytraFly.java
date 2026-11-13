@@ -41,6 +41,7 @@ import combatant.client.features.module.ModuleSubcategory;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.ElytraTarget;
 import combatant.client.util.player.ElytraRecastUtil;
+import combatant.client.util.player.ElytraImpactDamageUtil;
 import combatant.client.util.aiming.RotationManager;
 import combatant.client.util.aiming.RotationUtil;
 import combatant.client.util.aiming.RotationTarget;
@@ -276,7 +277,7 @@ public class ElytraFly extends Module {
         LocalPlayer player = mc.player;
         if (player == null || mc.level == null) return;
         if (event.getType() != MoverType.SELF) return;
-        if (!isEnabled() || !player.isFallFlying()) return;
+        if (!isEnabled() || !player.isFallFlying() || shouldNotOperate(player)) return;
 
         switch (mode.get()) {
             case STATIC -> applyStaticMove(event, player);
@@ -338,13 +339,13 @@ public class ElytraFly extends Module {
     }
 
     @GaugeConnect(id = "speed", labelKey = "hud.gauges.elytrafly.speed",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.CONTINUOUS, hideAfterMillis = 1100)
     private GaugeRegistry.Sample vulcanSpeedGauge() {
         return vulcanGauge(Math.max(vulcanLimit.used, vulcanProjectedLimit), vulcanLimit.limit);
     }
 
     @GaugeConnect(id = "acceleration", labelKey = "hud.gauges.elytrafly.acceleration",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.CONTINUOUS, hideAfterMillis = 1100)
     private GaugeRegistry.Sample vulcanAccelerationGauge() {
         return vulcanGauge(Math.max(Math.max(
                         Math.max(vulcanAcceleration.used, vulcanProjectedAcceleration) / vulcanAcceleration.limit,
@@ -353,7 +354,7 @@ public class ElytraFly extends Module {
     }
 
     @GaugeConnect(id = "vertical", labelKey = "hud.gauges.elytrafly.vertical",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.CONTINUOUS, hideAfterMillis = 1100)
     private GaugeRegistry.Sample vulcanVerticalGauge() {
         return vulcanGauge(Math.max(Math.max(vulcanAscent.used, vulcanProjectedAscent) / vulcanAscent.limit,
                 Math.max(vulcanVerticalPattern.used / vulcanVerticalPattern.limit,
@@ -364,7 +365,7 @@ public class ElytraFly extends Module {
         boolean active = isEnabled() && mode.get() == Mode.VULCAN_297
                 && mc.player != null && vulcanMotionActive(mc.player);
         float fill = (float) (1.0 - Mth.clamp(used / max, 0.0, 1.0));
-        return new GaugeRegistry.Sample(fill, fill >= 0.2f,
+        return new GaugeRegistry.Sample(fill, true,
                 active, GaugeRegistry.Flow.DRAIN, "");
     }
 
@@ -382,6 +383,8 @@ public class ElytraFly extends Module {
 
     private boolean shouldNotOperate(LocalPlayer player) {
         if (player == null) return true;
+        ElytraTarget target = Modules.get(ElytraTarget.class);
+        if (target != null && target.isControllingFlight()) return true;
         if (player.isPassenger()) return true;
         if (player.hasEffect(MobEffects.LEVITATION)) return true;
         if (player.getAbilities().instabuild && mode.get() != Mode.VULCAN_297) return true;
@@ -618,7 +621,7 @@ public class ElytraFly extends Module {
 
         LocalPlayer player = mc.player;
         queuedFireworkUse = false;
-        if (player == null || !player.isFallFlying()) return;
+        if (player == null || !player.isFallFlying() || shouldNotOperate(player)) return;
         if (mode.get() == Mode.CONTROL && !serverRotationIsControlRotation(event)) return;
 
         if (FireworkUseController.INSTANCE.use(
@@ -884,6 +887,22 @@ public class ElytraFly extends Module {
             }
         }
         event.setVelocity(velocity);
+    }
+
+    /** Only cancel the blocked velocity components when vanilla predicts actual wall damage.
+     * The event runs after other ElytraFly velocity modifiers; this is not mixin policy.
+     */
+    @EventHandler(priority = -1000)
+    private void onCrashProtection(ElytraTravelEvent event) {
+        LocalPlayer player = event.getPlayer();
+        if (!noCrash.get() || mc.player != player || !player.isFallFlying()) return;
+        Vec3 movement = event.getVelocity();
+        if (movement == null || movement.horizontalDistanceSqr() <= 0.09) return;
+        Vec3 clipped = ElytraImpactDamageUtil.allowedMovement(player, player.getBoundingBox(), movement);
+        if (ElytraImpactDamageUtil.projectedDamage(movement, clipped) <= 0.0f) return;
+
+        Vec3 safe = ElytraImpactDamageUtil.postCollisionVelocity(movement, clipped);
+        event.setVelocity(new Vec3(safe.x, movement.y, safe.z));
     }
 
     private void sampleVulcanTravel(LocalPlayer player, int tick) {

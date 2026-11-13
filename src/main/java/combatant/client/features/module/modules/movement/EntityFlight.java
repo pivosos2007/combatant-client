@@ -95,7 +95,7 @@ public final class EntityFlight extends Module {
     }
 
     @GaugeConnect(id = "ascent", labelKey = "hud.gauges.entityflight.ascent",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = .2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample ascentGauge() {
         double limit = trackedVehicle instanceof AbstractBoat ? BOAT_ASCENT_LIMIT : MOUNT_ASCENT_LIMIT;
         return bufferSample(ascentBuffer, limit,
@@ -103,23 +103,28 @@ public final class EntityFlight extends Module {
     }
 
     @GaugeConnect(id = "hover", labelKey = "hud.gauges.entityflight.hover",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = .2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample hoverGauge() {
         return bufferSample(hoverBuffer, HOVER_LIMIT,
                 activeFlight());
     }
 
     @GaugeConnect(id = "horizontal", labelKey = "hud.gauges.entityflight.horizontal",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = .2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample horizontalGauge() {
         return bufferSample(horizontalBuffer, HOVER_LIMIT,
                 activeFlight() && !sharedHorizontalMotion());
     }
 
+    private static boolean canSpendFlightBuffer(double used, double limit) {
+        return GaugeRegistry.canConsume(used, limit, BUFFER_RESERVE);
+    }
+
     private GaugeRegistry.Sample bufferSample(double used, double limit, boolean visible) {
         float available = (float) (1.0D - Mth.clamp(used / limit, 0.0D, 1.0D));
-        return new GaugeRegistry.Sample(available, used + BUFFER_RESERVE <= limit,
-                visible, GaugeRegistry.Flow.DRAIN, "");
+        float threshold = GaugeRegistry.consumptionThreshold(limit, limit, BUFFER_RESERVE);
+        return new GaugeRegistry.Sample(available, canSpendFlightBuffer(used, limit),
+                visible, GaugeRegistry.Flow.DRAIN, "", threshold);
     }
 
     private boolean activeFlight() {
@@ -252,7 +257,7 @@ public final class EntityFlight extends Module {
                 double boost = boat ? (inWater ? 10.0D : onGround ? 28.0D : 9.0D)
                         : Math.min(8.0D, Math.max(2.0D, cruise * 4.0D));
                 double target = mode.get() == Mode.VULCAN
-                        ? (horizontalBuffer + BUFFER_RESERVE <= HOVER_LIMIT
+                        ? (canSpendFlightBuffer(horizontalBuffer, HOVER_LIMIT)
                                 && correctionTicks == 0 ? boost : cruise)
                         : 1.5D;
                 Vec3 desired = VehicleMotion.horizontal(mc, player, target);

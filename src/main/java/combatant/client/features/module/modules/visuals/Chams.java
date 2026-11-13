@@ -64,12 +64,6 @@ import combatant.client.render.engine.rhi.CombatantRhi;
 @ModuleInfo(id = "chams", displayName = "Chams", category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.COSMETIC,
         description = "module.chams.description")
 public class Chams extends Module {
-    @Override
-    protected void loadSettings(java.util.List<combatant.client.features.gui.clickgui.settings.Setting> settings) {
-        WorldRequiredVisualPreview.restrictSettings(settings, getKeyBindSetting());
-    }
-
-
     private static final int METALLIC_OCCUPANCY_CELL_SIZE = 8;
 
     private static final String SETTING_HANDS = "hands";

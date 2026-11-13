@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec4 v_Params;
@@ -32,6 +34,7 @@ float softHalo(float d, float start, float end) {
 }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     vec3 center = v_Params.xyz;
     float radius = max(v_Params.w, 0.0001);
     float progress = sat(v_Params2.x);
@@ -101,7 +104,7 @@ void main() {
     vec3 viewDir = normalize(-v_ViewPosition);
     float fresnel = pow(1.0 - sat(abs(dot(viewNormal, viewDir))), 1.45);
 
-    vec3 base = v_Color.rgb;
+    vec3 base = material.rgb;
     vec3 highlight = mix(base, vec3(1.0), 0.42 + 0.10 * pattern);
     vec3 haloTint = mix(base, vec3(1.0), mix(0.26, 0.18, totem));
     vec3 bodyTint = mix(base * 0.72, highlight, 0.22 + 0.34 * micro);
@@ -114,7 +117,7 @@ void main() {
     color += vec3(1.0) * totem * smoothstep(0.52, 0.94, totemFilaments) * edgeCore * 0.03;
     color *= 0.90 + fresnel * 0.18;
 
-    float alpha = v_Color.a * (
+    float alpha = material.a * (
             edgeCore * (0.90 + 0.18 * pattern + fresnel * 0.14)
             + halo * mix(0.34 + 0.14 * pattern, 0.26 + 0.10 * pattern, totem)
             + body * mix(1.0, 0.72, totem)

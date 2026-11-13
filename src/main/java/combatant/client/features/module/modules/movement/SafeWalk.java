@@ -15,7 +15,6 @@ import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.MovementInputEvent;
-import combatant.client.events.impl.PlayerSafeWalkEvent;
 import combatant.client.features.module.Module;
 import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
@@ -75,22 +74,8 @@ public final class SafeWalk extends Module {
     }
 
     @EventHandler
-    private void onSafeWalk(PlayerSafeWalkEvent event) {
-        if (!isEnabled() || mode.get() != Mode.SAFE) {
-            return;
-        }
-
-        LocalPlayer player = mc.player;
-        if (player == null || !player.onGround() || player.getAbilities().flying) {
-            return;
-        }
-
-        event.setSafeWalk(true);
-    }
-
-    @EventHandler
     private void onMovementInput(MovementInputEvent event) {
-        if (!isEnabled() || mode.get() != Mode.ON_EDGE) {
+        if (!isEnabled()) {
             edgeRecovery.reset();
             return;
         }
@@ -98,6 +83,27 @@ public final class SafeWalk extends Module {
         LocalPlayer player = mc.player;
         if (player == null || player.getAbilities().flying) {
             edgeRecovery.reset();
+            return;
+        }
+
+        if (mode.get() == Mode.SAFE) {
+            edgeRecovery.reset();
+            // isStayingOnGroundSurface() in vanilla returns the actual Sneak input. Client-only edge
+            // clipping without that input causes a movement the server cannot reproduce. Request
+            // Sneak through MovementInputEvent so the player and ServerboundPlayerInputPacket agree.
+            if (player.onGround() && !event.isSneak() && EagleUtil.isCloseToEdge(player, event, 0.18)) {
+                if (event.isForward() != event.isBackward() && event.isLeft() != event.isRight()) {
+                    // Suppress diagonal motion through the actual input packet. Injecting
+                    // Sneak after vanilla has updated crouching can desync input speed.
+                    event.setForward(false);
+                    event.setBackward(false);
+                    event.setLeft(false);
+                    event.setRight(false);
+                    event.setSprint(false);
+                } else {
+                    event.setSneak(true);
+                }
+            }
             return;
         }
 

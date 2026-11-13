@@ -13,32 +13,17 @@ import combatant.client.events.impl.WorldChangeEvent;
 import combatant.client.events.impl.BlockUseAttemptEvent;
 import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.combat.AutoBow;
-import combatant.client.input.InputDevice;
-import combatant.client.input.event.InputButtonEvent;
-import combatant.client.mixins.accessors.KeyMappingAccessor;
-import com.mojang.blaze3d.platform.InputConstants;
-import combatant.client.util.aiming.RotationUtil;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockBehaviour;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
-import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import combatant.client.config.common.CommonSettingSchemas;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.events.impl.BlockPlacementInputEvent;
-import combatant.client.events.impl.RotationUpdateEvent;
-import combatant.client.events.impl.EventPostSync;
 import combatant.client.events.impl.CrosshairTargetUpdateEvent;
-import combatant.client.util.aiming.RotationManager;
-import combatant.client.util.aiming.data.Rotation;
-import combatant.client.util.aiming.features.MovementCorrection;
-import combatant.client.util.aiming.features.processors.anglesmooth.impl.LinearAngleSmooth;
-import combatant.client.util.block.interaction.BlockInteractionPipeline.RotationPlan;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -88,7 +73,6 @@ import combatant.client.util.block.interaction.BlockInteractionPipeline;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.List;
 
 @ModuleInfo(
         id = "nodelay",
@@ -108,8 +92,6 @@ public final class NoDelay extends Module {
     private static final String SETTING_FAST_BREAK_MODE = "fast_break_mode";
     private static final String SETTING_FAST_BREAK_PROGRESS = "fast_break_progress";
     private static final String SETTING_ACCURATE_PLACEMENT = "accurate_placement";
-    private static final String SETTING_ACCURATE_MODE = "accurate_mode";
-    private static final String SETTING_ACCURATE_SMOOTHNESS = "accurate_smoothness";
     private static final String SETTING_ACCURATE_ITEMS = "accurate_items";
 
     private static final String TYPE_JUMP = "Jump";
@@ -159,34 +141,9 @@ public final class NoDelay extends Module {
 
     private final BooleanValue accuratePlacement =
             bool("noDelayAccuratePlacement", SETTING_ACCURATE_PLACEMENT, true);
-    private final EnumValue<AccuratePlacementMode> accurateMode =
-            visibleWhen(enumCommon("noDelayAccurateMode", SETTING_ACCURATE_MODE,
-                    CommonSettingSchemas.MODE, AccuratePlacementMode.NO_ROTATIONS,
-                    AccuratePlacementMode.values()), accuratePlacement::get);
-    private final NumberValue<Float> accurateSmoothness =
-            visibleWhen(num("noDelayAccurateSmoothness", SETTING_ACCURATE_SMOOTHNESS, 0.55f, 0.10f, 1.0f),
-                    () -> accuratePlacement.get() && accurateMode.get() == AccuratePlacementMode.ROTATIONS);
-    private final EnumValue<MovementCorrection> accurateCorrection =
-            visibleWhen(enumCommon("noDelayAccurateMovementCorrection", "accurate_movement_correction",
-                    CommonSettingSchemas.PLACEMENT_MOVEMENT_CORRECTION, MovementCorrection.SILENT,
-                    MovementCorrection.values()),
-                    () -> accuratePlacement.get() && accurateMode.get() == AccuratePlacementMode.ROTATIONS);
-
     private final BooleanMapValue accurateItems = visibleWhen(
             group("noDelayAccurateItems", SETTING_ACCURATE_ITEMS, defaultAccurateItems()),
             accuratePlacement::get);
-    private final BooleanValue accurateConfirmation = bool("noDelayAccurateConfirmation", "accurate_confirmation", true);
-    private final EnumValue<ConfirmationType> accurateConfirmationType = visibleWhen(
-            enumSetting("noDelayAccurateConfirmationType", "accurate_confirmation_type", ConfirmationType.HUD, ConfirmationType.values()),
-            accurateConfirmation::get);
-    private final NumberValue<Integer> accurateResetTicks = visibleWhen(
-            numCommon("noDelayAccurateResetTicks", "accurate_reset_ticks", CommonSettingSchemas.PLACEMENT_ROTATION_RESET_TICKS, 2, 0, 20),
-            () -> accuratePlacement.get() && accurateMode.get() == AccuratePlacementMode.ROTATIONS);
-    private final NumberValue<Float> accurateResetThreshold = visibleWhen(
-            numCommon("noDelayAccurateResetThreshold", "accurate_reset_threshold", CommonSettingSchemas.PLACEMENT_ROTATION_RESET_THRESHOLD, 3.0f, 0.0f, 20.0f),
-            () -> accuratePlacement.get() && accurateMode.get() == AccuratePlacementMode.ROTATIONS);
-    private final BooleanValue accurateDebug = bool("noDelayAccurateDebug", "accurate_debug", false);
-
     private final Minecraft mc = Minecraft.getInstance();
 
     private long pressStartThrow = 0L;
@@ -195,23 +152,15 @@ public final class NoDelay extends Module {
     private long lastInteract = 0L;
     private BlockPos lastBoostedBreakPos;
     private final Vulcan297FastBreakTiming vulcanBreakTiming = new Vulcan297FastBreakTiming();
-    private final LinearAngleSmooth accurateSmoother = new LinearAngleSmooth(
-            accurateSmoothness, accurateSmoothness, accurateSmoothness, accurateSmoothness);
     private final AccuratePlacementController<PlacementTarget> accurateController = new AccuratePlacementController<>();
     private final AccuratePlacementPressLedger accuratePresses = new AccuratePlacementPressLedger();
-    private final java.util.ArrayDeque<PendingPlacement> pendingPlacements = new java.util.ArrayDeque<>();
     private final java.util.ArrayDeque<PlacementTarget> pendingBackfill = new java.util.ArrayDeque<>();
     private long lastAccurateUseTick = Long.MIN_VALUE;
     private long lastBackfillTick = Long.MIN_VALUE;
-    private PlacementTarget pendingAnchor;
     private ClientLevel accurateLevel;
-    private long accuratePacketCount;
     private PlacementTarget executingAccuratePlacement;
     private boolean executingAccurateAccepted;
     private boolean observedAccurate = true;
-    private boolean observedBreakCooldown = true;
-    private AccuratePlacementMode observedAccurateMode = AccuratePlacementMode.NO_ROTATIONS;
-    private static final org.slf4j.Logger ACCURATE_LOG = org.slf4j.LoggerFactory.getLogger("Combatant/ABP");
 
     private static Map<String, Boolean> defaultTypes() {
         Map<String, Boolean> defaults = new LinkedHashMap<>();
@@ -246,15 +195,14 @@ public final class NoDelay extends Module {
 
         while (isActionPressedOnce("toggle_accurate_placement")) {
             accuratePlacement.set(!accuratePlacement.get());
-            checkAccurateSettings();
+            syncAccurateState();
             saveConfig();
         }
         while (isActionPressedOnce("toggle_fast_breaking")) {
             types.set(TYPE_BREAK_COOLDOWN, !types.get(TYPE_BREAK_COOLDOWN));
-            checkAccurateSettings();
             saveConfig();
         }
-        checkAccurateSettings();
+        syncAccurateState();
 
         if (effType(TYPE_RIGHT_CLICK)) {
             ((MinecraftAccessor) mc).combatant$setItemUseCooldown(0);
@@ -276,7 +224,6 @@ public final class NoDelay extends Module {
             ((LivingEntityAccessor) mc.player).combatant$setJumpingCooldown(0);
         }
         if (!accurateAvailable()) clearAccuratePlacement();
-        if (!pendingPlacements.isEmpty() && !validRotationAnchor()) cancelPendingRotation();
     }
 
 
@@ -394,7 +341,7 @@ public final class NoDelay extends Module {
 
     private InteractionHand processAccurateTarget(HitResult target, int clicks, boolean held, BlockPlacementInputEvent input) {
         if (BlockInteractionPipeline.INSTANCE.inputOwner() != null) return null;
-        checkAccurateSettings();
+        syncAccurateState();
         if (!accurateAvailable()) {
             clearAccuratePlacement();
             return null;
@@ -405,65 +352,38 @@ public final class NoDelay extends Module {
         }
         InteractionHand hand = placementHand();
         if (hand == null) {
-            cancelPendingRotation();
             accurateController.reset();
             pendingBackfill.clear();
-            traceAccurate("vanilla:no-supported-item clicks=" + clicks + " held=" + held);
             return null;
         }
         Vec3 mouse = mouseRatio();
         if (clicks > 0) {
             accurateController.freshPress(mouse);
-            cancelPendingRotation();
             pendingBackfill.clear();
         }
         if (!held && clicks == 0) {
-            cancelPendingRotation();
             accurateController.reset();
             pendingBackfill.clear();
             return null;
         }
-        String exclusion = accurateExclusion(target, hand, clicks > 0, held);
-        if (exclusion != null) {
-            cancelPendingRotation();
-            traceAccurate("vanilla:" + exclusion + " clicks=" + clicks + " held=" + held);
-            return null;
-        }
+        if (isAccurateExcluded(target, hand, clicks > 0, held)) return null;
         BlockHitResult hit = (BlockHitResult) target;
         if (input != null) input.claim(hand);
         PlacementTarget plan = snapshot(hit, hand);
-        if (pendingAnchor != null && !sameInputTarget(plan, pendingAnchor)) {
-            cancelPendingRotation();
-        }
         int cooldown = ((MinecraftAccessor) mc).combatant$getItemUseCooldown();
         AccuratePlacementController.Decision<PlacementTarget> decision = accurateController.select(
                 plan, hit.getBlockPos(), hit.getDirection(), plan.destination(),
                 clicks, held, cooldown, mc.player.position(), mouse);
         // Input was observed above, never drained: the vanilla keybinding owns its clicks.
-        if (accurateDebug.get()) traceAccurate("input clicks=" + clicks + " held=" + held + " cooldown=" + cooldown
-                + " target=" + describe(plan) + " reason=" + decision.reason() + " state=" + accurateController.state());
         if (decision.uses() > 0) {
             BlockState oldState = mc.level.getBlockState(plan.destination());
-            if (accurateMode.get() == AccuratePlacementMode.NO_ROTATIONS) {
-                cancelPendingRotation();
-                for (PlacementTarget previous : decision.backfill()) {
-                    if (isTargetValid(previous, true)) pendingBackfill.addLast(previous);
-                    else traceAccurate("discard-backfill " + describe(previous));
-                }
-                for (int i = 0; i < decision.uses(); i++) {
-                    if (!isTargetValid(plan, false)) break;
-                    boolean accepted = executeAccurate(plan);
-                    recordAccuratePlacement(plan, oldState, accepted);
-                }
-            } else {
-                cancelPendingRotation();
-                pendingAnchor = plan;
-                pendingPlacements.add(new PendingPlacement(plan, false, oldState, decision.uses()));
-                for (PlacementTarget previous : decision.backfill()) {
-                    if (isTargetValid(previous, true)) {
-                        pendingPlacements.add(new PendingPlacement(previous, true, null, 1));
-                    }
-                }
+            for (PlacementTarget previous : decision.backfill()) {
+                if (isTargetValid(previous, true)) pendingBackfill.addLast(previous);
+            }
+            for (int i = 0; i < decision.uses(); i++) {
+                if (!isTargetValid(plan, false)) break;
+                boolean accepted = executeAccurate(plan);
+                recordAccuratePlacement(plan, oldState, accepted);
             }
         }
         return hand;
@@ -483,28 +403,26 @@ public final class NoDelay extends Module {
                 mc.level.getBlockState(hit.getBlockPos()), mc.level.getBlockState(context.getClickedPos()));
     }
 
-    private String accurateExclusion(HitResult target, InteractionHand hand, boolean fresh, boolean held) {
-        if (mc.player.isUsingItem()) return "using-item";
+    private boolean isAccurateExcluded(HitResult target, InteractionHand hand, boolean fresh, boolean held) {
+        if (mc.player.isUsingItem()) return true;
         ItemStack stack = mc.player.getItemInHand(hand);
-        if (!isAccurateItemAllowed(stack)) return "unsupported-item";
-        if (doesItemUse(stack)) return "item-use";
-        if (!(target instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) return "not-block";
-        ItemStack other = mc.player.getItemInHand(hand == InteractionHand.MAIN_HAND
-                ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND);
+        if (!isAccurateItemAllowed(stack)) return true;
+        if (doesItemUse(stack)) return true;
+        if (!(target instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) return true;
         BlockState state = mc.level.getBlockState(hit.getBlockPos());
         Block block = state.getBlock();
-        if (state.isAir()) return "missing-support";
+        if (state.isAir()) return true;
         if (ACTIVATABLE_BLOCK.get(block.getClass()) && !(block instanceof StairBlock)
-                && !mc.player.isShiftKeyDown()) return "activatable-block";
-        if ((block instanceof BaseEntityBlock || block instanceof BedBlock) && !fresh && held) return "held-container-bed";
-        if (stack.getItem() instanceof ScaffoldingBlockItem && block instanceof ScaffoldingBlock) return "scaffolding";
-        if (block instanceof ComposterBlock && stack.has(DataComponents.COMPOSTABLE)) return "composter";
-        if (mc.player.getMainHandItem().getItem() instanceof BoneMealItem && block instanceof BonemealableBlock) return "bone-meal";
+                && !mc.player.isShiftKeyDown()) return true;
+        if ((block instanceof BaseEntityBlock || block instanceof BedBlock) && !fresh && held) return true;
+        if (stack.getItem() instanceof ScaffoldingBlockItem && block instanceof ScaffoldingBlock) return true;
+        if (block instanceof ComposterBlock && stack.has(DataComponents.COMPOSTABLE)) return true;
+        if (mc.player.getMainHandItem().getItem() instanceof BoneMealItem && block instanceof BonemealableBlock) return true;
         NoInteract noInteract = Modules.get(NoInteract.class);
-        if (noInteract != null && noInteract.shouldBlockBlockInteraction()) return "no-interact";
+        if (noInteract != null && noInteract.shouldBlockBlockInteraction()) return true;
         AutoBow autoBow = Modules.get(AutoBow.class);
-        if (autoBow != null && autoBow.shouldCancelVanillaDoItemUse()) return "auto-bow";
-        return null;
+        if (autoBow != null && autoBow.shouldCancelVanillaDoItemUse()) return true;
+        return false;
     }
 
     private boolean doesItemUse(ItemStack stack) {
@@ -574,20 +492,11 @@ public final class NoDelay extends Module {
                 && ItemStack.isSameItemSameComponents(mc.player.getOffhandItem(), plan.offStack());
     }
 
-    private static boolean sameInputTarget(PlacementTarget a, PlacementTarget b) {
-        return a.hand() == b.hand() && a.hit().getBlockPos().equals(b.hit().getBlockPos())
-                && a.hit().getDirection() == b.hit().getDirection() && a.destination().equals(b.destination())
-                && a.hit().isInside() == b.hit().isInside()
-                && a.slot() == b.slot()
-                && ItemStack.isSameItemSameComponents(a.mainStack(), b.mainStack())
-                && ItemStack.isSameItemSameComponents(a.offStack(), b.offStack());
-    }
-
     private boolean isTargetValid(PlacementTarget plan, boolean replay) {
         if (replay && !accurateController.canAutoPlace(
                 plan.hit().getBlockPos(), plan.destination())) return false;
         if (!accurateAvailable() || !sameHeldItems(plan) || mc.player.isUsingItem()) return false;
-        if (accurateExclusion(plan.hit(), plan.hand(), !replay, replay) != null) return false;
+        if (isAccurateExcluded(plan.hit(), plan.hand(), !replay, replay)) return false;
         if (!mc.level.getBlockState(plan.hit().getBlockPos()).equals(plan.supportState())) return false;
         if (!mc.level.getBlockState(plan.destination()).equals(plan.destinationState())) return false;
         double range = mc.player.blockInteractionRange();
@@ -596,68 +505,7 @@ public final class NoDelay extends Module {
         return context.getClickedPos().equals(plan.destination());
     }
 
-    private boolean validRotationAnchor() {
-        if (pendingAnchor == null || !accurateAvailable() || !sameHeldItems(pendingAnchor)) return false;
-        if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) return false;
-        return sameInputTarget(snapshot(hit, pendingAnchor.hand()), pendingAnchor);
-    }
-
-    @EventHandler
-    private void onAccurateRotation(RotationUpdateEvent event) {
-        if (event.getType() != RotationUpdateEvent.Type.PRE || accurateMode.get() != AccuratePlacementMode.ROTATIONS) return;
-        if (!validRotationAnchor()) {
-            cancelPendingRotation();
-            return;
-        }
-        while (!pendingPlacements.isEmpty() && !isTargetValid(pendingPlacements.peek().target(), pendingPlacements.peek().backfill())) {
-            traceAccurate("discard-pending " + describe(pendingPlacements.remove().target()));
-        }
-        if (pendingPlacements.isEmpty()) {
-            cancelPendingRotation();
-            return;
-        }
-        Vec3 point = pendingPlacements.peek().target().hit().getLocation();
-        BlockInteractionPipeline.INSTANCE.rotateTo(this,
-                Rotation.lookingAt(point, mc.player.getEyePosition()).normalize(), point,
-                new RotationPlan(true, List.of(accurateSmoother), accurateResetTicks.get(), accurateResetThreshold.get(),
-                        false, accurateCorrection.get(), 85), null);
-    }
-
-    @EventHandler
-    private void onAccuratePostSync(EventPostSync event) {
-        if (accurateMode.get() != AccuratePlacementMode.ROTATIONS || pendingPlacements.isEmpty()) return;
-        if (!validRotationAnchor()) { cancelPendingRotation(); return; }
-        if (!RotationManager.INSTANCE.ownsActiveRotation(this)) {
-            traceAccurate("rotation-not-owned");
-            return;
-        }
-        Rotation server = RotationManager.INSTANCE.getServerRotation();
-        if (server == null) return;
-        while (!pendingPlacements.isEmpty()) {
-            PendingPlacement pending = pendingPlacements.peek();
-            PlacementTarget plan = pending.target();
-            if (!isTargetValid(plan, pending.backfill())) { pendingPlacements.remove(); continue; }
-            BlockHitResult ray = BlockInteractionPipeline.trace(mc.player, server, mc.player.blockInteractionRange());
-            if (ray == null || ray.getType() != HitResult.Type.BLOCK
-                    || !ray.getBlockPos().equals(plan.hit().getBlockPos()) || ray.getDirection() != plan.hit().getDirection()) return;
-            Rotation desired = Rotation.lookingAt(plan.hit().getLocation(), mc.player.getEyePosition()).normalize();
-            if (server.angleTo(desired) > Math.max(RotationUtil.gcd() * 2.0, 0.5)) return;
-            if (ray.getLocation().distanceToSqr(plan.hit().getLocation()) > 0.08 * 0.08) return;
-            BlockPlaceContext rayContext = new BlockPlaceContext(new UseOnContext(mc.player, plan.hand(), ray));
-            if (!rayContext.getClickedPos().equals(plan.destination())) return;
-            pendingPlacements.remove();
-            for (int i = 0; i < pending.uses(); i++) {
-                if (!isTargetValid(plan, pending.backfill())) break;
-                boolean accepted = executeAccurate(plan);
-                recordAccuratePlacement(plan, pending.oldState(), accepted);
-            }
-            break;
-        }
-        if (pendingPlacements.isEmpty()) cancelPendingRotation();
-    }
-
     private boolean executeAccurate(PlacementTarget plan) {
-        traceAccurate("use " + describe(plan));
         lastAccurateUseTick = mc.level.getGameTime();
         executingAccuratePlacement = plan;
         executingAccurateAccepted = false;
@@ -671,8 +519,7 @@ public final class NoDelay extends Module {
     }
 
     private void replayAccurateBackfill() {
-        if (accurateMode.get() != AccuratePlacementMode.NO_ROTATIONS
-                || BlockInteractionPipeline.INSTANCE.inputOwner() != null
+        if (BlockInteractionPipeline.INSTANCE.inputOwner() != null
                 || !accurateAvailable() || pendingBackfill.isEmpty()
                 || mc.player.isUsingItem()) return;
         long tick = mc.level.getGameTime();
@@ -681,10 +528,7 @@ public final class NoDelay extends Module {
         lastBackfillTick = tick;
         while (!pendingBackfill.isEmpty()) {
             PlacementTarget previous = pendingBackfill.removeFirst();
-            if (!isTargetValid(previous, true)) {
-                traceAccurate("discard-backfill " + describe(previous));
-                continue;
-            }
+            if (!isTargetValid(previous, true)) continue;
             BlockState before = mc.level.getBlockState(previous.destination());
             boolean accepted = executeAccurate(previous);
             recordAccuratePlacement(previous, before, accepted);
@@ -702,43 +546,15 @@ public final class NoDelay extends Module {
         }
     }
 
-    private void cancelPendingRotation() {
-        if (pendingAnchor != null) RotationManager.INSTANCE.release(this);
-        pendingAnchor = null;
-        pendingPlacements.clear();
-    }
-
     private void clearAccuratePlacement() {
         executingAccuratePlacement = null;
         executingAccurateAccepted = false;
-        cancelPendingRotation();
         accurateController.reset();
         accuratePresses.reset();
         pendingBackfill.clear();
         lastAccurateUseTick = Long.MIN_VALUE;
         lastBackfillTick = Long.MIN_VALUE;
         accurateLevel = null;
-    }
-
-    private static String describe(PlacementTarget plan) {
-        return plan.hit().getBlockPos() + "/" + plan.hit().getDirection() + "/" + plan.hit().getLocation()
-                + " inside=" + plan.hit().isInside() + " destination=" + plan.destination()
-                + " hand=" + plan.hand() + " main=" + plan.mainStack() + " off=" + plan.offStack();
-    }
-
-    private void traceAccurate(String message) {
-        if (accurateDebug.get()) ACCURATE_LOG.info("[ABP] {}", message);
-    }
-
-    @EventHandler(priority = -1000)
-    private void onAccuratePhysicalInput(InputButtonEvent event) {
-        if (!accurateDebug.get()) return;
-        InputConstants.Key key = InputConstants.getKey(mc.options.keyUse.saveString());
-        InputDevice device = key.getType() == InputConstants.Type.MOUSE ? InputDevice.MOUSE : InputDevice.KEYBOARD;
-        if (event.key().device() != device || event.key().physicalKey() != key.getValue()) return;
-        traceAccurate("physical=" + event.action() + " cancelled=" + event.isCancelled()
-                + " queuedBeforeVanilla=" + ((KeyMappingAccessor) mc.options.keyUse).combatant$getClickCount()
-                + " heldBeforeVanilla=" + mc.options.keyUse.isDown());
     }
 
     @EventHandler
@@ -752,76 +568,24 @@ public final class NoDelay extends Module {
                 && event.getHit().getDirection() == active.hit().getDirection()) {
             executingAccurateAccepted = true;
         }
-        if (!accurateDebug.get()) return;
-        traceAccurate((event.getHit() == null ? "useItem" : "useItemOn")
-                + " result=" + event.getResult() + " hand=" + event.getHand()
-                + " hit=" + (event.getHit() == null ? "air" : event.getHit().getBlockPos() + "/" + event.getHit().getDirection())
-                + " owned=" + (BlockInteractionPipeline.INSTANCE.inputOwner() == this));
     }
 
-    @EventHandler
-    private void onAccuratePacket(PacketEvent.SendPost event) {
-        if (!accurateDebug.get()) return;
-        if (event.getPacket() instanceof ServerboundUseItemOnPacket packet) {
-            traceAccurate("outgoing=" + (++accuratePacketCount) + " useItemOn hand=" + packet.hand()
-                    + " target=" + packet.hitResult().getBlockPos() + "/" + packet.hitResult().getDirection()
-                    + " hit=" + packet.hitResult().getLocation()
-                    + " owned=" + (BlockInteractionPipeline.INSTANCE.inputOwner() == this));
-        } else if (event.getPacket() instanceof ServerboundUseItemPacket packet) {
-            traceAccurate("outgoing=" + (++accuratePacketCount) + " useItem hand=" + packet.hand()
-                    + " owned=" + (BlockInteractionPipeline.INSTANCE.inputOwner() == this));
-        }
-    }
-
-    private void checkAccurateSettings() {
+    private void syncAccurateState() {
         if (observedAccurate != accuratePlacement.get()) {
             observedAccurate = accuratePlacement.get();
             clearAccuratePlacement();
-            confirmAccurate("message.nodelay.accurate", observedAccurate);
         }
-        if (observedBreakCooldown != types.get(TYPE_BREAK_COOLDOWN)) {
-            observedBreakCooldown = types.get(TYPE_BREAK_COOLDOWN);
-            confirmAccurate("message.nodelay.fast_breaking", observedBreakCooldown);
-        }
-        if (observedAccurateMode != accurateMode.get()) {
-            observedAccurateMode = accurateMode.get();
-            clearAccuratePlacement();
-        }
-    }
-
-    private void confirmAccurate(String key, boolean enabled) {
-        if (!accurateConfirmation.get() || mc.player == null) return;
-        Component message = Component.translatable(key + (enabled ? ".enabled" : ".disabled"));
-        if (accurateConfirmationType.get() == ConfirmationType.HUD) mc.player.sendOverlayMessage(message);
-        else mc.player.sendSystemMessage(message);
     }
 
     @Override
     public void onEnable() {
         observedAccurate = accuratePlacement.get();
-        observedBreakCooldown = types.get(TYPE_BREAK_COOLDOWN);
-        observedAccurateMode = accurateMode.get();
         clearAccuratePlacement();
-    }
-
-    private enum AccuratePlacementMode implements EnumValue.IdProvider {
-        NO_ROTATIONS("no_rotations"), ROTATIONS("rotations");
-        private final String id;
-        AccuratePlacementMode(String id) { this.id = id; }
-        @Override public String getId() { return id; }
-    }
-
-    private enum ConfirmationType implements EnumValue.IdProvider {
-        CHAT("chat"), HUD("hud");
-        private final String id;
-        ConfirmationType(String id) { this.id = id; }
-        @Override public String getId() { return id; }
     }
 
     private record PlacementTarget(BlockHitResult hit, InteractionHand hand, BlockPos destination,
                                    ItemStack mainStack, ItemStack offStack, int slot, ClientLevel level,
                                    BlockState supportState, BlockState destinationState) { }
-    private record PendingPlacement(PlacementTarget target, boolean backfill, BlockState oldState, int uses) { }
 
     @EventHandler
     private void onDigPacket(PacketEvent.SendPost event) {

@@ -45,13 +45,11 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import combatant.client.events.Events;
 import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.player.LiquidInteract;
 import combatant.client.features.module.modules.player.XCarry;
 import combatant.client.features.module.modules.visuals.Freecam;
 import combatant.client.mixininterface.ILocalPlayer;
@@ -578,18 +576,15 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         combatant$updateVisualBodyYaw();
 
         EventSync event = combatant$activeSyncEvent;
-        if (event != null && event.hasRotationOverride()) return event.getYaw();
-
+        boolean overridden = event != null && event.hasRotationOverride();
         Rotation rotation = RotationManager.INSTANCE.getCurrentRotation();
-        float targetYaw = rotation != null ? rotation.yaw() : original;
-        // Rotation targets are normalised to [-180, 180] while the player's own yaw is unbounded: sending either one
-        // as-is makes the yaw jump by a multiple of 360 when a target takes over or lets go, which vanilla never
-        // does. Send the same direction as the shortest turn from the last sent yaw instead.
+        float targetYaw = overridden ? event.getYaw() : rotation != null ? rotation.yaw() : original;
+        // The event override is the normal path for RotationManager.onSync(). It must not bypass
+        // yaw unwrapping: a target switching from +179 to -179 is a two-degree turn, not a
+        // -358-degree packet delta (for instance, Grim AimModulo360 checks the raw, unwrapped delta).
         Rotation server = RotationManager.INSTANCE.getServerRotation();
-        if (server != null && server != Rotation.ZERO) {
-            return server.yaw() + RotationUtil.angleDifference(targetYaw, server.yaw());
-        }
-        return targetYaw;
+        float referenceYaw = server != null && server != Rotation.ZERO ? server.yaw() : original;
+        return RotationUtil.withFixedYaw(targetYaw, referenceYaw);
     }
 
     @ModifyExpressionValue(
@@ -830,15 +825,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         if (event.isCancelled()) {
             ci.cancel();
         }
-    }
-    @ModifyArg(
-            method = "pick(Lnet/minecraft/world/entity/Entity;DDF)Lnet/minecraft/world/phys/HitResult;",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;pick(DFZ)Lnet/minecraft/world/phys/HitResult;"),
-            index = 2
-    )
-    private static boolean combatant$liquidInteract$includeFluids(boolean includeFluids) {
-        LiquidInteract module = Modules.get(LiquidInteract.class);
-        return includeFluids || module != null && module.isEnabled();
     }
 
 }

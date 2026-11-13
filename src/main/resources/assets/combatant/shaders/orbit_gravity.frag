@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 uniform sampler2D u_Texture;
 uniform sampler2D u_Depth;
 
@@ -132,10 +134,11 @@ void main() {
         refracted = mix(refracted, gather / 3.0, nearHorizon * 0.36);
     }
 
-    vec3 tint = max(u_RingColor.rgb, vec3(0.001));
+    vec3 tint = combatantMaterialColor(max(u_RingColor.rgb, vec3(0.001)));
     vec3 photonColor = mix(tint, vec3(1.0), 0.74);
     float doppler = 0.5 + 0.5 * sin(atan(radial.y, radial.x) * 2.0 - phase * 1.8);
-    photonColor *= mix(vec3(0.72, 0.84, 1.0), vec3(1.0, 0.70, 0.38), doppler);
+    photonColor *= mix(combatantMaterialColor(vec3(0.72, 0.84, 1.0)),
+                       combatantMaterialColor(vec3(1.0, 0.70, 0.38)), doppler);
 
     vec3 result = refracted;
     result += photonColor * photon * (0.16 + 0.24 * strength);

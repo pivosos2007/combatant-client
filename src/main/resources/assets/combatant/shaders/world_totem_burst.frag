@@ -20,6 +20,8 @@
  *   v_Params2.w = layer (0 outer shock shell, 1 hot core, 2 inner energy rim)
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec4 v_Params;
@@ -49,6 +51,7 @@ float circleBand(vec3 n, vec3 axis, float width) {
 }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     float t = sat(v_Params.x);
     float seed = v_Params.y * 97.0;
     float offensive = step(0.5, v_Params.z);
@@ -134,8 +137,8 @@ void main() {
         slashes *= enter * (1.0 - smoothstep(0.44, 0.84, t));
     }
 
-    vec3 primary = v_Color.rgb;
-    vec3 secondary = offensive > 0.5 ? vec3(1.0, 0.58, 0.24) : vec3(0.31, 1.0, 0.80);
+    vec3 primary = material.rgb;
+    vec3 secondary = combatantMaterialColor(offensive > 0.5 ? vec3(1.0, 0.58, 0.24) : vec3(0.31, 1.0, 0.80));
     vec3 hot = mix(secondary, vec3(1.0), offensive > 0.5 ? 0.48 : 0.32);
 
     float shell = outerEnergy * (offensive > 0.5 ? 1.10 : 0.92);
@@ -146,13 +149,15 @@ void main() {
               + secondary * (shell * 0.48 + inner * 0.72 + core * 0.42)
               + hot * (rimOuter * shell * 0.46 + core * 0.92 + slashes * 0.88 + arcs * inner * 0.26);
 
-    float energy = (shell + inner + core + slashes * 0.82) * intensity * v_Color.a;
+    float energy = (shell + inner + core + slashes * 0.82) * intensity * material.a;
     if (energy <= 0.002) discard;
 
     glow *= intensity;
+#ifndef COMBATANT_SCENE_LINEAR_COLOR
     glow = glow / (1.0 + glow * 0.24);
     float peak = max(max(glow.r, glow.g), glow.b);
     if (peak > 1.0) glow /= peak;
+#endif
 
     color = vec4(glow, sat(energy));
 }

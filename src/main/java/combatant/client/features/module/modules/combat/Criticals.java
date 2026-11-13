@@ -238,6 +238,13 @@ public final class Criticals extends Module {
         if (player == null) return;
         float range = naturalCriticalRange();
         Entity target = getTargetInRange(range);
+        KillAura aura = Modules.get(KillAura.class);
+        if (aura != null && aura.usesSmartCriticalTiming() && aura.getCurrentTarget() != null) {
+            // KillAura's planner owns the jump decision for Smart. Still track
+            // the resulting input for NoGround and the vanilla jump hook.
+            if (event.isJump()) lastJumpInputAge = player.tickCount;
+            return;
+        }
 
         if (player.onGround() && !event.isJump() && target != null
                 && shouldAutoPrepareNaturalCrit(target, range)) {
@@ -390,6 +397,34 @@ public final class Criticals extends Module {
                     ? isNaturalCriticalReady(ignoreSprint) : canDoModeCriticalHit(ignoreSprint);
             case IGNORE -> true;
         };
+    }
+
+    /** Whether the selected Criticals mode can produce natural falling criticals. */
+    public boolean usesNaturalKillAuraCrit() {
+        return !isEnabled() || usesNaturalCriticalState();
+    }
+
+    /** Reuses the existing environmental restrictions even when Criticals is disabled. */
+    public boolean canPredictNaturalCrit(Entity target) {
+        return target != null && allowsCriticalHit(true)
+                && (!isEnabled() || canUseKillAuraJumpCriticalState(target));
+    }
+
+    /** Match the jump-motion override actually installed by PlayerJumpEvent. */
+    public double getPlannedJumpMotion() {
+        LocalPlayer player = currentPlayer();
+        if (!isEnabled() || getMode() != Mode.JUMP || player == null) return Double.NaN;
+        // The regular jump hook only overrides the unmodified 0.42 motion.
+        if (Math.abs(player.getJumpBoostPower()) > 1.0E-4) return Double.NaN;
+        return jumpHeight.get();
+    }
+
+    /** Preserve the configured jump height when the Aura planner requests a jump. */
+    public void notifyKillAuraJump() {
+        if (!isEnabled()) return;
+        LocalPlayer player = currentPlayer();
+        if (player != null) lastJumpInputAge = player.tickCount;
+        if (getMode() == Mode.JUMP) adjustNextJump = true;
     }
 
     public boolean shouldControlTargetStrafeJump(Entity target) {

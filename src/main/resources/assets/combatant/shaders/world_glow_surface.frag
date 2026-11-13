@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec4 v_Color;
 layout(location = 1) in vec2 v_UV;
 layout(location = 2) in vec3 v_ViewNormal;
@@ -20,6 +22,7 @@ layout(location = 0) out vec4 fragColor;
 #include <combatant:world_glow_animations.glsl>
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     float fade = clamp(v_Fx.x, 0.0, 1.0);
     float seconds = v_Fx.y;
     float phaseAndPreset = v_Fx.z;
@@ -30,7 +33,11 @@ void main() {
     CombatantGlowVisual visual = combatantGlowAnimation(preset, v_UV, v_ViewPosition, seconds, phase);
     float body = clamp(visual.body, 0.0, 2.0);
     float accent = clamp(visual.accent * accentWeight, 0.0, 2.0);
+#ifdef COMBATANT_SCENE_LINEAR_COLOR
+    vec3 base = material.rgb * combatantMaterialColor(visual.tint);
+#else
     vec3 base = clamp(v_Color.rgb * visual.tint, 0.0, 1.0);
+#endif
     vec3 hot = mix(base, vec3(1.0), 0.24);
 
     if (v_Rim < -0.5) {
@@ -42,10 +49,10 @@ void main() {
         float halo = exp(-centerPx * 0.30);
         float energy = lineGlow * body;
         vec3 rgb = base * (0.78 + 0.22 * body) + hot * (core * 0.55 + halo * 0.25 + accent * 0.18) * energy;
-        float alpha = v_Color.a * (core * 0.85 + halo * 0.40) * clamp(0.75 + lineGlow * 0.3, 0.0, 2.0);
+        float alpha = material.a * (core * 0.85 + halo * 0.40) * clamp(0.75 + lineGlow * 0.3, 0.0, 2.0);
         alpha += core * energy * 0.22 + halo * energy * 0.12 + accent * energy * 0.08;
         if (alpha <= 0.003) discard;
-        fragColor = vec4(min(rgb, vec3(1.0)), clamp(alpha, 0.0, 1.0));
+        fragColor = vec4(combatantMaterialOutput(rgb), clamp(alpha, 0.0, 1.0));
         return;
     }
 
@@ -67,8 +74,8 @@ void main() {
     vec3 rgb = base * faceEnergy
             + hot * (core * 0.85 + halo * 0.15 + fresnel * 0.18 + accent * 0.26)
                     * clamp(rimWeight * body * 1.6, 0.0, 2.0);
-    float alpha = v_Color.a * clamp(0.30 + 0.66 * body + 0.16 * accent, 0.0, 1.6)
+    float alpha = material.a * clamp(0.30 + 0.66 * body + 0.16 * accent, 0.0, 1.6)
             + rimWeight * rim * body + max(v_Rim, 0.0) * accent * fade * 0.23;
     if (alpha <= 0.003) discard;
-    fragColor = vec4(min(rgb, vec3(1.0)), clamp(alpha, 0.0, 1.0));
+    fragColor = vec4(combatantMaterialOutput(rgb), clamp(alpha, 0.0, 1.0));
 }

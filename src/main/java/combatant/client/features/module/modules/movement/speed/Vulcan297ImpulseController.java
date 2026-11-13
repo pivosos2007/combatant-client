@@ -118,7 +118,7 @@ public final class Vulcan297ImpulseController {
         };
         double progress = (double) ticksRemaining / totalTicks;
         double desired = peak * (0.58D + 0.42D * progress);
-        if (frictionBuffer >= FRICTION_BUFFER_MAX - FRICTION_RESERVE) {
+        if (!canBoost()) {
             record(horizontal, predicted);
             return 0.0D;
         }
@@ -148,6 +148,14 @@ public final class Vulcan297ImpulseController {
 
     public float available() {
         return (float) Math.max(0.0D, Math.min(1.0D, 1.0D - frictionBuffer / FRICTION_BUFFER_MAX));
+    }
+
+    public float consumptionThreshold() {
+        return (float) (FRICTION_RESERVE / FRICTION_BUFFER_MAX);
+    }
+
+    public boolean canBoost() {
+        return frictionBuffer < FRICTION_BUFFER_MAX - FRICTION_RESERVE;
     }
 
     public boolean visible() {

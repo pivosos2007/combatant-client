@@ -167,40 +167,6 @@ final class ScaffoldPlacementGateTest {
         }
     }
 
-    @ParameterizedTest(name = "safe-walk eligibility mask {0}")
-    @MethodSource("allSafeWalkCombinations")
-    void everySafeWalkCombinationIsHandled(
-            int mask,
-            boolean scaffoldEnabled,
-            boolean eagleEnabled,
-            boolean canOperate,
-            boolean onGround,
-            boolean flying,
-            boolean goingDown,
-            boolean hasBlocks
-    ) {
-        boolean expected = scaffoldEnabled
-                && eagleEnabled
-                && canOperate
-                && onGround
-                && !flying
-                && !goingDown
-                && hasBlocks;
-
-        assertTrue(
-                ScaffoldPlacementGate.shouldSafeWalk(
-                        scaffoldEnabled,
-                        eagleEnabled,
-                        canOperate,
-                        onGround,
-                        flying,
-                        goingDown,
-                        hasBlocks
-                ) == expected,
-                "unexpected edge-clipping decision for mask " + mask
-        );
-    }
-
     @ParameterizedTest(name = "blocks_to_eagle={0}")
     @ValueSource(ints = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
     void everyBlocksToEagleSettingRearmsAtItsExactBoundary(int blocksToEagle) {
@@ -283,19 +249,6 @@ final class ScaffoldPlacementGateTest {
                 bit(mask, 3),
                 bit(mask, 4),
                 bit(mask, 5)
-        ));
-    }
-
-    private static Stream<Arguments> allSafeWalkCombinations() {
-        return IntStream.range(0, 128).mapToObj(mask -> Arguments.of(
-                mask,
-                bit(mask, 0),
-                bit(mask, 1),
-                bit(mask, 2),
-                bit(mask, 3),
-                bit(mask, 4),
-                bit(mask, 5),
-                bit(mask, 6)
         ));
     }
 

@@ -147,13 +147,18 @@ public class Timer extends Module {
     }
 
     @GaugeConnect(id = "energy", labelKey = "hud.gauges.timer",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = .01f,
-            hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample energyGauge() {
         Mode current = mode.get();
         if (current == Mode.NORMAL || current == Mode.SHIFT) return null;
         float fill = getEnergy01();
-        boolean canUse = fill > .001f && (current != Mode.GRIM || getSetbackAge() >= 2000L);
+        float threshold = timerConsumptionThreshold(current);
+        boolean canUse = switch (current) {
+            case VULCAN -> vulcanMaxFastEntries() > 0 && vulcanFastCount < vulcanMaxFastEntries();
+            case MATRIX, GRIM -> fill > 0f && fill >= threshold;
+            default -> false;
+        };
+        if (current == Mode.GRIM && getSetbackAge() < 2000L) canUse = false;
         boolean draining = tickTimer > 1.001f;
         long now = System.nanoTime();
         if (lastGaugeMode != current || !Float.isFinite(lastGaugeFill)
@@ -169,7 +174,27 @@ public class Timer extends Module {
             default -> false;
         };
         return new GaugeRegistry.Sample(fill, canUse, active,
-                draining ? GaugeRegistry.Flow.DRAIN : GaugeRegistry.Flow.FILL, "");
+                draining ? GaugeRegistry.Flow.DRAIN : GaugeRegistry.Flow.FILL, "", threshold);
+    }
+
+    private float timerEnergyCost(Mode current) {
+        float requestedSpeed = speed.get().floatValue();
+        return switch (current) {
+            case MATRIX -> Math.max(0f, 0.1f * requestedSpeed - 0.1f);
+            case GRIM -> Math.max(0f, 0.0025f * requestedSpeed - 0.0025f);
+            default -> 0f;
+        };
+    }
+
+    private int vulcanMaxFastEntries() {
+        float s = speed.get().floatValue();
+        return s <= 1.001f ? 0 : Math.max(0, (int) (2.5f * s / (1.05f * (s - 1f))));
+    }
+
+    private float timerConsumptionThreshold(Mode current) {
+        if (current != Mode.VULCAN) return timerEnergyCost(current);
+        int limit = vulcanMaxFastEntries();
+        return limit > 0 ? 1f / limit : 1f;
     }
 
     private void tickModes() {
@@ -185,21 +210,21 @@ public class Timer extends Module {
 
                 tickTimer = Math.max(speed.get().floatValue(), 1f);
 
-                if (energy > 0f) {
-                    float drain = (float) ((0.1f * speed.get()) - 0.1f);
+                float drain = timerEnergyCost(Mode.MATRIX);
+                if (energy > 0f && energy >= drain) {
                     energy = Mth.clamp(energy - drain, 0f, 1f);
                 } else {
                     setEnabled(false);
                 }
             }
             case GRIM -> {
-                if (energy <= 0f || !isBoostHeld() || getSetbackAge() < 2000L) {
+                float drain = timerEnergyCost(Mode.GRIM);
+                if (energy <= 0f || energy < drain || !isBoostHeld() || getSetbackAge() < 2000L) {
                     tickTimer = 1f;
                     return;
                 }
 
                 tickTimer = Math.max(speed.get().floatValue(), 1f);
-                float drain = (float) ((0.0025f * speed.get()) - 0.0025f);
                 energy = Mth.clamp(energy - drain, 0f, 1f);
             }
             case SHIFT -> tickTimer = 1f;
@@ -210,10 +235,7 @@ public class Timer extends Module {
                 boolean held = isBoostHeld();
                 boolean setbackRecent = getSetbackAge() < 500L;
                 float s = speed.get().floatValue();
-
-                // kMax: max fast packets allowed in 50-sample window at speed S
-                int kMax = (s <= 1.001f) ? 0 : (int) (2.5f * s / (1.05f * (s - 1f)));
-                if (kMax <= 0) kMax = 0;
+                int kMax = vulcanMaxFastEntries();
 
                 boolean canBoost = held && !setbackRecent && kMax > 0 && vulcanFastCount < kMax;
 

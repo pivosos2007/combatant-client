@@ -431,6 +431,7 @@ public final class ProjectilePuncher extends Module {
             tryAttackPost();
             return;
         }
+        if (event.getType() != RotationUpdateEvent.Type.PRE) return;
 
         clicker.setCps(cpsMin.get(), cpsMax.get());
         clicker.tick();

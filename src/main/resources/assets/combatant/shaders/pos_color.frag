@@ -14,6 +14,8 @@
  * See THIRD_PARTY_NOTICES.md for details.
  */
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) out vec4 color;
 
 layout(location = 2) in vec4 v_Color;
@@ -27,7 +29,8 @@ layout (std140) uniform UIBatch {
 #endif
 
 void main() {
-    color = v_Color;
+    vec4 material = combatantMaterial(v_Color);
+    color = material;
 #ifdef COMBATANT_ANALYTIC_CLIP
     vec2 logicalScale = uScreen.zw / max(uScreen.xy, vec2(1.0));
     color.a *= combatantClipCoverage(combatantClipDistance(combatantLogicalFragCoord()), logicalScale);

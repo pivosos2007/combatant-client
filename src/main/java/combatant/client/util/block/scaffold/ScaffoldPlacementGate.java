@@ -71,24 +71,6 @@ public final class ScaffoldPlacementGate {
         return true;
     }
 
-    public static boolean shouldSafeWalk(
-            boolean scaffoldEnabled,
-            boolean eagleEnabled,
-            boolean canOperate,
-            boolean onGround,
-            boolean flying,
-            boolean goingDown,
-            boolean hasBlocks
-    ) {
-        return scaffoldEnabled
-                && eagleEnabled
-                && canOperate
-                && onGround
-                && !flying
-                && !goingDown
-                && hasBlocks;
-    }
-
     /** Fewest whole ticks between two placements that keeps the rate at or under {@code blocksPerSecond}. */
     static long placementIntervalTicks(double blocksPerSecond) {
         double safeBlocksPerSecond = Math.max(0.1, blocksPerSecond);

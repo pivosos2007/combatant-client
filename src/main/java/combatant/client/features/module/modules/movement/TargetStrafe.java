@@ -150,7 +150,11 @@ public final class TargetStrafe extends Module {
         }
         keys = safeKeys;
         // Hop on clear ground as before, but not while escaping webs/lava.
-        boolean hop = autoJump.get() && player.onGround() && !trapped;
+        KillAura aura = Modules.get(KillAura.class);
+        boolean smartCritControlsJump = aura != null && aura.controlsGrimStrafeJump(target);
+        // Obstacle jumps remain available. Only the unconditional Grim hop
+        // yields to the Smart crit planner; Matrix is unchanged.
+        boolean hop = autoJump.get() && player.onGround() && !trapped && !smartCritControlsJump;
         event.setForward((keys & MovementKeys.FORWARD) != 0);
         event.setBackward((keys & MovementKeys.BACKWARD) != 0);
         event.setLeft((keys & MovementKeys.LEFT) != 0);

@@ -25,6 +25,13 @@ import java.util.concurrent.CompletableFuture;
 /** Logical variants share RenderPearl's compiled-pipeline cache and resource-reload lifetime. */
 public final class HdrPipelineVariants {
     public static final String LEGACY_COLOR = "COMBATANT_HDR_LEGACY_COLOR";
+    public static final String PREMULTIPLIED_COLOR = "COMBATANT_HDR_PREMULTIPLIED_COLOR";
+    /** Source shader switches authored color inputs to linear when LINEAR_COLOR is enabled. */
+    public static final String MANAGED_COLOR = "COMBATANT_HDR_MANAGED_COLOR";
+    public static final String LINEAR_COLOR = "COMBATANT_SCENE_LINEAR_COLOR";
+    public static final String DATA_OUTPUT = "COMBATANT_DATA_OUTPUT";
+    /** Display-authored material opacity, separate from texture and geometric coverage. */
+    public static final String DISPLAY_OPACITY = "COMBATANT_HDR_DISPLAY_OPACITY";
     // Vanilla item permutations share locations but differ in defines and vertex layouts.
     // Weak identity keys keep each association scoped to its compiled pipeline's lifetime.
     private static final Map<CompiledRenderPipeline, RenderPipeline> SOURCES = new MapMaker().weakKeys().makeMap();
@@ -81,10 +88,12 @@ public final class HdrPipelineVariants {
             }
         }
         boolean legacy = hdr && legacyColor(base);
-        if (!changed && !legacy) return base;
-        String key = Arrays.toString(states) + ":" + legacy;
+        boolean managed = hdr && base.getShaderDefines().flags().contains(MANAGED_COLOR)
+                && !base.getShaderDefines().flags().contains(LINEAR_COLOR);
+        if (!changed && !legacy && !managed) return base;
+        String key = Arrays.toString(states) + ":" + legacy + ":" + managed;
         return VARIANTS.computeIfAbsent(base, ignored -> new HashMap<>())
-                .computeIfAbsent(key, ignored -> new Variant(base, states, legacy));
+                .computeIfAbsent(key, ignored -> new Variant(base, states, legacy, managed));
     }
 
     private static boolean isOitColorAccumulation(RenderPipeline pipeline,
@@ -99,7 +108,9 @@ public final class HdrPipelineVariants {
     }
 
     private static boolean legacyColor(RenderPipeline base) {
-        if (base.getShaderDefines().flags().contains("OIT_ALPHA_ONLY")) return false;
+        var flags = base.getShaderDefines().flags();
+        if (flags.contains("OIT_ALPHA_ONLY") || flags.contains(DATA_OUTPUT)
+                || flags.contains(LINEAR_COLOR) || flags.contains(MANAGED_COLOR)) return false;
         String namespace = base.getLocation().getNamespace();
         String path = base.getLocation().getPath();
         if (namespace.equals("minecraft") || namespace.equals("sodium")) {
@@ -114,11 +125,10 @@ public final class HdrPipelineVariants {
     }
 
     private static final class Variant extends RenderPipeline {
-        Variant(RenderPipeline base, ColorTargetState[] states, boolean legacy) {
+        Variant(RenderPipeline base, ColorTargetState[] states, boolean legacy, boolean managed) {
             super(base.getLocation().withSuffix("__hdr_" + Long.toUnsignedString(nextVariantId++, 36)
                             + (legacy ? "_linear" : "")),
-                    base.getShaders(), legacy ? base.getShaderDefines().withOverrides(
-                            ShaderDefines.builder().define(LEGACY_COLOR).build()) : base.getShaderDefines(),
+                    base.getShaders(), variantDefines(base, legacy, managed),
                     base.getBindGroupLayouts(), states, base.getDepthStencilState(), base.getPolygonMode(),
                     base.isCull(), base.getVertexFormatBindings().toArray(VertexFormat[]::new),
                     base.getPrimitiveTopology(), base.pushConstantSize(), base.getSortKey());
@@ -130,5 +140,20 @@ public final class HdrPipelineVariants {
             }
             RenderPipelineRegistry.global().registerNative(this);
         }
+    }
+
+    static ShaderDefines variantDefines(RenderPipeline base, boolean legacy, boolean managed) {
+        var defines = ShaderDefines.builder();
+        if (legacy) {
+            defines.define(LEGACY_COLOR);
+        }
+        var blend = base.getColorTargetStates().getFirst().blendFunction().orElse(null);
+        boolean premultiplied = BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA.equals(blend);
+        if ((legacy || managed) && premultiplied) defines.define(PREMULTIPLIED_COLOR);
+        if (managed) {
+            defines.define(LINEAR_COLOR);
+            if (premultiplied || BlendFunction.TRANSLUCENT.equals(blend)) defines.define(DISPLAY_OPACITY);
+        }
+        return base.getShaderDefines().withOverrides(defines.build());
     }
 }

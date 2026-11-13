@@ -88,11 +88,12 @@ public final class Speed extends Module {
     }
 
     @GaugeConnect(id = "vulcan297_friction", labelKey = "hud.gauges.speed.friction",
-            readiness = GaugeRegistry.Readiness.THRESHOLD, threshold = 0.2f, hideAfterMillis = 1100)
+            readiness = GaugeRegistry.Readiness.THRESHOLD, hideAfterMillis = 1100)
     private GaugeRegistry.Sample vulcan297FrictionGauge() {
         boolean visible = isEnabled() && mode.get() == Mode.VULCAN_297 && vulcanImpulse.visible();
         float fill = vulcanImpulse.available();
-        return new GaugeRegistry.Sample(fill, fill >= 0.2f, visible);
+        return new GaugeRegistry.Sample(fill, vulcanImpulse.canBoost(), visible,
+                GaugeRegistry.Flow.FILL, "", vulcanImpulse.consumptionThreshold());
     }
 
     @Override

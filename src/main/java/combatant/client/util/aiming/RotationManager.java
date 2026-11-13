@@ -191,20 +191,41 @@ public final class RotationManager {
             return;
         }
 
-        Rotation playerRotation = new Rotation(player.getYRot(), player.getXRot(), true);
+        update(new Rotation(player.getYRot(), player.getXRot(), true));
+    }
+
+    void update(Rotation playerRotation) {
+        Rotation beforeUpdate = currentRotation;
+        RotationTarget resolved = resolveRotation(playerRotation);
+        var normalRequest = rotationTargetHandler.getActiveRequest();
+        RotationTarget active = getActiveRotationTarget();
+        Rotation movement = currentRotation != null && active != null
+                && active.movementCorrection != MovementCorrection.OFF ? currentRotation : playerRotation;
+        Events.BUS.post(new RotationUpdateEvent(RotationUpdateEvent.Type.RESOLVED, movement));
+        if (normalRequest != rotationTargetHandler.getActiveRequest()) {
+            resolved = resolveRotation(playerRotation);
+            previousRotation = beforeUpdate;
+        }
+        if (resolved != null && resolved.whenReached != null) {
+            resolved.whenReached.invoke();
+        }
+        rotationTargetHandler.tick();
+    }
+
+    private RotationTarget resolveRotation(Rotation playerRotation) {
         RequestHandler.Request<RotationTarget> activeRequest = rotationTargetHandler.getActiveRequest();
         RotationTarget activeRotationTarget = activeRequest != null ? activeRequest.value() : previousRotationTarget;
         Object activeProvider = activeRequest != null ? activeRequest.provider() : previousRotationProvider;
 
         if (activeRotationTarget == null) {
             if (currentRotation == null || !smoothReturnActive) {
-                return;
+                return null;
             }
 
             float diffToPlayer = computeRotationDifference(currentRotation, playerRotation);
             if (diffToPlayer <= 0.5f) {
                 finishSmoothReturn();
-                return;
+                return null;
             }
 
             float speed = 0.25f + 0.4f * Math.min(1.0f, diffToPlayer / 30.0f);
@@ -213,7 +234,7 @@ public final class RotationManager {
             float newPitch = Mth.clamp(Mth.lerp(speed, currentRotation.pitch(), playerRotation.pitch()), -90.0f, 90.0f);
             // normalize() quantizes relative to the last sent server rotation (== currentRotation once emitted).
             setCurrentRotation(new Rotation(newYaw, newPitch, false).normalize(), currentRotationProvider);
-            return;
+            return null;
         }
 
         if (isRotatingAllowed(activeRotationTarget)) {
@@ -221,7 +242,7 @@ public final class RotationManager {
             if (activeRequest == null) {
                 if (currentRotation == null) {
                     finishSmoothReturn();
-                    return;
+                    return null;
                 }
                 if (!smoothReturnActive) {
                     smoothReturnActive = true;
@@ -239,8 +260,7 @@ public final class RotationManager {
                 float threshold = Math.max(0.05f, activeRotationTarget.resetThreshold);
                 if (diffToPlayer <= threshold || smoothReturnTicks >= maxTicks) {
                     finishSmoothReturn();
-                    rotationTargetHandler.tick();
-                    return;
+                    return null;
                 }
             } else {
                 Rotation rotation = activeRotationTarget.towards(fromRotation, false).normalize();
@@ -250,13 +270,11 @@ public final class RotationManager {
                 smoothReturnActive = false;
                 smoothReturnTicks = 0;
 
-                if (activeRotationTarget.whenReached != null) {
-                    activeRotationTarget.whenReached.invoke();
-                }
+                return activeRotationTarget;
             }
         }
 
-        rotationTargetHandler.tick();
+        return null;
     }
 
     private void finishSmoothReturn() {

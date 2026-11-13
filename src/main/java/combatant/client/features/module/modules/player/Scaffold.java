@@ -45,6 +45,7 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import combatant.client.config.SettingDef;
 import combatant.client.events.EventHandler;
 import combatant.client.features.gui.hud.nondraggable.impl.BetterTooltips;
+import combatant.client.mixins.accessors.LocalPlayerAccessor;
 import combatant.client.mixins.accessors.ServerboundMovePlayerPacketAccessor;
 import combatant.client.render.engine.color.RenderColor;
 import combatant.client.render.engine.core.ViewportContext;
@@ -347,6 +348,9 @@ public class Scaffold extends Module {
     private long debugPendingPlacedAttempt;
     private boolean debugPendingPlacedSeenSolid;
     private ScaffoldLine currentOptimalLine;
+    // The movement input is intentionally zeroed while a NORMAL placement is pending
+    // near the last supporting edge. Geometry prediction must use that same input.
+    private boolean normalEdgeBrake;
 
     {
         declareSettings();
@@ -560,6 +564,7 @@ public class Scaffold extends Module {
         ticksUntilTellyJump = 0;
         tellyJumpTicks = randomTellyJumpTicks();
         currentOptimalLine = null;
+        normalEdgeBrake = false;
         indicatorStack = ItemStack.EMPTY;
         indicatorVisible = false;
         indicatorCountText = "";
@@ -591,6 +596,7 @@ public class Scaffold extends Module {
         ticksUntilTellyJump = 0;
         tellyJumpTicks = 0;
         currentOptimalLine = null;
+        normalEdgeBrake = false;
         indicatorStack = ItemStack.EMPTY;
         indicatorVisible = false;
         indicatorCountText = "";
@@ -885,8 +891,7 @@ public class Scaffold extends Module {
                         RotationManager.INSTANCE.getCurrentRotation() != null
                                 ? RotationManager.INSTANCE.getCurrentRotation()
                                 : targetSnapshot.getRotation(),
-                        preparePlacementHand(player()),
-                        resolveNormalScheduledHit(player(), targetSnapshot)
+                        preparePlacementHand(player())
                 )
         );
     }
@@ -963,6 +968,7 @@ public class Scaffold extends Module {
                 : null;
 
         refreshCurrentTarget(player);
+        normalEdgeBrake = false;
 
         if (handleNormalOnTickPlacement(player, event)) {
             return;
@@ -986,28 +992,31 @@ public class Scaffold extends Module {
 
         handleNormalStrictMoonwalkInput(player, event);
 
-        if (shouldEagle(player, event) && !event.isSneak()) {
-            event.setSneak(true);
+        if (eagle.get()) {
+            EagleUtil.EdgeCheck edge = EagleUtil.checkEdge(player, event, eagleEdgeDistance.get());
+            // Eagle is a single Sneak pulse. A continuous edge guard must not bypass
+            // blocks_to_eagle: it kept Sneak held as long as there was air ahead.
+            boolean pulse = placementGate.consumeEaglePulse(
+                    true,
+                    edge.closeToEdge(),
+                    eagleOnlyOnGround.get(),
+                    player.onGround(),
+                    player.getAbilities().flying,
+                    shouldGoDown(player)
+            );
+            if (pulse && !event.isSneak()) {
+                event.setSneak(true);
+            }
+
+            // At a low placement rate a new block may not be available before the player
+            // reaches the edge. Brake through actual movement input (not client-only
+            // SafeWalk and not permanent Sneak) just before losing support. This is
+            // deliberately restricted to NORMAL; ON_TICK retains its own input flow.
+            normalEdgeBrake = shouldBrakeForPendingPlacement(player, event);
+            if (normalEdgeBrake) {
+                stopHorizontalInput(event);
+            }
         }
-    }
-
-    @EventHandler
-    private void onSafeWalk(PlayerSafeWalkEvent event) {
-        LocalPlayer player = player();
-        boolean canOperate = canOperate(player);
-        if (!ScaffoldPlacementGate.shouldSafeWalk(
-                isEnabled(),
-                eagle.get(),
-                canOperate,
-                canOperate && player.onGround(),
-                canOperate && player.getAbilities().flying,
-                canOperate && shouldGoDown(player),
-                canOperate && blockCount(player) > 0
-        )) return;
-
-        // Eagle must never depend on rotation smoothing or placement cadence. Vanilla edge
-        // clipping keeps the player on the current block while the one-tick Eagle pulse ends.
-        event.setSafeWalk(true);
     }
 
     @EventHandler
@@ -1049,6 +1058,47 @@ public class Scaffold extends Module {
         }
 
         return player.level().getBlockState(targetPos).canBeReplaced();
+    }
+
+    /**
+     * Prevent crossing the last supporting edge while the next placement is still pending.
+     * The lookahead includes ground acceleration and the subsequent coast after input is
+     * released. It uses collision of the actual feet box rather than the broad Eagle
+     * distance, which would stop the player much too early for strict face geometry.
+     */
+    private boolean shouldBrakeForPendingPlacement(LocalPlayer player, MovementInputEvent event) {
+        if (rotationTiming.get() != RotationTiming.NORMAL || technique.get() != Technique.NORMAL
+                || !player.onGround() || player.getAbilities().flying || shouldGoDown(player)
+                || blockCount(player) == 0 || event.isJump()) {
+            return false;
+        }
+
+        Vec3 input = EagleUtil.movementInputToWorld(player, event);
+        if (input.horizontalDistanceSqr() < 1.0E-6) return false;
+
+        // If the player is already supported by the next block there is nothing to
+        // wait for, regardless of what the rotation/placement cadence is doing.
+        if (currentTarget != null) {
+            if (!player.level().getBlockState(currentTarget.getPlacedBlockPos()).canBeReplaced()) return false;
+        } else {
+            BlockPos predictedBlock = getTargetedPosition(player);
+            if (predictedBlock == null || !player.level().isInWorldBounds(predictedBlock)
+                    || !player.level().getBlockState(predictedBlock).canBeReplaced()) return false;
+        }
+
+        Vec3 velocity = player.getDeltaMovement();
+        Vec3 horizontalVelocity = new Vec3(velocity.x, 0.0, velocity.z);
+        Vec3 direction = input.normalize();
+        if (direction.dot(horizontalVelocity) < -0.01) return false;
+
+        // One accelerated step plus the distance remaining while the keys are
+        // released. This stops only when that predicted path actually runs out of
+        // supporting collision, rather than whenever a distant edge is visible.
+        double acceleration = player.getSpeed() * 0.98;
+        Vec3 step = horizontalVelocity.add(direction.scale(acceleration));
+        if (step.dot(direction) <= 0.0) return false;
+        Vec3 projected = player.position().add(step.scale(1.75));
+        return EagleUtil.wouldBeCloseToFallOff(player, projected);
     }
 
     private void stopHorizontalInput(MovementInputEvent event) {
@@ -1117,12 +1167,12 @@ public class Scaffold extends Module {
             return false;
         }
 
-        restoreOnTickPlayerRotation(player, currentRotation);
+        restoreOnTickPlayerRotation(player);
         return true;
     }
 
-    private void restoreOnTickPlayerRotation(LocalPlayer player, Rotation scaffoldRotation) {
-        if (player == null || scaffoldRotation == null) return;
+    private void restoreOnTickPlayerRotation(LocalPlayer player) {
+        if (player == null) return;
 
         Rotation playerRotation = new Rotation(player.getYRot(), player.getXRot(), true);
         Rotation updatedServerRotation = RotationManager.INSTANCE.getServerRotation();
@@ -1133,34 +1183,46 @@ public class Scaffold extends Module {
                     describeRotation(updatedServerRotation),
                     describeRotation(playerRotation)
             );
-            sendLookPacket(player, new Rotation(
-                    RotationUtil.withFixedYaw(player.getYRot(), scaffoldRotation.yaw()),
-                    player.getXRot(),
-                    true
-            ));
+            // sendLookPacket unwraps against the *last sent* yaw. The intended camera yaw
+            // must not be anchored to the requested scaffold yaw (which can use another turn).
+            sendLookPacket(player, playerRotation);
         }
     }
 
     private void executeScheduledNormalPlacement(
             ScaffoldPlacementTarget target,
             Rotation rotation,
-            InteractionHand hand,
-            BlockHitResult hitResult
+            InteractionHand hand
     ) {
         LocalPlayer player = player();
-        if (!isEnabled() || player == null || target == null || hitResult == null || hand == null
+        if (!isEnabled() || player == null || target == null || hand == null
                 || !isPlacementCadenceReady()) {
             return;
         }
-        if (currentTarget != target) {
-            if (!samePlacementTarget(currentTarget, target)) {
-                currentTarget = target;
-            }
-        }
-        if (isTargetStaleForPlayer(player, target)) {
+        // Target selection can legitimately advance during smoothing. Use the live
+        // target, but only when a ray from the already-sent server rotation really
+        // reaches its support block; never reuse the old callback's hit vector.
+        if (!RotationManager.INSTANCE.ownsActiveRotation(this)) return;
+        ScaffoldPlacementTarget placementTarget = currentTarget;
+        if (placementTarget == null) return;
+        if (isTargetStaleForPlayer(player, placementTarget)) {
             currentTarget = null;
             return;
         }
+        // This callback runs at the HEAD of LocalPlayer.tick(), before vanilla sendChanges().
+        // A direct PosRot here makes the following use-on-block a post-flying action.
+        // Only interact against a rotation that was already emitted by vanilla in an
+        // earlier tick; request a new target next tick if the server view is not ready.
+        Rotation serverRotation = RotationManager.INSTANCE.getServerRotation();
+        if (serverRotation == null || serverRotation == Rotation.ZERO) return;
+
+        BlockHitResult serverHit = strictGeometry.get()
+                ? resolveStrictHit(player, placementTarget, serverRotation)
+                : switch (technique.get()) {
+                    case NORMAL -> getNormalCrosshairTarget(player, placementTarget, serverRotation);
+                    default -> getTechniqueCrosshairTarget(player, placementTarget, serverRotation);
+                };
+        if (!placementTarget.matches(serverHit) || !isValidCrosshairTarget(player, serverHit)) return;
 
         long attemptId = ++debugAttemptCounter;
         debugLog(
@@ -1177,35 +1239,12 @@ public class Scaffold extends Module {
                 formatVec(player.getDeltaMovement())
         );
 
-        tryPlace(player, hand, hitResult);
-    }
-
-    private boolean samePlacementTarget(ScaffoldPlacementTarget a, ScaffoldPlacementTarget b) {
-        if (a == null || b == null) {
-            return false;
+        if (tryPlace(player, hand, serverHit)) {
+            // Complete this real client tick with the normal vanilla movement packet.
+            // Otherwise a placement performed while stationary may not be followed by
+            // any flying packet until the periodic 20-tick position reminder (Grim Post).
+            ((LocalPlayerAccessor) player).combatant$setTicksSinceLastPositionPacketSent(20);
         }
-        return a.getPlacedBlockPos().equals(b.getPlacedBlockPos())
-                && a.getInteractedBlockPos().equals(b.getInteractedBlockPos())
-                && a.getDirection() == b.getDirection();
-    }
-
-    private BlockHitResult resolveNormalScheduledHit(LocalPlayer player, ScaffoldPlacementTarget target) {
-        if (player == null || target == null) {
-            return null;
-        }
-
-        Rotation currentRotation = RotationManager.INSTANCE.getCurrentRotation();
-        if (currentRotation == null) {
-            currentRotation = target.getRotation();
-        }
-        if (currentRotation == null) {
-            currentRotation = new Rotation(player.getYRot(), player.getXRot(), true);
-        }
-
-        return switch (technique.get()) {
-            case NORMAL -> getNormalCrosshairTarget(player, target, currentRotation);
-            default -> getTechniqueCrosshairTarget(player, target, currentRotation);
-        };
     }
 
     private BlockHitResult resolvePlacementHit(
@@ -1349,6 +1388,7 @@ public class Scaffold extends Module {
         debugPendingPlacedSeenSolid = false;
         movementPlanner.trackPlacedBlock(currentTarget.getPlacedBlockPos());
         movementPrediction.onPlace(currentOptimalLine, previousFallOffPos, player.position());
+        normalEdgeBrake = false;
         placementGate.recordSuccessfulPlacement(clientTick, blocksToEagle.get());
         delayLeft = delay.get();
         currentTarget = null;
@@ -1367,7 +1407,8 @@ public class Scaffold extends Module {
             if (strictHit != null) {
                 return strictHit;
             }
-            return shouldGoDown(player) ? target.toHitResult() : null;
+            // Never fabricate a hit for strict geometry, including the Down mode.
+            return null;
         }
 
         BlockHitResult crosshairTarget = traceScaffoldTarget(player, currentRotation);
@@ -1905,7 +1946,7 @@ public class Scaffold extends Module {
         double dx = velocity.x;
         double dz = velocity.z;
         boolean jumping = jumpsThisTick(player);
-        if (hasRawInput()) {
+        if (hasRawInput() && !(normalEdgeBrake && rotationTiming.get() == RotationTiming.NORMAL)) {
             double acceleration = (player.onGround() ? player.getSpeed() : (player.isSprinting() ? 0.026 : 0.02)) * 0.98;
             double yaw = Math.toRadians(getRawMovementDirectionYaw(player, player.getYRot()));
             if (jumping && player.isSprinting()) {
@@ -2049,10 +2090,20 @@ public class Scaffold extends Module {
     private void sendLookPacket(LocalPlayer player, Rotation rotation) {
         if (player == null || player.connection == null || rotation == null) return;
         Rotation normalized = rotation.normalize();
+        Rotation serverRotation = RotationManager.INSTANCE.getServerRotation();
+        float referenceYaw = serverRotation != null && serverRotation != Rotation.ZERO
+                ? serverRotation.yaw() : player.getYRot();
+        // Direct PosRot packets bypass LocalPlayer.sendPosition/EventSync, so preserve yaw
+        // continuity here as well. The direction remains identical modulo 360 degrees.
+        Rotation sentRotation = new Rotation(
+                RotationUtil.withFixedYaw(normalized.yaw(), referenceYaw),
+                normalized.pitch(),
+                true
+        );
         debugLog(
                 "send-look pos=%s rot=%s onGround=%s horiz=%s",
                 formatVec(player.position()),
-                describeRotation(normalized),
+                describeRotation(sentRotation),
                 player.onGround(),
                 player.horizontalCollision
         );
@@ -2060,8 +2111,8 @@ public class Scaffold extends Module {
                 player.getX(),
                 player.getY(),
                 player.getZ(),
-                normalized.yaw(),
-                normalized.pitch(),
+                sentRotation.yaw(),
+                sentRotation.pitch(),
                 player.onGround(),
                 player.horizontalCollision
         ));
@@ -2087,20 +2138,6 @@ public class Scaffold extends Module {
                 && player != null
                 && mc.options.keyShift.isDown()
                 && canStandOn(player.blockPosition().below(2));
-    }
-
-    private boolean shouldEagle(LocalPlayer player, MovementInputEvent event) {
-        if (player == null || event == null) return false;
-
-        EagleUtil.EdgeCheck edgeCheck = EagleUtil.checkEdge(player, event, eagleEdgeDistance.get());
-        return placementGate.consumeEaglePulse(
-                eagle.get(),
-                edgeCheck.closeToEdge(),
-                eagleOnlyOnGround.get(),
-                player.onGround(),
-                player.getAbilities().flying,
-                shouldGoDown(player)
-        );
     }
 
     private boolean isPlacementCadenceReady() {
@@ -2421,6 +2458,9 @@ public class Scaffold extends Module {
 
     private Vec3 getPlacementBasePosition(LocalPlayer player) {
         if (player == null) return Vec3.ZERO;
+        if (normalEdgeBrake && rotationTiming.get() == RotationTiming.NORMAL) {
+            return player.position();
+        }
         if (prediction.get()) {
             Vec3 predicted = movementPrediction.getPredictedPlacementPos(player, currentOptimalLine);
             if (predicted != null) {

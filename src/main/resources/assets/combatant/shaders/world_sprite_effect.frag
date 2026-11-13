@@ -16,6 +16,8 @@
 
 uniform sampler2D u_Texture;
 
+#include <combatant:scene_color.glsl>
+
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 1) in vec4 v_Color;
 layout(location = 2) in vec4 v_Params;
@@ -43,11 +45,13 @@ vec2 textureRelief(vec2 uv, vec4 center) {
 }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     int mode = int(abs(v_Params.w) + 0.5);
     float intensity = clamp(v_Params.z, 0.0, 2.0);
 
     vec4 sprite = texture(u_Texture, v_TexCoord);
-    vec4 base = sprite * v_Color;
+    vec4 base = vec4(combatantMaterialColor(sprite.rgb) * material.rgb,
+                     sprite.a * material.a);
     if (base.a <= 0.001) discard;
 
     vec3 rgb = base.rgb;
@@ -96,11 +100,11 @@ void main() {
                 sprite.g,
                 texture(u_Texture, clamp(v_TexCoord - offset, 0.0, 1.0)).b
         );
-        rgb = mix(rgb, dispersed * v_Color.rgb, clamp(intensity * 0.86, 0.0, 1.0));
+        rgb = mix(rgb, combatantMaterialColor(dispersed) * material.rgb, clamp(intensity * 0.86, 0.0, 1.0));
         float radius = length(p);
         float highlight = smoothstep(0.56, 0.92, radius) * (1.0 - smoothstep(0.94, 1.10, radius));
         alpha *= 1.0 - intensity * 0.15 + highlight * intensity * 0.38;
     }
 
-    fragColor = vec4(clamp(rgb, 0.0, 1.0), clamp(alpha, 0.0, 1.0));
+    fragColor = vec4(combatantMaterialOutput(rgb), clamp(alpha, 0.0, 1.0));
 }

@@ -9,6 +9,7 @@ package combatant.client.features.module.modules.movement;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
@@ -76,6 +77,15 @@ public class ElytraHelper extends Module {
     // Ticks to wait after the takeoff jump before attempting the in-air glide start
     private int glideDelayTicks = 0;
     private static final int FIREWORK_HUD_GLIDE_GRACE_TICKS = 24;
+    private static final int AUTO_EQUIP_RETRY_TICKS = 8;
+    private static final int TAKEOFF_JUMP_RETRY_TICKS = 5;
+    private static final int TAKEOFF_PACKET_RETRY_TICKS = 5;
+    private static final int TAKEOFF_TIMEOUT_TICKS = 60;
+    private int autoTakeoffStartedTick = Integer.MIN_VALUE;
+    private int lastAutoEquipTick = Integer.MIN_VALUE;
+    private int lastTakeoffJumpTick = Integer.MIN_VALUE;
+    private int firstGlideAttemptTick = Integer.MIN_VALUE;
+    private int lastGlidePacketTick = Integer.MIN_VALUE;
     private LocalPlayer fireworkHudPlayer;
     private int lastFireworkGlideTick = Integer.MIN_VALUE;
 
@@ -108,7 +118,10 @@ public class ElytraHelper extends Module {
                 && player.tickCount >= lastFireworkGlideTick
                 && player.tickCount - lastFireworkGlideTick <= FIREWORK_HUD_GLIDE_GRACE_TICKS;
         boolean hasRockets = HudActionRegistry.hasItem(player, Items.FIREWORK_ROCKET);
-        boolean eligible = hasRockets && (flying || recentGlide || pendingAutoTakeoff || pendingFirework);
+        boolean canTakeoff = player != null && autoTakeoff.get() && !player.isPassenger()
+                && (player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA) || findElytra(player) >= 0);
+        boolean eligible = hasRockets && (flying || recentGlide || pendingAutoTakeoff
+                || pendingFirework || canTakeoff);
         boolean cooldown = CooldownsState.MANAGER.isInPvp()
                 && CooldownsState.MANAGER.isCooling(Items.FIREWORK_ROCKET)
                 || !FireworkUseController.INSTANCE.canPassCooldown(MANUAL_FIREWORK_COOLDOWN_TICKS);
@@ -169,6 +182,7 @@ public class ElytraHelper extends Module {
         pendingFirework = false;
         queuedFireworkUse = false;
         glideDelayTicks = 0;
+        resetTakeoffTimers();
         fireworkHudPlayer = null;
         lastFireworkGlideTick = Integer.MIN_VALUE;
         ElytraRecastUtil.INSTANCE.reset(this);
@@ -200,8 +214,7 @@ public class ElytraHelper extends Module {
         // Already gliding: queue the firework in sync phase. Holding the action keeps retrying,
         // but FireworkUseController and KillAura sync gates decide the actual shot frame.
         if (player.isFallFlying()) {
-            pendingAutoTakeoff = false;
-            queuedJump = false;
+            clearAutoTakeoff();
             if (canQueueManualFirework(player, true)) {
                 queueFireworkUse();
             }
@@ -210,9 +223,11 @@ public class ElytraHelper extends Module {
         }
 
         // AUTO TAKEOFF
-        if (!autoTakeoff.get()) return;
-        if (!player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) return;
-        if (player.isPassenger()) return;
+        if (!autoTakeoff.get() || player.isPassenger()) return;
+        // The firework action is also an auto-takeoff request. Equip available
+        // elytra first; a ground jump with a chestplate cannot start gliding.
+        if (!player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)
+                && findElytra(player) < 0) return;
         if (pendingAutoTakeoff) {
             pendingFirework = true;
             return;
@@ -220,7 +235,8 @@ public class ElytraHelper extends Module {
 
         // Queue jump for sync phase; water and lava are allowed.
         pendingAutoTakeoff = true;
-        if (canJumpNow(player)) {
+        autoTakeoffStartedTick = player.tickCount;
+        if (player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA) && canJumpNow(player)) {
             queueJump();
             glideDelayTicks = player.onGround() ? 1 : 0;
         }
@@ -261,6 +277,19 @@ public class ElytraHelper extends Module {
         pendingAutoTakeoff = false;
         queuedJump = false;
         glideDelayTicks = 0;
+        resetTakeoffTimers();
+    }
+
+    private void resetTakeoffTimers() {
+        autoTakeoffStartedTick = Integer.MIN_VALUE;
+        lastAutoEquipTick = Integer.MIN_VALUE;
+        lastTakeoffJumpTick = Integer.MIN_VALUE;
+        firstGlideAttemptTick = Integer.MIN_VALUE;
+        lastGlidePacketTick = Integer.MIN_VALUE;
+    }
+
+    private static boolean elapsed(int now, int previous, int ticks) {
+        return previous == Integer.MIN_VALUE || now - previous >= ticks;
     }
 
     private void tickAutoTakeoff(LocalPlayer player) {
@@ -272,9 +301,27 @@ public class ElytraHelper extends Module {
             clearAutoTakeoff();
             return;
         }
-        if (player.isPassenger() || !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
+        if (!autoTakeoff.get() || player.isPassenger()
+                || (autoTakeoffStartedTick != Integer.MIN_VALUE
+                && player.tickCount - autoTakeoffStartedTick >= TAKEOFF_TIMEOUT_TICKS)) {
             clearAutoTakeoff();
             pendingFirework = false;
+            ElytraRecastUtil.INSTANCE.reset(this);
+            return;
+        }
+        if (!player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
+            if (findElytra(player) < 0) {
+                clearAutoTakeoff();
+                pendingFirework = false;
+                return;
+            }
+            // Only swap in the player inventory screen: slot 6 is NOT the chest
+            // slot in another open container. Wait for inventory acknowledgement.
+            if (player.containerMenu == player.inventoryMenu
+                    && elapsed(player.tickCount, lastAutoEquipTick, AUTO_EQUIP_RETRY_TICKS)) {
+                lastAutoEquipTick = player.tickCount;
+                swapChest();
+            }
             return;
         }
 
@@ -285,8 +332,12 @@ public class ElytraHelper extends Module {
         }
 
         if (player.onGround()) {
-            queueJump();
-            if (glideDelayTicks <= 0) {
+            // Preserve a released-jump tick between retries. Constantly forcing
+            // jump=true only makes the player bounce without a usable input edge.
+            ElytraRecastUtil.INSTANCE.reset(this);
+            firstGlideAttemptTick = Integer.MIN_VALUE;
+            if (elapsed(player.tickCount, lastTakeoffJumpTick, TAKEOFF_JUMP_RETRY_TICKS)) {
+                queueJump();
                 glideDelayTicks = 1;
             }
             return;
@@ -302,8 +353,22 @@ public class ElytraHelper extends Module {
 
         // Legal start: release jump for a tick, then press it so vanilla itself sends START_FALL_FLYING
         // (Grim ElytraB/C/F: fresh jump edge, no repeated starts, not on ground).
-        ElytraRecastUtil.INSTANCE.request(this, player, ElytraRecastUtil.Mode.GRIM, false, false, false, 0);
+        ElytraRecastUtil.INSTANCE.request(this, player, recastMode.get(), false, false, false, 0);
         ElytraRecastUtil.INSTANCE.tick(this, player);
+
+        // The normal input path handles the first attempt. If another input
+        // consumer suppresses its jump edge, send the vanilla start command as
+        // a bounded fallback while still falling with usable elytra equipped.
+        if (firstGlideAttemptTick == Integer.MIN_VALUE) {
+            firstGlideAttemptTick = player.tickCount;
+        } else if (player.tickCount - firstGlideAttemptTick >= 3
+                && elapsed(player.tickCount, lastGlidePacketTick, TAKEOFF_PACKET_RETRY_TICKS)
+                && ElytraRecastUtil.INSTANCE.canStartGliding(player, false)
+                && client.getConnection() != null) {
+            client.getConnection().send(new ServerboundPlayerCommandPacket(
+                    player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
+            lastGlidePacketTick = player.tickCount;
+        }
     }
 
     @EventHandler(priority = -1000)
@@ -324,6 +389,7 @@ public class ElytraHelper extends Module {
 
         if (canJumpNow(player)) {
             event.setJump(true);
+            lastTakeoffJumpTick = player.tickCount;
         }
         queuedJump = false;
     }

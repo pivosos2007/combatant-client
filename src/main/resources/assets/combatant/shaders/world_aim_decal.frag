@@ -10,8 +10,9 @@
 
 /*
  * Dedicated aiming decal for Predictions.
- * The marker is intentionally line-dominant: concentric rings, directional sectors and broken calibration arcs.
  */
+
+#include <combatant:scene_color.glsl>
 
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
@@ -50,6 +51,7 @@ float rayMask(vec2 p, float angle, float minRadius, float maxRadius, float width
 }
 
 void main() {
+    vec4 material = combatantMaterial(v_Color);
     vec2 local = v_TexCoord * 2.0 - 1.0;
     float r = length(local);
     float angle = atan(local.y, local.x);
@@ -104,5 +106,5 @@ void main() {
     alpha *= clipMask;
 
     if (alpha <= 0.001) discard;
-    fragColor = vec4(v_Color.rgb, v_Color.a * alpha);
+    fragColor = vec4(material.rgb, material.a * alpha);
 }
