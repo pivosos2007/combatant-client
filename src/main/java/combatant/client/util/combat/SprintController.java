@@ -218,6 +218,14 @@ public final class SprintController {
             return true;
         }
 
+        LocalPlayerAccessor accessor = (LocalPlayerAccessor) player;
+        boolean vanillaStop = player.isSwimming()
+                ? accessor.combatant$shouldStopSwimSprinting()
+                : accessor.combatant$shouldStopSprinting();
+        if (!vanillaStop) {
+            return false;
+        }
+
         return !player.horizontalCollision || shouldStopAtHorizontalObstacle();
     }
 
