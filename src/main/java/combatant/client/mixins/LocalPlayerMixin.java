@@ -87,24 +87,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         args.set(1, false);
     }
 
-    @ModifyExpressionValue(
-            method = "modifyInput",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;itemUseSpeedMultiplier()F")
-    )
-    private float combatant$noSlowNeutralize(float original) {
-        NoSlow noSlow = Modules.get(NoSlow.class);
-        if (noSlow != null && noSlow.shouldModifyInput((LocalPlayer) (Object) this)) return 1.0f;
-        return original;
-    }
-
-    @Inject(method = "modifyInput", at = @At("RETURN"), cancellable = true)
-    private void combatant$noSlowApply(Vec2 input, CallbackInfoReturnable<Vec2> cir) {
-        NoSlow noSlow = Modules.get(NoSlow.class);
-        LocalPlayer self = (LocalPlayer) (Object) this;
-        if (noSlow == null || !noSlow.shouldModifyInput(self)) return;
-        cir.setReturnValue(noSlow.getModifiedInput(cir.getReturnValue(), self));
-    }
-
     @Shadow
     public ClientInput input;
     @Unique
@@ -310,30 +292,6 @@ public abstract class LocalPlayerMixin implements ILocalPlayer {
         );
         Events.BUS.post(event);
         return event.shouldSprint();
-    }
-
-    @Inject(method = "modifyInput", at = @At("RETURN"), cancellable = true)
-    private void boostWhenUsing(Vec2 input, CallbackInfoReturnable<Vec2> cir) {
-        NoStun ns = Modules.get(NoStun.class);
-        if (ns == null || !ns.isEnabled()) return;
-        if (!ns.isFunctionEnabled(NoStun.fnUseSpeed())) return;
-
-        LocalPlayer player = (LocalPlayer) (Object) this;
-        // NoSlow already lifted the slowdown; boosting on top of that would walk faster than not eating at all.
-        NoSlow noSlow = Modules.get(NoSlow.class);
-        if (noSlow != null && noSlow.shouldModifyInput(player)) return;
-        if (player.isUsingItem() && !player.isPassenger()) {
-            Vec2 base = cir.getReturnValue();
-
-            // 0.0 -> vanilla (no change), 1.0 -> normal walking speed.
-            // Vanilla item-use slowdown is typically ~0.2x; lerp 1..5 approximates reciprocal compensation.
-            float t = ns.getEatSpeed01();
-            float mult = 1.0f + t * 4.0f;
-
-            if (mult > 1.001f) {
-                cir.setReturnValue(base.scale(mult));
-            }
-        }
     }
 
     @Shadow
