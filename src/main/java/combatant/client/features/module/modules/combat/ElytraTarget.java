@@ -34,6 +34,7 @@ import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.aiming.features.MovementCorrection;
 import combatant.client.util.player.ElytraRecastUtil;
 import combatant.client.util.player.ElytraEscapePlanner;
+import combatant.client.util.player.ElytraAscentPlanner;
 import combatant.client.util.player.ElytraTargetReachability;
 import combatant.client.util.player.ElytraFlightPhysics;
 import combatant.client.util.player.ElytraFlightPhysics.FlightModel;
@@ -74,6 +75,9 @@ public final class ElytraTarget extends Module {
     private static final int MACE_JUMPER_MIN_CLIMB_TICKS = 4;
     private static final int MACE_JUMPER_TURN_TICKS = 6;
     private static final double COLLISION_CLEARANCE_MARGIN = 1.25;
+    private static final int LIMITED_SAFETY_HORIZON_TICKS = 7;
+    private static final int LIMITED_SAFETY_IMMINENT_TICKS = 4;
+    private static final int ASCENT_REPLAN_TICKS = 5;
     private static final double GROUND_TARGET_STILL_SPEED = 0.08;
     private static final double ORBIT_MIN_RADIUS = 1.15;
     private static final double ORBIT_MAX_RADIUS = 3.35;
@@ -337,6 +341,11 @@ public final class ElytraTarget extends Module {
     private float maceJumperTurnTargetYaw;
     private double maceJumperClimbGoalY = Double.NaN;
     private Vec3 maceJumperClimbHeading;
+    private Vec3 ascentBypass;
+    private boolean ascentObstructed;
+    private Vec3 ascentLastFailedOrigin;
+    private int ascentLastFailedAge = -1;
+    private int ascentPlanTargetId = -1;
     private int maceJumperLastAttackAge = -1;
     private int maceCycleLastEndAge = -1;
     private int maceJumperRepeatedAttacks;
@@ -1006,7 +1015,9 @@ public final class ElytraTarget extends Module {
                     : Math.max(6.0, overtakeHeight.get());
             double top = Math.max(current.y + 5.0,
                     currentTarget.getBoundingBox().maxY + climbHeight);
-            return new Vec3(current.x + correction.x, top, current.z + correction.z);
+            return safeAscentPoint(player,
+                    new Vec3(current.x + correction.x, top, current.z + correction.z),
+                    horizontal(targetCenter.subtract(current)));
         }
         Vec3 waypoint = routeWaypoint(player, currentTarget);
         if (waypoint != null) return waypoint;
@@ -1022,7 +1033,7 @@ public final class ElytraTarget extends Module {
             direction = direction.normalize();
         }
 
-        return switch (pursuitPhase) {
+        Vec3 desired = switch (pursuitPhase) {
             case CLIMB -> targetCenter
                     .add(direction.scale(Math.max(1.0, overtakeForward.get() * 0.65)))
                     .add(0.0, Math.max(2.0, overtakeHeight.get()), 0.0);
@@ -1033,6 +1044,11 @@ public final class ElytraTarget extends Module {
             case CHASE -> calculateDirectChasePoint(player, currentTarget, targetCenter, direction, horizontalDistance);
             case NONE -> null;
         };
+        if (desired != null && (pursuitPhase == PursuitPhase.CLIMB
+                || pursuitPhase == PursuitPhase.OVERPASS) && desired.y > player.getEyeY() + 1.0) {
+            return safeAscentPoint(player, desired, direction);
+        }
+        return desired;
     }
 
     private void ensureMaceJumperClimbGuidance(LocalPlayer player, LivingEntity currentTarget) {
@@ -1061,7 +1077,70 @@ public final class ElytraTarget extends Module {
                 ? towardTarget.scale(Math.min(0.65, distance * 0.12) / distance) : Vec3.ZERO;
         Vec3 heading = maceJumperClimbHeading != null
                 ? maceJumperClimbHeading : horizontal(player.getViewVector(1.0f)).normalize();
-        return origin.add(heading.scale(0.50)).add(correction).add(0.0, 6.0, 0.0);
+        return safeAscentPoint(player,
+                origin.add(heading.scale(0.50)).add(correction).add(0.0, 6.0, 0.0), heading);
+    }
+
+    private Vec3 safeAscentPoint(LocalPlayer player, Vec3 intended, Vec3 preferredHeading) {
+        int targetId = maceJumperPhase != MaceJumperPhase.NONE && maceJumperTargetId >= 0
+                ? maceJumperTargetId : target == null ? -1 : target.getId();
+        if (ascentPlanTargetId != targetId) {
+            ascentPlanTargetId = targetId;
+            ascentBypass = null;
+            ascentObstructed = false;
+            ascentLastFailedOrigin = null;
+            ascentLastFailedAge = -1;
+        }
+        Vec3 origin = player.getEyePosition();
+        double rise = Math.max(3.0, intended.y - origin.y + 1.0);
+        var world = ElytraEscapePlanner.world(player);
+        var bounds = player.getBoundingBox();
+        Vec3 intendedTravel = intended.subtract(origin);
+        if (intendedTravel.lengthSqr() > 49.0) intendedTravel = intendedTravel.normalize().scale(7.0);
+        if (ElytraAscentPlanner.clear(world, bounds, new Vec3(0.0, Math.min(9.0, rise), 0.0))
+                && ElytraAscentPlanner.clear(world, bounds, intendedTravel)) {
+            ascentBypass = null;
+            ascentObstructed = false;
+            ascentLastFailedOrigin = null;
+            ascentLastFailedAge = -1;
+            return intended;
+        }
+        if (ascentBypass != null) {
+            Vec3 remaining = horizontal(ascentBypass.subtract(player.position()));
+            if (remaining.lengthSqr() > 0.64
+                    && ElytraAscentPlanner.clear(world, bounds, remaining)) {
+                return new Vec3(ascentBypass.x, origin.y - 0.25, ascentBypass.z);
+            }
+            ascentBypass = null;
+        }
+        if (ascentLastFailedOrigin != null && ascentLastFailedAge >= 0
+                && player.tickCount - ascentLastFailedAge < ASCENT_REPLAN_TICKS
+                && ascentLastFailedOrigin.distanceToSqr(player.position()) < 2.25) {
+            return lateralAscentFallback(player, preferredHeading);
+        }
+        ElytraAscentPlanner.Ascent plan = ElytraAscentPlanner.plan(
+                world, bounds, preferredHeading, rise, intendedTravel);
+        if (!ascentObstructed) {
+            ElytraDiveTrace.INSTANCE.event("ascentBlocked phase=" + maceJumperPhase
+                    + " bypass=" + (plan.departure() != null));
+        }
+        ascentObstructed = true;
+        if (plan.departure() != null) {
+            ascentLastFailedOrigin = null;
+            ascentBypass = player.position().add(plan.departure());
+            return new Vec3(ascentBypass.x, origin.y - 0.25, ascentBypass.z);
+        }
+        ascentLastFailedOrigin = player.position();
+        ascentLastFailedAge = player.tickCount;
+        return lateralAscentFallback(player, preferredHeading);
+    }
+
+    private Vec3 lateralAscentFallback(LocalPlayer player, Vec3 preferredHeading) {
+        Vec3 away = horizontal(player.getDeltaMovement()).scale(-1.0);
+        if (away.lengthSqr() < 0.04) away = horizontal(preferredHeading).scale(-1.0);
+        if (away.lengthSqr() < 1.0E-5) away = horizontal(player.getLookAngle()).scale(-1.0);
+        if (away.lengthSqr() < 1.0E-5) away = new Vec3(0.0, 0.0, 1.0);
+        return player.getEyePosition().add(away.normalize().scale(4.0)).add(0.0, -0.25, 0.0);
     }
 
     private Vec3 calculateMaceJumperTurnPoint(LocalPlayer player) {
@@ -1411,6 +1490,11 @@ public final class ElytraTarget extends Module {
         maceJumperTargetOrigin = null;
         maceJumperClimbGoalY = Double.NaN;
         maceJumperClimbHeading = null;
+        ascentBypass = null;
+        ascentObstructed = false;
+        ascentLastFailedOrigin = null;
+        ascentLastFailedAge = -1;
+        ascentPlanTargetId = -1;
         maceJumperTurnAge = -1;
         maceJumperRepeatAllowed = maceJumperMaxRepeats.get() == 0
                 || maceJumperRepeatedAttacks < maceJumperMaxRepeats.get();
@@ -1485,6 +1569,10 @@ public final class ElytraTarget extends Module {
             maceJumperTargetOrigin = null;
             maceJumperClimbGoalY = Double.NaN;
             maceJumperClimbHeading = null;
+            ascentBypass = null;
+            ascentObstructed = false;
+            ascentLastFailedOrigin = null;
+            ascentLastFailedAge = -1;
             currentTarget = resolveCombatTarget(player);
             if (currentTarget != null) {
                 maceJumperTargetId = currentTarget.getId();
@@ -1552,6 +1640,10 @@ public final class ElytraTarget extends Module {
             maceJumperPhase = MaceJumperPhase.RECOVER;
             maceJumperClimbGoalY = Double.NaN;
             maceJumperClimbHeading = null;
+            ascentBypass = null;
+            ascentObstructed = false;
+            ascentLastFailedOrigin = null;
+            ascentLastFailedAge = -1;
             return;
         }
         if (!player.isFallFlying()) {
@@ -1560,6 +1652,10 @@ public final class ElytraTarget extends Module {
             maceJumperTargetOrigin = null;
             maceJumperClimbGoalY = Double.NaN;
             maceJumperClimbHeading = null;
+            ascentBypass = null;
+            ascentObstructed = false;
+            ascentLastFailedOrigin = null;
+            ascentLastFailedAge = -1;
             maceRecoveryPending = true;
             maceRecoveryExpiryAge = player.tickCount + MACE_RECOVERY_TIMEOUT_TICKS;
             maceRecoveryOriginY = player.getY();
@@ -1595,7 +1691,7 @@ public final class ElytraTarget extends Module {
                     player.getY(), maceJumperClimbGoalY, risingSpeed, leadRise, highEnough,
                     player.tickCount - maceJumperClimbAge));
             if (player.tickCount - maceJumperClimbAge >= MACE_JUMPER_MIN_CLIMB_TICKS
-                    && highEnough) {
+                    && highEnough && !ascentObstructed) {
                 Vec3 point = calculateMaceJumperClimbPoint(player, currentTarget.getBoundingBox().getCenter());
                 beginMaceJumperTurn(player, currentTarget,
                         Rotation.lookingAt(point, player.getEyePosition()).pitch());
@@ -1648,6 +1744,11 @@ public final class ElytraTarget extends Module {
         maceJumperTurnTargetYaw = 0.0f;
         maceJumperClimbGoalY = Double.NaN;
         maceJumperClimbHeading = null;
+        ascentBypass = null;
+        ascentObstructed = false;
+        ascentLastFailedOrigin = null;
+        ascentLastFailedAge = -1;
+        ascentPlanTargetId = -1;
         maceJumperTargetOrigin = null;
         maceJumperRepeatAllowed = false;
         maceJumperRepeatedAttacks = 0;
@@ -1690,7 +1791,7 @@ public final class ElytraTarget extends Module {
             autoTakeoffPending = true;
             ElytraDiveTrace.INSTANCE.event("takeoffStart tick=" + player.tickCount
                     + " jumperPhase=" + maceJumperPhase + " recovery=" + maceRecoveryPending);
-            if (canAutoTakeoffJumpNow(player)) {
+            if (canAutoTakeoffJumpNow(player) && hasTakeoffHeadroom(player)) {
                 queueAutoTakeoffJump();
                 autoTakeoffGlideDelayTicks = player.onGround() ? 1 : 0;
             }
@@ -1701,10 +1802,15 @@ public final class ElytraTarget extends Module {
             // between takeoff attempts, including when a target changes.
             if (lastAutoTakeoffJumpAge == Integer.MIN_VALUE
                     || player.tickCount - lastAutoTakeoffJumpAge >= TAKEOFF_JUMP_RETRY_TICKS) {
-                queueAutoTakeoffJump();
-                autoTakeoffGlideDelayTicks = 1;
                 lastAutoTakeoffJumpAge = player.tickCount;
-                ElytraDiveTrace.INSTANCE.event("takeoffJump tick=" + player.tickCount);
+                if (hasTakeoffHeadroom(player)) {
+                    queueAutoTakeoffJump();
+                    autoTakeoffGlideDelayTicks = 1;
+                    ElytraDiveTrace.INSTANCE.event("takeoffJump tick=" + player.tickCount);
+                } else {
+                    queuedAutoTakeoffJump = false;
+                    ElytraDiveTrace.INSTANCE.event("takeoffBlocked reason=low_ceiling");
+                }
             }
             firstAutoTakeoffGlideAge = -1;
             ElytraRecastUtil.INSTANCE.reset(this);
@@ -1751,6 +1857,11 @@ public final class ElytraTarget extends Module {
                 && !player.isPassenger()
                 && !player.getAbilities().flying
                 && (player.onGround() || player.isInWater() || player.isInLava());
+    }
+
+    private boolean hasTakeoffHeadroom(LocalPlayer player) {
+        return ElytraAscentPlanner.clear(ElytraEscapePlanner.world(player),
+                player.getBoundingBox(), new Vec3(0.0, 1.4, 0.0));
     }
 
     private void queueAutoTakeoffJump() {
@@ -2031,18 +2142,52 @@ public final class ElytraTarget extends Module {
     }
 
     private boolean queueBlockDodgeRotation(LocalPlayer player, Rotation intendedRotation) {
-        if (!solidBlockDodge.get() || !isValidBlockDodgeSelf(player)) {
+        if (!isValidBlockDodgeSelf(player) || intendedRotation == null
+                || !solidBlockDodge.get() && !isRunning() && !maceRecoveryPending
+                && maceJumperPhase == MaceJumperPhase.NONE) {
             resetBlockDodge();
             return false;
         }
         Vec3 velocity = player.getDeltaMovement();
         FlightModel physics = flightPhysics(player);
+        boolean fullDodge = solidBlockDodge.get();
         int horizon = ElytraEscapePlanner.horizon(velocity, intendedRotation, blockDodgeClearance.get(),
-                blockDodgePredictionTicks.get(), physics);
+                fullDodge ? blockDodgePredictionTicks.get() : LIMITED_SAFETY_IMMINENT_TICKS, physics);
+        if (!fullDodge || maceJumperPhase != MaceJumperPhase.NONE || maceRecoveryPending) {
+            horizon = Math.min(horizon, LIMITED_SAFETY_HORIZON_TICKS);
+        }
         var world = ElytraEscapePlanner.world(player);
         AABB bounds = player.getBoundingBox();
         var intended = ElytraEscapePlanner.forecast(world, bounds, velocity, intendedRotation, horizon, physics);
         if (intended.safe()) {
+            resetBlockDodge();
+            return false;
+        }
+        int collisionTick = intended.firstCollisionTick();
+        boolean upwardThreat = velocity.y > 0.10 && collisionTick > 0
+                && collisionTick <= LIMITED_SAFETY_HORIZON_TICKS;
+        boolean dangerous = intended.damage() >= 1.0f
+                || intended.blockedSteering() && velocity.length() > 1.2;
+        if (!fullDodge && (collisionTick == 0 || collisionTick > LIMITED_SAFETY_IMMINENT_TICKS
+                && !upwardThreat || !dangerous && !upwardThreat)) {
+            resetBlockDodge();
+            return false;
+        }
+        if (fullDodge && (maceJumperPhase != MaceJumperPhase.NONE || maceRecoveryPending)
+                && collisionTick > LIMITED_SAFETY_IMMINENT_TICKS
+                && intended.damage() < 2.0f) {
+            resetBlockDodge();
+            return false;
+        }
+        if (maceJumperPhase == MaceJumperPhase.TURN && collisionTick > 3
+                && intended.damage() < 2.0f) {
+            resetBlockDodge();
+            return false;
+        }
+        boolean committedDive = maceJumperPhase == MaceJumperPhase.DIVE
+                || pursuitPhase == PursuitPhase.DIVE && canSetupMaceDive(player);
+        if (committedDive && (collisionTick == 0 || collisionTick > 2)
+                && intended.damage() < 3.0f) {
             resetBlockDodge();
             return false;
         }
@@ -2061,6 +2206,13 @@ public final class ElytraTarget extends Module {
             RotationManager.INSTANCE.release(emergencyRotationProvider, false);
             return false;
         }
+        if (ElytraDiveTrace.INSTANCE.active() && (blockDodgeRotation == null
+                || Math.abs(Mth.wrapDegrees(blockDodgeRotation.yaw() - escape.rotation().yaw())) > 2.0)) {
+            ElytraDiveTrace.INSTANCE.event(String.format(Locale.ROOT,
+                    "flightAvoid mode=%s phase=%s collisionTick=%d damage=%.2f yaw=%.2f pitch=%.2f",
+                    fullDodge ? "full" : "limited", maceJumperPhase, collisionTick,
+                    intended.damage(), escape.rotation().yaw(), escape.rotation().pitch()));
+        }
         blockDodgeRotation = escape.rotation();
         return true;
     }
@@ -2077,15 +2229,20 @@ public final class ElytraTarget extends Module {
     }
 
     private boolean isBoostPathSafe(LocalPlayer player, Rotation heading) {
-        if (!solidBlockDodge.get()) return true;
+        if (player == null || heading == null) return false;
         FlightModel current = flightPhysics(player);
         FlightModel powered = new FlightModel(current.gravity(), current.slowFalling(), 0,
                 Integer.MAX_VALUE, current.boost());
         Vec3 velocity = current.boost().apply(player.getDeltaMovement(), heading);
-        int horizon = ElytraEscapePlanner.horizon(velocity, heading, blockDodgeClearance.get(),
-                blockDodgePredictionTicks.get(), powered);
-        return ElytraEscapePlanner.forecast(ElytraEscapePlanner.world(player), player.getBoundingBox(),
-                velocity, heading, horizon, powered).safe();
+        int horizon = Math.min(LIMITED_SAFETY_HORIZON_TICKS,
+                ElytraEscapePlanner.horizon(velocity, heading, blockDodgeClearance.get(),
+                        blockDodgePredictionTicks.get(), powered));
+        boolean safe = ElytraEscapePlanner.forecast(ElytraEscapePlanner.world(player),
+                player.getBoundingBox(), velocity, heading, horizon, powered).safe();
+        if (!safe && ElytraDiveTrace.INSTANCE.active()) {
+            ElytraDiveTrace.INSTANCE.event("fireworkBlocked reason=predicted_collision");
+        }
+        return safe;
     }
 
     private void resetBlockDodge() {
