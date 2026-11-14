@@ -269,6 +269,18 @@ public final class ElytraTarget extends Module {
                     "combat_lava_dodge",
                     true
             );
+    private final BooleanValue fluidFloorDodge =
+            visibleWhen(bool(
+                    "elytratargetFluidFloorDodge",
+                    "fluid_floor_dodge",
+                    false
+            ), solidBlockDodge::get);
+    private final BooleanValue combatFluidFloorDodge =
+            bool(
+                    "elytratargetCombatFluidFloorDodge",
+                    "combat_fluid_floor_dodge",
+                    true
+            );
     private final NumberValue<Integer> blockDodgePredictionTicks =
             visibleWhen(num(
                     "elytratargetBlockDodgePredictionTicks",
@@ -2054,7 +2066,7 @@ public final class ElytraTarget extends Module {
         Vec3 velocity = player.getDeltaMovement();
         int horizon = ElytraEscapePlanner.horizon(velocity, preferred, blockDodgeClearance.get(),
                 crystalFearPredictionTicks.get(), physics);
-        var world = ElytraEscapePlanner.searchWorld(player, shouldAvoidLava(player));
+        var world = ElytraEscapePlanner.searchWorld(player, shouldAvoidFluidFloor(player), shouldAvoidLava(player));
         Rotation best = null;
         double bestDistance = player.getBoundingBox().getCenter().distanceToSqr(threat.pos());
         double bestNearest = -1.0;
@@ -2089,10 +2101,11 @@ public final class ElytraTarget extends Module {
         if (!fullDodge || maceJumperPhase != MaceJumperPhase.NONE || maceRecoveryPending) {
             horizon = Math.min(horizon, LIMITED_SAFETY_HORIZON_TICKS);
         }
-        var world = ElytraEscapePlanner.world(player, shouldAvoidLava(player));
+        var world = ElytraEscapePlanner.world(player, shouldAvoidFluidFloor(player), shouldAvoidLava(player));
         AABB bounds = player.getBoundingBox();
         var intended = ElytraEscapePlanner.forecast(world, bounds, velocity, intendedRotation, horizon, physics);
-        if (horizon < WATER_SAFETY_HORIZON_TICKS) {
+        if (horizon < WATER_SAFETY_HORIZON_TICKS
+                && (shouldAvoidFluidFloor(player) || shouldAvoidLava(player))) {
             var longerWaterApproach = ElytraEscapePlanner.forecast(world, bounds, velocity,
                     intendedRotation, WATER_SAFETY_HORIZON_TICKS, physics);
             if (longerWaterApproach.waterHazardTick() > 0 || longerWaterApproach.lavaHazardTick() > 0) {
@@ -2182,10 +2195,11 @@ public final class ElytraTarget extends Module {
         int horizon = Math.min(LIMITED_SAFETY_HORIZON_TICKS,
                 ElytraEscapePlanner.horizon(velocity, heading, blockDodgeClearance.get(),
                         blockDodgePredictionTicks.get(), powered));
-        var world = ElytraEscapePlanner.world(player, shouldAvoidLava(player));
+        var world = ElytraEscapePlanner.world(player, shouldAvoidFluidFloor(player), shouldAvoidLava(player));
         AABB bounds = player.getBoundingBox();
         var accelerated = ElytraEscapePlanner.forecast(world, bounds, velocity, heading, horizon, powered);
-        if (horizon < WATER_SAFETY_HORIZON_TICKS) {
+        if (horizon < WATER_SAFETY_HORIZON_TICKS
+                && (shouldAvoidFluidFloor(player) || shouldAvoidLava(player))) {
             var extended = ElytraEscapePlanner.forecast(world, bounds, velocity, heading,
                     WATER_SAFETY_HORIZON_TICKS, powered);
             if (extended.waterHazardTick() > 0 || extended.lavaHazardTick() > 0) {
@@ -2204,11 +2218,22 @@ public final class ElytraTarget extends Module {
                 || accelerated.lavaRisk() + 0.35 < coasting.lavaRisk();
     }
 
-    private boolean shouldAvoidLava(LocalPlayer player) {
-        return player != null && !player.hasEffect(MobEffects.FIRE_RESISTANCE)
+    public boolean shouldAvoidFluidFloor(LocalPlayer player) {
+        return isEnabled() && player != null
+                && (solidBlockDodge.get() && fluidFloorDodge.get()
+                || combatFluidFloorDodge.get() && combatSafetyActive());
+    }
+
+    public boolean shouldAvoidLava(LocalPlayer player) {
+        return isEnabled() && player != null && !player.hasEffect(MobEffects.FIRE_RESISTANCE)
                 && (solidBlockDodge.get() && lavaBlockDodge.get()
-                || combatLavaDodge.get() && (target != null || maceRecoveryPending
-                || maceJumperPhase != MaceJumperPhase.NONE || isAttributeSwapElytraCycleActive()));
+                || combatLavaDodge.get() && combatSafetyActive());
+    }
+
+    private boolean combatSafetyActive() {
+        return target != null && isValidTarget(target) && hasKillAuraGate()
+                || maceRecoveryPending || maceJumperPhase != MaceJumperPhase.NONE
+                || isAttributeSwapElytraCycleActive();
     }
 
     private void resetBlockDodge() {

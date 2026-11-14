@@ -53,9 +53,20 @@ public final class SmashTrajectory {
                                           Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
                                           double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
                                           int ticks, double maximumHorizontalGap, double reach, double gravity) {
+        return forecast(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+                initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
+                maximumHorizontalGap, reach, gravity, false, false);
+    }
+
+    public static ContactForecast forecast(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
+                                          Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
+                                          double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
+                                          int ticks, double maximumHorizontalGap, double reach, double gravity,
+                                          boolean avoidFluidFloor, boolean avoidLavaIgnition) {
         return predictInternal(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
                 initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
-                maximumHorizontalGap, reach, gravity, false, 1, false);
+                maximumHorizontalGap, reach, gravity, false, 1, false,
+                avoidFluidFloor, avoidLavaIgnition);
     }
 
     public static ContactForecast forecastReportable(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
@@ -72,9 +83,20 @@ public final class SmashTrajectory {
                                                     double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
                                                     int ticks, double maximumHorizontalGap, double reach, double gravity,
                                                     int earliestContactTick) {
+        return forecastReportable(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+                initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
+                maximumHorizontalGap, reach, gravity, earliestContactTick, false, false);
+    }
+
+    public static ContactForecast forecastReportable(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
+                                                    Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
+                                                    double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
+                                                    int ticks, double maximumHorizontalGap, double reach, double gravity,
+                                                    int earliestContactTick, boolean avoidFluidFloor, boolean avoidLavaIgnition) {
         return predictInternal(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
                 initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
-                maximumHorizontalGap, reach, gravity, true, Math.max(1, earliestContactTick), earliestContactTick > 1);
+                maximumHorizontalGap, reach, gravity, true, Math.max(1, earliestContactTick), earliestContactTick > 1,
+                avoidFluidFloor, avoidLavaIgnition);
     }
 
     private static ContactForecast predictInternal(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
@@ -82,7 +104,8 @@ public final class SmashTrajectory {
                                               double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
                                               int ticks, double maximumHorizontalGap, double reach, double gravity,
                                               boolean reportableContact, int earliestContactTick,
-                                              boolean requireReportedContact) {
+                                              boolean requireReportedContact,
+                                              boolean avoidFluidFloor, boolean avoidLavaIgnition) {
         if (velocity.y > -minimumDownSpeed || feet.y <= target.maxY) return new ContactForecast(Prediction.UNREACHABLE, -1);
         double dx = Mth.clamp(feet.x, target.minX, target.maxX) - feet.x;
         double dz = Mth.clamp(feet.z, target.minZ, target.maxZ) - feet.z;
@@ -101,7 +124,7 @@ public final class SmashTrajectory {
         // Removing the elytra restores the standing collision volume. Ray visibility alone
         // does not predict a fall onto leaves, fences, or a block overhanging the target.
         if (player == null) return new ContactForecast(Prediction.BLOCKED, -1);
-        ElytraEscapePlanner.CollisionWorld fluidSafety = ElytraEscapePlanner.world(player, true);
+        ElytraEscapePlanner.CollisionWorld fluidSafety = ElytraEscapePlanner.world(player, avoidFluidFloor, avoidLavaIgnition);
         if (!clearStandingVolume(player, feet, halfWidth, eyeHeight, fluidSafety))
             return new ContactForecast(Prediction.BLOCKED, -1);
         Vec3 eye = feet.add(0, eyeHeight, 0);

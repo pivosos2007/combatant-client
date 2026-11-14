@@ -71,19 +71,27 @@ public final class ElytraEscapePlanner {
     }
 
     public static CollisionWorld world(LocalPlayer player) {
-        return world(player, false);
+        return world(player, false, false);
     }
 
     public static CollisionWorld world(LocalPlayer player, boolean fearLava) {
-        return new CachedCollisionWorld(player, fearLava);
+        return world(player, false, fearLava);
+    }
+
+    public static CollisionWorld world(LocalPlayer player, boolean avoidFluidFloor, boolean fearLava) {
+        return new CachedCollisionWorld(player, avoidFluidFloor, fearLava);
     }
 
     public static CollisionWorld searchWorld(LocalPlayer player) {
-        return searchWorld(player, false);
+        return searchWorld(player, false, false);
     }
 
     public static CollisionWorld searchWorld(LocalPlayer player, boolean fearLava) {
-        CachedCollisionWorld world = new CachedCollisionWorld(player, fearLava);
+        return searchWorld(player, false, fearLava);
+    }
+
+    public static CollisionWorld searchWorld(LocalPlayer player, boolean avoidFluidFloor, boolean fearLava) {
+        CachedCollisionWorld world = new CachedCollisionWorld(player, avoidFluidFloor, fearLava);
         world.probeEmptySpace = true;
         return world;
     }
@@ -97,12 +105,14 @@ public final class ElytraEscapePlanner {
         private final Set<Cell> probed = new HashSet<>();
         private final List<AABB> emptyVolumes = new ArrayList<>();
         private final Map<FluidProbe, FluidMargins> fluidProbes = new HashMap<>();
+        private final boolean avoidFluidFloor;
         private final boolean avoidLavaIgnition;
         private int probes;
         private boolean probeEmptySpace;
 
-        private CachedCollisionWorld(LocalPlayer player, boolean fearLava) {
+        private CachedCollisionWorld(LocalPlayer player, boolean avoidFluidFloor, boolean fearLava) {
             this.player = player;
+            this.avoidFluidFloor = avoidFluidFloor;
             this.avoidLavaIgnition = fearLava && !player.hasEffect(MobEffects.FIRE_RESISTANCE);
         }
 
@@ -122,12 +132,12 @@ public final class ElytraEscapePlanner {
 
         @Override
         public double waterRisk(AABB bounds, Vec3 movement) {
-            return fluidRisk(bounds, movement, false);
+            return avoidFluidFloor ? fluidRisk(bounds, movement, false) : 0.0;
         }
 
         @Override
         public double lavaRisk(AABB bounds, Vec3 movement) {
-            return fluidRisk(bounds, movement, true);
+            return avoidFluidFloor || avoidLavaIgnition ? fluidRisk(bounds, movement, true) : 0.0;
         }
 
         private double fluidRisk(AABB bounds, Vec3 movement, boolean lava) {
@@ -149,8 +159,8 @@ public final class ElytraEscapePlanner {
             FluidMargins margins = fluidProbes.computeIfAbsent(
                     new FluidProbe(Mth.floor(x), Mth.floor(feet), Mth.floor(z)), this::scanFluids);
             double floorLimit = lava ? margins.lavaFloor() : margins.waterFloor();
-            return lava ? lavaRiskAtFeet(feet, floorLimit, margins.lavaIgnition(), avoidLavaIgnition)
-                    : clearanceRisk(feet, floorLimit);
+            return lava ? lavaRiskAtFeet(feet, floorLimit, margins.lavaIgnition(),
+                    avoidFluidFloor, avoidLavaIgnition) : clearanceRisk(feet, floorLimit);
         }
 
         private FluidMargins scanFluids(FluidProbe probe) {
@@ -171,7 +181,7 @@ public final class ElytraEscapePlanner {
                 if (lava && avoidLavaIgnition) {
                     lavaIgnition = Math.max(lavaIgnition, surface + LAVA_IGNITION_CLEARANCE);
                 }
-                if (water && waterFloor != Double.NEGATIVE_INFINITY
+                if (!avoidFluidFloor || water && waterFloor != Double.NEGATIVE_INFINITY
                         || lava && lavaFloor != Double.NEGATIVE_INFINITY) continue;
 
                 for (int depth = 1; depth <= FLUID_SCAN_DEPTH; ++depth) {
@@ -261,8 +271,9 @@ public final class ElytraEscapePlanner {
         return limit == Double.NEGATIVE_INFINITY ? 0.0 : Math.max(0.0, limit - feet);
     }
 
-    static double lavaRiskAtFeet(double feet, double floorLimit, double ignitionLimit, boolean avoidIgnition) {
-        double floorRisk = clearanceRisk(feet, floorLimit);
+    static double lavaRiskAtFeet(double feet, double floorLimit, double ignitionLimit,
+                                 boolean avoidFloor, boolean avoidIgnition) {
+        double floorRisk = avoidFloor ? clearanceRisk(feet, floorLimit) : 0.0;
         return avoidIgnition ? Math.max(floorRisk, clearanceRisk(feet, ignitionLimit)) : floorRisk;
     }
 

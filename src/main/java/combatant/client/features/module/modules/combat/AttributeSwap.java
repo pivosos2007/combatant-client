@@ -1695,20 +1695,25 @@ public class AttributeSwap extends Module {
         }
         KillAura aura = Modules.get(KillAura.class);
         double reach = aura != null && aura.isEnabled() ? aura.getEffectiveRange(target) : 3.0;
+        ElytraTarget flight = Modules.get(ElytraTarget.class);
+        boolean avoidFluidFloor = flight != null && flight.shouldAvoidFluidFloor(player);
+        boolean avoidLavaIgnition = flight != null && flight.shouldAvoidLava(player);
         if (reportable) {
             return SmashTrajectory.forecastReportable(player, player.position(),
                     player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING), player.getBbWidth() / 2.0,
                     player.getDeltaMovement(), target.getBoundingBox(), target.getDeltaMovement(),
                     player.isFallFlying() ? 0 : player.fallDistance,
                     minFallDistance.get(), minDownVelocity.get(), minApproachSpeed.get(), forecastTicks,
-                    maxPredictedHorizontalDistance.get(), reach, player.getGravity(), earliestContactTick);
+                    maxPredictedHorizontalDistance.get(), reach, player.getGravity(),
+                    earliestContactTick, avoidFluidFloor, avoidLavaIgnition);
         }
         return SmashTrajectory.forecast(player, player.position(),
                 player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING), player.getBbWidth() / 2.0,
                 player.getDeltaMovement(), target.getBoundingBox(), target.getDeltaMovement(),
                 player.isFallFlying() ? 0 : player.fallDistance,
                 minFallDistance.get(), minDownVelocity.get(), minApproachSpeed.get(), forecastTicks,
-                maxPredictedHorizontalDistance.get(), reach, player.getGravity());
+                maxPredictedHorizontalDistance.get(), reach, player.getGravity(),
+                avoidFluidFloor, avoidLavaIgnition);
     }
 
     private double horizontalDistance(Vec3 a, Vec3 b) {
