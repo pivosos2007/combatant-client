@@ -1199,11 +1199,12 @@ enum UnifiedSettingRenderer {
             return;
         }
         for (GroupSetting.OptionLayout opt : ui.optionLayouts) {
+            if (!setting.isOptionVisible(opt.getId())) continue;
             float ox = ui.baseX + opt.x();
             float oy = ui.baseY + opt.y();
             if (!UnifiedSettingsSkin.inside(mx, my, ox - m(2f, 2f), oy - m(1f, 1f), opt.w() + m(4f, 4f), m(16f, 8f)))
                 continue;
-            setting.value().set(opt.getId(), !setting.value().get(opt.getId()));
+            if (!setting.toggleOption(opt.getId())) return;
             GuiSound.booleanFeedback(setting.value().get(opt.getId()));
             if (setting.getParent() != null) setting.getParent().saveConfig();
             return;
@@ -1260,8 +1261,7 @@ enum UnifiedSettingRenderer {
 
         int selectedCount = 0;
         int visibleCount = 0;
-        for (String id : setting.value().getAll().keySet()) {
-            if (!setting.isOptionVisible(id)) continue;
+        for (String id : setting.visibleOptionIds()) {
             visibleCount++;
             if (setting.value().get(id)) selectedCount++;
         }
@@ -1332,8 +1332,8 @@ enum UnifiedSettingRenderer {
 
     private static String groupSummary(GroupSetting setting, TextRenderer font, float size, float maxW) {
         java.util.List<String> selected = new java.util.ArrayList<>();
-        for (String id : setting.value().getAll().keySet()) {
-            if (setting.isOptionVisible(id) && setting.value().get(id)) selected.add(setting.getOptionDisplayName(id));
+        for (String id : setting.visibleOptionIds()) {
+            if (setting.value().get(id)) selected.add(setting.getOptionDisplayName(id));
         }
         if (selected.isEmpty()) return "None";
         for (int count = selected.size(); count >= 1; count--) {
@@ -1347,11 +1347,9 @@ enum UnifiedSettingRenderer {
     private static void layoutGroup(GroupSetting setting) {
         GroupSetting.UiState ui = setting.ui();
         float width = ui.baseW > 0f ? ui.baseW : m(160f, 115f);
-        int count = visibleGroupCount(setting);
-        int optionsHash = 1;
-        for (String id : setting.value().getAll().keySet()) {
-            if (setting.isOptionVisible(id)) optionsHash = 31 * optionsHash + id.hashCode();
-        }
+        java.util.List<String> visible = setting.visibleOptionIds();
+        int count = visible.size();
+        int optionsHash = visible.hashCode();
         if (Float.isFinite(ui.lastLayoutW) && Math.abs(ui.lastLayoutW - width) <= 0.5f
                 && ui.layoutOptionCount == count && ui.layoutOptionsHash == optionsHash)
             return;
@@ -1361,8 +1359,7 @@ enum UnifiedSettingRenderer {
         float maxW = Math.max(1f, width - m(10f, 10f));
         float offsetX = 0f, offsetY = 0f;
         Set<String> alive = new HashSet<>();
-        for (String id : setting.value().getAll().keySet()) {
-            if (!setting.isOptionVisible(id)) continue;
+        for (String id : visible) {
             String label = setting.getOptionDisplayName(id);
             float tw = UnifiedSettingsSkin.textWidth(font, label, size) + m(13f, 9f);
             if (offsetX + tw >= maxW && offsetX > 0f) {
@@ -1379,12 +1376,6 @@ enum UnifiedSettingRenderer {
         ui.layoutOptionsHash = optionsHash;
         ui.hoverAnims.keySet().removeIf(key -> !alive.contains(key));
         ui.selectAnims.keySet().removeIf(key -> !alive.contains(key));
-    }
-
-    private static int visibleGroupCount(GroupSetting setting) {
-        int count = 0;
-        for (String id : setting.value().getAll().keySet()) if (setting.isOptionVisible(id)) count++;
-        return count;
     }
 
     private static float containerWidth(java.util.List<GroupSetting.OptionLayout> layouts) {
@@ -3868,8 +3859,7 @@ enum UnifiedSettingRenderer {
 
     private static void renderGroupOverlay(GroupSetting setting, SettingOverlayHost host, float mx, float my, float reveal) {
         GroupSetting.UiState ui = setting.ui();
-        java.util.List<String> visible = new java.util.ArrayList<>();
-        for (String id : setting.value().getAll().keySet()) if (setting.isOptionVisible(id)) visible.add(id);
+        java.util.List<String> visible = setting.visibleOptionIds();
         float itemH = UnifiedSettingsSkin.popupItemHeight();
         float pad = UnifiedSettingsSkin.modernMetric(4.4f, 4f);
         float desiredH = Math.max(itemH + pad * 2f, visible.size() * itemH + pad * 2f);
@@ -4235,12 +4225,11 @@ enum UnifiedSettingRenderer {
         if (button != combatant.client.input.InputKeys.MOUSE_LEFT) return true;
         GroupSetting.UiState ui = setting.ui();
         float itemH = UnifiedSettingsSkin.popupItemHeight();
-        java.util.List<String> visible = new java.util.ArrayList<>();
-        for (String id : setting.value().getAll().keySet()) if (setting.isOptionVisible(id)) visible.add(id);
+        java.util.List<String> visible = setting.visibleOptionIds();
         int index = (int) Math.floor((my - ui.popupContentY + ui.popupScroll) / Math.max(1f, itemH));
         if (index < 0 || index >= visible.size()) return true;
         String id = visible.get(index);
-        setting.value().set(id, !setting.value().get(id));
+        if (!setting.toggleOption(id)) return true;
         GuiSound.booleanFeedback(setting.value().get(id));
         if (setting.getParent() != null) setting.getParent().saveConfig();
         return true; // multi-select stays open

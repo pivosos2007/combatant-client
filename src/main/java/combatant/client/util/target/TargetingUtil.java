@@ -101,7 +101,9 @@ public enum TargetingUtil {
         Player player = living instanceof Player p ? p : null;
         return TargetFilters.accepts(filters::get, player != null,
                 player == null ? CategoryType.DEFAULT : CategoryRules.determine(player.getGameProfile().name()),
-                player != null && isNaked(player), disposition(living, mc.player), marked, living.isInvisible());
+                player != null && isNaked(player),
+                player == null ? disposition(living, mc.player) : TargetFilters.Disposition.FRIENDLY,
+                marked, living.isInvisible());
     }
 
     public static TargetFilters.Disposition disposition(LivingEntity entity, Player observer) {

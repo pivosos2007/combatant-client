@@ -49,7 +49,7 @@ class TargetFiltersTest {
                             "selection=" + selection + ", exclusions=" + exclusions + ", category=" + categories.get(i));
                 }
                 assertEquals(player(filters, CategoryType.ENEMY, false), player(filters, CategoryType.BEDWARS_ENEMY, false));
-                assertEquals(selection == 0, mob(filters, Disposition.HOSTILE, false));
+                assertTrue(mob(filters, Disposition.HOSTILE, false));
                 assertEquals(selection == 0, optionVisible(Section.PLAYERS, IGNORE_FRIENDS, filters::get, false));
             }
         }
@@ -152,7 +152,44 @@ class TargetFiltersTest {
         assertTrue(sectionVisible(Section.PLAYERS, filters::get, false));
         assertTrue(sectionVisible(Section.MOBS, filters::get, false));
         filters.set(ONLY_ENEMIES, false);
-        assertFalse(player(filters, CategoryType.ENEMY, false));
+        assertTrue(player(filters, CategoryType.ENEMY, false));
         assertTrue(mob(filters, Disposition.HOSTILE, false));
+    }
+
+    @Test
+    void everyMobFilterCombinationLeavesPlayerDecisionsUnchanged() {
+        List<String> mobKeys = Section.MOBS.keys;
+        TargetFilterValue filters = filters();
+        for (boolean playerFiltersEnabled : List.of(false, true)) {
+            filters.set(PLAYERS_ENABLED, playerFiltersEnabled);
+            for (boolean enemiesOnly : List.of(false, true)) {
+                filters.set(ONLY_ENEMIES, enemiesOnly);
+                for (CategoryType category : CategoryType.values()) {
+                    for (boolean naked : List.of(false, true)) {
+                        boolean expected = player(filters, category, naked);
+                        for (int mask = 0; mask < (1 << mobKeys.size()); mask++) {
+                            for (int bit = 0; bit < mobKeys.size(); bit++) {
+                                filters.set(mobKeys.get(bit), (mask & (1 << bit)) != 0);
+                            }
+                            assertEquals(expected, player(filters, category, naked),
+                                    "mob mask=" + mask + ", player category=" + category);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void eachEntityBranchNeverReadsTheOtherGroupsOptions() {
+        TargetFilterValue filters = filters();
+        assertTrue(accepts(key -> {
+            assertFalse(Section.MOBS.keys.contains(key), "Player branch read mob option: " + key);
+            return filters.get(key);
+        }, true, CategoryType.DEFAULT, false, null, false, false));
+        assertTrue(accepts(key -> {
+            assertFalse(Section.PLAYERS.keys.contains(key), "Mob branch read player option: " + key);
+            return filters.get(key);
+        }, false, CategoryType.DEFAULT, false, Disposition.HOSTILE, false, false));
     }
 }

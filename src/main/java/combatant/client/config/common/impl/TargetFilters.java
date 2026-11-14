@@ -80,10 +80,6 @@ public final class TargetFilters implements CommonBooleanGroupSchema {
                 && flags.test(PLAYERS_ENABLED) && PLAYER_ONLY.stream().anyMatch(flags);
     }
 
-    private static boolean selectsMobs(Predicate<String> flags) {
-        return !flags.test(PLAYERS_ONLY) && flags.test(MOBS_ENABLED) && MOB_ONLY.stream().anyMatch(flags);
-    }
-
     public static boolean optionVisible(Section section, String key, Predicate<String> flags,
                                         boolean fixedPlayersOnly) {
         if (!section.keys.contains(key)) return false;
@@ -91,9 +87,19 @@ public final class TargetFilters implements CommonBooleanGroupSchema {
         if (section.enabledKey != null && !flags.test(section.enabledKey)) return false;
         if (key.equals(PLAYERS_ONLY)) return !fixedPlayersOnly && (flags.test(PLAYERS_ONLY) || !flags.test(MOBS_ONLY));
         if (key.equals(MOBS_ONLY)) return !fixedPlayersOnly && !flags.test(PLAYERS_ONLY);
+        int playerSelection = PLAYER_ONLY.indexOf(key);
+        if (playerSelection >= 0) {
+            return selectsPlayers(flags) || !flags.test(PLAYER_IGNORE.get(playerSelection));
+        }
+        int mobSelection = MOB_ONLY.indexOf(key);
+        if (mobSelection >= 0) {
+            return MOB_ONLY.stream().anyMatch(flags) || !flags.test(MOB_IGNORE.get(mobSelection));
+        }
         if (PLAYER_IGNORE.contains(key)) return !selectsPlayers(flags);
         if (MOB_IGNORE.contains(key)) return MOB_ONLY.stream().noneMatch(flags);
+        if (key.equals(ONLY_NAKED)) return flags.test(ONLY_NAKED) || !flags.test(IGNORE_NAKED);
         if (key.equals(IGNORE_NAKED)) return !flags.test(ONLY_NAKED);
+        if (key.equals(ONLY_MARKED)) return flags.test(ONLY_MARKED) || !flags.test(IGNORE_MARKED);
         if (key.equals(IGNORE_MARKED)) return !flags.test(ONLY_MARKED);
         return true;
     }
@@ -108,17 +114,14 @@ public final class TargetFilters implements CommonBooleanGroupSchema {
 
     public static boolean accepts(Predicate<String> flags, boolean player, CategoryType category,
                                   boolean naked, Disposition disposition, boolean marked, boolean invisible) {
-        boolean selectedPlayers = selectsPlayers(flags);
-        boolean selectedMobs = selectsMobs(flags);
         if (!player && flags.test(PLAYERS_ONLY)) return false;
         if (player && flags.test(MOBS_ONLY) && !flags.test(PLAYERS_ONLY)) return false;
-        // Category selections form one union; armor, marked types and visibility constrain it independently.
-        if ((selectedPlayers || selectedMobs) && !(player ? selectedPlayers : selectedMobs)) return false;
         if (flags.test(IGNORE_INVISIBLE) && invisible) return false;
         if (flags.test(MARKED_ENABLED)) {
             if (flags.test(ONLY_MARKED) ? !marked : flags.test(IGNORE_MARKED) && marked) return false;
         }
         if (player && flags.test(PLAYERS_ENABLED)) {
+            boolean selectedPlayers = selectsPlayers(flags);
             int index = switch (category) {
                 case FRIEND -> 0;
                 case STAFF -> 1;

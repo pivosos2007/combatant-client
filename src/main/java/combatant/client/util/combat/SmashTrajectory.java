@@ -6,6 +6,7 @@
 package combatant.client.util.combat;
 
 import net.minecraft.util.Mth;
+import combatant.client.util.player.ElytraEscapePlanner;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ClipContext;
@@ -18,6 +19,8 @@ public final class SmashTrajectory {
     private SmashTrajectory() {}
 
     public enum Prediction { REACHABLE, BLOCKED, UNREACHABLE }
+
+    public record ContactForecast(Prediction prediction, int contactTicks) {}
 
     public static boolean canReach(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth, Vec3 velocity,
                                    AABB target, Vec3 targetVelocity, double initialFall, double minimumFall,
@@ -32,26 +35,55 @@ public final class SmashTrajectory {
                                      AABB target, Vec3 targetVelocity, double initialFall, double minimumFall,
                                      double minimumDownSpeed, double minimumApproachSpeed, int ticks,
                                      double maximumHorizontalGap, double reach, double gravity) {
-        return predictInternal(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+        return forecast(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
                 initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
-                maximumHorizontalGap, reach, gravity, false);
+                maximumHorizontalGap, reach, gravity).prediction();
     }
 
     public static Prediction predictReportable(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
                                                Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
                                                double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
                                                int ticks, double maximumHorizontalGap, double reach, double gravity) {
-        return predictInternal(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+        return forecastReportable(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
                 initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
-                maximumHorizontalGap, reach, gravity, true);
+                maximumHorizontalGap, reach, gravity).prediction();
     }
 
-    private static Prediction predictInternal(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
+    public static ContactForecast forecast(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
+                                          Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
+                                          double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
+                                          int ticks, double maximumHorizontalGap, double reach, double gravity) {
+        return predictInternal(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+                initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
+                maximumHorizontalGap, reach, gravity, false, 1, false);
+    }
+
+    public static ContactForecast forecastReportable(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
+                                                    Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
+                                                    double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
+                                                    int ticks, double maximumHorizontalGap, double reach, double gravity) {
+        return forecastReportable(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+                initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
+                maximumHorizontalGap, reach, gravity, 1);
+    }
+
+    public static ContactForecast forecastReportable(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
+                                                    Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
+                                                    double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
+                                                    int ticks, double maximumHorizontalGap, double reach, double gravity,
+                                                    int earliestContactTick) {
+        return predictInternal(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+                initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
+                maximumHorizontalGap, reach, gravity, true, Math.max(1, earliestContactTick), earliestContactTick > 1);
+    }
+
+    private static ContactForecast predictInternal(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
                                               Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
                                               double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
                                               int ticks, double maximumHorizontalGap, double reach, double gravity,
-                                              boolean reportableContact) {
-        if (velocity.y > -minimumDownSpeed || feet.y <= target.maxY) return Prediction.UNREACHABLE;
+                                              boolean reportableContact, int earliestContactTick,
+                                              boolean requireReportedContact) {
+        if (velocity.y > -minimumDownSpeed || feet.y <= target.maxY) return new ContactForecast(Prediction.UNREACHABLE, -1);
         double dx = Mth.clamp(feet.x, target.minX, target.maxX) - feet.x;
         double dz = Mth.clamp(feet.z, target.minZ, target.maxZ) - feet.z;
         double gap = Math.sqrt(dx * dx + dz * dz);
@@ -64,11 +96,14 @@ public final class SmashTrajectory {
                 && horizontalApproach < minimumApproachSpeed;
         boolean verticalContact = slowHorizontalApproach && reportableContact
                 && withinVerticalContactRange(gap, maximumHorizontalGap, reach);
-        if (slowHorizontalApproach && !verticalContact) return Prediction.UNREACHABLE;
+        if (slowHorizontalApproach && !verticalContact) return new ContactForecast(Prediction.UNREACHABLE, -1);
 
         // Removing the elytra restores the standing collision volume. Ray visibility alone
         // does not predict a fall onto leaves, fences, or a block overhanging the target.
-        if (player == null || !clearStandingVolume(player, feet, halfWidth, eyeHeight)) return Prediction.BLOCKED;
+        if (player == null) return new ContactForecast(Prediction.BLOCKED, -1);
+        ElytraEscapePlanner.CollisionWorld waterSafety = ElytraEscapePlanner.world(player);
+        if (!clearStandingVolume(player, feet, halfWidth, eyeHeight, waterSafety))
+            return new ContactForecast(Prediction.BLOCKED, -1);
         Vec3 eye = feet.add(0, eyeHeight, 0);
         double fall = initialFall;
         // For a nearly vertical hit, only commit to an imminent contact. A long
@@ -117,23 +152,35 @@ public final class SmashTrajectory {
             // Preflight requires a clear full-tick movement position from which the
             // attack can be sent; fractional contact alone is not reportable.
             double fraction = Double.isNaN(contactFraction) || reportableContact ? 1.0 : contactFraction;
-            if (!clearDescentSegment(player, feet, velocity, fraction, halfWidth, eyeHeight)) return Prediction.BLOCKED;
+            if (!clearDescentSegment(player, feet, velocity, fraction, halfWidth, eyeHeight, waterSafety))
+                return new ContactForecast(Prediction.BLOCKED, -1);
             if (!Double.isNaN(contactFraction)) {
                 Vec3 impactEye = reportableContact ? next : eye.add(velocity.scale(contactFraction));
                 AABB impactTarget = target.move(targetVelocity.scale(tick + (reportableContact ? 1.0 : contactFraction)));
                 if (!reportableContact) {
                     return hasClearAttackLine(player, impactEye, impactTarget, reach)
-                            ? Prediction.REACHABLE : Prediction.BLOCKED;
+                            ? new ContactForecast(Prediction.REACHABLE, tick + 1)
+                            : new ContactForecast(Prediction.BLOCKED, -1);
                 }
-                if (withinContact(impactTarget, impactEye, maximumHorizontalGap, reach)
-                        && hasClearAttackLine(player, impactEye, impactTarget, reach)) return Prediction.REACHABLE;
+                if (tick + 1 >= earliestContactTick
+                        && withinContact(impactTarget, impactEye, maximumHorizontalGap, reach)
+                        && hasClearAttackLine(player, impactEye, impactTarget, reach)) {
+                    // Combat attacks are checked against the previous reported
+                    // position as well as the position reached this tick.
+                    AABB previousTarget = target.move(targetVelocity.scale(tick));
+                    if (!requireReportedContact
+                            || withinContact(previousTarget, eye, maximumHorizontalGap, reach)
+                            && hasClearAttackLine(player, eye, previousTarget, reach)) {
+                        return new ContactForecast(Prediction.REACHABLE, tick + 1);
+                    }
+                }
             }
             fall += drop;
             feet = feet.add(velocity);
             eye = next;
             velocity = new Vec3(velocity.x * 0.91, (velocity.y - gravity) * 0.98, velocity.z * 0.91);
         }
-        return Prediction.UNREACHABLE;
+        return new ContactForecast(Prediction.UNREACHABLE, -1);
     }
 
     static boolean withinVerticalContactRange(double gap, double maximumHorizontalGap, double reach) {
@@ -166,24 +213,27 @@ public final class SmashTrajectory {
     }
 
     private static boolean clearDescentSegment(LocalPlayer player, Vec3 start, Vec3 motion,
-                                               double fraction, double halfWidth, double eyeHeight) {
+                                               double fraction, double halfWidth, double eyeHeight,
+                                               ElytraEscapePlanner.CollisionWorld waterSafety) {
         double length = motion.length() * fraction;
         int steps = Math.max(1, (int) Math.ceil(length / 0.45));
         for (int i = 1; i <= steps; i++) {
             Vec3 feet = start.add(motion.scale(fraction * i / steps));
-            if (!clearStandingVolume(player, feet, halfWidth, eyeHeight)) return false;
+            if (!clearStandingVolume(player, feet, halfWidth, eyeHeight, waterSafety)) return false;
         }
         return true;
     }
 
     private static boolean clearStandingVolume(LocalPlayer player, Vec3 feet,
-                                               double halfWidth, double eyeHeight) {
+                                               double halfWidth, double eyeHeight,
+                                               ElytraEscapePlanner.CollisionWorld waterSafety) {
         // This is only a block-collision query: living targets must not be
         // interpreted as impassable terrain at the intended contact point.
         double width = halfWidth + 0.035;
         AABB volume = new AABB(feet.x - width, feet.y + 0.035, feet.z - width,
                 feet.x + width, feet.y + Math.max(1.65, eyeHeight + 0.15), feet.z + width);
         if (!player.level().hasChunkAt(BlockPos.containing(feet))) return false;
+        if (waterSafety.waterRisk(volume, Vec3.ZERO) > 0.0) return false;
         return !player.level().getBlockCollisions(player, volume).iterator().hasNext();
     }
 

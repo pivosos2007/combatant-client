@@ -35,7 +35,18 @@ public class GroupSetting extends Setting {
     }
 
     boolean isOptionVisible(String key) {
-        return optionVisibility.test(key);
+        return value != null && value.getAll().containsKey(key) && optionVisibility.test(key);
+    }
+
+    List<String> visibleOptionIds() {
+        if (value == null) return List.of();
+        return value.getAll().keySet().stream().filter(this::isOptionVisible).toList();
+    }
+
+    boolean toggleOption(String key) {
+        if (!isVisible() || !isOptionVisible(key)) return false;
+        value.set(key, !value.get(key));
+        return true;
     }
 
     public GroupSetting visibleOptionsWhen(Predicate<String> predicate) {
@@ -49,8 +60,7 @@ public class GroupSetting extends Setting {
     public void preflightI18n() {
         super.preflightI18n();
         if (value == null) return;
-        for (String key : value.getAll().keySet()) {
-            if (!isOptionVisible(key)) continue;
+        for (String key : visibleOptionIds()) {
             preflightOptionI18n(key);
         }
     }

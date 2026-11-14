@@ -71,7 +71,6 @@ import combatant.client.util.combat.protocol.CombatProtocolHeuristics;
 import combatant.client.util.logging.DebugLog;
 import combatant.client.util.player.ResetAttackCooldown;
 import combatant.client.util.player.ElytraTargetReachability;
-import combatant.client.util.logging.ElytraDiveTrace;
 import combatant.client.util.network.BlinkManager;
 import combatant.client.util.player.inventory.InventorySwap;
 import combatant.client.util.player.inventory.InventorySwapRequest;
@@ -82,8 +81,6 @@ import combatant.client.util.player.inventory.InventorySlotLocks;
 import combatant.client.util.player.inventory.PacketWindow;
 import combatant.client.util.combat.protocol.ProtocolUtil;
 
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,6 +103,7 @@ public class AttributeSwap extends Module {
     private static final int CYCLE_WAIT_MACE_SYNC = 2;
     private static final int CYCLE_WAIT_ELYTRA_RESTORE = 3;
     private static final int TARGET_DIVE_TIMEOUT_TICKS = 30;
+    private static final int MACE_GLIDE_EXIT_CONTACT_TICKS = 3;
     private static final int WIND_BURST_ABSORPTION_MIN_TICKS = 200;
     private static final int WIND_BURST_PREDICTION_TICKS = 140;
     private static final double WIND_BURST_EXPLOSION_RADIUS = 3.5;
@@ -260,12 +258,6 @@ public class AttributeSwap extends Module {
     private Vec3 cycleReportedEye;
     private int cycleReportedAge = -1;
     private int cycleLostPredictionTicks;
-    private int cycleStartAge = -1;
-    private int cycleLastGateAge = -1;
-    private String cycleLastGate = "not_ready";
-    private String cycleAbortReason = "none";
-    private boolean cycleAttackSent;
-    private final List<MaceOutcomeObservation> maceOutcomeObservations = new ArrayList<>();
     private int lastElytraCycleAttackAge = -1;
     private int lastElytraCycleAttackTargetId = -1;
     private LocalPlayer lastElytraCycleAttackPlayer;
@@ -446,7 +438,6 @@ public class AttributeSwap extends Module {
         clearAuraControl();
         clearAttributeSwapSequence();
         InventorySwap.INSTANCE.releaseHotbar(this);
-        maceOutcomeObservations.clear();
     }
 
     @Override
@@ -455,7 +446,6 @@ public class AttributeSwap extends Module {
             InventorySwap.INSTANCE.tick();
             tickRestoreGlide();
             tickAuraControl();
-            pollMaceOutcomes();
             externalTargetBlocking = false;
         }
     }
@@ -474,7 +464,6 @@ public class AttributeSwap extends Module {
             // make the subsequent mace hit ineffective.
             return QueueResult.SUPPRESS;
         }
-
 
         if (isBlockingShieldTarget(target)) {
             return QueueResult.PASS;
@@ -775,25 +764,36 @@ public class AttributeSwap extends Module {
     }
 
     private boolean beginElytraCycle(LocalPlayer player, LivingEntity target, boolean fromTarget, int duration, int forecastTicks) {
+        int maceSlot = findCycleMaceSlot(player);
+        if (maceSlot < 0) return false;
+        // AttackPressing determines charge readiness; the descent forecast must separately
+        // allow time for the chest swap, glide exit and a reportable movement position.
+        int earliestContactTick = fromTarget && player.isFallFlying()
+                ? MACE_GLIDE_EXIT_CONTACT_TICKS : 1;
+        SmashTrajectory.ContactForecast contact = forecastSmashContact(
+                player, target, forecastTicks, fromTarget, earliestContactTick);
+        if (contact.prediction() != SmashTrajectory.Prediction.REACHABLE) {
+
+            return false;
+        }
+        AttackPressing.StrikeReadiness contactReadiness = AttackPressing.INSTANCE.getStrikeReadinessAtAttack(
+                player, target, contact.contactTicks());
+        if (!contactReadiness.canStrike()) {
+
+            return false;
+        }
         int swapSlot = findElytraRemovalSlot(player);
         InventorySwap inventory = InventorySwap.INSTANCE;
         if (swapSlot < 0 || player.inventoryMenu == null || player.containerMenu != player.inventoryMenu
                 || !inventory.itemUseAvailable() || !inventory.leaseInventory(this, 2)) return false;
         elytraCycleActive = true;
-        ElytraDiveTrace.INSTANCE.sample(player.tickCount, target.getId(), "AttributeSwap",
-                "begin fromTarget=" + fromTarget + " forecastTicks=" + forecastTicks
-                        + " swapSlot=" + swapSlot + " expire=" + (player.tickCount + duration));
+
         pendingTargetId = -1;
         pendingKeepSprint = false;
         cycleAttackWindow.reset();
         cycleReportedEye = null;
         cycleReportedAge = -1;
         cycleLostPredictionTicks = 0;
-        cycleStartAge = player.tickCount;
-        cycleLastGateAge = -1;
-        cycleLastGate = "not_ready";
-        cycleAbortReason = "none";
-        cycleAttackSent = false;
         elytraCycleFromTarget = fromTarget;
         cyclePredictionTicks = forecastTicks;
         elytraCycleTargetId = target.getId();
@@ -815,10 +815,10 @@ public class AttributeSwap extends Module {
                                 == SmashTrajectory.Prediction.REACHABLE,
                 completed -> {
                     cycleInventoryPending = false;
-                    ElytraDiveTrace.INSTANCE.event("AttributeSwap chestSwapCompleted=" + completed
-                            + " chestElytra=" + player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA));
+
                     if (completed && !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)
                             && player.getInventory().getItem(swapSlot).is(Items.ELYTRA)) {
+                        stopGlideForMace(player);
                         elytraCycleStage = CYCLE_WAIT_MACE_SYNC;
                     } else {
                         elytraCycleStage = CYCLE_WAIT_ELYTRA_RESTORE;
@@ -831,6 +831,13 @@ public class AttributeSwap extends Module {
             return false;
         }
         return true;
+    }
+
+    private void stopGlideForMace(LocalPlayer player) {
+        if (player.isFallFlying() && !player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
+            player.stopFallFlying();
+
+        }
     }
 
     private void tickElytraCycleSync() {
@@ -846,22 +853,22 @@ public class AttributeSwap extends Module {
             restoreElytraIfNeeded();
             return;
         }
+        // The client may keep the glide flag for the entire descent after an
+        // inventory chest swap. That makes MaceItem.canSmashAttack() permanently false.
+        stopGlideForMace(player);
 
         Entity entity = mc.level.getEntity(elytraCycleTargetId);
         if (!(entity instanceof LivingEntity target) || !isValidTarget(target)
                 || !ElytraTargetReachability.isSafeMaceTarget(target) || target.getHealth() <= 0.0f) {
-            cycleAbortReason = "target_lost_or_unsafe";
             restoreElytraIfNeeded();
             return;
         }
         if (player.onGround() || player.isInWater() || player.isInLava()) {
-            cycleAbortReason = player.onGround() ? "landed_before_attack" : "player_in_fluid";
             restoreElytraIfNeeded();
             return;
         }
         int maceSlot = findCycleMaceSlot(player);
         if (maceSlot < 0) {
-            cycleAbortReason = "no_mace_slot";
             restoreElytraIfNeeded();
             return;
         }
@@ -872,18 +879,12 @@ public class AttributeSwap extends Module {
             maceSlot = findCycleMaceSlot(player);
             if (maceSlot < 0 || maceSlot >= 9) return;
         }
-        if (ElytraDiveTrace.INSTANCE.active()) {
-            ElytraDiveTrace.INSTANCE.event(String.format(java.util.Locale.ROOT,
-                    "AttributeSwap waitMace fall=%.3f vy=%.3f smashReady=%s invPending=%s maceSlot=%d",
-                    player.fallDistance, player.getDeltaMovement().y,
-                    MaceItem.canSmashAttack(player), cycleInventoryPending, maceSlot));
-        }
+
         if (!MaceItem.canSmashAttack(player)) return;
         if (player.fallDistance < minFallDistance.get()) return;
         if (player.getDeltaMovement().y >= 0) return;
         if (player.isUsingItem()) return;
-        if (player.getAttackStrengthScale(0.5f) < 0.9f) {
-            traceCycleGate(player, target, "attack_cooldown");
+        if (!AttackPressing.INSTANCE.getStrikeReadinessAtAttack(player, target, 0).canStrike()) {
             return;
         }
         if (!isCycleContactReachable(player, target)) {
@@ -894,8 +895,6 @@ public class AttributeSwap extends Module {
             if (descent == SmashTrajectory.Prediction.BLOCKED) {
                 // A leaf canopy or solid protrusion lies between the current
                 // position and the attack window. This is not prediction jitter.
-                traceCycleGate(player, target, "descent_obstructed");
-                cycleAbortReason = "descent_obstructed";
                 restoreElytraIfNeeded();
                 return;
             }
@@ -910,13 +909,10 @@ public class AttributeSwap extends Module {
                 boolean tooFarLaterally = Math.hypot(gapX, gapZ)
                         > maxPredictedHorizontalDistance.get() + 1.0;
                 if (tooFarLaterally || cycleLostPredictionTicks >= 6) {
-                    traceCycleGate(player, target, tooFarLaterally ? "lateral_escape" : "prediction_lost");
-                    cycleAbortReason = tooFarLaterally ? "lateral_escape" : "prediction_lost";
                     restoreElytraIfNeeded();
                     return;
                 }
             }
-            traceCycleGate(player, target, predicted ? "contact_not_yet" : "prediction_grace_" + cycleLostPredictionTicks);
             return;
         }
         cycleLostPredictionTicks = 0;
@@ -925,12 +921,9 @@ public class AttributeSwap extends Module {
         boolean reportedContactReady = cycleReportedEye != null
                 && isCycleContactReachable(player, target, cycleReportedEye);
         if (!reportedFallReady || !reportedContactReady) {
-            traceCycleGate(player, target, cycleReportedEye == null ? "await_reported_packet"
-                    : !reportedFallReady ? "await_reported_fall" : "await_reported_contact");
             return;
         }
         if (BlinkManager.INSTANCE.hasQueuedOutgoingMovement()) {
-            traceCycleGate(player, target, "queued_movement");
             return;
         }
         if (target instanceof Player shieldTarget && isBlockingShieldTarget(target)
@@ -943,7 +936,6 @@ public class AttributeSwap extends Module {
         }
         if (InventorySwap.INSTANCE.serverSelectedSlot() != maceSlot
                 && !PacketWindow.INSTANCE.slotChangeAllowed()) {
-            traceCycleGate(player, target, "slot_window");
             return;
         }
         if (restoreItem.get()) {
@@ -957,32 +949,6 @@ public class AttributeSwap extends Module {
                 () -> attackElytraCycleBeforeMovement(player, target, preparedSlot));
     }
 
-    private void traceCycleGate(LocalPlayer player, LivingEntity target, String reason) {
-        cycleLastGate = reason;
-        cycleLastGateAge = player.tickCount;
-        if (!ElytraDiveTrace.INSTANCE.active()) return;
-        AABB box = target.getBoundingBox();
-        Vec3 eye = player.getEyePosition();
-        double liveGap = eye.distanceTo(new Vec3(
-                Mth.clamp(eye.x, box.minX, box.maxX),
-                Mth.clamp(eye.y, box.minY, box.maxY),
-                Mth.clamp(eye.z, box.minZ, box.maxZ)));
-        double reportedGap = Double.NaN;
-        if (cycleReportedEye != null) {
-            Vec3 reported = cycleReportedEye;
-            reportedGap = reported.distanceTo(new Vec3(
-                    Mth.clamp(reported.x, box.minX, box.maxX),
-                    Mth.clamp(reported.y, box.minY, box.maxY),
-                    Mth.clamp(reported.z, box.minZ, box.maxZ)));
-        }
-        ElytraDiveTrace.INSTANCE.event(String.format(java.util.Locale.ROOT,
-                "AttributeSwap attackGate=%s liveGap=%.2f reportedGap=%.2f serverSlot=%d fall=%.2f reportedFall=%.2f reportedAge=%d glide=%s chestElytra=%s cooldown=%.2f",
-                reason, liveGap, reportedGap, InventorySwap.INSTANCE.serverSelectedSlot(),
-                player.fallDistance, cycleAttackWindow.reportedFall(), cycleReportedAge,
-                player.isFallFlying(), player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA),
-                player.getAttackStrengthScale(0.5f)));
-    }
-
     private void attackElytraCycleBeforeMovement(LocalPlayer player, LivingEntity target, int maceSlot) {
         if (!isEnabled() || mc.player != player || mc.level == null || !elytraCycleActive
                 || elytraCycleStage != CYCLE_WAIT_MACE_SYNC || cycleInventoryPending
@@ -991,38 +957,30 @@ public class AttributeSwap extends Module {
                 || maceSlot < 9 && InventorySwap.INSTANCE.serverSelectedSlot() != maceSlot
                 || !player.getInventory().getItem(maceSlot).is(Items.MACE)
                 || isUnsafeWindBurstMace(player, player.getInventory().getItem(maceSlot))) {
-            traceCycleGate(player, target, "commit_item_not_ready");
             return;
         }
         if (player.isFallFlying() || !MaceItem.canSmashAttack(player)
                 || player.fallDistance < minFallDistance.get()
                 || player.getDeltaMovement().y >= 0.0) {
-            traceCycleGate(player, target, "commit_fall_not_ready");
             return;
         }
-        if (player.isUsingItem() || player.getAttackStrengthScale(0.5f) < 0.9f) {
-            traceCycleGate(player, target, "commit_cooldown");
+        if (player.isUsingItem()
+                || !AttackPressing.INSTANCE.getStrikeReadinessAtAttack(player, target, 0).canStrike()) {
             return;
         }
         if (!isCycleContactReachable(player, target) || cycleReportedEye == null
                 || !isCycleContactReachable(player, target, cycleReportedEye)) {
-            traceCycleGate(player, target, "commit_contact_lost");
             return;
         }
         if (maceSlot >= 9) {
             if (!attackMaceNow(player, target, elytraCycleKeepSprint, maceSlot)) {
-                traceCycleGate(player, target, "attack_not_sent");
                 return;
             }
         } else if (!AttackUtil.attackCurrentItem(mc, target, elytraCycleKeepSprint)) {
-            traceCycleGate(player, target, "attack_not_sent");
             return;
         }
         lastElytraCycleAttackAge = player.tickCount;
-        cycleAttackSent = true;
-        observeMaceOutcome(player, target);
-        ElytraDiveTrace.INSTANCE.event("AttributeSwap smashSent tick=" + player.tickCount
-                + " target=" + target.getId() + " slot=" + maceSlot);
+
         lastElytraCycleAttackTargetId = target.getId();
         lastElytraCycleAttackPlayer = player;
         ResetAttackCooldown.resetAttackCooldown(player);
@@ -1030,62 +988,6 @@ public class AttributeSwap extends Module {
         nextFastAuraMaceDelayMs = randomFastAuraMaceDelay();
         elytraCycleStage = CYCLE_WAIT_ELYTRA_RESTORE;
         elytraRestoreAge = player.tickCount + 1;
-    }
-
-    private void observeMaceOutcome(LocalPlayer player, LivingEntity target) {
-        if (!ElytraDiveTrace.INSTANCE.active()) return;
-        maceOutcomeObservations.add(new MaceOutcomeObservation(player.tickCount,
-                target.getId(), target.getHealth(), target.hurtTime));
-    }
-
-    private void pollMaceOutcomes() {
-        if (maceOutcomeObservations.isEmpty()) return;
-        LocalPlayer player = mc.player;
-        if (player == null || mc.level == null) {
-            maceOutcomeObservations.clear();
-            return;
-        }
-        Iterator<MaceOutcomeObservation> iterator = maceOutcomeObservations.iterator();
-        while (iterator.hasNext()) {
-            MaceOutcomeObservation observation = iterator.next();
-            if (player.tickCount <= observation.age) continue;
-            Entity entity = mc.level.getEntity(observation.targetId);
-            if (entity instanceof LivingEntity living) {
-                observation.sawTarget = true;
-                float lostHealth = observation.initialHealth - living.getHealth();
-                boolean hurtPulse = living.hurtTime > observation.previousHurtTime + 2;
-                if (lostHealth > 0.05f || hurtPulse || !living.isAlive()) {
-                    ElytraDiveTrace.INSTANCE.event(String.format(java.util.Locale.ROOT,
-                            "AttributeSwap hitFeedback target=%d age=%d after=%d healthDelta=%.2f hurtPulse=%s status=client_damage_signal",
-                            observation.targetId, observation.age, player.tickCount - observation.age,
-                            Math.max(0.0f, lostHealth), hurtPulse));
-                    iterator.remove();
-                    continue;
-                }
-                observation.previousHurtTime = living.hurtTime;
-            }
-            if (player.tickCount - observation.age >= 8) {
-                ElytraDiveTrace.INSTANCE.event("AttributeSwap hitFeedback target=" + observation.targetId
-                        + " age=" + observation.age + " after=" + (player.tickCount - observation.age)
-                        + " status=" + (observation.sawTarget ? "no_client_damage_signal" : "target_unavailable"));
-                iterator.remove();
-            }
-        }
-    }
-
-    private static final class MaceOutcomeObservation {
-        private final int age;
-        private final int targetId;
-        private final float initialHealth;
-        private int previousHurtTime;
-        private boolean sawTarget;
-
-        private MaceOutcomeObservation(int age, int targetId, float initialHealth, int previousHurtTime) {
-            this.age = age;
-            this.targetId = targetId;
-            this.initialHealth = initialHealth;
-            this.previousHurtTime = previousHurtTime;
-        }
     }
 
     private boolean isCycleContactReachable(LocalPlayer player, LivingEntity target) {
@@ -1118,11 +1020,6 @@ public class AttributeSwap extends Module {
         boolean expired = elytraCycleExpireAge >= 0 && player.tickCount >= elytraCycleExpireAge;
         if (expired || !(entity instanceof LivingEntity living) || !isValidTarget(living)
                 || !ElytraTargetReachability.isSafeMaceTarget(living)) {
-            if (!cycleAttackSent && "none".equals(cycleAbortReason)) {
-                cycleAbortReason = expired ? "cycle_timeout" : "target_lost_or_unsafe";
-            }
-            ElytraDiveTrace.INSTANCE.event("AttributeSwap restore reason="
-                    + (expired ? "cycle_timeout" : "target_lost_or_unsafe") + " expired=" + expired);
             restoreElytraIfNeeded();
             return;
         }
@@ -1136,9 +1033,6 @@ public class AttributeSwap extends Module {
         if (!elytraCycleActive) return;
 
         boolean alreadyRestoring = elytraCycleStage == CYCLE_WAIT_ELYTRA_RESTORE;
-        if (!alreadyRestoring) {
-            ElytraDiveTrace.INSTANCE.event("AttributeSwap restoreStart previousStage=" + elytraCycleStage);
-        }
         elytraCycleStage = CYCLE_WAIT_ELYTRA_RESTORE;
         InventorySwap inventory = InventorySwap.INSTANCE;
         if (cycleInventoryPending) {
@@ -1191,7 +1085,7 @@ public class AttributeSwap extends Module {
                         completed -> {
                             cycleInventoryPending = false;
                             if (completed && player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) {
-                                ElytraDiveTrace.INSTANCE.event("AttributeSwap elytraRestored tick=" + player.tickCount);
+
                                 if (isEnabled()) queueRestoreGlide(player);
                                 clearElytraCycle();
                             }
@@ -1351,14 +1245,6 @@ public class AttributeSwap extends Module {
     }
 
     private void clearElytraCycle() {
-        if (elytraCycleActive) {
-            ElytraDiveTrace.INSTANCE.event("AttributeSwap cycleCleared stage=" + elytraCycleStage
-                    + " target=" + elytraCycleTargetId + " invPending=" + cycleInventoryPending
-                    + " result=" + (cycleAttackSent ? "attack_sent" : "no_attack")
-                    + " abort=" + cycleAbortReason + " lastGate=" + cycleLastGate
-                    + " lastGateAge=" + cycleLastGateAge + " beginAge=" + cycleStartAge
-                    + " ground=" + (cyclePlayer != null && cyclePlayer.onGround()));
-        }
         if (elytraCycleActive && cyclePlayer != null && mc.player == cyclePlayer) {
             lastElytraCycleEndAge = cyclePlayer.tickCount;
             lastElytraCycleEndPlayer = cyclePlayer;
@@ -1372,11 +1258,6 @@ public class AttributeSwap extends Module {
         cycleReportedEye = null;
         cycleReportedAge = -1;
         cycleLostPredictionTicks = 0;
-        cycleStartAge = -1;
-        cycleLastGateAge = -1;
-        cycleLastGate = "not_ready";
-        cycleAbortReason = "none";
-        cycleAttackSent = false;
         cycleMaceFromSlot = -1;
         cycleMaceToSlot = -1;
         elytraCycleActive = false;
@@ -1439,16 +1320,7 @@ public class AttributeSwap extends Module {
         int forecastTicks = predictionTicks.get() + extraTicks;
         SmashTrajectory.Prediction prediction = predictSmashContact(player, target, forecastTicks, true);
         if (prediction != SmashTrajectory.Prediction.REACHABLE) {
-            if (ElytraDiveTrace.INSTANCE.active() && player.tickCount % 5 == 0) {
-                AABB box = target.getBoundingBox();
-                double gapX = Math.max(0.0, Math.max(box.minX - player.getX(), player.getX() - box.maxX));
-                double gapZ = Math.max(0.0, Math.max(box.minZ - player.getZ(), player.getZ() - box.maxZ));
-                ElytraDiveTrace.INSTANCE.event(String.format(java.util.Locale.ROOT,
-                        "AttributeSwap prepRejected reason=%s target=%d forecastTicks=%d gapXZ=%.2f gapY=%.2f vy=%.2f",
-                        prediction == SmashTrajectory.Prediction.BLOCKED ? "blocked_descent" : "unreachable_descent",
-                        target.getId(), forecastTicks, Math.hypot(gapX, gapZ),
-                        player.getY() - box.maxY, player.getDeltaMovement().y));
-            }
+
             return false;
         }
         if (!beginElytraCycle(player, target, true, TARGET_DIVE_TIMEOUT_TICKS + extraTicks, forecastTicks)) return false;
@@ -1807,20 +1679,34 @@ public class AttributeSwap extends Module {
 
     private SmashTrajectory.Prediction predictSmashContact(LocalPlayer player, LivingEntity target,
                                                             int forecastTicks, boolean reportable) {
-        if (!ElytraTargetReachability.isSafeMaceTarget(target)) return SmashTrajectory.Prediction.UNREACHABLE;
+        return forecastSmashContact(player, target, forecastTicks, reportable).prediction();
+    }
+
+    private SmashTrajectory.ContactForecast forecastSmashContact(LocalPlayer player, LivingEntity target,
+                                                                 int forecastTicks, boolean reportable) {
+        return forecastSmashContact(player, target, forecastTicks, reportable, 1);
+    }
+
+    private SmashTrajectory.ContactForecast forecastSmashContact(LocalPlayer player, LivingEntity target,
+                                                                 int forecastTicks, boolean reportable,
+                                                                 int earliestContactTick) {
+        if (!ElytraTargetReachability.isSafeMaceTarget(target)) {
+            return new SmashTrajectory.ContactForecast(SmashTrajectory.Prediction.UNREACHABLE, -1);
+        }
         KillAura aura = Modules.get(KillAura.class);
         double reach = aura != null && aura.isEnabled() ? aura.getEffectiveRange(target) : 3.0;
         if (reportable) {
-            return SmashTrajectory.predictReportable(player, player.position(),
+            return SmashTrajectory.forecastReportable(player, player.position(),
                     player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING), player.getBbWidth() / 2.0,
                     player.getDeltaMovement(), target.getBoundingBox(), target.getDeltaMovement(),
                     player.isFallFlying() ? 0 : player.fallDistance,
                     minFallDistance.get(), minDownVelocity.get(), minApproachSpeed.get(), forecastTicks,
-                    maxPredictedHorizontalDistance.get(), reach, player.getGravity());
+                    maxPredictedHorizontalDistance.get(), reach, player.getGravity(), earliestContactTick);
         }
-        return SmashTrajectory.predict(player, player.position(), player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING),
-                player.getBbWidth() / 2.0, player.getDeltaMovement(), target.getBoundingBox(),
-                target.getDeltaMovement(), player.isFallFlying() ? 0 : player.fallDistance,
+        return SmashTrajectory.forecast(player, player.position(),
+                player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING), player.getBbWidth() / 2.0,
+                player.getDeltaMovement(), target.getBoundingBox(), target.getDeltaMovement(),
+                player.isFallFlying() ? 0 : player.fallDistance,
                 minFallDistance.get(), minDownVelocity.get(), minApproachSpeed.get(), forecastTicks,
                 maxPredictedHorizontalDistance.get(), reach, player.getGravity());
     }

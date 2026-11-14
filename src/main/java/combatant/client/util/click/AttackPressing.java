@@ -101,6 +101,11 @@ public final class AttackPressing {
         return StrikeReadiness.WAIT;
     }
 
+    public StrikeReadiness getStrikeReadinessAtAttack(LocalPlayer player, LivingEntity target, int ticksUntilAttack) {
+        return getStrikeReadiness(player, target,
+                Math.max(0, ticksUntilAttack) + ATTACK_LOOKAHEAD_TICKS);
+    }
+
     public long lastClickPassed() {
         return System.currentTimeMillis() - lastClickTime;
     }

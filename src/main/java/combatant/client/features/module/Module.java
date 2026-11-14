@@ -756,11 +756,13 @@ public abstract class Module implements ConfigObject, ConfigNameProvider, Settin
     }
 
     public final void addExtensionSetting(SettingDef def) {
-        Setting setting = SettingFactory.fromDef(def);
-        if (setting == null) return;
-        setting.setParent(this);
-        setting.preflightI18n();
-        settings.add(setting);
+        List<Setting> extensionSettings = SettingFactory.fromDefs(Collections.singletonList(def));
+        if (extensionSettings.isEmpty()) return;
+        for (Setting setting : extensionSettings) {
+            setting.setParent(this);
+            setting.preflightI18n();
+            settings.add(setting);
+        }
         if (def != null && def.value() != null) {
             declaredSettingDefsByValue.put(def.value(), def);
         }
