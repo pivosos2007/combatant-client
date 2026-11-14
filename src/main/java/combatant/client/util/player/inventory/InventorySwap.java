@@ -15,7 +15,6 @@ import combatant.client.events.impl.SprintControlEvent;
 import combatant.client.mixins.accessors.MultiPlayerGameModeAccessor;
 import combatant.client.mixins.accessors.PlayerInventoryAccessor;
 import combatant.client.util.network.BlinkManager;
-import combatant.client.util.logging.ElytraDiveTrace;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -78,7 +77,6 @@ public final class InventorySwap {
      * Vulcan BadPackets G remembers only consecutive client slot packets.
      */
     private int lastOutgoingCarriedSlot = -1;
-    private int lastDuplicateSlotTraceTick = Integer.MIN_VALUE;
     /** Slot a silent use left the server on until the next tick start restores it; wins over leases and client slot. */
     private int silentSlot = -1;
     /** The server slot is off the desired slot because the restore was not allowed yet (sent at the next safe point). */
@@ -96,7 +94,6 @@ public final class InventorySwap {
 
     private InventorySwap() {
     }
-
 
     public static int mapInventoryToScreenSlot(int inventorySlot) {
         LocalPlayer player = INSTANCE.mc.player;
@@ -151,7 +148,6 @@ public final class InventorySwap {
         return kind == InventoryActionKind.INVENTORY_CLICK || kind == InventoryActionKind.INVENTORY_CLOSE;
     }
 
-
     @EventHandler
     private void onPacketSend(PacketEvent.Send event) {
         Object packet = event.getPacket();
@@ -181,13 +177,7 @@ public final class InventorySwap {
         if (!duplicate && isHotbarSlot(packet.getSlot())
                 && packet.getSlot() != lastServerSelectedSlot && carriedSlotAllowed()) return;
         event.cancel();
-        if (duplicate && mc.player != null
-                && (lastDuplicateSlotTraceTick < 0
-                    || mc.player.tickCount - lastDuplicateSlotTraceTick >= 10)) {
-            lastDuplicateSlotTraceTick = mc.player.tickCount;
-            ElytraDiveTrace.INSTANCE.event("InventorySwap suppressed repeated held slot=" + packet.getSlot()
-                    + " serverSlot=" + lastServerSelectedSlot);
-        }
+
         if (isHotbarSlot(packet.getSlot()) && packet.getSlot() != lastServerSelectedSlot) {
             restorePending = true;
         }
@@ -216,7 +206,6 @@ public final class InventorySwap {
             mc.execute(() -> {
                 lastServerSelectedSlot = -1;
                 lastOutgoingCarriedSlot = -1;
-                lastDuplicateSlotTraceTick = Integer.MIN_VALUE;
                 lastPolicyActionTick = Integer.MIN_VALUE;
                 silentSlot = -1;
                 restorePending = false;
@@ -264,7 +253,6 @@ public final class InventorySwap {
         reconcileServerSlot();
     }
 
-
     /**
      * True while the game draws or animates what the player sees (hand, hotbar, item name popup)
      * or reads the scroll wheel. Those paths get the real client slot, so a hotbar lease or silent
@@ -290,7 +278,6 @@ public final class InventorySwap {
     public Object executingActionOwner() {
         return internalSwapDepth > 0 ? inventoryActionOwner : null;
     }
-
 
     public boolean hasPendingActions() {
         return !queue.isEmpty();
@@ -481,7 +468,6 @@ public final class InventorySwap {
         queuedPlayerUuid = null;
         queuedLevel = null;
     }
-
 
     /** Last transmitted or server-corrected selection, falling back to the client before the first update. */
     public int serverSelectedSlot() {
@@ -741,7 +727,6 @@ public final class InventorySwap {
         return current;
     }
 
-
     public boolean clickSwap(int containerSlot) {
         return clickSwap(containerSlot, clientSelectedSlot());
     }
@@ -991,7 +976,6 @@ public final class InventorySwap {
         return moved;
     }
 
-
     /**
      * Runs a raw action that needs the Grim safety gate. Window clicks and closes run now when the server sees a
      * stationary player and nothing is queued ahead, otherwise they are queued (movement is paused until they can
@@ -1050,7 +1034,6 @@ public final class InventorySwap {
             return false;
         }
 
-
         InventorySwapVisibility visibility = request.visibility() != null ? request.visibility() : defaultVisibility;
         boolean silent = visibility == InventorySwapVisibility.SILENT;
         boolean restore = request.restore(restoreByDefault);
@@ -1083,7 +1066,6 @@ public final class InventorySwap {
         runGuarded(null, () -> player.swing(hand, player.getItemInHand(hand).getInteractAnimation(), false));
         return true;
     }
-
 
     /** First match in the hotbar; {@link SlotResult#slot()} is the player-inventory index (0-8). */
     public SlotResult findHotbar(Predicate<ItemStack> predicate) {
@@ -1122,7 +1104,6 @@ public final class InventorySwap {
         }
         return SlotResult.empty();
     }
-
 
     private boolean runHotbarUse(int slot, Runnable action, boolean silent, boolean restore) {
         LocalPlayer player = mc.player;
@@ -1223,7 +1204,6 @@ public final class InventorySwap {
         });
         return true;
     }
-
 
     private void runGuarded(Object owner, Runnable action) {
         Object previousOwner = inventoryActionOwner;

@@ -10,6 +10,8 @@ import combatant.client.util.aiming.data.Rotation;
 import combatant.client.util.player.ElytraFlightPhysics.FlightModel;
 import combatant.client.util.player.ElytraFlightPhysics.GlideHeading;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
@@ -33,15 +35,19 @@ public final class ElytraEscapePlanner {
     private static final double HARD_LANDING_VERTICAL_SPEED = 0.7;
     private static final double FAST_GROUND_APPROACH_EXPOSURE = 0.30;
     private static final double RAPID_ASCENT_SPEED = 0.17;
+    private static final double WATER_SURFACE_MARGIN = 3.0;
+    private static final double SHALLOW_WATER_EXTRA_MARGIN = 1.75;
+    private static final int WATER_SCAN_DEPTH = 6;
 
     private ElytraEscapePlanner() {
     }
 
     /** Damage sums projected wall impacts; firstCollisionTick records unsafe contacts. */
     public record Trajectory(float damage, int impactTick, boolean unknown, boolean blockedSteering,
-                             Vec3 endPosition, double nearestDistanceSquared, int firstCollisionTick) {
+                             Vec3 endPosition, double nearestDistanceSquared, int firstCollisionTick,
+                             int waterHazardTick, double waterRisk) {
         public boolean safe() {
-            return !unknown && damage <= 0.0f && !blockedSteering;
+            return !unknown && damage <= 0.0f && !blockedSteering && waterHazardTick == 0;
         }
     }
 
@@ -52,6 +58,10 @@ public final class ElytraEscapePlanner {
         boolean loaded(AABB bounds, Vec3 movement);
 
         Vec3 move(AABB bounds, Vec3 movement);
+
+        default double waterRisk(AABB bounds, Vec3 movement) {
+            return 0.0;
+        }
     }
 
     public static CollisionWorld world(LocalPlayer player) {
@@ -72,6 +82,7 @@ public final class ElytraEscapePlanner {
         private final Map<Long, Boolean> loadedChunks = new HashMap<>();
         private final Set<Cell> probed = new HashSet<>();
         private final List<AABB> emptyVolumes = new ArrayList<>();
+        private final Map<WaterProbe, Double> waterProbes = new HashMap<>();
         private int probes;
         private boolean probeEmptySpace;
 
@@ -91,6 +102,59 @@ public final class ElytraEscapePlanner {
                 return movement;
             }
             return ElytraImpactDamageUtil.allowedMovement(player, bounds, movement);
+        }
+
+        @Override
+        public double waterRisk(AABB bounds, Vec3 movement) {
+            AABB moved = bounds.move(movement);
+            double feet = moved.minY;
+            double centerX = (bounds.minX + bounds.maxX) * 0.5;
+            double centerZ = (bounds.minZ + bounds.maxZ) * 0.5;
+            double dx = movement.x;
+            double dz = movement.z;
+            double risk = Math.max(waterColumnRisk(centerX + dx * 0.5, centerZ + dz * 0.5, feet),
+                    waterColumnRisk(centerX + dx, centerZ + dz, feet));
+            // Probe both leading corners, not just the centre of a fast-moving hitbox.
+            risk = Math.max(risk, waterColumnRisk(moved.minX + 0.01, moved.minZ + 0.01, feet));
+            risk = Math.max(risk, waterColumnRisk(moved.maxX - 0.01, moved.minZ + 0.01, feet));
+            risk = Math.max(risk, waterColumnRisk(moved.minX + 0.01, moved.maxZ - 0.01, feet));
+            return Math.max(risk, waterColumnRisk(moved.maxX - 0.01, moved.maxZ - 0.01, feet));
+        }
+
+        private double waterColumnRisk(double x, double z, double feet) {
+            int bx = Mth.floor(x);
+            int bz = Mth.floor(z);
+            int by = Mth.floor(feet);
+            double surfaceAndMargin = waterProbes.computeIfAbsent(
+                    new WaterProbe(bx, by, bz), this::scanWater);
+            return surfaceAndMargin == Double.NEGATIVE_INFINITY ? 0.0
+                    : Math.max(0.0, surfaceAndMargin - feet);
+        }
+
+        private double scanWater(WaterProbe probe) {
+            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+            int top = probe.y() + 1;
+            int bottom = probe.y() - WATER_SCAN_DEPTH;
+            for (int y = top; y >= bottom; --y) {
+                pos.set(probe.x(), y, probe.z());
+                FluidState fluid = player.level().getFluidState(pos);
+                if (!fluid.is(FluidTags.WATER)) continue;
+                double surface = y + fluid.getHeight(player.level(), pos);
+                double margin = WATER_SURFACE_MARGIN;
+                for (int depth = 1; depth <= 4; depth++) {
+                    pos.set(probe.x(), y - depth, probe.z());
+                    if (player.level().getFluidState(pos).is(FluidTags.WATER)) continue;
+                    if (!player.level().getBlockState(pos).getCollisionShape(player.level(), pos).isEmpty()) {
+                        margin += SHALLOW_WATER_EXTRA_MARGIN;
+                    }
+                    break;
+                }
+                return surface + margin;
+            }
+            return Double.NEGATIVE_INFINITY;
+        }
+
+        private record WaterProbe(int x, int y, int z) {
         }
 
         private boolean loadedBox(AABB bounds) {
@@ -197,17 +261,19 @@ public final class ElytraEscapePlanner {
         int firstCollisionTick = 0;
         boolean blockedSteering = false;
         double nearestDistance = Double.POSITIVE_INFINITY;
+        int firstWaterHazardTick = 0;
+        double maxWaterRisk = 0.0;
         for (int tick = 1; tick <= ticks; tick++) {
             if (boostBeforeMove) velocity = physics.afterMove(velocity, heading, tick, boostTicks);
             Vec3 attempted = physics.glide(velocity, prepared);
             if (!finite(attempted) || !world.loaded(bounds, attempted)) {
                 return new Trajectory(totalDamage, impactTick, true, blockedSteering,
-                        bounds.getCenter(), nearestDistance, firstCollisionTick);
+                        bounds.getCenter(), nearestDistance, firstCollisionTick, firstWaterHazardTick, maxWaterRisk);
             }
             Vec3 clipped = world.move(bounds, attempted);
             if (!finite(clipped)) {
                 return new Trajectory(totalDamage, impactTick, true, blockedSteering,
-                        bounds.getCenter(), nearestDistance, firstCollisionTick);
+                        bounds.getCenter(), nearestDistance, firstCollisionTick, firstWaterHazardTick, maxWaterRisk);
             }
             boolean horizontalContact = !Mth.equal(attempted.x, clipped.x) || !Mth.equal(attempted.z, clipped.z);
             boolean verticalContact = !Mth.equal(attempted.y, clipped.y);
@@ -224,12 +290,12 @@ public final class ElytraEscapePlanner {
             );
             if (!world.loaded(clearanceBounds, attempted)) {
                 return new Trajectory(totalDamage, impactTick, true, blockedSteering,
-                        bounds.getCenter(), nearestDistance, firstCollisionTick);
+                        bounds.getCenter(), nearestDistance, firstCollisionTick, firstWaterHazardTick, maxWaterRisk);
             }
             Vec3 clearanceClipped = world.move(clearanceBounds, attempted);
             if (!finite(clearanceClipped)) {
                 return new Trajectory(totalDamage, impactTick, true, blockedSteering,
-                        bounds.getCenter(), nearestDistance, firstCollisionTick);
+                        bounds.getCenter(), nearestDistance, firstCollisionTick, firstWaterHazardTick, maxWaterRisk);
             }
             boolean horizontalClearanceContact = !Mth.equal(attempted.x, clearanceClipped.x)
                     || !Mth.equal(attempted.z, clearanceClipped.z);
@@ -252,16 +318,21 @@ public final class ElytraEscapePlanner {
                         ? Mth.clamp(avoidPoint.subtract(start).dot(clipped) / clipped.lengthSqr(), 0.0, 1.0) : 0.0;
                 nearestDistance = Math.min(nearestDistance, start.add(clipped.scale(fraction)).distanceToSqr(avoidPoint));
             }
+            double waterRisk = world.waterRisk(bounds, clipped);
+            if (waterRisk > 0.0) {
+                if (firstWaterHazardTick == 0) firstWaterHazardTick = tick;
+                maxWaterRisk = Math.max(maxWaterRisk, waterRisk);
+            }
             bounds = bounds.move(clipped);
             if (verticalContact && attempted.y < 0.0) {
                 return new Trajectory(totalDamage, impactTick, false, blockedSteering,
-                        bounds.getCenter(), nearestDistance, firstCollisionTick);
+                        bounds.getCenter(), nearestDistance, firstCollisionTick, firstWaterHazardTick, maxWaterRisk);
             }
             velocity = ElytraImpactDamageUtil.postCollisionVelocity(attempted, clipped);
             if (!boostBeforeMove) velocity = physics.afterMove(velocity, heading, tick, boostTicks);
         }
         return new Trajectory(totalDamage, impactTick, false, blockedSteering,
-                bounds.getCenter(), nearestDistance, firstCollisionTick);
+                bounds.getCenter(), nearestDistance, firstCollisionTick, firstWaterHazardTick, maxWaterRisk);
     }
 
     private static Trajectory worst(Trajectory first, Trajectory second) {
@@ -269,10 +340,13 @@ public final class ElytraEscapePlanner {
         int firstContact = first.firstCollisionTick() == 0 ? second.firstCollisionTick()
                 : second.firstCollisionTick() == 0 ? first.firstCollisionTick()
                 : Math.min(first.firstCollisionTick(), second.firstCollisionTick());
+        int waterContact = first.waterHazardTick() == 0 ? second.waterHazardTick()
+                : second.waterHazardTick() == 0 ? first.waterHazardTick()
+                : Math.min(first.waterHazardTick(), second.waterHazardTick());
         return new Trajectory(Math.max(first.damage(), second.damage()), worse.impactTick(),
                 first.unknown() || second.unknown(), first.blockedSteering() || second.blockedSteering(),
                 worse.endPosition(), Math.min(first.nearestDistanceSquared(), second.nearestDistanceSquared()),
-                firstContact);
+                firstContact, waterContact, Math.max(first.waterRisk(), second.waterRisk()));
     }
 
     public static EscapeChoice findSaferEscape(CollisionWorld world, AABB bounds, Vec3 velocity,
@@ -320,6 +394,10 @@ public final class ElytraEscapePlanner {
         if (meaningfulReduction(first.damage(), second.damage())) return 1;
         if (meaningfulReduction(second.damage(), first.damage())) return -1;
         if (first.blockedSteering() != second.blockedSteering()) return first.blockedSteering() ? 1 : -1;
+        if (first.waterRisk() != second.waterRisk()) return Double.compare(first.waterRisk(), second.waterRisk());
+        int wa = first.waterHazardTick() == 0 ? Integer.MAX_VALUE : first.waterHazardTick();
+        int wb = second.waterHazardTick() == 0 ? Integer.MAX_VALUE : second.waterHazardTick();
+        if (wa != wb) return Integer.compare(wb, wa);
         int a = first.firstCollisionTick() == 0 ? Integer.MAX_VALUE : first.firstCollisionTick();
         int b = second.firstCollisionTick() == 0 ? Integer.MAX_VALUE : second.firstCollisionTick();
         return Integer.compare(b, a);
