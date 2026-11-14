@@ -76,8 +76,8 @@ The versions below are the current integration targets. Use the Minecraft 26.3 F
 
 - Added **EntityControl** with mounted-entity steering, boat heading modes, air control, and speed controls. Added **EntityFlight** with normal and Vulcan flight modes for ridden entities.
 - Added **Jesus** for configurable movement on liquid surfaces and **LongJump** with slime, shulker, boat, and water-assisted launch modes.
-- Added **Spider** for wall climbing, **NoWeb** for cobweb movement, **TridentBoost** for trident propulsion, and **LevitCtrl** for levitation and slow-falling movement control.
-- Added **ClickTp** with mouse-button, range, and sneak requirements. Added **AutoJump** for automatic jumping.
+- **TridentBoost** for trident propulsion, and **LevitCtrl** for levitation and slow-falling movement control.
+- **AutoJump** for automatic jumping.
 - Added **SnapTap** to prioritize the most recently pressed opposing movement key, independently for horizontal and vertical input.
 - Changed **ElytraFly** firework use and inventory-switch sequencing, including deferred hotbar restoration. Updated **ElytraHelper** to coordinate with shared inventory actions.
 - Unified **SuperFirework** acceleration between independent flight and ElytraTarget steering, so pursuit prediction uses the selected firework mode and speed.
