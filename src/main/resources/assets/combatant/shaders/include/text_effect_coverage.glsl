@@ -59,27 +59,16 @@ vec4 textEffectColor(vec2 uv, vec4 bounds, vec4 baseColor, vec4 effect,
                           uvDx, uvDy, effect.w, pxRange) * (-effect.z);
         effectRgb = vec3(60.0 / 255.0);
     } else if (effect.z > 0.0) {
-        if (effect.w > 0.0) {
-            // True MSDF dilation: expand the *same* distance field instead of
-            // sampling unrelated neighbours, which caused detached bright dots.
-            vec2 cellUv = clamp(uv, bounds.xy, bounds.zw);
-            vec3 sampled = textEffectAtlas(cellUv, bounds, texel, uvDx, uvDy);
-            vec2 footprint = max(abs(uvDx) + abs(uvDy), vec2(1e-8));
-            float distanceOutsidePx = length((uv - cellUv) / footprint);
-            float distancePx = (textEffectMedian(sampled) - 0.5) * pxRange - distanceOutsidePx;
-            float radiusPx = 0.5 * dot(abs(effect.xy),
-                    1.0 / max(abs(uvDx) + abs(uvDy), vec2(1e-8)));
-            effectCover = max(0.0, clamp(distancePx + radiusPx + 0.5, 0.0, 1.0) - face)
-                    * effect.z;
-        } else {
-            // Bitmap fallback: soft axial neighbourhood dilation. A mean,
-            // rather than a max/threshold, avoids isolated single-pixel halos.
-            float around = textEffectCoverage(uv - vec2(effect.x, 0.0), bounds, texel, uvDx, uvDy, effect.w, pxRange)
-                         + textEffectCoverage(uv + vec2(effect.x, 0.0), bounds, texel, uvDx, uvDy, effect.w, pxRange)
-                         + textEffectCoverage(uv - vec2(0.0, effect.y), bounds, texel, uvDx, uvDy, effect.w, pxRange)
-                         + textEffectCoverage(uv + vec2(0.0, effect.y), bounds, texel, uvDx, uvDy, effect.w, pxRange);
-            effectCover = max(0.0, around * 0.25 - face) * effect.z;
-        }
+        // Use the same soft outline profile for MSDF and raster masks. A hard
+        // MSDF distance-field expansion produces much heavier chat shadows in
+        // atlas-only releases, where the small-text GlyphMaskFont is absent.
+        // Sampling projected offsets against glyph bounds keeps neighbouring
+        // atlas cells out of the outline, including on fractional UI scales.
+        float around = textEffectCoverage(uv - vec2(effect.x, 0.0), bounds, texel, uvDx, uvDy, effect.w, pxRange)
+                     + textEffectCoverage(uv + vec2(effect.x, 0.0), bounds, texel, uvDx, uvDy, effect.w, pxRange)
+                     + textEffectCoverage(uv - vec2(0.0, effect.y), bounds, texel, uvDx, uvDy, effect.w, pxRange)
+                     + textEffectCoverage(uv + vec2(0.0, effect.y), bounds, texel, uvDx, uvDy, effect.w, pxRange);
+        effectCover = max(0.0, around * 0.25 - face) * effect.z;
     }
     vec4 front = combatantMaterial(baseColor);
     vec4 back = combatantMaterial(vec4(effectRgb, baseColor.a));

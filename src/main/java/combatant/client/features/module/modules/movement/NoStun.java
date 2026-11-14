@@ -23,12 +23,14 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.Vec2;
 import combatant.client.config.values.BooleanMapValue;
 import combatant.client.config.values.EnumValue;
 import combatant.client.config.values.NumberValue;
 import combatant.client.events.EventHandler;
 import combatant.client.events.impl.EventCollision;
 import combatant.client.events.impl.GameTickEvent;
+import combatant.client.events.impl.ItemUseInputVectorEvent;
 import combatant.client.events.impl.MovementInputEvent;
 import combatant.client.events.impl.PlayerJumpEvent;
 import combatant.client.features.gui.hud.gauges.GaugeRegistry;
@@ -176,6 +178,19 @@ public class NoStun extends Module {
     private void onMovementInput(MovementInputEvent event) {
         if (shouldBlockWebJump() && event.isJump()) {
             event.setJump(false);
+        }
+    }
+
+    @EventHandler
+    private void onItemUseInputVector(ItemUseInputVectorEvent event) {
+        LocalPlayer player = event.getPlayer();
+        if (!isEnabled() || !functions.get(FN_USE_SPEED) || player == null
+                || !player.isUsingItem() || player.isPassenger()) return;
+
+        float multiplier = 1.0F + getEatSpeed01() * 4.0F;
+        Vec2 input = event.getInput();
+        if (input != null && multiplier > 1.001F) {
+            event.setInput(input.scale(multiplier));
         }
     }
 

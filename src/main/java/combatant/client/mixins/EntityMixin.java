@@ -192,6 +192,27 @@ public abstract class EntityMixin implements IEntity {
         return event.getVelocity();
     }
 
+    @Inject(method = "makeStuckInBlock", at = @At("HEAD"), cancellable = true)
+    private void combatant$noStunSlowMovement(BlockState state, Vec3 multiplier, CallbackInfo ci) {
+        Entity self = (Entity) (Object) this;
+        if (!(self instanceof LocalPlayer)) return;
+
+        NoStun noStun = Modules.get(NoStun.class);
+        if (noStun == null || !noStun.isEnabled()) return;
+
+        Vec3 override = noStun.getSlowMovementOverride(state, multiplier);
+        if (override != null && self instanceof EntityAccessor accessor) {
+            self.resetFallDistance();
+            accessor.combatant$setMovementMultiplier(override);
+            ci.cancel();
+            return;
+        }
+
+        if (noStun.shouldCancelSlowMovement(state)) {
+            ci.cancel();
+        }
+    }
+
     @Redirect(
             method = "push(Lnet/minecraft/world/entity/Entity;)V",
             at = @At(
