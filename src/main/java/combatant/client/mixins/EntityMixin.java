@@ -205,34 +205,4 @@ public abstract class EntityMixin implements IEntity {
             instance.push(x, y, z);
         }
     }
-
-    @Inject(method = "makeStuckInBlock", at = @At("HEAD"), cancellable = true)
-    private void nostun$cancelSlowMovement(BlockState state, Vec3 multiplier, CallbackInfo ci) {
-        Entity self = (Entity) (Object) this;
-        if (!(self instanceof LocalPlayer)) return;
-
-        Vec3 webOverride = combatant.client.features.module.modules.movement.NoWeb.stuckOverride(state, multiplier);
-        if (webOverride != null && self instanceof EntityAccessor accessor) {
-            self.resetFallDistance();
-            accessor.combatant$setMovementMultiplier(webOverride);
-            ci.cancel();
-            return;
-        }
-
-        NoStun ns = Modules.get(NoStun.class);
-        if (ns == null || !ns.isEnabled()) return;
-
-        Vec3 override = ns.getSlowMovementOverride(state, multiplier);
-        if (override != null && self instanceof EntityAccessor accessor) {
-            self.resetFallDistance();
-            accessor.combatant$setMovementMultiplier(override);
-            ci.cancel();
-            return;
-        }
-
-        if (ns.shouldCancelSlowMovement(state)) {
-            ci.cancel();
-        }
     }
-
-}
