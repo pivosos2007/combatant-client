@@ -114,14 +114,6 @@ public enum AttackUtil {
                 return false;
             }
 
-            combatant.client.features.module.modules.movement.NoSlow noSlow =
-                    combatant.client.features.module.Modules.get(combatant.client.features.module.modules.movement.NoSlow.class);
-            if (noSlow != null && noSlow.shouldModifyInput(player)) {
-                if (player.getUsedItemHand() == net.minecraft.world.InteractionHand.OFF_HAND) {
-                    return performAttack(mc, player, target, keepSprint);
-                }
-            }
-
             return false;
         }
 
