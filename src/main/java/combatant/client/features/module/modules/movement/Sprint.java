@@ -135,12 +135,9 @@ public final class Sprint extends Module {
             return;
         }
 
-        NoSlow noSlow = Modules.get(NoSlow.class);
-        boolean noSlowAllow = noSlow != null && noSlow.shouldAllowSprint(player);
-
         boolean allow = shouldUseOmniDirectional(player)
                 || (isEnabled() && canOperate(player) && !shouldSuppressExternalVulcanSprint(player) && event.getForward() > 1.0E-5F)
-                || (noSlowAllow && event.getForward() > 1.0E-5F && event.shouldSprint());
+                || (event.getForward() > 1.0E-5F && event.shouldSprint());
         if (!allow) {
             return;
         }
