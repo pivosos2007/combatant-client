@@ -15,7 +15,6 @@ import combatant.client.events.impl.GameTickEvent;
 import combatant.client.events.impl.PacketEvent;
 import combatant.client.events.impl.SprintControlEvent;
 import combatant.client.features.module.Modules;
-import combatant.client.features.module.modules.movement.NoSlow;
 import combatant.client.features.module.modules.movement.Sprint;
 import combatant.client.mixins.accessors.LocalPlayerAccessor;
 
@@ -81,27 +80,6 @@ public final class SprintController {
 
     public boolean isSprintBlocked() {
         return shouldBlockSprint();
-    }
-
-    public boolean canStartSprinting(LocalPlayer player) {
-        if (player == null) {
-            return false;
-        }
-
-        if (shouldBlockSprint()) {
-            return false;
-        }
-
-        if (shouldStopSprintingForControl(player)) {
-            return false;
-        }
-
-        NoSlow noSlow = Modules.get(NoSlow.class);
-        if (noSlow != null && noSlow.shouldAllowSprint(player)) {
-            return !player.isSprinting() && hasMovementMotion(player) && hasFoodForSprint(player);
-        }
-
-        return ((LocalPlayerAccessor) player).combatant$canStartSprinting();
     }
 
     private boolean hasFoodForSprint(LocalPlayer player) {
@@ -206,13 +184,6 @@ public final class SprintController {
             }
         }
 
-        NoSlow noSlow = Modules.get(NoSlow.class);
-        if (noSlow != null && noSlow.shouldAllowSprint(player)) {
-            if (hasMovementMotion(player)) {
-                return true;
-            }
-        }
-
         if (isSprintInputRequested(player) && player.input.hasForwardImpulse()) {
             return true;
         }
@@ -238,24 +209,6 @@ public final class SprintController {
         return true;
     }
 
-    private boolean shouldVanillaStopSprinting(LocalPlayer player) {
-        NoSlow noSlow = Modules.get(NoSlow.class);
-        if (noSlow != null && noSlow.shouldAllowSprint(player)) {
-            if (player.isSwimming()) {
-                return !hasMovementMotion(player) || !player.isInWater();
-            }
-            return !hasMovementMotion(player) || !hasFoodForSprint(player);
-        }
-
-        LocalPlayerAccessor accessor = (LocalPlayerAccessor) player;
-
-        if (player.isSwimming()) {
-            return accessor.combatant$shouldStopSwimSprinting();
-        }
-
-        return accessor.combatant$shouldStopSprinting();
-    }
-
     public boolean shouldStopSprintingForControl(LocalPlayer player) {
         if (player == null) {
             return false;
@@ -263,10 +216,6 @@ public final class SprintController {
 
         if (shouldBlockSprint()) {
             return true;
-        }
-
-        if (!shouldVanillaStopSprinting(player)) {
-            return false;
         }
 
         return !player.horizontalCollision || shouldStopAtHorizontalObstacle();
