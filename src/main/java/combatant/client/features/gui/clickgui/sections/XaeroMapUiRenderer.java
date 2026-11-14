@@ -136,11 +136,6 @@ final class XaeroMapUiRenderer {
                 MAP_INFO_FONT_SIZE, palette.panelText(), false);
     }
 
-    /**
-     * Draws all map chrome controls through one interaction/material system. Each semantic pair
-     * is a true smooth union of two animated squircle lobes; missing optional controls collapse
-     * to a single animated squircle without changing the rest of the stack.
-     */
     static void drawControlChrome(List<XaeroMapSurface.UiButton> buttons,
                                   float mouseX, float mouseY,
                                   XaeroMapSurface.Action pressedAction,

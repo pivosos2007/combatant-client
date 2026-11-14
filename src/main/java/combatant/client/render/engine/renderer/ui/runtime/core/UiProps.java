@@ -19,10 +19,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * Stores properties associated with UI runtime nodes.
- * Detached snapshots do not share mutable runtime slot state.
- */
 public final class UiProps {
     public static final UiProps EMPTY = new UiProps(Map.of());
 
@@ -74,9 +70,6 @@ public final class UiProps {
         }
     }
 
-    /**
-     * Helper for single-prop specs, for example a text node.
-     */
     public static UiProps of(String key, Object value) {
         Object2ObjectOpenHashMap<String, Object> map = new Object2ObjectOpenHashMap<>(1);
         map.put(key, value);
@@ -114,9 +107,6 @@ public final class UiProps {
         return index != null ? index : -1;
     }
 
-    /**
-     * Returns a string prop or fallback.
-     */
     public String string(String key, String fallback) {
         Object value = get(key);
         if (value instanceof String s) return s;
@@ -124,9 +114,6 @@ public final class UiProps {
         return fallback;
     }
 
-    /**
-     * Returns a boolean prop or fallback.
-     */
     public boolean bool(String key, boolean fallback) {
         int slot = slotIndex(key);
         if (slot >= 0 && runtimeSlots.present[slot] && runtimeSlots.kinds[slot] == RuntimeSlots.BOOLEAN) {

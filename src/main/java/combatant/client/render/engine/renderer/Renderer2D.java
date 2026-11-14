@@ -188,9 +188,7 @@ public final class Renderer2D {
     }
 
     /**
-     * Applies a reusable destination-aware blend material to blend-capable UI primitives/effects
-     * emitted by {@code draw}. The material contract is primitive-agnostic: text and
-     * liquid glass consume it today, and future shape/effect shaders can bind the same UIBlend block.
+     * Applies a backdrop blend material to UI primitives emitted by the supplied draw callback.
      */
     public void withBackdropBlend(UiBackdropBlendSpec blend, Runnable draw) {
         if (draw == null) return;
@@ -386,11 +384,6 @@ public final class Renderer2D {
         }
     }
 
-    /**
-     * Draw a Voronoi/Cellular structure OVER an existing surface using the common
-     * material primitive batch and its existing analytic SDF/clip. No PBR bindings,
-     * framebuffer capture or material-specific render target is needed.
-     */
     public void cellularPrimitive(UiPrimitive primitive, UiPaint tint, UiCellularStructureSpec structure) {
         if (primitive == null || tint == null || structure == null || structure.opacity() <= 0f) return;
         // Do not replace a complex shape with a solid fallback: that would paint
@@ -403,11 +396,6 @@ public final class Renderer2D {
         renderMaterialPrimitiveSdf(primitive, tint, batchKey, structure);
     }
 
-    /**
-     * Draws a preset/custom panel primitive. Convex shapes of up to eight points
-     * stay as one analytic GPU quad; larger or concave authoring results use the
-     * established polygon fallback without changing the caller-facing API.
-     */
     private void primitive(UiPrimitive primitive, UiPaint paint, UiStroke stroke, boolean fill) {
         if (primitive == null || paint == null || primitive.pointCount() < 3) return;
         UiStroke safeStroke = stroke != null ? stroke : UiStroke.NONE;
@@ -445,11 +433,6 @@ public final class Renderer2D {
         recordUi(UiCommandKind.PATH);
     }
 
-    /**
-     * Draws one logical vector path with optional area, glow and primary stroke layers. All layers
-     * share one resolved geometry in {@link UiPathDrawApi}; this is the preferred path for charts
-     * and other multi-layer vector UI.
-     */
     public void path(double[] points,
                      int pointCount,
                      UiPathCurve curve,
@@ -1269,10 +1252,6 @@ public final class Renderer2D {
                 gradientTmp[0], gradientTmp[1], gradientTmp[2], gradientTmp[3]);
     }
 
-    /**
-     * Statistics/playtime variant: the visible arc is still one SHAPE quad.  hashTime is expressed
-     * in virtual history buckets and the shader reconstructs a fixed rolling color history from it.
-     */
     public void arcStrokeHashedGradient(double cx, double cy, double radius, double thickness,
                                         float startAngleDeg, float endAngleDeg, float softness,
                                         int startArgb, int endArgb, float angleDeg, float offsetPx,
@@ -1687,12 +1666,7 @@ public final class Renderer2D {
     }
 
     /**
-     * Draws a progress segment clipped by the full rounded bar outline.
-     *
-     * <p>Unlike drawing a rounded rectangle with the current fill width, this keeps the moving
-     * progress edge straight and lets only the fixed outer bar bounds define rounded ends. That
-     * prevents small health values from becoming a pill/capsule and prevents the fill from leaking
-     * outside the left/right rounded shell when the progress edge crosses an outer corner.</p>
+     * Clips the progress fill against the fixed rounded outline of the bar. The advancing edge stays straight.
      */
     public void roundedProgressRectGradient(double x, double y, double w, double h,
                                             float radius, float softness,
@@ -1831,10 +1805,6 @@ public final class Renderer2D {
                 firstArgb, secondArgb, thirdArgb, time, smokeScale, smokeMix, octaves, flowX, flowY, intensity);
     }
 
-    /**
-     * Draws the animated category material used by ClickGui module rows.
-     * The shader owns the material detail; callers own clipping (normally the parent glass shape).
-     */
     public void moduleCategorySurface(double x, double y, double w, double h,
                                       float radius,
                                       double backdropX,
@@ -2313,11 +2283,6 @@ public final class Renderer2D {
         endAutoBatch(auto);
     }
 
-    /**
-     * Draws a soft rounded shadow whose color is a true linear gradient across the shadow quad.
-     * The existing soft-shadow SDF still controls opacity; vertex color interpolation supplies
-     * the gradient without stacking multiple shadow lobes.
-     */
     public void roundedRectSoftShadowGradient(double x, double y, double w, double h,
                                               float radius, float blur, float innerAlpha,
                                               int startArgb, int endArgb, float angleDeg) {

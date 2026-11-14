@@ -546,7 +546,6 @@ public class TargetESP extends Module {
                 material, WorldRenderPipelines.WORLD_TEXTURED_ADDITIVE, false);
 
         // A single selected texture enters the existing sprite batch. No additional
-        // draw/pass per variant; switching presets changes only the texture resource.
         Identifier texture = switch (captureTexture.get()) {
             case "capture2" -> TextureStorage.CAPTURE_MARKS[1];
             case "capture3" -> TextureStorage.CAPTURE_MARKS[2];

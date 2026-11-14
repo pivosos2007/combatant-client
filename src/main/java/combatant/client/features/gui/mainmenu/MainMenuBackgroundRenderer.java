@@ -11,7 +11,9 @@ public final class MainMenuBackgroundRenderer {
     private MainMenuBackgroundRenderer() {
     }
 
-    /** Render inside an active Renderer2D.COLOR batch using unscaled logical coordinates. */
+    /**
+     * Requires an active Renderer2D.COLOR batch with unscaled logical coordinates.
+     */
     public static void render(float width, float height, float mouseX, float mouseY) {
         MainMenuBackdrop.render(width, height, 1.0f, mouseX, mouseY,
                 MainMenuBackdrop.layout(width, height), null);

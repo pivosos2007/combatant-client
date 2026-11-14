@@ -8,8 +8,7 @@
 package combatant.client.render.effects.particle;
 
 /**
- * Pure layout data. It has no module, texture, pipeline or renderer ownership.
- * A future compute backend can evaluate the same descriptors without changing consumers.
+ * Particle layouts contain no renderer-owned resources.
  */
 public sealed interface ParticleLayoutDescriptor permits
         ParticleLayoutDescriptor.Helix,

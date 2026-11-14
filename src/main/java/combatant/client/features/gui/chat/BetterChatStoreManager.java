@@ -474,9 +474,6 @@ public enum BetterChatStoreManager {
         return -1f;
     }
 
-    /**
-     * Update in-memory layout cache (used every render to keep flush/save consistent).
-     */
     public static void cacheLayout(float x, float yBottom, float screenH) {
     }
 

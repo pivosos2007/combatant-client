@@ -15,9 +15,6 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.Level;
 
-/**
- * Shared helpers for enchantment lookup/validation/formatting.
- */
 public enum EnchantUtil {
     ;
 

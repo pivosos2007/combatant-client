@@ -679,7 +679,6 @@ public final class SchematicPanel {
         register("search-clear", () -> { searchInput.clear(); searchFocused = true; });
         register("library", () -> { leaveLitematicaSettings(); libraryMode = true; drawerMode = "none"; });
         register("editor", () -> {
-            // Returning from config must always work; if no placement exists, show Library.
             boolean hasDocument = state.hasSchematic() || linkedLiteIndex >= 0
                     || SchematicActions.loadingPath() != null;
             if (litematicaSettingsMode || hasDocument) {
@@ -1130,7 +1129,6 @@ public final class SchematicPanel {
         float actualFactor = next / gridZoom;
         float cx = canvasNativeX() + canvasNativeW() * .5f;
         float cy = canvasNativeY() + canvasNativeH() * .5f;
-        // Keep the world point below the mouse stationary under zoom.
         gridPanX += (mx - cx - gridPanX) * (1f - actualFactor);
         gridPanY += (my - cy - gridPanY) * (1f - actualFactor);
         gridZoom = next;

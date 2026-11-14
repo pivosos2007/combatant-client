@@ -15,8 +15,7 @@ public enum RenderWarpStack {
     private static final int MAX_DEPTH = 16;
     private static final ThreadLocal<State> STATE = ThreadLocal.withInitial(State::new);
     /**
-     * Pushed warps across all threads. {@link #current()} runs once per emitted 2D vertex, and almost
-     * always with nothing pushed, so it skips the ThreadLocal lookup while this is zero.
+     * Counts active warps across all threads so empty stacks avoid a ThreadLocal lookup during vertex emission.
      */
     private static final java.util.concurrent.atomic.AtomicInteger TOTAL_DEPTH = new java.util.concurrent.atomic.AtomicInteger();
 

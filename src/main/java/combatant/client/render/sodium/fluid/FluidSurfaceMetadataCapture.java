@@ -22,12 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Read-only fluid/material metadata captured at Sodium meshing time.
- *
- * <p>This service never owns, suppresses, uploads or redraws Sodium geometry. It keeps only the
- * producer-known data required by camera-medium queries and future shaderpack material/water
- * bridges. Publication follows Sodium build-result upload so stale worker results cannot become
- * authoritative after a section rebuild or world transition.</p>
+ * Captures fluid metadata at Sodium meshing time and publishes it only after the matching section build result is installed.
  */
 public final class FluidSurfaceMetadataCapture {
     private static final ThreadLocal<BuildCapture> BUILD = new ThreadLocal<>();

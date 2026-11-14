@@ -9,7 +9,9 @@ package combatant.client.render.map;
 
 import java.util.Objects;
 
-/** Renderer-local stable key; sourceId is supplied by the future map-data adapter. */
+/**
+ * Identifies a resident map tile within a renderer-managed source.
+ */
 public record MapTileResidencyKey(String sourceId, MapTileCoordinate coordinate) {
     public MapTileResidencyKey {
         Objects.requireNonNull(sourceId, "sourceId");

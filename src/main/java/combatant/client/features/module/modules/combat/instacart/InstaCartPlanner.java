@@ -389,7 +389,6 @@ public final class InstaCartPlanner {
                 pos.x + CART_WIDTH / 2.0, pos.y + CART_HEIGHT, pos.z + CART_WIDTH / 2.0);
     }
 
-    /** One shared trajectory solver is used by AutoBow, existing carts and future carts. */
     public static Shot predict(ClientLevel level, LocalPlayer player, AABB cartBox, int chargeTicks) {
         return predict(level, player, cartBox, chargeTicks, null);
     }

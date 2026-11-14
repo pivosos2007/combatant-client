@@ -367,7 +367,6 @@ public class Trails extends Module {
         }
     }
 
-    /** Soft procedural glow when enabled, otherwise the baked firefly texture on the given pipeline. */
     private MeshBuilder fireflyMesh(Renderer3D renderer, RenderPipeline texturedPipeline, boolean useDepth,
                                     Renderer3D.DepthMode depthMode) {
         if (glowSprites.get()) {
@@ -880,5 +879,4 @@ public class Trails extends Module {
     private record ParticleTexture(net.minecraft.resources.Identifier texture, int index) {
     }
 
-    // textured rendering handled by Renderer3D batching
 }

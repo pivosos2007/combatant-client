@@ -9,9 +9,6 @@ package combatant.client.config;
 
 import java.util.List;
 
-/**
- * Provides GUI-neutral setting definitions.
- */
 public interface SettingDefProvider {
     List<SettingDef> getSettingDefs();
 }

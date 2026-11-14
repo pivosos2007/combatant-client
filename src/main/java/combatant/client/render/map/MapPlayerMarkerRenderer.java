@@ -22,7 +22,6 @@ import net.minecraft.resources.Identifier;
 
 import java.util.UUID;
 
-/** Shared player marker renderer used by local Xaero contacts and unified location overlays. */
 public final class MapPlayerMarkerRenderer {
     private MapPlayerMarkerRenderer() {}
 

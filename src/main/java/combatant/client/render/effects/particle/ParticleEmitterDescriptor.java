@@ -9,7 +9,6 @@ package combatant.client.render.effects.particle;
 
 import net.minecraft.world.phys.Vec3;
 
-/** Backend-neutral spawn-source description shared by current and future particle backends. */
 public sealed interface ParticleEmitterDescriptor permits
         ParticleEmitterDescriptor.AabbSurface,
         ParticleEmitterDescriptor.SphereVolume,

@@ -11,7 +11,6 @@ import combatant.client.features.gui.clickgui.sections.settings.SettingsTabRunti
 import java.nio.file.Path;
 import java.util.List;
 
-/** Adapter for the existing Java Settings workspace. */
 final class NativeSettingsPage implements SettingsPage {
     static final NativeSettingsPage INSTANCE = new NativeSettingsPage();
 

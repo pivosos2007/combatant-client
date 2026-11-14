@@ -38,7 +38,9 @@ public final class PlayerModel extends Module {
     public final NumberValue<Float> pivotY = num("pivot_y", 0f, -2f, 2f);
     public final NumberValue<Float> pivotZ = num("pivot_z", 0f, -2f, 2f);
 
-    /** Independent local cosmetics. The original unsuffixed values remain the self profile. */
+    /**
+     * The SELF target uses unsuffixed configuration keys to preserve existing profiles.
+     */
     public enum Target {
         SELF("self"), ENEMIES("enemies"), FRIENDS("friends"), STAFF("staff"), OTHERS("others");
         private final String key;

@@ -2450,7 +2450,6 @@ lastHoverWasOutsideSuggest = false;
         EditBox field = ((ChatScreenAccessor) chatScreen).getChatField();
         if (field == null) return;
 
-        // Update vanilla selection state for completeness
         if (suggestWindow != null) {
             SuggestionWindowAccessor acc = (SuggestionWindowAccessor) suggestWindow;
             acc.setCombatant$selection(idx);

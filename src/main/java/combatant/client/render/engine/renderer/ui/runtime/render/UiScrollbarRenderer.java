@@ -12,7 +12,6 @@ import combatant.client.render.engine.renderer.ui.runtime.core.UiNode;
 import combatant.client.render.engine.renderer.ui.runtime.input.UiScrollbarMetrics;
 import combatant.client.render.engine.renderer.ui.runtime.style.UiColor;
 
-/** Resolves scrollbar visibility and interaction state from retained scroll nodes. */
 final class UiScrollbarRenderer {
     void render(UiNode node, UiRenderContext context) {
         UiScrollbarMetrics metrics = UiScrollbarMetrics.resolve(node);

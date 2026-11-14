@@ -136,7 +136,6 @@ final class SchematicLayerGrid {
         return paletteIndex >= 0 && paletteIndex < paletteColors.length ? paletteColors[paletteIndex] : 0;
     }
 
-    /** Map colour per palette index, shared with the 3D view so both pictures agree. */
     int[] paletteColors(Schematic schematic) {
         ensurePalette(schematic);
         return paletteColors;

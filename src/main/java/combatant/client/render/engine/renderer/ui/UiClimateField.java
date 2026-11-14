@@ -19,9 +19,8 @@ import net.minecraft.util.Util;
 import java.util.List;
 
 /**
- * Ping-pong RGBA16F UI liquid field: pinned volume, advected volume and wet trail.
- * No CPU particle loop, no per-widget updates, no framebuffer read/write aliasing.
- * Runs at half framebuffer resolution and is bilinearly sampled in physical UI space.
+ * Uses separate RGBA16F read and write images at half framebuffer resolution.
+ * Sampling coordinates are in physical UI space.
  */
 public final class UiClimateField {
     private static final int LOCAL = 8;
@@ -105,7 +104,6 @@ public final class UiClimateField {
         RhiStorageImage target = latest == a ? b : a;
         if (target == null) throw new IllegalStateException("Climate ping-pong images missing");
         if (valid) {
-            // Read the previous compute output and overwrite the older ping image.
             // Both transitions matter with multiple frames in flight.
             rhi.advancedShaders().barrier(new RhiResourceBarrier(
                     RhiResourceBarrier.Stage.ALL, RhiResourceBarrier.Access.READ_WRITE,

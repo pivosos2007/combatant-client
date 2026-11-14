@@ -34,9 +34,6 @@ import combatant.client.util.pvp.client.CooldownsState;
 
 import java.util.*;
 
-/**
- * Handles PvP cooldown rendering and optional local rule synthesis.
- */
 @ModuleInfo(
         id = "pvpcooldowns",
         displayName = "PvpCooldowns",

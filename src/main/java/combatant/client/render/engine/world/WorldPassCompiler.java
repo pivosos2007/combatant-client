@@ -36,9 +36,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.function.Predicate;
 
-/**
- * Converts world commands into RHI draw commands and submits them through CombatantRHI.
- */
 public final class WorldPassCompiler {
     private final WorldRenderStats stats = new WorldRenderStats();
 

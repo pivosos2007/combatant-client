@@ -17,7 +17,7 @@ import kaptainwutax.seedcrackerX.finder.FinderQueue;
 import kaptainwutax.seedcrackerX.cracker.HashedSeedData;
 import java.lang.reflect.InvocationTargetException;
 
-/** Loaded ONLY after Fabric confirms SeedCrackerX is present. No rewritten cracking algorithms. */
+/** Loaded ONLY after Fabric confirms SeedCrackerX is present.*/
 final class SeedCrackerIntegration {
     private static String appliedVersion;
     private static Boolean appliedActive;

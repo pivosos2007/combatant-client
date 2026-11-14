@@ -89,7 +89,6 @@ public final class UiDeferredScheduler {
             ScissorFunction.resetForNewFrame();
             GlobalScissorState.resetForNewFrame();
         }
-        // Clear the previous recording before the new frame starts.
         UiBlurResources.beginDeferredFrame();
         releaseSubmits(RECORDING);
         RECORDING.clear();

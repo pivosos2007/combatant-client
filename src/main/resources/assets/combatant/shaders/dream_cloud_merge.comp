@@ -5,12 +5,7 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-/*
- * Merge separately sampled near and far volumes, with their optical first
- * moments, at the near cloud buffer's resolution. Keeping this inexpensive
- * pass separate reduces the number of full-resolution temporal texture reads
- * and fits the minimum eight OpenGL image/SSBO binding indices (0..7).
- */
+/* Combines near and far cloud radiance and first-moment distance at near-cloud resolution. */
 layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
 layout(binding=0) uniform sampler2D u_Near;
 layout(binding=1) uniform sampler2D u_Far;

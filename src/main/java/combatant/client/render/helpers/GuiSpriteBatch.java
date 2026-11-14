@@ -15,7 +15,7 @@ import net.minecraft.resources.Identifier;
 import combatant.client.render.engine.renderer.Renderer2D;
 
 /**
- * Simple batched renderer for GUI atlas sprites (framebuffer-space).
+ * Batches GUI atlas sprites in framebuffer coordinates.
  */
 public enum GuiSpriteBatch {
     ;

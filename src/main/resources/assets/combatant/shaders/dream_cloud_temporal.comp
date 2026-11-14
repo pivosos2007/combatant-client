@@ -5,15 +5,7 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-/*
- * Depth-aware spatio-temporal cloud reconstruction. Current 3D raymarches
- * produce subpixel-jittered low-resolution radiance and first-moment distance.
- * History is projected using the cloud's approximate world position, previous
- * view/projection matrices, camera translation and integrated wind advection.
- * History is constrained to current-neighborhood radiance and opacity and
- * rejected on disocclusion, camera cuts and distance disagreement.
- * No dependence on the world's post-processing TAA or Iris.
- */
+/* Reprojects cloud history using previous view/projection matrices and wind displacement. Rejects history on disocclusion, camera cuts, and distance disagreement. */
 layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
 layout(binding=0) uniform sampler2D u_Current;
 layout(binding=1) uniform sampler2D u_CurrentDistance;

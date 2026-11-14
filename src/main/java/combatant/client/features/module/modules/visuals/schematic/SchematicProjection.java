@@ -48,7 +48,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-/** Renders schematic placement state and differences from the current world. */
 @ModuleInfo(
         id = "schematicprojection",
         displayName = "SchematicProjection",

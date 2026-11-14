@@ -29,12 +29,6 @@ import combatant.client.render.engine.uniform.MeshBuilder;
 import java.util.HashMap;
 import java.util.List;
 
-/**
- * RenderPass-based mesh renderer for 26.2 GPU API.
- * - Uploads MeshBuilder to immediate GPU buffers.
- * - Creates RenderPass with color/depth attachments.
- * - Writes MeshData UBO (ProjMat + ModelViewMat) via MeshUniforms.
- */
 public final class MeshRenderer {
     private static final MeshRenderer INSTANCE = new MeshRenderer();
     private static final Matrix4f PROJECTION = new Matrix4f();
@@ -183,7 +177,6 @@ public final class MeshRenderer {
             uploaded = null; // backend owns release for this draw
         } finally {
             if (uploaded != null) uploaded.close();
-            // reset instance state
             colorAttachment = null;
             depthAttachment = null;
             clearColorArgb = null;

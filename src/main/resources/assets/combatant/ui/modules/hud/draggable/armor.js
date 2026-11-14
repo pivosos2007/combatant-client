@@ -71,8 +71,6 @@ function matteColors(p) {
   const bgOpacity = bgAlpha / 255;
   const themeStrength = Math.max(0, Math.min(1, n(p.themeGradientStrength, 52) / 100));
 
-  // Light-grey matte remains the base, but unlike the old ~10% tint this
-  // uses a visible amount of both theme chrome and panel gradient.
   const neutralTop = "#FFD0D3D8";
   const neutralMiddle = "#FFC2C6CD";
   const neutralBottom = "#FFADB3BB";

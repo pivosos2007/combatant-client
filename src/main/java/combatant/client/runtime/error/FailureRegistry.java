@@ -15,7 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 
-/** Identity-keyed, thread-safe failure state machine. History contains no component references. */
+/** Identity-keyed, thread-safe failure state machine.*/
 public final class FailureRegistry {
     public enum State { HEALTHY, FAILED, QUARANTINED, RECOVERING }
     public enum Scope { MODULE, SETTING, COMPONENT }

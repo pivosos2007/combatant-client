@@ -662,7 +662,6 @@ public class Chams extends Module {
         return VisualPreviewRuntime.isRenderingSubject() || mc.options.getCameraType().isFirstPerson();
     }
 
-    /** Composites only Chams' hand material and trail passes for an isolated preview scene. */
     public void compositePreparedHandScene(float tickDelta) {
         PostProcessManager.renderSelected(PostProcessPass.Phase.POST_HAND, tickDelta,
                 pass -> pass == handsPass || pass == ghostingPass);

@@ -8,7 +8,6 @@ package combatant.client.render.engine.rhi.shader;
 
 import com.mojang.renderpearl.api.GpuFormat;
 
-/** Lightweight immutable debug snapshot for a native 3D resource. */
 public record RhiVolumeDebugInfo(String backend,
                                  String label,
                                  int width,

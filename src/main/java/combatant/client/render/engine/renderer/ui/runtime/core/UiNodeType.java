@@ -21,9 +21,6 @@ public enum UiNodeType {
      * Top-level document container.
      */
     ROOT,
-    /**
-     * Generic vertical container.
-     */
     PANEL,
     /**
      * Horizontal flow layout.
@@ -81,9 +78,6 @@ public enum UiNodeType {
      * Empty element with intrinsic or explicit size.
      */
     SPACER,
-    /**
-     * Generic input node type.
-     */
     INPUT,
     /**
      * Text input node type.

@@ -298,16 +298,10 @@ public final class UiNode {
         return changed;
     }
 
-    /**
-     * Sets the parent link.
-     */
     public void setParent(UiNode parent) {
         this.parent = parent;
     }
 
-    /**
-     * Sets the node error text used by diagnostics tree dump.
-     */
     public void setLastError(String lastError) {
         this.lastError = lastError;
     }

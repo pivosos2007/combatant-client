@@ -28,7 +28,6 @@ import java.util.Map;
 import java.util.IdentityHashMap;
 import java.util.List;
 
-/** Shared ClickGUI fault presentation. Uses the same Icons-font warning glyph as HudNotifier. */
 public final class SettingErrorView {
     private static final int RED = 0xFFFF5656;
     private static final int RED_SOFT = 0xFFFF9696;

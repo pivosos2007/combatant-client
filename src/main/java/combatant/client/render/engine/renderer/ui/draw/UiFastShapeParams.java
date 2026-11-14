@@ -7,7 +7,6 @@
 
 package combatant.client.render.engine.renderer.ui.draw;
 
-/** One vec4 per vertex for the hot 2D SDF shape family. */
 public record UiFastShapeParams(float kind, float shape, float strokeWidth, float flags) {
     private static final int FLAG_BITS = 2;
     private static final int FLAG_MASK = (1 << FLAG_BITS) - 1;

@@ -491,7 +491,6 @@ final class XaeroMapSettingsPanel {
         );
         if (runtime != null) {
             // The shared navigation group is part of the production Map GUI.
-            // Keep its animated selection/hover bounds in sync on every frame.
             writeNavigationPatches(layout);
             runtime.applyDynamicProps(navigationPatchProgram);
             runtime.applyDynamicBounds(navigationPatchProgram);

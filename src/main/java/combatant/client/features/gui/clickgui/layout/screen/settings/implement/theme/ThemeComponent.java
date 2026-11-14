@@ -209,7 +209,6 @@ public final class ThemeComponent {
         smoothedScroll = AnimationUtility.approach(smoothedScroll, scroll, draggingScrollbar ? 0.55f : 0.2f);
         smoothedScroll = AnimationUtility.snap(smoothedScroll, scroll, draggingScrollbar ? 0.01f : 0.05f);
         // The selection halo belongs to the card, but extends a few pixels beyond it.
-        // Keep the scroll viewport while leaving enough room for that halo at its edges.
         float glowClipPadding = 9f;
         boolean clipped = ScissorFunction.pushRaw(
                 areaX - glowClipPadding,
@@ -375,7 +374,6 @@ public final class ThemeComponent {
             drawCardDeleteButton(x, y, w, mx, my, palette);
         }
 
-        // Keep the original swatch size and use a compact, centered group.
         final int swatchCount = 4;
         float inset = 14f;
         float availableW = w - inset * 2f;

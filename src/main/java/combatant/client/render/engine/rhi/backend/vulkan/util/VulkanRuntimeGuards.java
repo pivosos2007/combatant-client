@@ -8,10 +8,7 @@
 package combatant.client.render.engine.rhi.backend.vulkan.util;
 
 /**
- * Production Vulkan safety switches.
- *
- * <p>These are lightweight and do not perform diagnostics or file I/O.
- * They keep unstable Vulkan features behind explicit runtime/system-property switches.
+ * Guards optional Vulkan features with runtime and system-property switches.
  */
 public enum VulkanRuntimeGuards {
     ;

@@ -14,7 +14,6 @@ import net.minecraft.world.phys.AABB;
 
 import java.util.List;
 
-/** Shared spatial entity queries for placement planners. */
 public final class CombatEntityQuery {
     private CombatEntityQuery() {
     }

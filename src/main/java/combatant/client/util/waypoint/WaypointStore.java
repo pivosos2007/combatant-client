@@ -27,8 +27,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Per-server / per-singleplayer-world waypoint list persisted as JSON below the subsystems config root.
- * All access happens on the client thread.
+ * Persists server- or world-scoped waypoints as JSON under the subsystem config directory. Access is confined to the client thread.
  */
 public final class WaypointStore {
     public static final int MAX_WAYPOINTS = 512;

@@ -5,12 +5,7 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-/*
- * Dreamcore froxel medium. Same physically motivated density as distant LOD:
- * weather-driven coverage, height envelope and Perlin-Worley erosion.
- * GPU noise atlas is generated once per RHI backend, not evaluated as a
- * high-cost hash graph at every froxel and every ray-march step.
- */
+/* The froxel cache stores scattering in RGB and density in alpha. */
 layout(local_size_x=4,local_size_y=4,local_size_z=4) in;
 layout(binding=0,rgba16f) writeonly uniform image3D u_Froxels;
 #include "dream_cloud_medium.glsl"

@@ -15,9 +15,6 @@ import net.minecraft.world.effect.MobEffectInstance;
 public enum EffectIconRenderer {
     ;
 
-    /**
-     * Draws a status effect icon via DrawContext if the sprite is available.
-     */
     public static void draw(GuiGraphicsExtractor ctx, MobEffectInstance effect, int x, int y, int size) {
         draw(ctx, effect, x, y, size, 0xFFFFFFFF);
     }

@@ -10,10 +10,7 @@ import combatant.client.render.engine.scene.spatial.SceneSpatialRecord;
 import combatant.client.render.engine.scene.visibility.SceneViewContext;
 
 /**
- * Generic screen-space LOD resolver shared by imported models and future clustered geometry.
- *
- * <p>No game-option FOV is read here. Projected size comes from the stable view projection, so zoom,
- * custom FOV, aspect ratio and framebuffer resolution naturally affect LOD while TAA jitter does not.</p>
+ * Resolves LOD from projected screen size without relying on the game-option FOV or TAA jitter.
  */
 public final class SceneLodResolver {
     private SceneLodResolver() {

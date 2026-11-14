@@ -67,9 +67,6 @@ public enum MatteHudStyle {
         renderer.roundedRect(x, y, width, height, r, 0.0f, withAlpha(0x000000, Math.round(148.0f * a)));
     }
 
-    /**
-     * Compact world/HUD label plate with no vertical gradient and reduced shadow/stroke footprint.
-     */
     public static void drawCompactPlate(Renderer2D renderer,
                                         double x,
                                         double y,

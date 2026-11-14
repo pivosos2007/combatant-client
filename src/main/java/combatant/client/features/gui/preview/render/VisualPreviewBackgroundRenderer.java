@@ -25,7 +25,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ProjectionMatrixBuffer;
 import org.joml.Matrix4f;
 
-/** Fast stationary panorama: the cloud field evolves and turns, but the camera never advances. */
 public enum VisualPreviewBackgroundRenderer {
     ;
 

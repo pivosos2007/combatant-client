@@ -80,7 +80,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Map-content HUD layer: waypoints, radar entities/loot, tracked players and hover cards only. */
 final class XaeroMapElements {
     private static final float XAERO_RADAR_ICON_CONTENT_SIZE = 62.0f;
     private static final float XAERO_WORLD_MAP_REFERENCE_SHORT_SIDE = 1080.0f;

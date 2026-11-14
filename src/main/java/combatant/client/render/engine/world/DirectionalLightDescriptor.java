@@ -10,8 +10,7 @@ package combatant.client.render.engine.world;
 import org.joml.Vector3f;
 
 /**
- * Explicit directional-light contract shared by shadows, deferred lighting and future
- * environment/media producers. The direction points from a receiver toward the light source.
+ * Directional light whose direction points from the receiver toward the source.
  */
 public record DirectionalLightDescriptor(
         float directionX,

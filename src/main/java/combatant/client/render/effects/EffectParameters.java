@@ -7,7 +7,6 @@
 
 package combatant.client.render.effects;
 
-/** Compact backend-neutral parameter block for transient effect profiles. */
 public record EffectParameters(
         float p0,
         float p1,

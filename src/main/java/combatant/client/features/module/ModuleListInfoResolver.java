@@ -20,7 +20,6 @@ import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Resolves compile-time indexed ModuleList text suppliers once per module class. */
 public final class ModuleListInfoResolver {
     private ModuleListInfoResolver() { }
 

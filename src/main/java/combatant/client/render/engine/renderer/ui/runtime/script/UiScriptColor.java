@@ -7,7 +7,6 @@
 
 package combatant.client.render.engine.renderer.ui.runtime.script;
 
-/** Utility color helpers shared by Java-side UI script patch builders. */
 public final class UiScriptColor {
     private UiScriptColor() {
     }

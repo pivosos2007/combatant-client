@@ -80,7 +80,6 @@ public final class PreviewCatalog {
         return true;
     }
 
-    /** Convenience for components whose live and sample state share a presenter. */
     public static <S, R> Definition<S, R> definition(Id id, Class<R> rendererType,
                                                       Function<PreviewFrame, Availability> availability,
                                                       Function<PreviewFrame, S> capture,

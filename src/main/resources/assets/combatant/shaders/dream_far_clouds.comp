@@ -5,11 +5,6 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-/*
- * Depth-aware far volumetric LOD. Renders distant cumulus by marching the
- * SAME 3D medium as nearby froxels; a separate high cirrus medium is added.
- * This replaces skybox-plane silhouettes and horizontal 2D cloud impostors.
- */
 layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
 layout(binding=0,rgba16f) writeonly uniform image2D u_Far;
 layout(binding=3,r32f) writeonly uniform image2D u_FarDepth;

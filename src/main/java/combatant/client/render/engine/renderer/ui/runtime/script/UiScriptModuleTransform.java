@@ -11,7 +11,6 @@ import combatant.client.render.engine.renderer.ui.runtime.debug.UiRuntimeValidat
 
 import java.util.regex.Pattern;
 
-/** Converts the loader's supported module subset into one plain V8 script. */
 enum UiScriptModuleTransform {
     ;
 

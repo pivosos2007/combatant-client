@@ -10,11 +10,9 @@ package combatant.client.render.engine.renderer.ui.blend;
 import net.minecraft.util.Mth;
 
 /**
- * Portable blend-material payload shared by text, liquid glass and future UI effects.
- *
- * <p>{@code strength} interpolates from the primitive's optical/source material to the selected
- * backdrop blend result. {@code tone0}/{@code tone1} are primarily used by DUOTONE, but remain
- * available to any future shader consumer without changing the Java-side contract.</p>
+ * Blend material parameters for text and glass UI surfaces.
+ * {@code strength} interpolates between the source material and backdrop result.
+ * {@code tone0Argb} and {@code tone1Argb} provide the duotone colors.
  */
 public record UiBackdropBlendSpec(
         UiBackdropBlendMode mode,

@@ -79,8 +79,7 @@ public class InventoryMove extends Module {
             visibleWhen(bool("cancel_server_close", true), () -> mode.get() == Mode.GRIM);
     private final BooleanValue textFieldDisablesMovement = bool("text_fields_disable", true);
     private final BooleanMapValue movementToggles = group("movement_toggles", defaultMovementToggles());
-    // A single, explicit policy replaces the old three independent ClickGUI screen toggles.
-    // false = movement blocked, including in Map and Schematics by default.
+    // A false section entry disables movement; Map and Schematics default to false.
     private final BooleanMapValue clickGuiSections = group("clickgui_sections", defaultClickGuiSections());
     private final SetValue allowedScreens =
             textList("allowed_screens", "allowed_screens", TextListSetting.PickerMode.SCREENS_WITHOUT_CLICK_GUI, defaultAllowedScreens());

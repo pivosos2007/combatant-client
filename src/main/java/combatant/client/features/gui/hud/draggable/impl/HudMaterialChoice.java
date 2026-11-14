@@ -15,7 +15,6 @@ import combatant.client.render.engine.renderer.ui.draw.UiPaint;
 import combatant.client.render.engine.renderer.ui.draw.UiPrimitive;
 import combatant.client.render.engine.renderer.ui.draw.UiSurfaceMaterialSpec;
 
-/** Shared selectable surface material profile for draggable HUD panels. */
 public final class HudMaterialChoice {
     public static final String DEFAULT = "Default";
     public static final String[] OPTIONS = {DEFAULT, "Graphite", "SoftTouch", "Ceramic",
@@ -35,7 +34,6 @@ public final class HudMaterialChoice {
         }
     }
 
-    /** Draws only the base surface. Existing blur, border and content stay with the widget. */
     public static boolean draw(Renderer2D renderer, String option, double x, double y,
                         double width, double height, float radius, int top, int bottom) {
         UiSurfaceMaterialSpec material = UiMaterialCatalog.solid(shaderMode(option));
@@ -63,7 +61,6 @@ public final class HudMaterialChoice {
         return true;
     }
 
-    /** Keep the old Default fill, then optionally lay weather ON TOP of it. */
     public static void drawDefaultClimate(Renderer2D renderer, String option,
                                           double x, double y, double width, double height,
                                           float radius) {

@@ -14,7 +14,6 @@ import combatant.client.render.engine.renderer.ui.runtime.style.UiStyle;
 import java.util.Locale;
 import java.util.Map;
 
-/** Decodes script-authored shape properties into typed renderer geometry. */
 final class UiShapeGeometry {
     private UiShapeGeometry() {
     }

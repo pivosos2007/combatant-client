@@ -7,7 +7,6 @@
 
 package combatant.client.render.effects;
 
-/** Runtime budget shared by current CPU and future GPU transient backends. */
 public record EffectBudget(
         int maxActive,
         int maxSpawnPerTick,

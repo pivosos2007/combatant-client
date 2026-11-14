@@ -32,22 +32,49 @@ public final class SmashTrajectory {
                                      AABB target, Vec3 targetVelocity, double initialFall, double minimumFall,
                                      double minimumDownSpeed, double minimumApproachSpeed, int ticks,
                                      double maximumHorizontalGap, double reach, double gravity) {
+        return predictInternal(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+                initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
+                maximumHorizontalGap, reach, gravity, false);
+    }
+
+    public static Prediction predictReportable(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
+                                               Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
+                                               double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
+                                               int ticks, double maximumHorizontalGap, double reach, double gravity) {
+        return predictInternal(player, feet, eyeHeight, halfWidth, velocity, target, targetVelocity,
+                initialFall, minimumFall, minimumDownSpeed, minimumApproachSpeed, ticks,
+                maximumHorizontalGap, reach, gravity, true);
+    }
+
+    private static Prediction predictInternal(LocalPlayer player, Vec3 feet, double eyeHeight, double halfWidth,
+                                              Vec3 velocity, AABB target, Vec3 targetVelocity, double initialFall,
+                                              double minimumFall, double minimumDownSpeed, double minimumApproachSpeed,
+                                              int ticks, double maximumHorizontalGap, double reach, double gravity,
+                                              boolean reportableContact) {
         if (velocity.y > -minimumDownSpeed || feet.y <= target.maxY) return Prediction.UNREACHABLE;
         double dx = Mth.clamp(feet.x, target.minX, target.maxX) - feet.x;
         double dz = Mth.clamp(feet.z, target.minZ, target.maxZ) - feet.z;
         double gap = Math.sqrt(dx * dx + dz * dz);
         boolean overlapping = feet.x + halfWidth >= target.minX && feet.x - halfWidth <= target.maxX
                 && feet.z + halfWidth >= target.minZ && feet.z - halfWidth <= target.maxZ;
-        if (!overlapping && gap > 0.0
-                && ((velocity.x - targetVelocity.x) * dx + (velocity.z - targetVelocity.z) * dz) / gap
-                < minimumApproachSpeed) return Prediction.UNREACHABLE;
+        double horizontalApproach = gap > 0.0
+                ? ((velocity.x - targetVelocity.x) * dx + (velocity.z - targetVelocity.z) * dz) / gap
+                : 0.0;
+        boolean slowHorizontalApproach = !overlapping && gap > 0.0
+                && horizontalApproach < minimumApproachSpeed;
+        boolean verticalContact = slowHorizontalApproach && reportableContact
+                && withinVerticalContactRange(gap, maximumHorizontalGap, reach);
+        if (slowHorizontalApproach && !verticalContact) return Prediction.UNREACHABLE;
 
         // Removing the elytra restores the standing collision volume. Ray visibility alone
         // does not predict a fall onto leaves, fences, or a block overhanging the target.
         if (player == null || !clearStandingVolume(player, feet, halfWidth, eyeHeight)) return Prediction.BLOCKED;
         Vec3 eye = feet.add(0, eyeHeight, 0);
         double fall = initialFall;
-        for (int tick = 0; tick < ticks; tick++) {
+        // For a nearly vertical hit, only commit to an imminent contact. A long
+        // prediction horizon would unequip the elytra far above the target.
+        int horizon = verticalContact ? Math.min(ticks, 8) : ticks;
+        for (int tick = 0; tick < horizon; tick++) {
             Vec3 next = eye.add(velocity);
             double drop = Math.max(0, -velocity.y);
             double contactFraction = Double.NaN;
@@ -87,15 +114,19 @@ public final class SmashTrajectory {
                     }
                 }
             }
-            // Stop the sweep at the attack window. Collision after the hit is irrelevant;
-            // any block hit before that window invalidates the entire predicted dive.
-            double fraction = Double.isNaN(contactFraction) ? 1.0 : contactFraction;
+            // Preflight requires a clear full-tick movement position from which the
+            // attack can be sent; fractional contact alone is not reportable.
+            double fraction = Double.isNaN(contactFraction) || reportableContact ? 1.0 : contactFraction;
             if (!clearDescentSegment(player, feet, velocity, fraction, halfWidth, eyeHeight)) return Prediction.BLOCKED;
             if (!Double.isNaN(contactFraction)) {
-                Vec3 impactEye = eye.add(velocity.scale(contactFraction));
-                AABB impactTarget = target.move(targetVelocity.scale(tick + contactFraction));
-                return hasClearAttackLine(player, impactEye, impactTarget, reach)
-                        ? Prediction.REACHABLE : Prediction.BLOCKED;
+                Vec3 impactEye = reportableContact ? next : eye.add(velocity.scale(contactFraction));
+                AABB impactTarget = target.move(targetVelocity.scale(tick + (reportableContact ? 1.0 : contactFraction)));
+                if (!reportableContact) {
+                    return hasClearAttackLine(player, impactEye, impactTarget, reach)
+                            ? Prediction.REACHABLE : Prediction.BLOCKED;
+                }
+                if (withinContact(impactTarget, impactEye, maximumHorizontalGap, reach)
+                        && hasClearAttackLine(player, impactEye, impactTarget, reach)) return Prediction.REACHABLE;
             }
             fall += drop;
             feet = feet.add(velocity);
@@ -105,6 +136,10 @@ public final class SmashTrajectory {
         return Prediction.UNREACHABLE;
     }
 
+    static boolean withinVerticalContactRange(double gap, double maximumHorizontalGap, double reach) {
+        return gap <= Math.min(maximumHorizontalGap, Math.max(0.0, reach - 0.35));
+    }
+
     private static boolean withinContact(AABB box, Vec3 point, double horizontalGap, double reach) {
         double x = point.x - Mth.clamp(point.x, box.minX, box.maxX);
         double z = point.z - Mth.clamp(point.z, box.minZ, box.maxZ);
@@ -112,7 +147,7 @@ public final class SmashTrajectory {
                 && distanceSquared(box, point) <= reach * reach;
     }
 
-    private static boolean hasClearAttackLine(LocalPlayer player, Vec3 eye, AABB target, double reach) {
+    public static boolean hasClearAttackLine(LocalPlayer player, Vec3 eye, AABB target, double reach) {
         Vec3 nearest = new Vec3(Mth.clamp(eye.x, target.minX, target.maxX),
                 Mth.clamp(eye.y, target.minY, target.maxY),
                 Mth.clamp(eye.z, target.minZ, target.maxZ));

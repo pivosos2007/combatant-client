@@ -28,9 +28,6 @@ import combatant.client.features.module.ModuleCategory;
 import combatant.client.features.module.ModuleInfo;
 import combatant.client.features.module.ModuleSubcategory;
 
-/**
- * ViewModel: mini items + custom swing animations
- */
 @ModuleInfo(id = "viewmodel", displayName = "ViewModel", category = ModuleCategory.VISUALS, subcategory = ModuleSubcategory.COSMETIC,
         description = "module.viewmodel.description")
 public class ViewModel extends Module {
@@ -397,7 +394,6 @@ public class ViewModel extends Module {
         float power = animStrength.get();
         float scale = 1.0f;
 
-        // Apply user offsets
         ms.translate(swingX.get(), swingY.get(), swingZ.get());
 
         boolean applySpin = continuousSpin.get();

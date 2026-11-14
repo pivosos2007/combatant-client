@@ -8,7 +8,6 @@ package combatant.client.render.map;
 
 import combatant.client.render.engine.renderer.Renderer2D;
 
-/** Shared map-space chunk area highlight for selection and information cells. */
 public final class MapChunkAreaRenderer {
     private MapChunkAreaRenderer() {}
 

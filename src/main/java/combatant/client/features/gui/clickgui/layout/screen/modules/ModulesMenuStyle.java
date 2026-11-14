@@ -43,11 +43,6 @@ enum ModulesMenuStyle {
         return cachedCustomGlass;
     }
 
-    /**
-     * Preserved appearance profile for future environment-driven materials.
-     * Not applied until biome temperature / weather transitions are implemented.
-     * Original seeds: each panel uses index + 1; the search surface uses 17.
-     */
     static UiIceMaterialSpec futureIceProfile(int seed, boolean compact) {
         return UiIceMaterialSpec.LIGHT.withSeed(seed)
                 .withFreezing(compact ? 0.34f : 0.55f, compact ? 0.16f : 0.38f);

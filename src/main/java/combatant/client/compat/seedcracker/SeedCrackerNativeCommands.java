@@ -16,6 +16,7 @@ import combatant.client.util.logging.DebugLog;
 import kaptainwutax.seedcrackerX.command.ClientCommand;
 import kaptainwutax.seedcrackerX.config.Config;
 import kaptainwutax.seedcrackerX.init.ClientCommands;
+import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 
@@ -30,10 +31,12 @@ import java.util.Locale;
  */
 public final class SeedCrackerNativeCommands {
     private static CommandDispatcher<FabricClientCommandSource> dispatcher;
+    /**
+     * -- GETTER --
+     * Intercept original Config.save while a virtual command is in flight.
+     */
+    @Getter
     private static boolean executing;
-
-    /** Intercept original Config.save while a virtual command is in flight. */
-    public static boolean isExecuting() { return executing; }
 
     /** Prevent the native config screen from writing global settings over other worlds. */
     public static boolean saveScopedConfig() {

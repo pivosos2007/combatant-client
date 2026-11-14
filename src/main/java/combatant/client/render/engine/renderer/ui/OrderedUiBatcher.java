@@ -136,10 +136,6 @@ public final class OrderedUiBatcher {
         LIQUID_GLASS_PREWARMER.resetSharedBlur();
     }
 
-    /**
-     * Materializes one mesh per UI batch type and allocates its normal first-use native buffers.
-     * This is CPU-side only and prevents the first surface of each material from paying memAlloc.
-     */
     public int prewarmMeshPools() {
         int warmed = 0;
         for (UiBatchType type : UiBatchType.values()) {
@@ -1258,11 +1254,6 @@ public final class OrderedUiBatcher {
         }
     }
 
-    /**
-     * Executes ordinary draw/text batches interleaved with item batches without entering the
-     * capture-aware blur/glass replay. Item boundaries flush only the pending RHI draw segment,
-     * preserving exact order while avoiding repeated effect setup and per-entry effect branches.
-     */
     void executeCompiledMixedItems(boolean finish) {
         if (!active) return;
 

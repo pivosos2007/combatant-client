@@ -188,8 +188,7 @@ public class WorldParticles extends Module {
         return random.nextLong(low, high + 1L);
     }
 
-    // Render-thread scratch vectors. Every particle used to allocate 2-8 Vector3f (plus a Quaternionf and
-    // an 8-slot array per cube) per frame just to rebuild the same camera basis.
+    // Mutable scratch storage used only during render-thread particle submission.
     private static final Vector3f SCRATCH_RIGHT = new Vector3f();
     private static final Vector3f SCRATCH_UP = new Vector3f();
     private static final Vector3f[] CUBE_CORNERS = {

@@ -11,8 +11,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Stable descriptor consumed by transient backends. Keep this independent from graph resources,
- * shader filenames, API handles and future HDR/G-buffer layouts.
+ * Describes a transient effect independently of the rendering backend.
  */
 public record TransientEffectDescriptor(
         long id,

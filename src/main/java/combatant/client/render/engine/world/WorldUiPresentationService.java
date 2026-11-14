@@ -7,7 +7,6 @@
 
 package combatant.client.render.engine.world;
 
-/** Shared, stateless presentation policy for world-anchored UI. */
 public enum WorldUiPresentationService {
     ;
 

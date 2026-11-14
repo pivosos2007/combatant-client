@@ -17,11 +17,7 @@ import combatant.client.util.pvp.ItemUseCooldowns;
 import java.util.Map;
 
 /**
- * Local-player PvP state facade.
- * <p>
- * Item cooldown storage is not kept here. It delegates to the generic owner-based
- * ItemUseCooldowns engine with SELF_OWNER, so self/opponent/future systems all use
- * the same rule/window/cooldown implementation.
+ * Exposes cooldown state for the local player through {@link combatant.client.util.pvp.ItemUseCooldowns#SELF_OWNER}.
  */
 public class CooldownManager {
     private boolean inPvp = false;

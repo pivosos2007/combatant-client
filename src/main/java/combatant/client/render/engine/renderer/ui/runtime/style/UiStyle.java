@@ -150,7 +150,6 @@ public final class UiStyle {
         return new Builder();
     }
 
-    /** Creates a mutable builder initialized from an existing resolved style. */
     public static Builder builder(UiStyle base) {
         return new Builder(base != null ? base : DEFAULT);
     }
@@ -240,12 +239,10 @@ public final class UiStyle {
         return shrink;
     }
 
-    /** Returns null when layout follows the node type. */
     public UiDisplay display() {
         return display;
     }
 
-    /** Returns null when flex direction follows the display/node defaults. */
     public UiFlexDirection flexDirection() {
         return flexDirection;
     }

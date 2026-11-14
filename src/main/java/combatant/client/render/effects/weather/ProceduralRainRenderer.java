@@ -436,7 +436,6 @@ public final class ProceduralRainRenderer implements PostProcessPass, PostProces
         exposurePixels[pixel + 3] = (byte) 255;
     }
 
-    /** Exposes the same surface envelope for future impact and accumulation passes. */
     public int sampledSurfaceHeight(int worldX, int worldZ) {
         if (centerCellX == Integer.MIN_VALUE) return Integer.MAX_VALUE;
         int tileX = Math.floorDiv(worldX, ATLAS_CELL);

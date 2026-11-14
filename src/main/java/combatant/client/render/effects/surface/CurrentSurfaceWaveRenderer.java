@@ -22,11 +22,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import java.util.function.IntFunction;
 
 /**
- * Surface interaction renderer used by HitEffect radial waves and TotemFX shell/world contact.
- *
- * <p>The old implementation expanded block outlines on the CPU and therefore never produced a real
- * analytic radial boundary. The current version submits exposed world faces and lets the fragment
- * shader evaluate the actual distance field (planar ring or spherical shell) per-fragment.</p>
+ * Renders surface waves against exposed world faces. Distance evaluation uses the supplied wave descriptor and exposed face geometry.
  */
 public final class CurrentSurfaceWaveRenderer {
     private static final double FACE_EPS = 0.0016;

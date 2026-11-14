@@ -238,18 +238,12 @@ public class JumpCircles extends Module {
         }
     }
 
-    /**
-     * Submit a distortion mask in addition to the original artwork. The mask is
-     * collected by the shared world post-process batch; the visible sprite is
-     * still submitted once through the normal textured pipeline.
-     */
     private void submitTextureRefraction() {
         boolean pulse = isPulseMode();
         boolean useDepth = depthTest.get();
         float intensity = textureIntensity.get();
         if (intensity <= 0.001f) return;
         // Strength is linear in the premultiplied mask and decoded in the compositor.
-        // The old 0.27 multiplier combined with double alpha weighting made rings imperceptible.
         float strength = Mth.clamp(intensity * 0.70f, 0.0f, 1.0f);
         Identifier texture = resolveTexture();
 

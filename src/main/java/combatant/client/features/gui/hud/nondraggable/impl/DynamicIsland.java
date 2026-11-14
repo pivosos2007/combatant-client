@@ -192,7 +192,6 @@ public final class DynamicIsland extends AbstractHudElement {
         INSTANCE.renderScreenOverlayInternal(ctx, tickDelta);
     }
 
-    /** Renders the complete ClickGUI tab shell in the same stratum and batch as its section. */
     public static void renderClickGuiShell(Renderer2D renderer,
                                            TextRenderer textRenderer,
                                            GuiGraphicsExtractor ctx,
@@ -1518,7 +1517,6 @@ public final class DynamicIsland extends AbstractHudElement {
                 long duration = currentSnapshot != null ? currentSnapshot.durationSeconds() : 0L;
                 yield duration > 0L ? clamp((float) currentSnapshot.predictedPositionSeconds() / duration, 0f, 1f) : 0f;
             }
-            // Keep the LED substrate visible behind the native active tab pill.
             case CLICKGUI -> 0.35f;
         };
         // Frame-rate independent phosphor attack/release; release is slower than attack.

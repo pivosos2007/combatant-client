@@ -91,9 +91,6 @@ public final class UiRuntime {
         setTree(document != null ? document.root() : null);
     }
 
-    /**
-     * Applies a new declarative tree spec to the current runtime tree.
-     */
     public void setTree(UiNodeSpec spec) {
         try {
             UiTreeValidator.validate(spec);
@@ -179,16 +176,10 @@ public final class UiRuntime {
         return diagnostics;
     }
 
-    /**
-     * Sets the error policy used during tree updates.
-     */
     public void setErrorPolicy(UiErrorPolicy errorPolicy) {
         this.errorPolicy = errorPolicy != null ? errorPolicy : UiErrorPolicy.KEEP_LAST_SUCCESSFUL;
     }
 
-    /**
-     * Computes layout for the current root inside the given rectangle.
-     */
     public void layout(TextRenderer fallbackTextRenderer, float x, float y, float width, float height) {
         long start = System.nanoTime();
         layoutEngine.layout(root, fallbackTextRenderer, x, y, width, height);

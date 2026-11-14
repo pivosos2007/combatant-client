@@ -15,10 +15,6 @@ import combatant.client.config.values.ModeValue;
 import combatant.client.util.raycast.RaycastUtil;
 import combatant.client.util.target.TargetingUtil;
 
-/**
- * Shared combat rotation-mode helpers for modules that can operate with or without
- * synthetic rotation control.
- */
 public enum CombatRotationModeUtil {
     ;
 

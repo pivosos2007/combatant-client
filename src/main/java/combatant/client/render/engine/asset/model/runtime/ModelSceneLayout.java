@@ -18,10 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Precomputed static node/primitive layout for one imported scene.
- *
- * <p>This is CPU metadata only. It prevents every world instance from rebuilding the immutable model
- * hierarchy and gives future geometry submission a stable node->mesh primitive placement list.</p>
+ * Immutable node and primitive layout for an imported model scene.
  */
 public final class ModelSceneLayout {
     private final int sceneIndex;

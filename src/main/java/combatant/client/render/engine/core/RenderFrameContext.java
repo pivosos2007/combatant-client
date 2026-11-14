@@ -14,7 +14,7 @@ import combatant.client.render.engine.core.policy.VisibilityProvider;
 import combatant.client.render.sodium.SodiumFrameContext;
 
 /**
- * Immutable per-phase context. Old RenderState should eventually become only a shim over this.
+ * Immutable render context for one rendering phase.
  */
 public record RenderFrameContext(long frameId, float tickProgress, float frameDeltaTicks, float fixedDeltaTicks,
                                  RenderPhase phase, CameraContext camera, ViewportContext viewport,

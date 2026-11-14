@@ -14,8 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Bounded CPU lifecycle backend used before the compute/SSBO implementation exists.
- * It owns lifetime/budget/priority only; rendering stays in registered current-renderer adapters.
+ * Maintains transient effect lifetime, priority and spawn limits. Geometry submission belongs to the registered renderers.
  */
 public class CpuTransientWorldEffectSystem implements TransientWorldEffectSystem {
     private final Map<Long, TransientEffectDescriptor> active = new LinkedHashMap<>();

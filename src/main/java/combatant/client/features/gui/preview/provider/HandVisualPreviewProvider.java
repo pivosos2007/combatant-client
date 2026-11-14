@@ -17,7 +17,6 @@ import combatant.client.features.module.Module;
 
 import java.util.List;
 
-/** Shared true first-person scene for modules that alter held items and player arms. */
 public final class HandVisualPreviewProvider implements VisualPreviewProvider {
     private final Module module;
 

@@ -493,7 +493,6 @@ public enum DraggableHudElementRegistry {
         hudCursorActive = true;
     }
 
-    /** Draws the normal dragging coordinates and snap guides in a non-world HUD editor. */
     public static void renderEditorOverlay(Renderer2D renderer, TextRenderer text,
                                            int screenW, int screenH) {
         if (!forceVisible || dragging == null) return;

@@ -10,7 +10,6 @@ package combatant.client.render.effects.particle;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 
-/** CPU evaluator for the current renderer. The descriptor contract is reusable by a later GPU backend. */
 public final class ParticleLayoutEvaluator {
     private static final double TAU = Math.PI * 2.0;
 

@@ -25,10 +25,8 @@ import combatant.client.render.engine.renderer.RenderWarpStack;
 import combatant.client.util.screen.ClientScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
-import combatant.client.features.gui.mainmenu.CombatantMainMenuScreen;
 import combatant.client.features.gui.mainmenu.MainMenuBackgroundRenderer;
 import combatant.client.render.engine.renderer.ui.draw.UiBackdropRequest;
-import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.StringUtil;
 import net.minecraft.world.item.ItemStack;
@@ -58,7 +56,6 @@ import combatant.client.render.helpers.ScissorFunction;
 import combatant.client.render.helpers.SystemCursor;
 import combatant.client.util.text.ClipboardUtil;
 import combatant.client.features.gui.clickgui.sound.GuiSound;
-import combatant.client.util.logging.DebugLog;
 import combatant.client.events.Events;
 
 import java.nio.file.Path;
@@ -705,7 +702,8 @@ public enum ClickGuiRenderer {
                 int vw = Math.max(1, Math.round(HudScale.virtualWidth(fbw, fbh)));
                 int vh = Math.max(1, Math.round(HudScale.virtualHeight(fbw, fbh)));
                 if (!CombatantTextInputBridge.hasOwner() || CombatantTextInputBridge.owns(TEXT_INPUT_TARGET)) {
-                    focusSettingTextInput();
+                    CombatantTextInputBridge.focus(TEXT_INPUT_TARGET,
+                            Math.round(mouseX), Math.round(mouseY), Math.round(mouseX + 1f), Math.round(mouseY + 16f));
                 }
                 fbWidth = vw;
                 fbHeight = vh;
@@ -1032,9 +1030,7 @@ public enum ClickGuiRenderer {
                 0.965f + 0.035f * eased
         )) {
             if (!islandShell) {
-                // Match the outer shell exactly and drive the ClickGUI blur at full strength.
-                // LayoutRender2D.drawBlur() multiplies by the ClickGUI density scale (1.16) and clamps to 1, so
-                // eased == 1.0 resolves to a true 255/255 blur alpha.
+                // The ClickGUI blur density (1.16) saturates the alpha when eased reaches 1.0.
                 LayoutRender2D.flushRenderer();
                 LayoutRender2D.drawBlur(
                         tabBarX, y, tabBarW, tabBarH, outerRadius,

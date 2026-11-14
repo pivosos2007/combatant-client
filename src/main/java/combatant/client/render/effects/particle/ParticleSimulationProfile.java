@@ -8,9 +8,7 @@
 package combatant.client.render.effects.particle;
 
 /**
- * Backend-neutral particle motion policy. Current CPU consumers only use the
- * parameters they already support; a future GPU backend can evaluate the same
- * descriptor without changing module-facing configuration.
+ * Particle motion parameters independent of the simulation backend.
  */
 public record ParticleSimulationProfile(
         Policy policy,

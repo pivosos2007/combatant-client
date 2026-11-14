@@ -50,7 +50,6 @@ public final class LitematicaSettingsPanel {
     private final List<Integer> capturedKeys = new ArrayList<>();
     private boolean pendingPointerCaret;
     private boolean editFocused;
-    // Keep JS snapshots stable during color dragging; paint the live value onto retained nodes.
     private String dragStartColorValue = "";
     private float lastPressedX;
     private boolean filtering;

@@ -10,12 +10,7 @@ package combatant.client.render.engine.renderer.ui.draw;
 import java.util.Arrays;
 
 /**
- * Small backend-neutral 2D implicit/compound-SDF descriptor.
- *
- * <p>UI backend evaluates either up to four circle sources (IslandBlob/metaball-like smooth
- * union), a smooth union of two rounded boxes, or a smooth union of two squircle boxes in one
- * analytic quad. Larger fields belong to a future field backend, not to a growing list of
- * special UI shaders.</p>
+ * Supports up to four circle sources, two rounded boxes, or two squircle boxes in a single compound SDF.
  */
 public final class UiCompoundSdf {
     public static final int MAX_CIRCLES = 4;

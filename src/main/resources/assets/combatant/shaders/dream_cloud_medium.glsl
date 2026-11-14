@@ -4,10 +4,7 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-/* Shared medium for near froxels and distant raymarching.
- * Geometry uses weather-driven Perlin-Worley density, not isolated spheres.
- * Same noise field and extinction model at both levels of detail.
- */
+/* Shared density and extinction model for near and far cloud rendering. */
 #ifndef DREAM_NOISE_BINDING
 #define DREAM_NOISE_BINDING 1
 #endif

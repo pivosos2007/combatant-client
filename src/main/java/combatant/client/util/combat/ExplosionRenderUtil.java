@@ -14,7 +14,6 @@ import net.minecraft.world.phys.AABB;
 
 import java.util.Locale;
 
-/** Shared rendering helpers for anchor, bed and crystal damage previews. */
 public final class ExplosionRenderUtil {
     private ExplosionRenderUtil() {
     }

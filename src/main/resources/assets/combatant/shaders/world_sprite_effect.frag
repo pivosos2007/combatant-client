@@ -8,11 +8,6 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
-/*
- * Shared textured-sprite materials. The source texture always supplies the
- * base color, shape and alpha. Additional lighting follows TEXEL FEATURES,
- * never a synthetic radial emission field painted onto the quad.
- */
 
 uniform sampler2D u_Texture;
 

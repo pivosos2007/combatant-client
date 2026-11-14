@@ -192,7 +192,6 @@ public class BlockESP extends Module implements combatant.client.features.map.in
 
     // The seed source is opt-in, independent from observed block states and anti-xray scans.
     // Controls are declared through Module's SettingDef API: the Spectrum 2 settings UI
-    // handles visibility, theme styling, translation, saving, and input consistently.
     private final BooleanValue seedSourceEnabled = bool("blockEspSeedSource", "seed_source", false);
     private final BooleanValue seedOfferScan = visibleWhen(
             bool("blockEspSeedOfferScan", "seed_offer_scan", true), seedSourceEnabled::get);

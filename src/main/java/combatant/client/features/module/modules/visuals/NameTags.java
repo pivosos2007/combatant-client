@@ -190,8 +190,7 @@ public class NameTags extends Module {
     private static final String SETTING_DYNAMIC_WORLD_SCALE_COEFFICIENT = "dynamic_world_scale_coefficient";
     private static final String SETTING_PLAYER_HEAD = "player_head";
     private static final String SETTING_NAMEPLATE_EXTRAS = "nameplate_extras";
-    // Match ESP.java projected player box exactly, then place both external blocks
-    // from that same visual reference so top/bottom spacing stays symmetric.
+
     private static final double ESP_REFERENCE_TOP_OFFSET = 0.18;
     private static final float FRAME_CONTENT_GAP = 3.5f;
     private static final float EQUIPMENT_TO_NAMEPLATE_GAP = 5.0f;

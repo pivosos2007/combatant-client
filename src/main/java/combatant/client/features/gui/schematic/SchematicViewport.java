@@ -310,7 +310,6 @@ final class SchematicViewport {
                                           int[] colors, ViewMode mode, int layer, float gap,
                                           java.util.function.IntUnaryOperator groups) {
         FaceList near = FaceMesher.build(volume, shapes, colors, mode, layer, gap, MAX_FACES, groups);
-        // Build coarser substitutes once on the mesher thread. GPU selects among them per spatial tile.
         int mediumStep = Math.min(64, Math.max(4, near.lodStep() * 4));
         int farStep = Math.min(64, Math.max(16, mediumStep * 4));
         FaceList medium = mediumStep == near.lodStep() ? near :
@@ -751,7 +750,6 @@ final class SchematicViewport {
         camera.zoom(steps);
     }
 
-    /** Small isometric cube glyph for empty and loading states. */
     static void drawCubeIcon(float cx, float cy, float size, int color, float alpha) {
         Renderer2D.COLOR.quadBatch(batch -> {
             float hw = size * 0.866f, hh = size * 0.5f;

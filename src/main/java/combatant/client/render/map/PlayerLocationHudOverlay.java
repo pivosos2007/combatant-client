@@ -273,7 +273,6 @@ public enum PlayerLocationHudOverlay {
             ));
         }
 
-        // Keep the active card and head over overlapping passive heads.
         if (hovered != null) {
             layouts.sort(Comparator.comparing(Layout::hovered));
         }

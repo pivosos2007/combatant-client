@@ -9,7 +9,6 @@ package combatant.client.render.engine.renderer.ui.draw;
 import combatant.client.features.theme.Theme;
 import combatant.client.features.theme.Themes;
 
-/** Shared theme color blending for native HUD, ClickGui and scripted glass. */
 public final class LiquidGlassTheme {
     private LiquidGlassTheme() { }
 

@@ -11,16 +11,6 @@ import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.render.engine.pipeline.WorldRenderPipelines;
 import combatant.client.render.engine.uniform.MeshBuilder;
 
-/**
- * Shared one-pass world-sprite materials for JumpCircles, TargetESP and future callers.
- *
- * Each quad gets one compact vec4 of material data. The time-dependent trigonometry is
- * evaluated once on the CPU per quad, not repeatedly in the fragment shader. All shader
- * modes use the same pipeline and can be combined in one texture/depth-state batch.
- * Fresnel and Energy Sweep sample neighbouring source texels for material relief,
- * while Chromatic reads neighbouring color channels. None creates extra geometry.
- * Classic retains the original vertex format and pipeline, with no material overhead.
- */
 public final class WorldSpriteEffects {
     private WorldSpriteEffects() {
     }
@@ -49,9 +39,7 @@ public final class WorldSpriteEffects {
     }
 
     /**
-     * Reusable scratch data: allocate once for the render method and reconfigure per quad.
-     * Params.xy contains a sweep direction or a precomputed chromatic pulse; no per-pixel
-     * trigonometry is needed. A negative variant marks a camera-facing billboard.
+     * Encodes the shader mode in the sign of the variant: negative values denote camera-facing geometry.
      */
     public static final class Parameters {
         private float x;
@@ -72,7 +60,6 @@ public final class WorldSpriteEffects {
                 }
                 case CHROMATIC -> x = 0.68f + 0.32f * (float) Math.sin(time * 3.1f + phase);
                 default -> {
-                    // No animation parameters needed for Classic or Fresnel.
                 }
             }
             return this;

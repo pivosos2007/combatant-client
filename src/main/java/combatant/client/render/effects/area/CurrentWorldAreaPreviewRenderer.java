@@ -15,7 +15,6 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
-/** Renderer3D implementation of WorldAreaPreviewDescriptor for the current renderer. */
 public final class CurrentWorldAreaPreviewRenderer {
     private static final double TAU = Math.PI * 2.0;
 

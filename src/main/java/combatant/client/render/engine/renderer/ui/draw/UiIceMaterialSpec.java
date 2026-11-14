@@ -6,7 +6,6 @@
  */
 package combatant.client.render.engine.renderer.ui.draw;
 
-/** Shared appearance for solid ice surfaces and ice/glass composition. */
 public record UiIceMaterialSpec(float seed, float density, float frost, float cracks,
                                 float blueAbsorption, float displacementPx,
                                 float facetContrast, float clarity,

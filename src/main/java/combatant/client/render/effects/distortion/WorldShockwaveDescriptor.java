@@ -10,10 +10,6 @@ package combatant.client.render.effects.distortion;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 
-/**
- * Bridge contract only. The current renderer may approximate it, while the advanced renderer can
- * later route the same descriptor into the shared distortion/emission resources.
- */
 public record WorldShockwaveDescriptor(
         Vec3 center,
         long spawnTimeMs,

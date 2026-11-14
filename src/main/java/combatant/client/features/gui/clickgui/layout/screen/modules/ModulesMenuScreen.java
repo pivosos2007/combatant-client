@@ -346,7 +346,6 @@ public final class ModulesMenuScreen {
 
         for (ModulesMenuPanel panel : panels) {
             if (!inside(mouseX, mouseY, panel.x, panel.y, panel.w, panel.h)) continue;
-            if (ClickGuiSearch.isActive()) ClickGuiSearch.unfocus();
             return panel.mousePressed(mouseX, mouseY, button);
         }
 
@@ -542,7 +541,6 @@ public final class ModulesMenuScreen {
         panel.settingHits.clear();
         panel.subcategoryHits.clear();
 
-        // Keep the original category-title row intact. Subcategories live in an added row below it.
         float titleY = panel.y + middle(textHeight(semibold, 9.0f * scale), BASE_HEADER_H * scale) + 0.5f * scale;
         LayoutRender2D.drawText(semibold, panel.category.title(), panel.x + TEXT_LEFT_PADDING * scale, titleY, 9.0f * scale, text, false);
         drawCategoryIcon(panel, muted);

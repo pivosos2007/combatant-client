@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Stores item identifiers in namespace:path form.
+ * Stores item IDs in {@code namespace:path} form.
  */
 public class ItemIdSetValue extends ConfigValue<Set<String>> {
 

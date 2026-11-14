@@ -5,15 +5,7 @@
  *
  * Licensed under the GNU General Public License v3.0.
  */
-/*
- * Near-cloud integration: the froxel volume is a lighting cache, NOT a
- * quantized source of optical depth. Density is re-evaluated from the shared
- * 3D noise atlas along each viewing ray. This removes the visible rings that
- * result from treating an entire nonlinearly spaced depth slice as uniform.
- *
- * A small number of samples is used only inside the cloud slab, and rays are
- * clipped against opaque depth before expensive sampling begins.
- */
+/* The froxel volume caches lighting, not optical depth. Density is evaluated from the noise field along each view ray. */
 layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
 layout(binding=0) uniform sampler3D u_Froxels;
 layout(binding=1) uniform sampler2D u_Depth;

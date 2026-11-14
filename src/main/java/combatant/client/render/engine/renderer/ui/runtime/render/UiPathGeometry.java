@@ -13,7 +13,6 @@ import combatant.client.render.engine.renderer.ui.runtime.debug.UiRuntimeValidat
 
 import java.util.Map;
 
-/** Converts authored local points or semantic chart data into renderer-space path geometry. */
 final class UiPathGeometry {
     static final int MAX_INPUT_POINTS = 2048;
 

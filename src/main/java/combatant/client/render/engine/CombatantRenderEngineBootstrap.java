@@ -18,7 +18,6 @@ public enum CombatantRenderEngineBootstrap {
     ;
 
     public static void init() {
-        // Read the generated ClickGUI component index alongside the rest of client bootstrap.
         ClickGuiSectionManager.prepareDiscovery();
         CombatantRenderPipelines.initialize();
         // RHI backend selection must be lazy: onInitializeClient can run before RenderSystem has

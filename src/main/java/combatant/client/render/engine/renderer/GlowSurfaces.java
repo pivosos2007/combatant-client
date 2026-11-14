@@ -13,11 +13,7 @@ import combatant.client.render.engine.uniform.MeshBuilder;
 import net.minecraft.world.phys.AABB;
 
 /**
- * Reusable world glow surface. All effects share the original Fresnel, screen-space rim and halo
- * shader; presets change only the visual modulation. The vertex payload and pipelines are unchanged.
- *
- * <p>One {@link Batch} writes surfaces and their edge ribbons into the same Renderer3D mesh batch.
- * Neither presets nor custom GLSL effects create additional framebuffer passes or draw calls.</p>
+ * Submits world-space glow surfaces and ribbons through a shared mesh batch.
  */
 public final class GlowSurfaces {
     private static final long TIME_WRAP_MS = 1_000_000L;
@@ -208,10 +204,6 @@ public final class GlowSurfaces {
                     colorAt.at(x1,y1,z1),colorAt.at(x2,y2,z2),glow,thickness,phase);
         }
 
-        /**
-         * Camera-facing ribbon with an analytic, antialiased bright core and soft halo in GLSL.
-         * Same shader, vertex format and batch as box(); no native line-state changes.
-         */
         public void edge(double x1, double y1, double z1, double x2, double y2, double z2,
                          int startArgb, int endArgb, float glow, float thickness) {
             edge(x1, y1, z1, x2, y2, z2, startArgb, endArgb, glow, thickness,
