@@ -53,6 +53,11 @@ layout (std140) uniform RigRibbon {
     vec4 u_RibbonMeta[MAX_RIG_DEFORMS];
 };
 
+#ifdef COMBATANT_WORLD_FOG
+#include <minecraft:fog.glsl>
+layout(location = 6) out vec2 v_FogDistances;
+#endif
+
 layout(location = 0) out vec2 v_TexCoord;
 layout(location = 2) out vec4 v_Color;
 layout(location = 4) out vec3 v_Normal;
@@ -307,7 +312,12 @@ void main() {
     vec4 skinnedPosition = skin * vec4(localPosition, 1.0);
     vec3 skinnedNormal = normalize(mat3(skin) * localNormal);
 
-    gl_Position = u_Proj * u_ModelView * skinnedPosition;
+    vec4 viewPosition = u_ModelView * skinnedPosition;
+    gl_Position = u_Proj * viewPosition;
+#ifdef COMBATANT_WORLD_FOG
+    v_FogDistances = vec2(fog_spherical_distance(viewPosition.xyz),
+                          fog_cylindrical_distance(viewPosition.xyz));
+#endif
     v_TexCoord = UV0;
     v_Color = Color;
     v_Normal = skinnedNormal;

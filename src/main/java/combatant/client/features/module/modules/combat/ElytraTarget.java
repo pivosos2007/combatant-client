@@ -257,6 +257,18 @@ public final class ElytraTarget extends Module {
                     "solid_block_dodge",
                     true
             );
+    private final BooleanValue lavaBlockDodge =
+            visibleWhen(bool(
+                    "elytratargetLavaBlockDodge",
+                    "lava_block_dodge",
+                    true
+            ), solidBlockDodge::get);
+    private final BooleanValue combatLavaDodge =
+            bool(
+                    "elytratargetCombatLavaDodge",
+                    "combat_lava_dodge",
+                    true
+            );
     private final NumberValue<Integer> blockDodgePredictionTicks =
             visibleWhen(num(
                     "elytratargetBlockDodgePredictionTicks",
@@ -2042,7 +2054,7 @@ public final class ElytraTarget extends Module {
         Vec3 velocity = player.getDeltaMovement();
         int horizon = ElytraEscapePlanner.horizon(velocity, preferred, blockDodgeClearance.get(),
                 crystalFearPredictionTicks.get(), physics);
-        var world = ElytraEscapePlanner.searchWorld(player);
+        var world = ElytraEscapePlanner.searchWorld(player, shouldAvoidLava(player));
         Rotation best = null;
         double bestDistance = player.getBoundingBox().getCenter().distanceToSqr(threat.pos());
         double bestNearest = -1.0;
@@ -2077,13 +2089,13 @@ public final class ElytraTarget extends Module {
         if (!fullDodge || maceJumperPhase != MaceJumperPhase.NONE || maceRecoveryPending) {
             horizon = Math.min(horizon, LIMITED_SAFETY_HORIZON_TICKS);
         }
-        var world = ElytraEscapePlanner.world(player);
+        var world = ElytraEscapePlanner.world(player, shouldAvoidLava(player));
         AABB bounds = player.getBoundingBox();
         var intended = ElytraEscapePlanner.forecast(world, bounds, velocity, intendedRotation, horizon, physics);
         if (horizon < WATER_SAFETY_HORIZON_TICKS) {
             var longerWaterApproach = ElytraEscapePlanner.forecast(world, bounds, velocity,
                     intendedRotation, WATER_SAFETY_HORIZON_TICKS, physics);
-            if (longerWaterApproach.waterHazardTick() > 0) {
+            if (longerWaterApproach.waterHazardTick() > 0 || longerWaterApproach.lavaHazardTick() > 0) {
                 intended = longerWaterApproach;
                 horizon = WATER_SAFETY_HORIZON_TICKS;
             }
@@ -2095,9 +2107,11 @@ public final class ElytraTarget extends Module {
         int collisionTick = intended.firstCollisionTick();
         int waterTick = intended.waterHazardTick();
         boolean waterThreat = waterTick > 0 && waterTick <= horizon;
+        int lavaTick = intended.lavaHazardTick();
+        boolean fluidThreat = waterThreat || lavaTick > 0 && lavaTick <= horizon;
         boolean otherSafetyEnabled = fullDodge || isRunning() || maceRecoveryPending
                 || maceJumperPhase != MaceJumperPhase.NONE;
-        if (!waterThreat && !otherSafetyEnabled) {
+        if (!fluidThreat && !otherSafetyEnabled) {
             resetBlockDodge();
             return false;
         }
@@ -2105,25 +2119,25 @@ public final class ElytraTarget extends Module {
                 && collisionTick <= LIMITED_SAFETY_HORIZON_TICKS;
         boolean dangerous = intended.damage() >= 1.0f
                 || intended.blockedSteering() && velocity.length() > 1.2;
-        if (!waterThreat && !fullDodge && (collisionTick == 0 || collisionTick > LIMITED_SAFETY_IMMINENT_TICKS
+        if (!fluidThreat && !fullDodge && (collisionTick == 0 || collisionTick > LIMITED_SAFETY_IMMINENT_TICKS
                 && !upwardThreat || !dangerous && !upwardThreat)) {
             resetBlockDodge();
             return false;
         }
-        if (!waterThreat && fullDodge && (maceJumperPhase != MaceJumperPhase.NONE || maceRecoveryPending)
+        if (!fluidThreat && fullDodge && (maceJumperPhase != MaceJumperPhase.NONE || maceRecoveryPending)
                 && collisionTick > LIMITED_SAFETY_IMMINENT_TICKS
                 && intended.damage() < 2.0f) {
             resetBlockDodge();
             return false;
         }
-        if (!waterThreat && maceJumperPhase == MaceJumperPhase.TURN && collisionTick > 3
+        if (!fluidThreat && maceJumperPhase == MaceJumperPhase.TURN && collisionTick > 3
                 && intended.damage() < 2.0f) {
             resetBlockDodge();
             return false;
         }
         boolean committedDive = maceJumperPhase == MaceJumperPhase.DIVE
                 || pursuitPhase == PursuitPhase.DIVE && canSetupMaceDive(player);
-        if (!waterThreat && committedDive && (collisionTick == 0 || collisionTick > 2)
+        if (!fluidThreat && committedDive && (collisionTick == 0 || collisionTick > 2)
                 && intended.damage() < 3.0f) {
             resetBlockDodge();
             return false;
@@ -2168,18 +2182,33 @@ public final class ElytraTarget extends Module {
         int horizon = Math.min(LIMITED_SAFETY_HORIZON_TICKS,
                 ElytraEscapePlanner.horizon(velocity, heading, blockDodgeClearance.get(),
                         blockDodgePredictionTicks.get(), powered));
-        var world = ElytraEscapePlanner.world(player);
+        var world = ElytraEscapePlanner.world(player, shouldAvoidLava(player));
         AABB bounds = player.getBoundingBox();
         var accelerated = ElytraEscapePlanner.forecast(world, bounds, velocity, heading, horizon, powered);
+        if (horizon < WATER_SAFETY_HORIZON_TICKS) {
+            var extended = ElytraEscapePlanner.forecast(world, bounds, velocity, heading,
+                    WATER_SAFETY_HORIZON_TICKS, powered);
+            if (extended.waterHazardTick() > 0 || extended.lavaHazardTick() > 0) {
+                accelerated = extended;
+                horizon = WATER_SAFETY_HORIZON_TICKS;
+            }
+        }
         if (accelerated.safe()) return true;
-        if (accelerated.waterHazardTick() == 0 || accelerated.unknown()
-                || accelerated.damage() > 0.0f || accelerated.blockedSteering()) return false;
-        // A rescue rocket may still be useful inside the clearance zone if it
-        // substantially increases the distance from the water instead of diving into it.
+        if (accelerated.waterHazardTick() == 0 && accelerated.lavaHazardTick() == 0
+                || accelerated.unknown() || accelerated.damage() > 0.0f || accelerated.blockedSteering()) return false;
         var coasting = ElytraEscapePlanner.forecast(world, bounds, player.getDeltaMovement(),
                 heading, horizon, current);
-        return coasting.waterHazardTick() > 0
-                && accelerated.waterRisk() + 0.35 < coasting.waterRisk();
+        if (accelerated.waterRisk() > coasting.waterRisk() + 0.01
+                || accelerated.lavaRisk() > coasting.lavaRisk() + 0.01) return false;
+        return accelerated.waterRisk() + 0.35 < coasting.waterRisk()
+                || accelerated.lavaRisk() + 0.35 < coasting.lavaRisk();
+    }
+
+    private boolean shouldAvoidLava(LocalPlayer player) {
+        return player != null && !player.hasEffect(MobEffects.FIRE_RESISTANCE)
+                && (solidBlockDodge.get() && lavaBlockDodge.get()
+                || combatLavaDodge.get() && (target != null || maceRecoveryPending
+                || maceJumperPhase != MaceJumperPhase.NONE || isAttributeSwapElytraCycleActive()));
     }
 
     private void resetBlockDodge() {

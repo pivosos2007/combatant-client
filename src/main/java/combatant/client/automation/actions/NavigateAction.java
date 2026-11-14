@@ -31,7 +31,7 @@ import net.minecraft.world.phys.Vec3;
  * {@code MANUAL_OVERRIDE} when the player touches the keys.
  *
  * <p>For handles that steer ({@code !drivesPlayer()}) each tick's {@link NavigationIntent} becomes keys relative
- * to the movement rotation through {@link MovementKeys}. For handles that drive the player themselves (Baritone)
+ * to the movement rotation through {@link MovementKeys}. For handles that drive the player themselves
  * the leases are still held so no other runtime action fights the provider, no keys are written, and the handle
  * is cancelled, which stops the provider, when the action ends or a lease is revoked.</p>
  */

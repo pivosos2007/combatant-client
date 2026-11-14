@@ -233,6 +233,54 @@ class ElytraEscapePlannerTest {
         assertEquals(0, highFlight.waterHazardTick());
     }
 
+    @Test
+    void lavaHazardIsUnsafeWithoutABlockCollision() {
+        ElytraEscapePlanner.CollisionWorld lava = new ElytraEscapePlanner.CollisionWorld() {
+            @Override
+            public boolean loaded(AABB bounds, Vec3 movement) {
+                return true;
+            }
+
+            @Override
+            public Vec3 move(AABB bounds, Vec3 movement) {
+                return movement;
+            }
+
+            @Override
+            public double lavaRisk(AABB bounds, Vec3 movement) {
+                return Math.max(0.0, 5.0 - bounds.move(movement).minY);
+            }
+        };
+        var low = ElytraEscapePlanner.forecast(lava, START, new Vec3(1.0, -0.1, 0), EAST, 2, coast());
+        assertFalse(low.safe());
+        assertEquals(0, low.firstCollisionTick());
+        assertEquals(0, low.waterHazardTick());
+        assertTrue(low.lavaHazardTick() > 0);
+        assertTrue(low.lavaRisk() > 0.0);
+
+        var high = ElytraEscapePlanner.forecast(lava, START.move(0, 15, 0),
+                new Vec3(1.0, -0.1, 0), EAST, 2, coast());
+        assertTrue(high.safe());
+        assertEquals(0, high.lavaHazardTick());
+    }
+
+    @Test
+    void fluidFloorClearanceDependsOnDepthNotFireResistance() {
+        assertEquals(4.75, ElytraEscapePlanner.fluidFloorClearance(1.0), 1.0E-6);
+        assertEquals(4.75, ElytraEscapePlanner.fluidFloorClearance(4.0), 1.0E-6);
+        assertEquals(3.0, ElytraEscapePlanner.fluidFloorClearance(5.0), 1.0E-6);
+        assertEquals(3.0, ElytraEscapePlanner.fluidFloorClearance(20.0), 1.0E-6);
+    }
+
+    @Test
+    void fireResistanceRemovesIgnitionRiskButNotLiquidFloorRisk() {
+        double noFloor = Double.NEGATIVE_INFINITY;
+        assertEquals(0.0, ElytraEscapePlanner.lavaRiskAtFeet(65.0, noFloor, 68.0, false), 1.0E-6);
+        assertEquals(3.0, ElytraEscapePlanner.lavaRiskAtFeet(65.0, noFloor, 68.0, true), 1.0E-6);
+        assertEquals(2.0, ElytraEscapePlanner.lavaRiskAtFeet(65.0, 67.0, 68.0, false), 1.0E-6);
+        assertEquals(3.0, ElytraEscapePlanner.lavaRiskAtFeet(65.0, 67.0, 68.0, true), 1.0E-6);
+    }
+
     private static FlightModel coast() {
         return new FlightModel(0.0, false, 0, 0, ElytraFlightPhysics::rocket);
     }

@@ -24,9 +24,13 @@ public final class VanillaWorldFogProvider implements FogProvider {
 
     @Override
     public @Nullable GpuBufferSlice fogUniformSlice() {
+        return fogUniformSlice(FogRenderer.FogMode.WORLD);
+    }
+
+    public static @Nullable GpuBufferSlice fogUniformSlice(FogRenderer.FogMode mode) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || !(mc.gameRenderer instanceof GameRendererAccessor accessor)) return null;
         FogRenderer fogRenderer = accessor.combatant$getFogRenderer();
-        return fogRenderer != null ? fogRenderer.getBuffer(FogRenderer.FogMode.WORLD) : null;
+        return fogRenderer != null ? fogRenderer.getBuffer(mode) : null;
     }
 }

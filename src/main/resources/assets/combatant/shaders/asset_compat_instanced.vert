@@ -27,6 +27,9 @@ layout(std140) uniform AssetInstances {
     mat4 u_InstanceModel[64];
 };
 
+#include <minecraft:fog.glsl>
+
+layout(location = 6) out vec2 v_FogDistances;
 layout(location = 0) out vec2 v_UV0;
 layout(location = 1) out vec2 v_UV1;
 layout(location = 2) out vec4 v_Color;
@@ -42,6 +45,8 @@ void main() {
     mat4 modelView = u_ModelView * u_InstanceModel[instanceIndex];
     vec4 viewPosition = modelView * vec4(Position, 1.0);
     gl_Position = u_Proj * viewPosition;
+    v_FogDistances = vec2(fog_spherical_distance(viewPosition.xyz),
+                          fog_cylindrical_distance(viewPosition.xyz));
 
     mat3 normalMatrix = transpose(inverse(mat3(modelView)));
     vec3 n = normalize(normalMatrix * Normal);

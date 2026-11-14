@@ -20,6 +20,9 @@ layout (std140) uniform MeshData {
     mat4 u_ModelView;
 };
 
+#include <minecraft:fog.glsl>
+
+layout(location = 6) out vec2 v_FogDistances;
 layout(location = 0) out vec2 v_UV0;
 layout(location = 1) out vec2 v_UV1;
 layout(location = 2) out vec4 v_Color;
@@ -29,6 +32,8 @@ layout(location = 5) out vec4 v_Tangent;
 void main() {
     vec4 viewPosition = u_ModelView * vec4(Position, 1.0);
     gl_Position = u_Proj * viewPosition;
+    v_FogDistances = vec2(fog_spherical_distance(viewPosition.xyz),
+                          fog_cylindrical_distance(viewPosition.xyz));
 
     mat3 normalMatrix = transpose(inverse(mat3(u_ModelView)));
     vec3 n = normalize(normalMatrix * Normal);

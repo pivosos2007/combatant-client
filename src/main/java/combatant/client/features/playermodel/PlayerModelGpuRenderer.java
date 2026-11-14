@@ -13,6 +13,7 @@ import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import combatant.client.render.engine.core.CombatantRenderSystem;
 import combatant.client.render.engine.core.CombatantWorldMatrices;
+import combatant.client.render.engine.core.policy.VanillaWorldFogProvider;
 import combatant.client.render.engine.renderer.MeshRenderer;
 import combatant.client.render.engine.depth.SeeInvisiblesVisualDepth;
 import combatant.client.render.ShaderEspRenderContext;
@@ -27,6 +28,7 @@ import combatant.client.features.module.Modules;
 import combatant.client.features.module.modules.visuals.Chams;
 import combatant.client.render.iris.IrisRuntime;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.fog.FogRenderer;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -245,7 +247,7 @@ public final class PlayerModelGpuRenderer {
         try {
             if (!ENTITY_DEPTH_PENDING.isEmpty())
                 drawGpu(ENTITY_DEPTH_PENDING, target.getColorTextureView(),
-                        target.getDepthTextureView(), view, projection, false, true);
+                        target.getDepthTextureView(), view, projection, false, true, FogRenderer.FogMode.NONE);
         } finally {
             ENTITY_DEPTH_PENDING.clear();
         }
@@ -394,21 +396,21 @@ public final class PlayerModelGpuRenderer {
                                 Matrix4f view, Matrix4f projection, boolean translucent) {
         if (target == null) return;
         drawGpu(draws, target.getColorTextureView(), target.getDepthTextureView(),
-                view, projection, translucent);
+                view, projection, translucent, false, FogRenderer.FogMode.WORLD);
     }
 
     private static void drawGpu(List<Submission> draws,
                                 com.mojang.renderpearl.api.textures.GpuTextureView color,
                                 com.mojang.renderpearl.api.textures.GpuTextureView depth,
                                 Matrix4f view, Matrix4f projection, boolean translucent) {
-        drawGpu(draws, color, depth, view, projection, translucent, false);
+        drawGpu(draws, color, depth, view, projection, translucent, false, FogRenderer.FogMode.NONE);
     }
 
     private static void drawGpu(List<Submission> draws,
                                 com.mojang.renderpearl.api.textures.GpuTextureView color,
                                 com.mojang.renderpearl.api.textures.GpuTextureView depth,
                                 Matrix4f view, Matrix4f projection, boolean translucent,
-                                boolean depthOnly) {
+                                boolean depthOnly, FogRenderer.FogMode fogMode) {
         if (draws.isEmpty() || color == null || depth == null || view == null || projection == null) return;
         try {
             var rhi = CombatantRenderSystem.rhi();
@@ -420,6 +422,7 @@ public final class PlayerModelGpuRenderer {
             var lightSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
             var shaderLights = RenderSystem.getShaderLights();
             if (shaderLights == null) throw new IllegalStateException("Player model lighting uniform unavailable");
+            GpuBufferSlice fog = VanillaWorldFogProvider.fogUniformSlice(fogMode);
             RenderPipeline pipeline = RigRenderPipelines.playerPipeline(translucent, targetFormat);
             if (pipeline == null) throw new IllegalStateException("Unsupported player color format: " + targetFormat);
             for (Submission draw : draws) {
@@ -446,7 +449,7 @@ public final class PlayerModelGpuRenderer {
                                 draw.light(), 1.0f, 0.0f, draw.tint) : draw.lighting();
                     }
                     var gpuMesh = RigGpuMeshCache.global().acquire(rhi, surface.mesh());
-                    commands.add(RhiDrawCommand.builder("PlayerModel GPU skinning")
+                    RhiDrawCommand.Builder command = RhiDrawCommand.builder("PlayerModel GPU skinning")
                             .pipeline(pipeline)
                             .colorAttachment(color)
                             .depthAttachment(depth)
@@ -456,8 +459,9 @@ public final class PlayerModelGpuRenderer {
                             .uniform(PlayerRigLightingUniforms.BLOCK_NAME, lighting)
                             .uniform("Lighting", shaderLights)
                             .sampler("u_Texture", texture.getTextureView(), texture.getSampler())
-                            .sampler("u_Lightmap", lightmap, lightSampler)
-                            .build());
+                            .sampler("u_Lightmap", lightmap, lightSampler);
+                    if (fog != null) command.uniform("Fog", fog);
+                    commands.add(command.build());
                 }
             }
             if (!commands.isEmpty()) {

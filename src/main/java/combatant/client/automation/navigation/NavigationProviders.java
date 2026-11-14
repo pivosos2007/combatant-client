@@ -7,18 +7,16 @@
 
 package combatant.client.automation.navigation;
 
-import combatant.client.automation.compat.baritone.BaritoneNavigationProvider;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ServiceLoader;
 
 /**
  * Registry of navigation providers. Unknown or unavailable providers resolve to the built-in walker.
  */
 public final class NavigationProviders {
 
-    /** Process-wide registry: the built-in walker, plus Baritone when its mod is loaded. */
     public static final NavigationProviders INSTANCE = createDefault();
 
     private final NavigationProvider builtin;
@@ -31,8 +29,9 @@ public final class NavigationProviders {
 
     private static NavigationProviders createDefault() {
         NavigationProviders registry = new NavigationProviders(new WalkNavigationProvider());
-        BaritoneNavigationProvider baritone = new BaritoneNavigationProvider();
-        if (baritone.isAvailable()) registry.register(baritone);
+        for (NavigationProvider provider : ServiceLoader.load(NavigationProvider.class, NavigationProvider.class.getClassLoader())) {
+            if (provider.isAvailable()) registry.register(provider);
+        }
         return registry;
     }
 

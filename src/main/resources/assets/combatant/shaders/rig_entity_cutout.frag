@@ -12,10 +12,13 @@
 #include "include/scene_color.glsl"
 #endif
 
+#include <minecraft:fog.glsl>
+
 layout(location = 0) out vec4 color;
 
 uniform sampler2D u_Texture;
 
+layout(location = 6) in vec2 v_FogDistances;
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 2) in vec4 v_Color;
 layout(location = 4) in vec3 v_Normal;
@@ -45,4 +48,11 @@ void main() {
 #ifdef COMBATANT_RIG_SCENE_LINEAR
     color.rgb = combatantLegacyToSceneLinear(color.rgb);
 #endif
+    vec4 fogColor = FogColor;
+#ifdef COMBATANT_RIG_SCENE_LINEAR
+    fogColor.rgb = combatantSrgbToLinear(fogColor.rgb);
+#endif
+    color = apply_fog(color, v_FogDistances.x, v_FogDistances.y,
+            FogEnvironmentalStart, FogEnvironmentalEnd,
+            FogRenderDistanceStart, FogRenderDistanceEnd, fogColor);
 }

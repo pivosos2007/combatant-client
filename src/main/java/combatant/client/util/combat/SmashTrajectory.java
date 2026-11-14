@@ -101,8 +101,8 @@ public final class SmashTrajectory {
         // Removing the elytra restores the standing collision volume. Ray visibility alone
         // does not predict a fall onto leaves, fences, or a block overhanging the target.
         if (player == null) return new ContactForecast(Prediction.BLOCKED, -1);
-        ElytraEscapePlanner.CollisionWorld waterSafety = ElytraEscapePlanner.world(player);
-        if (!clearStandingVolume(player, feet, halfWidth, eyeHeight, waterSafety))
+        ElytraEscapePlanner.CollisionWorld fluidSafety = ElytraEscapePlanner.world(player, true);
+        if (!clearStandingVolume(player, feet, halfWidth, eyeHeight, fluidSafety))
             return new ContactForecast(Prediction.BLOCKED, -1);
         Vec3 eye = feet.add(0, eyeHeight, 0);
         double fall = initialFall;
@@ -152,7 +152,7 @@ public final class SmashTrajectory {
             // Preflight requires a clear full-tick movement position from which the
             // attack can be sent; fractional contact alone is not reportable.
             double fraction = Double.isNaN(contactFraction) || reportableContact ? 1.0 : contactFraction;
-            if (!clearDescentSegment(player, feet, velocity, fraction, halfWidth, eyeHeight, waterSafety))
+            if (!clearDescentSegment(player, feet, velocity, fraction, halfWidth, eyeHeight, fluidSafety))
                 return new ContactForecast(Prediction.BLOCKED, -1);
             if (!Double.isNaN(contactFraction)) {
                 Vec3 impactEye = reportableContact ? next : eye.add(velocity.scale(contactFraction));
@@ -214,26 +214,27 @@ public final class SmashTrajectory {
 
     private static boolean clearDescentSegment(LocalPlayer player, Vec3 start, Vec3 motion,
                                                double fraction, double halfWidth, double eyeHeight,
-                                               ElytraEscapePlanner.CollisionWorld waterSafety) {
+                                               ElytraEscapePlanner.CollisionWorld fluidSafety) {
         double length = motion.length() * fraction;
         int steps = Math.max(1, (int) Math.ceil(length / 0.45));
         for (int i = 1; i <= steps; i++) {
             Vec3 feet = start.add(motion.scale(fraction * i / steps));
-            if (!clearStandingVolume(player, feet, halfWidth, eyeHeight, waterSafety)) return false;
+            if (!clearStandingVolume(player, feet, halfWidth, eyeHeight, fluidSafety)) return false;
         }
         return true;
     }
 
     private static boolean clearStandingVolume(LocalPlayer player, Vec3 feet,
                                                double halfWidth, double eyeHeight,
-                                               ElytraEscapePlanner.CollisionWorld waterSafety) {
+                                               ElytraEscapePlanner.CollisionWorld fluidSafety) {
         // This is only a block-collision query: living targets must not be
         // interpreted as impassable terrain at the intended contact point.
         double width = halfWidth + 0.035;
         AABB volume = new AABB(feet.x - width, feet.y + 0.035, feet.z - width,
                 feet.x + width, feet.y + Math.max(1.65, eyeHeight + 0.15), feet.z + width);
         if (!player.level().hasChunkAt(BlockPos.containing(feet))) return false;
-        if (waterSafety.waterRisk(volume, Vec3.ZERO) > 0.0) return false;
+        if (fluidSafety.waterRisk(volume, Vec3.ZERO) > 0.0
+                || fluidSafety.lavaRisk(volume, Vec3.ZERO) > 0.0) return false;
         return !player.level().getBlockCollisions(player, volume).iterator().hasNext();
     }
 

@@ -8,6 +8,8 @@
  * Licensed under the GNU General Public License v3.0.
  */
 
+#include <minecraft:fog.glsl>
+
 uniform sampler2D u_BaseColor;
 uniform sampler2D u_MetallicRoughness;
 uniform sampler2D u_Normal;
@@ -23,6 +25,7 @@ layout (std140) uniform AssetMaterial {
     vec4 u_UvTransformY[5];
 };
 
+layout(location = 6) in vec2 v_FogDistances;
 layout(location = 0) in vec2 v_UV0;
 layout(location = 1) in vec2 v_UV1;
 layout(location = 2) in vec4 v_Color;
@@ -109,5 +112,9 @@ void main() {
         color = (diffuse + specular) * ao + emissive;
     }
 
-    FragColor = vec4(max(color, vec3(0.0)), base.a);
+    FragColor = apply_fog(vec4(max(color, vec3(0.0)), base.a),
+            v_FogDistances.x, v_FogDistances.y,
+            FogEnvironmentalStart, FogEnvironmentalEnd,
+            FogRenderDistanceStart, FogRenderDistanceEnd,
+            vec4(srgbToLinear(FogColor.rgb), FogColor.a));
 }

@@ -21,6 +21,7 @@ import combatant.client.render.engine.asset.model.runtime.ModelPrimitivePlacemen
 import combatant.client.render.engine.asset.model.runtime.ModelSceneInstanceAsset;
 import combatant.client.render.engine.RenderState;
 import combatant.client.render.engine.core.CombatantRenderSystem;
+import combatant.client.render.engine.core.policy.VanillaWorldFogProvider;
 import combatant.client.render.engine.pipeline.RigRenderPipelines;
 import combatant.client.render.engine.rhi.RhiDrawCommand;
 import combatant.client.render.engine.rhi.pipeline.RenderPipelineRegistry;
@@ -34,6 +35,7 @@ import combatant.client.render.engine.uniform.impl.AssetInstanceUniforms;
 import combatant.client.render.iris.IrisRuntime;
 import combatant.client.util.logging.DebugLog;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.renderer.fog.FogRenderer;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
@@ -132,9 +134,10 @@ public final class ImportedAssetCompatibilityRenderer {
 
         ArrayList<RhiDrawCommand> commands = new ArrayList<>();
         PassResources resources = new PassResources();
+        GpuBufferSlice fog = VanillaWorldFogProvider.fogUniformSlice(FogRenderer.FogMode.NONE);
         CombatantRenderSystem.sceneInstances().visitDrawClass(SceneDrawClass.HAND, instance -> {
             if (instance.asset() instanceof ModelSceneInstanceAsset source) {
-                submitHandInstance(commands, resources, instance, source, color, depth);
+                submitHandInstance(commands, resources, instance, source, color, depth, fog);
             }
             return true;
         });
@@ -168,7 +171,8 @@ public final class ImportedAssetCompatibilityRenderer {
                                            SceneAssetInstance<?> instance,
                                            ModelSceneInstanceAsset source,
                                            com.mojang.renderpearl.api.textures.GpuTextureView color,
-                                           com.mojang.renderpearl.api.textures.GpuTextureView depth) {
+                                           com.mojang.renderpearl.api.textures.GpuTextureView depth,
+                                           GpuBufferSlice fog) {
         ModelGpuAssetResidency residency = resources.residency(source.asset());
         Matrix4f handLocal = new Matrix4f(instance.currentWorldTransform());
 
@@ -186,7 +190,7 @@ public final class ImportedAssetCompatibilityRenderer {
 
             MaterialState materialState = resources.material(residency, material);
 
-            commands.add(RhiDrawCommand.builder(
+            RhiDrawCommand.Builder command = RhiDrawCommand.builder(
                             "Combatant imported hand asset " + source.asset().asset().id())
                     .pipeline(pipeline)
                     .pipelineSpec(RenderPipelineRegistry.global().require(pipeline))
@@ -199,8 +203,9 @@ public final class ImportedAssetCompatibilityRenderer {
                     .sampler("u_MetallicRoughness", materialState.metallic().view(), materialState.metallic().sampler())
                     .sampler("u_Normal", materialState.normal().view(), materialState.normal().sampler())
                     .sampler("u_Occlusion", materialState.occlusion().view(), materialState.occlusion().sampler())
-                    .sampler("u_Emissive", materialState.emissive().view(), materialState.emissive().sampler())
-                    .build());
+                    .sampler("u_Emissive", materialState.emissive().view(), materialState.emissive().sampler());
+            if (fog != null) command.uniform("Fog", fog);
+            commands.add(command.build());
         }
     }
 
@@ -261,6 +266,7 @@ public final class ImportedAssetCompatibilityRenderer {
             LinkedHashMap<BatchKey, Batch> batches, ArrayList<Batch> overlays,
             GpuTextureView color, GpuTextureView depth) {
         ArrayList<RhiDrawCommand> commands = new ArrayList<>();
+        GpuBufferSlice fog = VanillaWorldFogProvider.fogUniformSlice(FogRenderer.FogMode.WORLD);
         // Depth-tested opaque scene first, then depth-free overlays in submission order.
         ArrayList<Batch> ordered = new ArrayList<>(batches.values());
         ordered.addAll(overlays);
@@ -286,6 +292,7 @@ public final class ImportedAssetCompatibilityRenderer {
                         .sampler("u_Normal", key.material().normal().view(), key.material().normal().sampler())
                         .sampler("u_Occlusion", key.material().occlusion().view(), key.material().occlusion().sampler())
                         .sampler("u_Emissive", key.material().emissive().view(), key.material().emissive().sampler());
+                if (fog != null) command.uniform("Fog", fog);
                 if (instanced) {
                     command.uniform("AssetInstances", AssetInstanceUniforms.write(batch.models, offset, count));
                 } else {

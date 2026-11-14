@@ -122,6 +122,10 @@ sourceSets {
         compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
         runtimeClasspath += output + compileClasspath
     }
+    devTest {
+        compileClasspath += sourceSets.dev.output + sourceSets.dev.compileClasspath
+        runtimeClasspath += sourceSets.dev.output + sourceSets.dev.runtimeClasspath
+    }
     duplexCourier {
         java.srcDir("src/duplexCourier/java")
         resources.srcDir("src/duplexCourier/resources")
@@ -150,6 +154,8 @@ configurations {
     devImplementation.extendsFrom implementation
     devCompileOnly.extendsFrom compileOnly
     devAnnotationProcessor.extendsFrom annotationProcessor
+    devTestImplementation.extendsFrom testImplementation
+    devTestRuntimeOnly.extendsFrom testRuntimeOnly
     vulkanDebugImplementation.extendsFrom implementation
     vulkanDebugCompileOnly.extendsFrom compileOnly
     vulkanDebugAnnotationProcessor.extendsFrom annotationProcessor
@@ -274,6 +280,18 @@ tasks.named('test') {
     if (project.hasProperty('playerModelAddon')) {
         systemProperty 'combatant.playerModelAssets', file(project.property('playerModelAddon')).absolutePath
     }
+}
+
+tasks.register('devTest', Test) {
+    group = 'verification'
+    description = 'Runs tests for development-only features.'
+    testClassesDirs = sourceSets.devTest.output.classesDirs
+    classpath = sourceSets.devTest.runtimeClasspath
+    useJUnitPlatform()
+}
+
+if (combatantDevEnabled.get()) {
+    tasks.named('check') { dependsOn tasks.named('devTest') }
 }
 
 def resolveUiContractSource = { roots, relativePath, fallbackPath ->

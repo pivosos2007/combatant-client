@@ -26,6 +26,11 @@ layout(std140) uniform MeshData {
 layout(std140) uniform RigBones {
     mat4 u_SkinMatrices[MAX_RIG_BONES];
 };
+#ifdef COMBATANT_WORLD_FOG
+#include <minecraft:fog.glsl>
+layout(location = 6) out vec2 v_FogDistances;
+#endif
+
 layout(location = 0) out vec2 v_TexCoord;
 layout(location = 2) out vec4 v_Color;
 layout(location = 4) out vec3 v_Normal;
@@ -37,7 +42,12 @@ void main() {
              + u_SkinMatrices[int(BoneIndices.y)] * BoneWeights.y;
     }
     vec4 skinned = skin * vec4(Position, 1.0);
-    gl_Position = u_Proj * u_ModelView * skinned;
+    vec4 viewPosition = u_ModelView * skinned;
+    gl_Position = u_Proj * viewPosition;
+#ifdef COMBATANT_WORLD_FOG
+    v_FogDistances = vec2(fog_spherical_distance(viewPosition.xyz),
+                          fog_cylindrical_distance(viewPosition.xyz));
+#endif
     v_TexCoord = UV0;
     v_Color = Color;
     // Lighting.Light*_Direction lives in view space. Skinning alone leaves

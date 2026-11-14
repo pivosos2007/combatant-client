@@ -10,12 +10,20 @@ package combatant.client.automation.navigation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.ServiceLoader;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NavigationProvidersTest {
+
+    @Test
+    void releaseClasspathHasNoExternalProviders() {
+        assertTrue(ServiceLoader.load(NavigationProvider.class).findFirst().isEmpty());
+        assertEquals(List.of("walk"), NavigationProviders.INSTANCE.ids());
+    }
 
     private static final class Fake implements NavigationProvider {
         final String id;

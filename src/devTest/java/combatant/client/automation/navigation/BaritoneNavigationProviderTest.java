@@ -10,13 +10,21 @@ package combatant.client.automation.navigation;
 import combatant.client.automation.compat.baritone.BaritoneNavigationProvider;
 import org.junit.jupiter.api.Test;
 
+import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BaritoneNavigationProviderTest {
+
+    @Test
+    void devResourcesExposeAdapter() {
+        assertTrue(ServiceLoader.load(NavigationProvider.class).stream()
+                .anyMatch(provider -> provider.type() == BaritoneNavigationProvider.class));
+    }
 
     @Test
     void unavailableWithoutTheMod() {

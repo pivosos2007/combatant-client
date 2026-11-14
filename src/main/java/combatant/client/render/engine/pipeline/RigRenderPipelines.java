@@ -26,6 +26,7 @@ import net.minecraft.resources.Identifier;
 public final class RigRenderPipelines {
     private static final RenderPipeline.Snippet MESH_UNIFORMS = CombatantRenderPipelines.meshUniforms();
     private static final RenderPipeline.Snippet RIG_UNIFORMS = CombatantRenderPipelines.rigUniforms();
+    private static final RenderPipeline.Snippet FOG_UNIFORMS = CombatantRenderPipelines.fogUniforms();
 
 
     private RigRenderPipelines() {
@@ -216,7 +217,7 @@ public final class RigRenderPipelines {
 
     private static RenderPipeline assetCompatibilityOpaquePipeline(String path, boolean cull,
                                                                     boolean depthTest, boolean instanced) {
-        ExtendedRenderPipelineBuilder builder = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+        ExtendedRenderPipelineBuilder builder = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, FOG_UNIFORMS)
                 .withUniform("AssetMaterial", UniformType.UNIFORM_BUFFER)
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
@@ -240,7 +241,7 @@ public final class RigRenderPipelines {
     }
 
     private static RenderPipeline assetCompatibilityPipeline(String path, boolean cull, boolean depthTest) {
-        return new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+        return new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, FOG_UNIFORMS)
                 .withUniform("AssetMaterial", UniformType.UNIFORM_BUFFER)
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
@@ -269,7 +270,7 @@ public final class RigRenderPipelines {
 
     private static RenderPipeline playerRigPipeline(String path, Identifier fragmentShader,
                                                     boolean translucent, GpuFormat colorFormat) {
-        ExtendedRenderPipelineBuilder builder = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS)
+        ExtendedRenderPipelineBuilder builder = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, FOG_UNIFORMS)
                 .withUniform("RigBones", UniformType.UNIFORM_BUFFER)
                 .withUniform("RigPlayerLighting", UniformType.UNIFORM_BUFFER)
                 .withUniform("Lighting", UniformType.UNIFORM_BUFFER)
@@ -279,6 +280,7 @@ public final class RigRenderPipelines {
                         com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(shader("rig_player_fast.vert"))
                 .withFragmentShader(fragmentShader)
+                .withShaderDefine("COMBATANT_WORLD_FOG")
                 .withSampler("u_Texture")
                 .withSampler("u_Lightmap")
                 .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
@@ -322,13 +324,14 @@ public final class RigRenderPipelines {
 
     private static RenderPipeline rigEntityPipeline(String path, Identifier fragmentShader, boolean cull,
                                                     boolean depthWrite, boolean translucent, GpuFormat colorFormat) {
-        ExtendedRenderPipelineBuilder builder = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, RIG_UNIFORMS)
+        ExtendedRenderPipelineBuilder builder = new ExtendedRenderPipelineBuilder(MESH_UNIFORMS, RIG_UNIFORMS, FOG_UNIFORMS)
                 .withLocation(Identifier.fromNamespaceAndPath("combatant", "pipeline/" + path))
                 .withDomain(PipelineDomain.WORLD)
                 .withVertexFormat(CombatantVertexFormats.RIG_POSITION_TEXTURE_NORMAL_COLOR_BONES_DEFORM,
                         com.mojang.renderpearl.api.pipeline.PrimitiveTopology.TRIANGLES)
                 .withVertexShader(shader("rig_textured.vert"))
                 .withFragmentShader(fragmentShader)
+                .withShaderDefine("COMBATANT_WORLD_FOG")
                 .withSampler("u_Texture")
                 .withDepthTestFunction(DepthTestFunction.GEQUAL_DEPTH_TEST)
                 .withDepthWrite(depthWrite)
