@@ -2,6 +2,8 @@
 
 Bug-fix release for 0.4.0.
 
+For the main changelog, see the [0.4.0 release notes](https://github.com/pivosos2007/combatant-client/releases/tag/0.4.0).
+
 ### Nullability fixes
 
 - Fixed **ElytraTarget** throwing a `NullPointerException` after player death when checking an absent target against an immutable candidate list. Target selection now handles missing KillAura and previous targets safely.
