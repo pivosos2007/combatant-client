@@ -200,7 +200,7 @@ public final class EntityControl extends Module {
 
     public boolean useBoatStrafing(LocalPlayer player, AbstractBoat boat) {
         return isEnabled() && boatMotionEnabled()
-                && player != null && player.getVehicle() == boat
+                && player != null && boat != null && player.getVehicle() == boat
                 && boat.getControllingPassenger() == player;
     }
 
@@ -211,7 +211,7 @@ public final class EntityControl extends Module {
     }
 
     public boolean providesVulcanMotion(Entity vehicle) {
-        return isEnabled() && mode.get() == Mode.VULCAN
+        return isEnabled() && vehicle != null && mode.get() == Mode.VULCAN
                 && (!(vehicle instanceof AbstractBoat) || boatMotionEnabled());
     }
 
@@ -578,7 +578,7 @@ public final class EntityControl extends Module {
     }
 
     public void applyBoatRotation(LocalPlayer player, AbstractBoat boat) {
-        if (!isEnabled() || player == null || boat.getControllingPassenger() != player
+        if (!isEnabled() || player == null || boat == null || boat.getControllingPassenger() != player
                 || boatSteering.get() != BoatSteering.CAMERA || !boatMotionEnabled()) return;
         float yaw = player.getYRot();
         boat.setYRot(yaw);

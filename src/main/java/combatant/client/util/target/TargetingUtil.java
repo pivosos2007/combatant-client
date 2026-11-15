@@ -33,6 +33,7 @@ import combatant.client.util.player.PlayerHealthResolver;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Centralized target selection helpers.
@@ -44,6 +45,16 @@ public enum TargetingUtil {
         List<LivingEntity> list = findTargets(mc, settings);
         if (list.isEmpty()) return null;
         return list.get(0);
+    }
+
+    public static <T> T selectPreferredTarget(List<T> candidates, T preferred, T previous,
+                                              Predicate<? super T> eligible) {
+        if (preferred != null && candidates.contains(preferred) && eligible.test(preferred)) return preferred;
+        if (previous != null && candidates.contains(previous) && eligible.test(previous)) return previous;
+        for (T candidate : candidates) {
+            if (eligible.test(candidate)) return candidate;
+        }
+        return null;
     }
 
     /**

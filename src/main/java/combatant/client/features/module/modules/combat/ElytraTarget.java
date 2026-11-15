@@ -43,6 +43,7 @@ import combatant.client.util.player.inventory.FireworkUseController;
 import combatant.client.features.module.modules.movement.SuperFirework;
 import combatant.client.util.player.simulation.PlayerSimulationCache;
 import combatant.client.util.target.TargetManager;
+import combatant.client.util.target.TargetingUtil;
 import combatant.client.util.world.ExplosionDamageUtil;
 
 import java.util.List;
@@ -423,7 +424,7 @@ public final class ElytraTarget extends Module {
     @EventHandler
     private void onPostSync(EventPostSync event) {
         if (!isEnabled()) return;
-        if (mc.player == null || mc.level == null) {
+        if (mc.player == null || mc.level == null || !mc.player.isAlive() || mc.player.isRemoved()) {
             resetState();
             return;
         }
@@ -474,7 +475,7 @@ public final class ElytraTarget extends Module {
     private void onGameTick(GameTickEvent event) {
         if (!isEnabled()) return;
         LocalPlayer player = mc.player;
-        if (player == null || mc.level == null) {
+        if (player == null || mc.level == null || !player.isAlive() || player.isRemoved()) {
             resetState();
             return;
         }
@@ -751,7 +752,8 @@ public final class ElytraTarget extends Module {
     }
 
     private LivingEntity resolveCombatTarget(LocalPlayer player) {
-        if (player == null || !hasKillAuraGate() || !hasTargetingPurpose()) {
+        if (player == null || !player.isAlive() || player.isRemoved()
+                || !hasKillAuraGate() || !hasTargetingPurpose()) {
             return null;
         }
 
@@ -769,13 +771,8 @@ public final class ElytraTarget extends Module {
                 return null;
             }
         }
-        LivingEntity auraTarget = killAura.getCurrentTarget();
-        if (candidates.contains(auraTarget) && isTargetReachable(player, auraTarget)) return auraTarget;
-        if (candidates.contains(target) && isTargetReachable(player, target)) return target;
-        for (LivingEntity candidate : candidates) {
-            if (isTargetReachable(player, candidate)) return candidate;
-        }
-        return null;
+        return TargetingUtil.selectPreferredTarget(candidates, killAura.getCurrentTarget(), target,
+                candidate -> isTargetReachable(player, candidate));
     }
 
     private ElytraTargetReachability.Route routeToTarget(LocalPlayer player, LivingEntity entity) {

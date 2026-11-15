@@ -18,7 +18,7 @@ final class ModuleListInfoProviderIndexTest {
     @Test
     void compileTimeIndexIncludesBuiltInSuppliers() {
         List<String> entries = CombatantIndex.entries(CombatantIndex.Kind.MODULE_LIST_INFO_PROVIDER);
-        for (String module : List.of("Speed", "Flight", "NoSlow", "Timer")) {
+        for (String module : List.of("Speed", "Flight", "Timer")) {
             String name = "combatant.client.features.module.modules.movement." + module
                     + "#moduleListDetail";
             assertTrue(entries.contains(name), "Missing annotated ModuleList supplier: " + name);

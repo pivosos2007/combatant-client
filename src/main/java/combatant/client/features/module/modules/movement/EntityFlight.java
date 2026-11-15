@@ -152,7 +152,7 @@ public final class EntityFlight extends Module {
     }
 
     public boolean controlsBoat(LocalPlayer player, AbstractBoat boat) {
-        return isEnabled() && player != null && player.getVehicle() == boat
+        return isEnabled() && player != null && boat != null && player.getVehicle() == boat
                 && boat.getControllingPassenger() == player;
     }
 
