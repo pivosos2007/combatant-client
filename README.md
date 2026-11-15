@@ -1,6 +1,6 @@
 # Combatant Client
 
-Combatant is an open-source utility and PvP client for **Minecraft 26.2 on Fabric**.
+Combatant is an open-source utility and PvP client for **Minecraft 26.3 on Fabric**.
 
 The project provides a broad set of configurable combat, movement, visual, automation, HUD, UI, and integration features, together with its own addon API.
 
