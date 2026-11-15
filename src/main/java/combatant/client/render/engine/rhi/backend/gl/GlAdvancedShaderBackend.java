@@ -318,10 +318,25 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
         requireOpen();
         if (barrier == null) throw new IllegalArgumentException("barrier");
         validateBarrierResources(barrier);
-        int bits = memoryBarrierBits(barrier);
+        GLCapabilities caps = GL.getCapabilities();
+        int bits = memoryBarrierBits(barrier, caps);
         if (bits == 0) return;
+        if (!requiresMemoryBarrier(barrier, caps)) return;
         GL42C.glMemoryBarrier(bits);
         stats.advancedShaderBarrier();
+    }
+
+    static boolean requiresMemoryBarrier(RhiResourceBarrier barrier, GLCapabilities caps) {
+        if ((caps.OpenGL42 || caps.GL_ARB_shader_image_load_store || caps.GL_ARB_shader_storage_buffer_object)
+                && caps.glMemoryBarrier != 0L) return true;
+        boolean shaderStorage = !barrier.buffers().isEmpty() || !barrier.images().isEmpty()
+                || barrier.volumes().stream().anyMatch(volume -> volume.descriptor().storage());
+        if (shaderStorage || barrier.sourceStage() == RhiResourceBarrier.Stage.COMPUTE
+                || barrier.destinationStage() == RhiResourceBarrier.Stage.COMPUTE) {
+            throw new UnsupportedOperationException("OpenGL shader memory barriers are unavailable");
+        }
+        // Raster and transfer writes are ordered without shader-memory barriers on baseline GL.
+        return false;
     }
 
     @Override
@@ -381,6 +396,9 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
             }
         }
         validateBindings(pipeline.resources(), command.storageBindings(), command.sampledTextures(), command.storageImages(), List.of(), command.sampledVolumes());
+        if (command.indirectCommands() != null && !RhiCapabilities.current().drawIndirect()) {
+            throw new UnsupportedOperationException("OpenGL indirect drawing is unavailable");
+        }
 
         GpuMeshHandle mesh = command.mesh();
         mesh.validateForDraw(command.label());
@@ -542,6 +560,9 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
     private static void validateResourceLayout(ShaderResourceLayout layout, String owner) {
         RhiCapabilities caps = RhiCapabilities.current();
         for (ShaderResourceSlot slot : layout.slots()) {
+            if (slot.kind() == ShaderResourceKind.STORAGE_BUFFER && !caps.shaderStorageBuffers()) {
+                throw new UnsupportedOperationException(owner + " requires OpenGL shader storage buffer support");
+            }
             if ((slot.kind() == ShaderResourceKind.STORAGE_IMAGE || slot.kind() == ShaderResourceKind.STORAGE_VOLUME)
                     && !caps.imageLoadStore()) {
                 throw new UnsupportedOperationException(owner + " requires OpenGL image load/store support");
@@ -848,6 +869,7 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
 
     private static void validateImageUnitBindings(List<StorageImageBinding> images,
                                                   List<StorageVolumeBinding> volumes) {
+        if (images.isEmpty() && volumes.isEmpty()) return;
         int maxImageUnits = GL11C.glGetInteger(GL42C.GL_MAX_IMAGE_UNITS);
         for (StorageImageBinding binding : images) {
             if (binding.binding() >= maxImageUnits) {
@@ -930,6 +952,15 @@ public final class GlAdvancedShaderBackend implements AdvancedShaderBackend {
                 throw new IllegalArgumentException("Barrier volume does not belong to the active OpenGL backend");
             }
         }
+    }
+
+    static int memoryBarrierBits(RhiResourceBarrier barrier, GLCapabilities caps) {
+        int bits = memoryBarrierBits(barrier);
+        // ALL_BARRIER_BITS is valid on 4.2; an explicit SSBO bit requires 4.3 or the extension.
+        if (bits != GL42C.GL_ALL_BARRIER_BITS && !(caps.OpenGL43 || caps.GL_ARB_shader_storage_buffer_object)) {
+            bits &= ~GL43C.GL_SHADER_STORAGE_BARRIER_BIT;
+        }
+        return bits;
     }
 
     private static int memoryBarrierBits(RhiResourceBarrier barrier) {

@@ -11,6 +11,7 @@ import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.backend.vulkan.VulkanConst;
 import com.mojang.renderpearl.backend.vulkan.VulkanDevice;
+import com.mojang.renderpearl.backend.vulkan.VulkanFeatureSets;
 import com.mojang.renderpearl.backend.vulkan.VulkanInstance;
 import com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice;
 import com.mojang.renderpearl.backend.vulkan.checkpoints.CheckpointExtension;
@@ -19,7 +20,6 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkImageFormatProperties;
 import org.lwjgl.vulkan.VkPhysicalDeviceDepthStencilResolvePropertiesKHR;
-import org.lwjgl.vulkan.VkPhysicalDeviceFeatures;
 import org.lwjgl.vulkan.VkPhysicalDeviceLimits;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties2;
@@ -79,6 +79,7 @@ public abstract class VulkanDeviceMixin implements IVulkanBackendInfo {
         combatant$vkDevice = device;
         combatant$vma = vma;
         combatant$physicalDevice = physicalDevice;
+        VulkanRenderStateBridge.configureAdvancedShaderCapabilities(false, false, false, false);
         if (physicalDevice == null) return;
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -94,12 +95,10 @@ public abstract class VulkanDeviceMixin implements IVulkanBackendInfo {
                     & limits.framebufferDepthSampleCounts()
                     & limits.framebufferStencilSampleCounts();
 
-            VkPhysicalDeviceFeatures features = VkPhysicalDeviceFeatures.calloc(stack);
-            vkGetPhysicalDeviceFeatures(physicalDevice.vkPhysicalDevice(), features);
             VulkanRenderStateBridge.configureAdvancedShaderCapabilities(
                     physicalDevice.computeQueueFamilyAndIndex() != null,
-                    features.tessellationShader(),
-                    features.geometryShader(),
+                    combatant$featureEnabled(enabledFeatures, "tessellationShader"),
+                    combatant$featureEnabled(enabledFeatures, "geometryShader"),
                     combatant$maxStorageBufferRange > 0L
             );
             int textureUsage = GpuTexture.USAGE_COPY_DST
@@ -146,6 +145,13 @@ public abstract class VulkanDeviceMixin implements IVulkanBackendInfo {
                     t.getMessage()
             );
         }
+    }
+
+    @Unique
+    private static boolean combatant$featureEnabled(FeatureSet enabledFeatures, String name) {
+        // Physical-device support does not enable an optional feature on the logical device.
+        return enabledFeatures != null && enabledFeatures.features().stream().anyMatch(feature ->
+                feature.struct().equals(VulkanFeatureSets.VK10_FEATURES_STRUCT) && feature.name().equals(name));
     }
 
     @Unique

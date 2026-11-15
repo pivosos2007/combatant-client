@@ -15,10 +15,10 @@ public interface IGlBackendInfo {
 
     FrameBufferCache combatant$frameBufferCache();
 
-    /** Mojang-resolved GlDevice policy; do not re-probe ARB_direct_state_access in Combatant. */
+    /** Native DSA selected by Mojang after capability and driver checks. */
     boolean combatant$nativeDirectStateAccess();
 
-    /** Mojang-resolved GlDevice policy; do not re-probe KHR_debug in Combatant. */
+    /** KHR_debug selected by Mojang for this device. */
     boolean combatant$khrDebug();
 
     /** Raw support flags captured from the exact GLCapabilities instance Mojang creates for GlDevice. */

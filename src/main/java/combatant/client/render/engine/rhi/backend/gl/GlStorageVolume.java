@@ -17,6 +17,7 @@ import combatant.client.render.engine.rhi.shader.StorageVolumeDescriptor;
 import combatant.client.render.engine.rhi.shader.VolumeViewDescriptor;
 import combatant.client.util.logging.DebugLog;
 import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GLCapabilities;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL12C;
 import org.lwjgl.opengl.GL42C;
@@ -66,6 +67,8 @@ final class GlStorageVolume implements RhiStorageVolume {
 
     static RhiVolumeCapabilities capabilities(StorageVolumeDescriptor descriptor) {
         if (descriptor == null) return RhiVolumeCapabilities.unsupported("Volume descriptor is null");
+        RhiFeatureSupport prerequisites = allocationSupport(GL.getCapabilities());
+        if (!prerequisites.supported()) return RhiVolumeCapabilities.unsupported(prerequisites.reason());
         int max3d = GL11C.glGetInteger(GL12C.GL_MAX_3D_TEXTURE_SIZE);
         if (descriptor.width() > max3d || descriptor.height() > max3d || descriptor.depth() > max3d) {
             RhiFeatureSupport allocation = RhiFeatureSupport.unsupported(
@@ -146,6 +149,19 @@ final class GlStorageVolume implements RhiStorageVolume {
                     RhiFeatureSupport.Fallback.DISABLE_CONSUMER);
         }
         return new RhiVolumeCapabilities(allocation, storage, sampled, mipViews, copy, clear);
+    }
+
+    static RhiFeatureSupport allocationSupport(GLCapabilities caps) {
+        if (!(caps.OpenGL42 || caps.GL_ARB_texture_storage) || caps.glTexStorage3D == 0L) {
+            return RhiFeatureSupport.unsupported("OpenGL immutable 3D texture storage is unavailable",
+                    RhiFeatureSupport.Fallback.DISABLE_CONSUMER);
+        }
+        // The format and image-operation queries below require query2, not just the GL 4.2 query API.
+        if (!(caps.OpenGL43 || caps.GL_ARB_internalformat_query2) || caps.glGetInternalformativ == 0L) {
+            return RhiFeatureSupport.unsupported("OpenGL internalformat_query2 is unavailable",
+                    RhiFeatureSupport.Fallback.DISABLE_CONSUMER);
+        }
+        return RhiFeatureSupport.available();
     }
 
     /**
